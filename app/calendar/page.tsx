@@ -3,14 +3,65 @@
 import { useState, useCallback, useEffect } from "react";
 import { useAppState } from "@/components/AppStateProvider";
 import AddTaskModal from "@/components/AddTaskModal";
+import Button from "@/components/ui/Button";
+import PageHeader from "@/components/ui/PageHeader";
+import SidePeek from "@/components/ui/SidePeek";
 import { handleResourceClick } from "@/lib/task-utils";
-import { toYMD } from "@/lib/dates";
+import { toYMD, formatTime12 } from "@/lib/dates";
 import type { Plan, Task } from "@/lib/types";
-import { X, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil, Sparkles } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil } from "lucide-react";
 
-const PRIORITY_COLOR = { high: "#ef4444", medium: "#f59e0b", low: "#22c55e" };
+const KIND_COLOR = {
+  school: "var(--kind-school)",
+  "academic-ec": "var(--kind-academic-ec)",
+  "side-ec": "var(--kind-side-ec)",
+  commitment: "var(--kind-commitment)",
+  personal: "var(--kind-personal)",
+};
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function getKindColor(kind?: string): string {
+  const map: Record<string, string> = {
+    'school':      '#2563eb',
+    'commitment':  '#0d9488',
+    'academic-ec': '#7c3aed',
+    'side-ec':     '#d97706',
+    'personal':    '#64748b',
+  }
+  return map[kind ?? ''] ?? '#9b97a6'
+}
+
+const KIND_SORT_ORDER = ["school", "academic-ec", "commitment", "side-ec", "personal"];
+const KIND_DISPLAY_NAME: Record<string, string> = {
+  school: "SCHOOL",
+  commitment: "COMMITMENT",
+  "academic-ec": "ACADEMICS",
+  "side-ec": "ACTIVITIES",
+  personal: "PERSONAL",
+};
+const NO_KIND = "__none__";
+
+function sortKindKeys(keys: string[]): string[] {
+  return keys.slice().sort((a, b) => {
+    const ai = a === NO_KIND ? KIND_SORT_ORDER.length : KIND_SORT_ORDER.indexOf(a);
+    const bi = b === NO_KIND ? KIND_SORT_ORDER.length : KIND_SORT_ORDER.indexOf(b);
+    return ai - bi;
+  });
+}
+
+function groupTasksByKind(tasks: Task[]): { kind: string | undefined; tasks: Task[] }[] {
+  const groups = new Map<string, Task[]>();
+  for (const t of tasks) {
+    const key = t.kind ?? NO_KIND;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(t);
+  }
+  return sortKindKeys(Array.from(groups.keys())).map((key) => ({
+    kind: key === NO_KIND ? undefined : key,
+    tasks: groups.get(key)!,
+  }));
+}
 
 function getMonthGrid(year: number, monthIndex: number): Date[] {
   const first = new Date(year, monthIndex, 1);
@@ -70,10 +121,6 @@ export default function CalendarPage() {
   const [dayChatMessages, setDayChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
   const [dayChatInput, setDayChatInput] = useState("");
   const [dayChatBusy, setDayChatBusy] = useState(false);
-  const [logSidebarOpen, setLogSidebarOpen] = useState(false);
-  const [agentMessages, setAgentMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
-  const [agentInput, setAgentInput] = useState("");
-  const [agentLoading, setAgentLoading] = useState(false);
 
   const calendars = state?.calendars ?? [{ id: "cal_all", name: "All Calendars", category: "ALL" }];
   const activeCal = calendars[calIdx] ?? calendars[0];
@@ -93,7 +140,7 @@ export default function CalendarPage() {
       if (cal.category === "personal") return "var(--cal-personal)";
       if (cal.category !== "ALL") return "var(--cal-all)";
     }
-    return PRIORITY_COLOR[t.priority];
+    return KIND_COLOR[t.kind ?? "personal"];
   }, [getPlan, calendars]);
 
   const tasksForDay = useCallback((ymd: string): Task[] => {
@@ -145,32 +192,6 @@ export default function CalendarPage() {
       setDayChatBusy(false);
     }
   }, [dayChatInput, dayChatBusy, selectedDay, dayChatMessages, selectedDayTasks]);
-
-  const handleAgentSend = useCallback(async () => {
-    const text = agentInput.trim();
-    if (!text || agentLoading) return;
-    setAgentLoading(true);
-    setAgentInput("");
-
-    const nextMessages = [...agentMessages, { role: "user" as const, content: text }];
-    setAgentMessages(nextMessages);
-
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: nextMessages }),
-      });
-      const data = (await res.json()) as { ok?: boolean; message?: string; error?: string };
-      const reply = data.ok && data.message ? data.message : (data.error || "Something went wrong.");
-      setAgentMessages((m) => [...m, { role: "assistant", content: reply }]);
-      await refresh();
-    } catch {
-      setAgentMessages((m) => [...m, { role: "assistant", content: "Something went wrong reaching the assistant." }]);
-    } finally {
-      setAgentLoading(false);
-    }
-  }, [agentInput, agentLoading, agentMessages, refresh]);
 
   const cells = getMonthGrid(year, month);
 
@@ -231,7 +252,7 @@ export default function CalendarPage() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      setSelectedDay(null); setShowAddModal(false); setRecurDeleteTarget(null); setRecurEditTarget(null);
+      setSelectedDay(null); setShowAddModal(false); setRecurDeleteTarget(null); setRecurEditTarget(null); setShowAddCal(false);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -260,46 +281,61 @@ export default function CalendarPage() {
 
   return (
     <>
-      {/* Plan filter banner */}
-      {activePlan && (
-        <div className="plan-filter-banner" style={{ borderLeft: `3px solid ${activePlan.color}` }}>
-          <span>Filtering by plan: <strong>{activePlan.title}</strong></span>
-          <button className="btn-ghost surface-action-secondary" style={{ fontSize: "0.78rem", padding: "0.2rem 0.5rem", display: "inline-flex", alignItems: "center", gap: "0.3rem" }} onClick={() => setPlanFilter(null)}>
-            <X size={16} strokeWidth={1.75} /> Clear filter
-          </button>
-        </div>
-      )}
-
-      {/* Calendar filter — segmented control */}
-      <section className="cal-segment-card">
-        <div className="cal-segment-bar" role="tablist" aria-label="Filter by calendar">
-          {calendars.map((cal, idx) => (
-            <button
-              key={cal.id}
-              type="button"
-              role="tab"
-              aria-selected={idx === calIdx}
-              className={`cal-segment${idx === calIdx ? " is-active" : ""}`}
-              onClick={() => setCalIdx(idx)}
+      <div className="calendar-page">
+        <PageHeader
+          eyebrow="Schedule"
+          title="Calendar"
+          description="See your workload, commitments, and open space in one place."
+          actions={
+            <Button
+              variant="primary"
+              onClick={() => { setAddModalDate(todayYmd); setShowAddModal(true); }}
+              icon={<Plus size={16} aria-hidden="true" />}
             >
-              {cal.category !== "ALL" && (cal as { color?: string }).color && (
-                <span className="cal-segment-dot" style={{ background: (cal as { color?: string }).color }} />
-              )}
-              {cal.name}
-            </button>
-          ))}
-          <button
-            type="button"
-            className="cal-segment cal-segment-add"
-            onClick={() => setShowAddCal((v) => !v)}
-            aria-label="Add calendar"
-            title="Add new calendar"
-          >
-            <Plus size={16} strokeWidth={1.75} />
-          </button>
-        </div>
+              New task
+            </Button>
+          }
+        />
 
-        {/* Add calendar form — slides open under the segmented control */}
+        {activePlan && (
+          <div className="plan-filter-banner" style={{ borderLeft: `3px solid ${activePlan.color}` }}>
+            <span>Filtering by plan: <strong>{activePlan.title}</strong></span>
+            <Button variant="quiet" size="sm" onClick={() => setPlanFilter(null)} icon={<X size={14} aria-hidden="true" />}>Clear filter</Button>
+          </div>
+        )}
+
+        <section className="calendar-toolbar" aria-label="Calendar controls">
+          <div className="calendar-toolbar-primary">
+            <div>
+              <span className="calendar-toolbar-label">Month</span>
+              <h2 className="cal-month-heading">{monthLabel}</h2>
+            </div>
+            <div className="calendar-month-actions">
+              <Button variant="quiet" size="sm" onClick={prevMonth} aria-label="Previous month" icon={<ChevronLeft size={16} aria-hidden="true" />}>Prev</Button>
+              <Button variant="quiet" size="sm" onClick={nextMonth} aria-label="Next month">Next <ChevronRight size={16} aria-hidden="true" /></Button>
+            </div>
+          </div>
+          <div className="cal-segment-bar" role="tablist" aria-label="Filter by calendar">
+            {calendars.map((cal, idx) => (
+              <button
+                key={cal.id}
+                type="button"
+                role="tab"
+                aria-selected={idx === calIdx}
+                className={`cal-segment${idx === calIdx ? " is-active" : ""}`}
+                onClick={() => setCalIdx(idx)}
+              >
+                {cal.category !== "ALL" && (cal as { color?: string }).color && (
+                  <span className="cal-segment-dot" style={{ background: (cal as { color?: string }).color }} />
+                )}
+                {cal.name}
+              </button>
+            ))}
+            <button type="button" className="cal-segment cal-segment-add" onClick={() => setShowAddCal((value) => !value)} aria-label="Add calendar" title="Add new calendar">
+              <Plus size={16} strokeWidth={1.75} />
+            </button>
+          </div>
+
         {showAddCal && (
           <div className="cal-add-cal-row">
             <input
@@ -310,22 +346,13 @@ export default function CalendarPage() {
               onKeyDown={(e) => { if (e.key === "Enter") void addCalendar(); }}
               autoFocus
             />
-            <button className="btn surface-action-primary" onClick={() => void addCalendar()}>Add</button>
+            <Button variant="primary" size="sm" onClick={() => void addCalendar()}>Add</Button>
           </div>
         )}
       </section>
 
-      {/* Month grid */}
-      <section className="card">
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap" }}>
-          <h2 className="cal-month-heading">{monthLabel}</h2>
-          <div style={{ display: "flex", gap: "0.35rem" }}>
-            <button className="btn btn-secondary surface-action-secondary" onClick={prevMonth} style={{ display: "inline-flex", alignItems: "center" }}><ChevronLeft size={16} strokeWidth={1.75} /> Prev</button>
-            <button className="btn btn-secondary surface-action-secondary" onClick={nextMonth} style={{ display: "inline-flex", alignItems: "center" }}>Next <ChevronRight size={16} strokeWidth={1.75} /></button>
-          </div>
-        </div>
-
-        <div className="cal-month-grid" style={{ marginTop: "0.75rem" }}>
+      <section className="calendar-grid-shell">
+        <div className="cal-month-grid">
           {WEEKDAY_LABELS.map((d) => (
             <div key={d} className="cal-weekday-label">
               {d}
@@ -338,58 +365,62 @@ export default function CalendarPage() {
             const dayTasks = tasksForDay(ymd);
             const isToday = ymd === todayYmd;
             const isSelected = ymd === selectedDay;
-            const hasRecurring = dayTasks.some((t) => t.recurring?.enabled);
-            const activityLevel = dayTasks.length === 0 ? 0 : dayTasks.length === 1 ? 1 : dayTasks.length === 2 ? 2 : 3;
-            const activityTint =
-              activityLevel === 1 ? "rgb(from var(--accent) r g b / 0.04)"
-              : activityLevel === 2 ? "rgb(from var(--accent) r g b / 0.08)"
-              : activityLevel === 3 ? "rgb(from var(--accent) r g b / 0.14)"
-              : undefined;
+            const kindCounts = new Map<string, number>();
+            for (const t of dayTasks) {
+              const key = t.kind ?? NO_KIND;
+              kindCounts.set(key, (kindCounts.get(key) ?? 0) + 1);
+            }
+            const ribbonKinds = sortKindKeys(Array.from(kindCounts.keys()));
             let className = "cal-day";
             if (isToday) className += " is-today";
             if (isSelected) className += " is-selected";
             return (
-              <div
+              <button
+                type="button"
                 key={`${ymd}-${idx}`}
                 className={className}
-                style={{ opacity: inMonth ? 1 : 0.3, background: !isToday ? activityTint : undefined }}
+                style={{ opacity: inMonth ? 1 : 0.28 }}
                 onClick={() => inMonth && setSelectedDay(ymd === selectedDay ? null : ymd)}
-                role="button"
                 aria-label={`${d.toDateString()}${dayTasks.length ? `, ${dayTasks.length} tasks` : ""}`}
+                disabled={!inMonth}
               >
                 {isToday && <span className="cal-day-today-dot" aria-hidden="true" />}
                 <div className="d">{d.getDate()}</div>
-                <div className="task-dot-row">
-                  {dayTasks.slice(0, 5).map((t, i) => (
-                    <span
-                      key={i}
-                      className={`task-dot${t.recurring?.enabled ? " task-dot-recurring" : ""}`}
-                      style={{ background: getTaskCategoryColor(t), color: getTaskCategoryColor(t) }}
-                      title={t.title}
-                    />
-                  ))}
-                  {hasRecurring && dayTasks.length <= 5 && (
-                    <span className="recurring-dot-icon" title="Has recurring tasks"><Repeat size={10} strokeWidth={1.75} /></span>
-                  )}
-                </div>
+                {ribbonKinds.length > 0 && (
+                  <div className="cal-day-ribbons">
+                    {ribbonKinds.map((key) => {
+                      const kindArg = key === NO_KIND ? undefined : key;
+                      const count = kindCounts.get(key) ?? 0;
+                      const color = getKindColor(kindArg);
+                      return (
+                        <span
+                          key={key}
+                          className="cal-day-ribbon"
+                          style={{ height: count >= 4 ? 5 : 3, background: `${color}A6` }}
+                          title={`${count} ${kindArg ?? "other"} task${count !== 1 ? "s" : ""}`}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
                 {dayTasks.length > 0 && (
-                  <span style={{ fontSize: "0.65rem", color: "var(--muted)", marginTop: "0.15rem", display: "block" }}>
+                  <span className="calendar-day-count">
                     {dayTasks.length} task{dayTasks.length !== 1 ? "s" : ""}
                   </span>
                 )}
-              </div>
+              </button>
             );
           })}
         </div>
       </section>
+      </div>
 
-      {/* Calendar date-click modal */}
       {selectedDay && (
-        <div className="calendar-modal-overlay" onClick={() => setSelectedDay(null)}>
-          <div className="calendar-modal-panel" onClick={(e) => e.stopPropagation()}>
+        <SidePeek open titleId="calendar-day-title" onClose={() => setSelectedDay(null)}>
+          <div className="calendar-peek-content">
             <div className="calendar-modal-header">
-              <button className="calendar-modal-close" onClick={() => setSelectedDay(null)} aria-label="Close"><X size={16} strokeWidth={1.75} /></button>
-              <h3 className="calendar-modal-date">
+              <span className="calendar-peek-kicker">Selected day</span>
+              <h3 id="calendar-day-title" className="calendar-modal-date">
                 {new Date(selectedDay + "T12:00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
               </h3>
               <p className="calendar-modal-subhead">
@@ -401,7 +432,13 @@ export default function CalendarPage() {
               <p className="calendar-modal-empty">Nothing scheduled yet.</p>
             ) : (
               <div>
-                {selectedDayTasks.map((t) => {
+                {groupTasksByKind(selectedDayTasks).map(({ kind, tasks }) => (
+                <div key={kind ?? "other"} className="day-panel-kind-group">
+                  <div className="day-panel-kind-header">
+                    <span className="day-panel-kind-pill" style={{ background: getKindColor(kind) }} />
+                    <span className="day-panel-kind-label">{KIND_DISPLAY_NAME[kind ?? ""] ?? "OTHER"}</span>
+                  </div>
+                  {tasks.map((t) => {
                   const plan = getPlan(t.planId);
                   const freq = recurringLabel(t);
                   const categoryColor = getTaskCategoryColor(t);
@@ -415,17 +452,12 @@ export default function CalendarPage() {
                             onChange={() => void toggleTask(t.id)}
                             aria-label={`Mark ${t.title} complete`}
                           />
-                          <span
-                            className="priority-dot"
-                            style={{ background: PRIORITY_COLOR[t.priority] }}
-                            title={`Priority: ${t.priority}`}
-                          />
                           <span className={`calendar-modal-task-title${t.completed ? " done" : ""}`}>{t.title}</span>
                           {t.recurring?.enabled && (
                             <span className="recurring-badge" title={freq || "Recurring"}><Repeat size={12} strokeWidth={1.75} /></span>
                           )}
                         </div>
-                        <span className="calendar-modal-task-time">{t.time}</span>
+                        <span className="calendar-modal-task-time">{formatTime12(t.time)}</span>
                       </div>
                       {freq && <div className="recurring-freq-label">{freq}</div>}
                       {plan && (
@@ -474,13 +506,15 @@ export default function CalendarPage() {
                       </div>
                     </div>
                   );
-                })}
+                  })}
+                </div>
+                ))}
               </div>
             )}
 
-            <button
-              className="add-task-btn neu-btn-primary"
-              style={{ marginTop: "0.75rem" }}
+            <Button
+              variant="primary"
+              className="calendar-peek-add"
               onClick={() => {
                 setAddModalDate(selectedDay);
                 setShowAddModal(true);
@@ -488,10 +522,10 @@ export default function CalendarPage() {
               }}
             >
               <PlusCircle size={16} strokeWidth={1.75} /> Add task for this day
-            </button>
+            </Button>
 
-            {/* Ask about this day — wired to the general chat pipeline */}
-            <div className="calendar-modal-chat">
+            <details className="calendar-modal-chat">
+              <summary>Ask about this day</summary>
               {dayChatMessages.length > 0 && (
                 <div className="calendar-modal-chat-log">
                   {dayChatMessages.map((m, i) => (
@@ -520,13 +554,13 @@ export default function CalendarPage() {
                   aria-label="Ask about this day"
                   disabled={dayChatBusy}
                 />
-                <button type="submit" className="btn surface-action-primary" disabled={dayChatBusy || !dayChatInput.trim()}>
+                <Button type="submit" variant="primary" size="sm" disabled={dayChatBusy || !dayChatInput.trim()}>
                   {dayChatBusy ? "Sending…" : "Send"}
-                </button>
+                </Button>
               </form>
-            </div>
+            </details>
           </div>
-        </div>
+        </SidePeek>
       )}
 
       {/* Add Task Modal */}
@@ -615,50 +649,6 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* Sidebar toggle */}
-      <button
-        className="log-sidebar-toggle"
-        onClick={() => setLogSidebarOpen((v) => !v)}
-        aria-label={logSidebarOpen ? "Close sidebar" : "Open sidebar"}
-      >
-        <Sparkles size={16} strokeWidth={1.75} /> Agent
-      </button>
-
-      {/* Collapsible AI agent chat sidebar */}
-      <div className={`log-sidebar${logSidebarOpen ? " open" : ""}`}>
-        <div className="log-sidebar-header">
-          <span className="t-label"><Sparkles size={16} strokeWidth={1.75} /> Agent</span>
-          <button className="log-sidebar-close" onClick={() => setLogSidebarOpen(false)} aria-label="Close"><X size={16} strokeWidth={1.75} /></button>
-        </div>
-
-        <div className="agent-sidebar-body">
-          <div className="agent-sidebar-messages">
-            {agentMessages.length === 0 ? (
-              <p className="log-sidebar-empty">Ask the agent to add tasks, move things between calendars, or answer questions about your schedule.</p>
-            ) : (
-              agentMessages.map((m, i) => (
-                <div key={i} className={`agent-msg agent-msg-${m.role}`}>{m.content}</div>
-              ))
-            )}
-            {agentLoading && <div className="agent-msg agent-msg-assistant">Thinking…</div>}
-          </div>
-          <form
-            className="agent-sidebar-input-row"
-            onSubmit={(e) => { e.preventDefault(); void handleAgentSend(); }}
-          >
-            <input
-              value={agentInput}
-              onChange={(e) => setAgentInput(e.target.value)}
-              placeholder="Ask the agent…"
-              disabled={agentLoading}
-              aria-label="Message the AI agent"
-            />
-            <button type="submit" className="btn surface-action-primary" disabled={agentLoading || !agentInput.trim()}>
-              {agentLoading ? "…" : "Send"}
-            </button>
-          </form>
-        </div>
-      </div>
     </>
   );
 }

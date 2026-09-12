@@ -2,7 +2,6 @@ import type {
   Task,
   Plan,
   Category,
-  Priority,
   RecurringConfig,
   CalendarDef,
   CalendarEvent,
@@ -187,7 +186,7 @@ export function addTask(task: Omit<Task, "id">): Task & { wasDuplicate?: boolean
   }
   const newTask: Task = { id: uid("t"), ...task };
   store.tasks.push(newTask);
-  console.log("[store] addTask:", newTask.id, newTask.title, newTask.date, newTask.time, newTask.priority);
+  console.log("[store] addTask:", newTask.id, newTask.title, newTask.date, newTask.time, newTask.kind);
   return { ...newTask };
 }
 
@@ -678,7 +677,7 @@ export function applyCommands(commands: Command[]): AppState {
           title: cmd.title,
           date,
           time: cmd.time ?? "09:00",
-          priority: (cmd.priority as Priority) ?? "medium",
+          kind: cmd.kind,
           completed: false,
           calendarId: cmd.calendarId ?? null,
         });
@@ -689,7 +688,7 @@ export function applyCommands(commands: Command[]): AppState {
           ...(cmd.title !== undefined && { title: cmd.title }),
           ...(cmd.date !== undefined && { date: cmd.date }),
           ...(cmd.time !== undefined && { time: cmd.time }),
-          ...(cmd.priority !== undefined && { priority: cmd.priority as Priority }),
+          ...(cmd.kind !== undefined && { kind: cmd.kind }),
         });
         break;
       }

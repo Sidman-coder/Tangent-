@@ -1,11 +1,14 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useAppState } from "@/components/AppStateProvider";
 import AddTaskModal from "@/components/AddTaskModal";
 import TaskChatModal from "@/components/TaskChatModal";
-import { WhatToDoNow } from "@/components/WhatToDoNow";
+import Button from "@/components/ui/Button";
+import PageHeader from "@/components/ui/PageHeader";
+import ProductTaskRow from "@/components/ui/TaskRow";
 import { handleResourceClick } from "@/lib/task-utils";
+import { formatTime12 } from "@/lib/dates";
 import type { Task } from "@/lib/types";
 import {
   CheckCircle2,
@@ -13,17 +16,21 @@ import {
   Target,
   Clock,
   MessageCircle,
-  X,
+  Trash2,
   Shuffle,
   RotateCcw,
-  Repeat,
-  PlusCircle,
+  Plus,
   ChevronDown,
-  Check,
   type LucideIcon,
 } from "lucide-react";
 
-const PRIORITY_COLOR = { high: "#ef4444", medium: "#f59e0b", low: "#22c55e" };
+const KIND_COLOR = {
+  school: "var(--kind-school)",
+  "academic-ec": "var(--kind-academic-ec)",
+  "side-ec": "var(--kind-side-ec)",
+  commitment: "var(--kind-commitment)",
+  personal: "var(--kind-personal)",
+};
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function todayStr(): string {
@@ -71,9 +78,8 @@ function formatDuration(minutes: number): string {
 type RecurDeleteTarget = { taskId: string; parentId: string; title: string };
 
 export default function TasksPage() {
-  const { state, refresh } = useAppState();
+  const { state, loading, error, refresh } = useAppState();
   const [showModal, setShowModal] = useState(false);
-  const [submitting] = useState(false);
   const [shuffledIds, setShuffledIds] = useState<string[] | null>(null);
   const [shuffleAnim, setShuffleAnim] = useState(false);
   const [chatTask, setChatTask] = useState<Task | null>(null);
@@ -81,11 +87,16 @@ export default function TasksPage() {
   const [recurDeleting, setRecurDeleting] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [, setBannerTick] = useState(0);
+  const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const id = setInterval(() => setBannerTick((n) => n + 1), 60000);
     return () => clearInterval(id);
   }, []);
+
+  const prefersReducedMotion = useMemo(() => (
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  ), []);
 
   const today = todayStr();
 
@@ -96,6 +107,8 @@ export default function TasksPage() {
   const displayTasks = shuffledIds
     ? shuffledIds.map((id) => rawDailyTasks.find((t) => t.id === id)).filter(Boolean) as Task[]
     : rawDailyTasks;
+  const incompleteTasks = displayTasks.filter((t) => !t.completed || completingIds.has(t.id));
+  const completedTasks = displayTasks.filter((t) => t.completed && !completingIds.has(t.id));
 
   const currentMinutes = new Date().getHours() * 60 + new Date().getMinutes();
   const overdueTask = rawDailyTasks.find((t) => !t.completed && timeToMinutes(t.time) <= currentMinutes);
@@ -113,8 +126,10 @@ export default function TasksPage() {
   } else if (nextTask && firstTask && nextTask.id === firstTask.id && !rawDailyTasks.some((t) => t.completed)) {
     dayBanner = { type: "get-ahead", icon: Target, text: `You can get ahead — ${nextTask.title} starts in ${formatDuration(minutesUntilNext!)}` };
   } else if (nextTask) {
-    dayBanner = { type: "between", icon: Clock, text: `Next task: ${nextTask.title} at ${nextTask.time} — ${formatDuration(minutesUntilNext!)} away` };
+    dayBanner = { type: "between", icon: Clock, text: `Next task: ${nextTask.title} at ${formatTime12(nextTask.time)} — ${formatDuration(minutesUntilNext!)} away` };
   }
+
+  const urgentTask = overdueTask ?? nextTask ?? null;
 
   useEffect(() => { setShuffledIds(null); }, [rawDailyTasks.length]);
 
@@ -177,7 +192,8 @@ export default function TasksPage() {
     return () => window.removeEventListener("keydown", handler);
   }, [showModal]);
 
-  const getTaskAccentColor = useCallback((t: Task): string | undefined => {
+  const getTaskAccentColor = useCallback((t: Task): string => {
+    if (t.kind) return KIND_COLOR[t.kind];
     if (t.planId) {
       const plan = (state?.plans ?? []).find((p) => p.id === t.planId);
       if (plan) return plan.color;
@@ -188,151 +204,180 @@ export default function TasksPage() {
       if (cal.category === "personal") return "var(--cal-personal)";
       if (cal.category !== "ALL") return "var(--cal-all)";
     }
-    return undefined;
+    return KIND_COLOR.personal;
   }, [state]);
 
-  const TaskRow = ({ t, showFreqLabel = false }: { t: Task; showFreqLabel?: boolean }) => {
-    const freq = recurringLabel(t);
-    const accentColor = getTaskAccentColor(t);
-    const hasDetails = Boolean(t.notes);
-    const expanded = hasDetails && expandedIds.has(t.id);
+  const handleCheckToggle = useCallback((t: Task) => {
+    if (!t.completed && !prefersReducedMotion) {
+      setCompletingIds((prev) => new Set(prev).add(t.id));
+      void toggleTask(t.id);
+      setTimeout(() => {
+        setCompletingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(t.id);
+          return next;
+        });
+      }, 300);
+    } else {
+      void toggleTask(t.id);
+    }
+  }, [prefersReducedMotion, toggleTask]);
+
+  const renderTask = (task: Task) => {
+    const hasDetails = Boolean(task.notes || task.resources?.length);
+    const expanded = hasDetails && expandedIds.has(task.id);
+    const completing = completingIds.has(task.id);
     return (
-      <div
-        className={`task-card${t.completed ? " completed" : ""}${accentColor ? " plan-task-border" : ""}`}
-        style={accentColor ? { borderLeftColor: accentColor, borderLeftWidth: 3 } : undefined}
-        onClick={() => hasDetails && toggleExpanded(t.id)}
-      >
-        <div className="task-card-top" style={hasDetails ? { cursor: "pointer" } : undefined}>
-          <button
-            type="button"
-            className={`task-card-check${t.completed ? " checked" : ""}`}
-            onClick={(e) => { e.stopPropagation(); void toggleTask(t.id); }}
-            aria-label={`Mark ${t.title} complete`}
-            aria-pressed={t.completed}
-          >
-            {t.completed && <Check size={11} strokeWidth={3} color="#ffffff" />}
-          </button>
-          <span
-            className={`priority-dot ${t.priority}`}
-            style={{ background: PRIORITY_COLOR[t.priority] }}
-            title={`Priority: ${t.priority}`}
-          />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
-              <span className={`task-card-title${t.completed ? " done" : ""}`}>{t.title}</span>
-              {t.recurring?.enabled && (
-                <span className="recurring-badge" title={freq || "Recurring"}><Repeat size={12} strokeWidth={1.75} /></span>
+      <div key={task.id} className={completing ? "task-completing" : undefined}>
+        <ProductTaskRow
+          task={task}
+          kindColor={getTaskAccentColor(task)}
+          expanded={expanded}
+          onComplete={() => handleCheckToggle(task)}
+          onOpen={hasDetails ? () => toggleExpanded(task.id) : undefined}
+          actions={
+            <>
+              <button
+                type="button"
+                className="task-row-icon-button"
+                onClick={() => setChatTask(task)}
+                title="Ask about this task"
+                aria-label={`Ask about ${task.title}`}
+              >
+                <MessageCircle size={16} strokeWidth={1.8} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="task-row-icon-button task-row-icon-button--danger"
+                onClick={() => void handleDeleteTask(task)}
+                aria-label={`Delete ${task.title}`}
+                title="Delete task"
+              >
+                <Trash2 size={16} strokeWidth={1.8} aria-hidden="true" />
+              </button>
+              {hasDetails && (
+                <button
+                  type="button"
+                  className={`task-row-icon-button${expanded ? " is-open" : ""}`}
+                  onClick={() => toggleExpanded(task.id)}
+                  aria-label={expanded ? `Collapse details for ${task.title}` : `Expand details for ${task.title}`}
+                  aria-expanded={expanded}
+                >
+                  <ChevronDown size={16} strokeWidth={1.8} aria-hidden="true" />
+                </button>
               )}
+            </>
+          }
+        >
+          {task.notes && <p className="task-row-notes">{task.notes}</p>}
+          {task.recurring?.enabled && <p className="task-row-recurrence">{recurringLabel(task)}</p>}
+          {task.resources && task.resources.length > 0 && (
+            <div className="resource-links-section">
+              {task.resources.map((resource, index) => (
+                <button
+                  key={`${resource.url}-${index}`}
+                  type="button"
+                  onClick={() => handleResourceClick(resource, task)}
+                  className="resource-link"
+                >
+                  {resource.label}
+                </button>
+              ))}
             </div>
-            {showFreqLabel && freq && (
-              <div className="recurring-freq-label">{freq}</div>
-            )}
-          </div>
-          <span className="task-card-time">{t.time}</span>
-          <button
-            className="task-chat-btn"
-            onClick={(e) => { e.stopPropagation(); setChatTask(t); }}
-            title="AI chat for this task"
-            aria-label={`Open AI chat for ${t.title}`}
-          >
-            <MessageCircle size={18} strokeWidth={1.75} />
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); void handleDeleteTask(t); }}
-            style={{
-              background: "none", border: "none", color: "var(--text-2)",
-              cursor: "pointer", padding: "0 0.25rem",
-              lineHeight: 1, flexShrink: 0, display: "inline-flex", alignItems: "center",
-            }}
-            aria-label={`Delete ${t.title}`}
-            title="Delete task"
-          >
-            <X size={18} strokeWidth={1.75} />
-          </button>
-          {hasDetails && (
-            <button
-              type="button"
-              className={`task-desc-chevron${expanded ? " open" : ""}`}
-              onClick={(e) => { e.stopPropagation(); toggleExpanded(t.id); }}
-              aria-label={expanded ? `Collapse details for ${t.title}` : `Expand details for ${t.title}`}
-              aria-expanded={expanded}
-            >
-              <ChevronDown size={16} strokeWidth={1.75} />
-            </button>
           )}
-        </div>
-        {hasDetails && (
-          <div className={`task-card-desc-wrap${expanded ? " expanded" : ""}`}>
-            <div className="task-card-divider" />
-            <div className="task-card-desc">
-              {t.notes}
-              {t.resources && t.resources.length > 0 && (
-                <div className="resource-links-section">
-                  {t.resources.map((r, i) => (
-                    <button key={`${r.url}-${i}`} type="button" onClick={(e) => { e.stopPropagation(); handleResourceClick(r, t); }} className="resource-link">
-                      {r.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        </ProductTaskRow>
       </div>
     );
   };
 
+  if (loading && !state) {
+    return <div className="tasks-page tasks-page--loading" aria-busy="true"><span /><span /><span /></div>;
+  }
+
+  const completeCount = rawDailyTasks.filter((task) => task.completed).length;
+  const dateLabel = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+
   return (
     <>
-      <WhatToDoNow />
+      <div className="tasks-page">
+        <PageHeader
+          eyebrow="Daily plan"
+          title="Tasks"
+          description={`${dateLabel} · ${completeCount} of ${rawDailyTasks.length} complete`}
+          actions={
+            <Button variant="primary" onClick={() => setShowModal(true)} icon={<Plus size={16} aria-hidden="true" />}>
+              New task
+            </Button>
+          }
+        />
 
-      <section className="card-md">
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.25rem", gap: "0.5rem", flexWrap: "wrap" }}>
-          <h2 style={{ margin: 0 }}>Today — {new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</h2>
-          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-            {rawDailyTasks.length > 1 && (
-              <>
-                <button className="btn-ghost" style={{ fontSize: "0.78rem", padding: "0.3rem 0.6rem", display: "inline-flex", alignItems: "center", gap: "0.3rem" }} onClick={handleShuffle} title="Shuffle task order">
-                  <Shuffle size={16} strokeWidth={1.75} /> Shuffle
-                </button>
-                {shuffledIds && (
-                  <button className="btn-ghost" style={{ fontSize: "0.78rem", padding: "0.3rem 0.6rem", display: "inline-flex", alignItems: "center", gap: "0.3rem" }} onClick={() => setShuffledIds(null)} title="Reset to time order">
-                    <RotateCcw size={16} strokeWidth={1.75} /> Reset
-                  </button>
-                )}
-              </>
-            )}
-            <button className="neu-btn-primary" style={{ fontSize: "0.82rem", padding: "0.4rem 0.75rem", display: "inline-flex", alignItems: "center", gap: "0.3rem", cursor: "pointer" }} onClick={() => setShowModal(true)}>
-              <PlusCircle size={16} strokeWidth={1.75} /> Add task
-            </button>
-          </div>
+        <div className="sticky-focus-bar">
+          {urgentTask ? (
+            <>
+              <span className="sticky-focus-label">Current focus</span>
+              <span className="sticky-focus-pill" style={{ background: getTaskAccentColor(urgentTask) }} />
+              <span className="sticky-focus-title">{urgentTask.title}</span>
+              <span className="sticky-focus-time">
+                {urgentTask.id === overdueTask?.id ? "Now" : `In ${formatDuration(timeToMinutes(urgentTask.time) - currentMinutes)}`}
+              </span>
+              <Button variant="quiet" size="sm" onClick={() => handleCheckToggle(urgentTask)}>Done</Button>
+            </>
+          ) : (
+            <span className="sticky-focus-empty">All clear today. Add a task when you’re ready.</span>
+          )}
         </div>
-        <p className="muted" style={{ marginTop: "0.35rem", marginBottom: "0.5rem", fontSize: "0.85rem" }}>
-          {rawDailyTasks.length === 0
-            ? "No tasks yet — add one above or use the AI assistant."
-            : `${rawDailyTasks.filter((t) => t.completed).length} of ${rawDailyTasks.length} complete`}
-        </p>
-        {dayBanner && (
-          <div className={`day-banner ${dayBanner.type}`}>
-            <span className="day-banner-icon">
-              <dayBanner.icon size={18} strokeWidth={1.75} />
-            </span>
-            <span className="day-banner-text font-body">{dayBanner.text}</span>
-          </div>
-        )}
-        <ul style={{ listStyle: "none", padding: 0, margin: 0 }} className={shuffleAnim ? "shuffle-anim" : ""}>
-          {displayTasks.map((t) => (
-            <li key={t.id}><TaskRow t={t} showFreqLabel /></li>
-          ))}
-        </ul>
-        {rawDailyTasks.length > 0 && (
-          <button className="add-task-btn neu-btn-primary" onClick={() => setShowModal(true)}>
-            <PlusCircle size={16} strokeWidth={1.75} /> Add another task
-          </button>
-        )}
-      </section>
 
-      {/* Add Task Modal */}
+        {error && <p className="tasks-inline-error" role="status">Tasks could not refresh. Showing the latest available list.</p>}
+
+        <div className="tasks-toolbar">
+          {dayBanner ? (
+            <div className={`tasks-status tasks-status--${dayBanner.type}`}>
+              <dayBanner.icon size={15} strokeWidth={1.8} aria-hidden="true" />
+              <span>{dayBanner.text}</span>
+            </div>
+          ) : (
+            <span className="tasks-status tasks-status--quiet">Your day is ready.</span>
+          )}
+          {rawDailyTasks.length > 1 && (
+            <div className="tasks-utilities">
+              <Button variant="quiet" size="sm" onClick={handleShuffle} icon={<Shuffle size={14} aria-hidden="true" />}>
+                Shuffle
+              </Button>
+              {shuffledIds && (
+                <Button variant="quiet" size="sm" onClick={() => setShuffledIds(null)} icon={<RotateCcw size={14} aria-hidden="true" />}>
+                  Reset
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+
+        <section className="tasks-group" aria-labelledby="tasks-incomplete-heading">
+          <div className="tasks-group-heading">
+            <h2 id="tasks-incomplete-heading">To do</h2>
+            <span>{incompleteTasks.length}</span>
+          </div>
+          <div className={`tasks-list${shuffleAnim ? " shuffle-anim" : ""}`}>
+            {incompleteTasks.length > 0 ? incompleteTasks.map(renderTask) : (
+              <div className="tasks-empty-state">
+                <p>No incomplete tasks for today.</p>
+                <Button variant="secondary" size="sm" onClick={() => setShowModal(true)}>Add a task</Button>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {completedTasks.length > 0 && (
+          <section className="tasks-group tasks-group--completed" aria-labelledby="tasks-completed-heading">
+            <div className="tasks-group-heading">
+              <h2 id="tasks-completed-heading">Completed</h2>
+              <span>{completedTasks.length}</span>
+            </div>
+            <div className="tasks-list">{completedTasks.map(renderTask)}</div>
+          </section>
+        )}
+      </div>
+
       {showModal && (
         <AddTaskModal
           initialDate={today}
@@ -341,32 +386,22 @@ export default function TasksPage() {
         />
       )}
 
-      {/* Recurring delete confirmation modal */}
       {recurDeleteTarget && (
         <div className="modal-overlay" onClick={() => setRecurDeleteTarget(null)}>
-          <div className="modal" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
-            <h3>Delete recurring task</h3>
-            <p style={{ color: "var(--muted)", fontSize: "0.9rem", margin: "0.5rem 0 1.25rem" }}>
-              <strong style={{ color: "var(--text)" }}>{recurDeleteTarget.title}</strong> is a recurring task. Do you want to delete just this occurrence, or all occurrences?
-            </p>
+          <div className="modal task-recur-modal" role="dialog" aria-modal="true" aria-labelledby="recur-delete-title" onClick={(event) => event.stopPropagation()}>
+            <span className="modal-kicker">Recurring task</span>
+            <h3 id="recur-delete-title">Delete “{recurDeleteTarget.title}”?</h3>
+            <p>Choose whether to remove only today’s occurrence or the complete recurring series.</p>
             <div className="modal-actions">
-              <button className="btn-ghost surface-action-secondary" onClick={() => setRecurDeleteTarget(null)} disabled={recurDeleting}>Cancel</button>
-              <button className="btn-ghost" onClick={() => void confirmRecurDelete(false)} disabled={recurDeleting}>
-                {recurDeleting ? "Deleting…" : "Just this one"}
-              </button>
-              <button className="btn" onClick={() => void confirmRecurDelete(true)} disabled={recurDeleting}
-                style={{ background: "linear-gradient(135deg,#7f1d1d,#991b1b)", borderColor: "#ef4444" }}>
-                {recurDeleting ? "Deleting…" : "All occurrences"}
-              </button>
+              <Button variant="quiet" onClick={() => setRecurDeleteTarget(null)} disabled={recurDeleting}>Cancel</Button>
+              <Button variant="secondary" onClick={() => void confirmRecurDelete(false)} loading={recurDeleting} loadingLabel="Deleting…">Just this one</Button>
+              <Button variant="danger" onClick={() => void confirmRecurDelete(true)} loading={recurDeleting} loadingLabel="Deleting…">All occurrences</Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Task Chat Modal */}
-      {chatTask && (
-        <TaskChatModal task={chatTask} onClose={() => setChatTask(null)} />
-      )}
+      {chatTask && <TaskChatModal task={chatTask} onClose={() => setChatTask(null)} />}
     </>
   );
 }

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useAppState } from "@/components/AppStateProvider";
+import Button from "@/components/ui/Button";
+import PageHeader from "@/components/ui/PageHeader";
 import type { AppState } from "@/lib/types";
 import {
   type AppearanceMode,
@@ -19,9 +21,8 @@ export default function SettingsPage() {
   const { state, saveState, refresh } = useAppState();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [apiKey, setApiKey] = useState("");
-  const [model, setModel] = useState("gpt-4o-mini");
   const [msg, setMsg] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const [appearance, setAppearance] = useState<AppearanceMode>("dark");
   const [fontMode, setFontModeState] = useState<FontMode>("warm");
@@ -33,9 +34,6 @@ export default function SettingsPage() {
   }, [state]);
 
   useEffect(() => {
-    setApiKey(localStorage.getItem("tangent_openai_key") ?? "");
-    setModel(localStorage.getItem("tangent_openai_model") ?? "gpt-4o-mini");
-
     const storedTheme = (localStorage.getItem("tangent-theme") as AppearanceMode | null) ?? "light";
     setAppearance(storedTheme);
     const storedFontMode = (localStorage.getItem("tangent-font-mode") as FontMode | null) ?? "warm";
@@ -53,94 +51,88 @@ export default function SettingsPage() {
     setFontMode(mode);
   };
 
+  const onRestartOnboarding = () => {
+    localStorage.removeItem("tangent-onboarded");
+    localStorage.removeItem("tangent-user-name");
+    localStorage.removeItem("tangent-is-hs");
+    window.location.reload();
+  };
+
   const onSave = async () => {
     if (!state) return;
-    localStorage.setItem("tangent_openai_key", apiKey.trim());
-    localStorage.setItem("tangent_openai_model", model.trim() || "gpt-4o-mini");
+    setSaving(true);
     const next: AppState = {
       ...state,
       user: { displayName: name.trim() || state.user.displayName, email: email.trim() || state.user.email },
     };
-    const ok = await saveState(next);
-    setMsg(ok ? "Saved profile and stored API key locally in this browser." : "Could not save profile.");
-    await refresh();
+    try {
+      const ok = await saveState(next);
+      setMsg(ok ? "Profile updated." : "Could not save profile.");
+      await refresh();
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <>
-      <section className="card" style={{ maxWidth: 520 }}>
-        <div className="settings-section-head" style={{ marginTop: 0 }}>Profile</div>
-        <div className="field">
-          <label htmlFor="dn">Display name</label>
-          <input id="dn" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
-        </div>
-        <div className="field" style={{ marginTop: "0.75rem" }}>
-          <label htmlFor="em">Email</label>
-          <input id="em" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
-        </div>
-        <div className="settings-section-head" style={{ marginTop: "1.75rem" }}>AI Configuration</div>
-        <div className="field">
-          <label htmlFor="key">OpenAI API key (browser only)</label>
-          <input
-            id="key"
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            autoComplete="off"
-            placeholder="sk-…"
-          />
-          <span className="muted" style={{ fontSize: "0.8rem" }}>
-            For production, prefer <code style={{ color: "var(--accent)", fontFamily: "var(--font-mono)" }}>OPENAI_API_KEY</code> on the server.
-          </span>
-        </div>
-        <div className="field" style={{ marginTop: "0.75rem" }}>
-          <label htmlFor="model">Model</label>
-          <input id="model" value={model} onChange={(e) => setModel(e.target.value)} placeholder="gpt-4o-mini" />
-        </div>
-        <button type="button" className="btn surface-action-primary" style={{ marginTop: "1.25rem" }} onClick={() => void onSave()}>
-          Save changes
-        </button>
-        {msg && <p className="status-banner" style={{ marginTop: "0.75rem" }}>{msg}</p>}
-      </section>
+    <div className="settings-page">
+      <PageHeader eyebrow="Workspace" title="Settings" description="Manage your profile and how Tangent feels." />
 
-      <section className="card" style={{ maxWidth: 520, marginTop: "1.25rem" }}>
-        <div className="settings-section-head" style={{ marginTop: 0 }}>Appearance Mode</div>
-        <div className="theme-mode-row">
-          <div className="theme-mode-row-label">
-            <span className="theme-mode-row-title">{appearance === "dark" ? "Dark mode" : "Light mode"}</span>
-            <span className="theme-mode-row-desc">Switch between dark and light workspace colors.</span>
-          </div>
-          <button
-            type="button"
-            className={`toggle-switch${appearance === "light" ? " on" : ""}`}
-            role="switch"
-            aria-checked={appearance === "light"}
-            aria-label="Toggle light mode"
-            onClick={onToggleAppearance}
-          >
-            <span className="toggle-knob" />
-          </button>
-        </div>
+      <div className="settings-layout">
+        <nav className="settings-nav" aria-label="Settings sections">
+          <a href="#profile">Profile</a>
+          <a href="#appearance">Appearance</a>
+          <a href="#onboarding">Onboarding</a>
+        </nav>
 
-        <div className="settings-section-head" style={{ marginTop: "1.75rem" }}>Font Mode</div>
-        <div className="font-toggle-row">
-          {(Object.keys(FONT_MODE_PREVIEWS) as FontMode[]).map((mode) => {
-            const preview = FONT_MODE_PREVIEWS[mode];
-            return (
-              <button
-                key={mode}
-                type="button"
-                className={`font-toggle-btn${fontMode === mode ? " is-active" : ""}`}
-                onClick={() => applyFontMode(mode)}
-                aria-pressed={fontMode === mode}
-                style={{ fontFamily: preview.display }}
-              >
-                {preview.name}
+        <div className="settings-content">
+          <section id="profile" className="settings-panel">
+            <div className="settings-panel-head">
+              <div><h2>Profile</h2><p>Used to personalize greetings and your workspace.</p></div>
+            </div>
+            <div className="settings-field-grid">
+              <div className="field">
+                <label htmlFor="dn">Display name</label>
+                <input id="dn" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
+              </div>
+              <div className="field">
+                <label htmlFor="em">Email</label>
+                <input id="em" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+              </div>
+            </div>
+            <div className="settings-panel-actions">
+              <Button variant="primary" loading={saving} loadingLabel="Saving…" onClick={() => void onSave()}>Save changes</Button>
+              {msg && <p className="settings-status" role="status">{msg}</p>}
+            </div>
+          </section>
+
+          <section id="appearance" className="settings-panel">
+            <div className="settings-panel-head"><div><h2>Appearance</h2><p>Choose a comfortable theme and reading style.</p></div></div>
+            <div className="settings-option-row">
+              <div><strong>{appearance === "dark" ? "Dark mode" : "Light mode"}</strong><span>Switch workspace colors across every page.</span></div>
+              <button type="button" className={`toggle-switch${appearance === "light" ? " on" : ""}`} role="switch" aria-checked={appearance === "light"} aria-label="Toggle light mode" onClick={onToggleAppearance}>
+                <span className="toggle-knob" />
               </button>
-            );
-          })}
+            </div>
+            <div className="settings-option-block">
+              <div><strong>Type style</strong><span>Pick the display face used for major headings.</span></div>
+              <div className="font-toggle-row">
+                {(Object.keys(FONT_MODE_PREVIEWS) as FontMode[]).map((mode) => {
+                  const preview = FONT_MODE_PREVIEWS[mode];
+                  return <button key={mode} type="button" className={`font-toggle-btn${fontMode === mode ? " is-active" : ""}`} onClick={() => applyFontMode(mode)} aria-pressed={fontMode === mode} style={{ fontFamily: preview.display }}>{preview.name}</button>;
+                })}
+              </div>
+            </div>
+          </section>
+
+          <section id="onboarding" className="settings-panel">
+            <div className="settings-option-row">
+              <div><strong>Restart onboarding</strong><span>Revisit the setup questions for this browser.</span></div>
+              <Button variant="secondary" onClick={onRestartOnboarding}>Restart setup</Button>
+            </div>
+          </section>
         </div>
-      </section>
-    </>
+      </div>
+    </div>
   );
 }

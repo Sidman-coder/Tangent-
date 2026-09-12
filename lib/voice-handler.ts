@@ -16,7 +16,7 @@
 // live in route.ts itself.
 import { NextResponse } from "next/server";
 import { addTask, addPlan, addRecurringTask, completeTask, deleteTask, addVoiceLog, updateTask, getAppState, getAllTasks, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, addPendingConfirmation } from "@/lib/store";
-import type { Priority } from "@/lib/types";
+import type { TaskKind } from "@/lib/types";
 import { needsAgentTools, runVoiceAgentToolLoop } from "@/lib/voice-agent-tools";
 
 /** How many tasks a move_tasks command can affect before it requires confirmation. */
@@ -91,6 +91,87 @@ export function resolveCalendarId(input: string | undefined): string {
   return inferCalendarId(input, '')
 }
 
+// ─── Deterministic intent pre-classifier ──────────────────────────────────────
+// Runs before any LLM call so a recurring commitment (e.g. "soccer practice
+// every Tuesday and Thursday") is never mistaken for a multi-day AI plan
+// request just because it shares wording with plan-style phrasing.
+function classifyIntent(text: string): 'recurring_commitment'
+  | 'goal_plan' | 'single_task' | 'unclear' {
+  const lower = text.toLowerCase()
+
+  const hasDeadlineLanguage = /\bby\s+(next|this|\w+day|december|january|february|march|april|may|june|july|august|september|october|november)|\bdue\b|\bdeadline\b|\bin \d+ (days|weeks|months)\b/.test(lower)
+  const hasGoalLanguage = /\bhelp me (build|learn|study|prepare|finish|write|create)\b|\bplan for\b|\bstudy plan\b|\bworkout plan\b|\bwant to (build|learn|master)\b/.test(lower)
+  const hasRecurrencePattern = /\bevery (mon|tue|wed|thu|fri|sat|sun)\w*(\s+and\s+\w+)?\b|\brecurring\b|\bweekly\b(?!\s+plan)/.test(lower)
+  const hasNoGoalVerb = !/\b(build|learn|study|master|write|create|finish|prepare for)\b/.test(lower)
+
+  if (hasRecurrencePattern && hasNoGoalVerb && !hasDeadlineLanguage) {
+    return 'recurring_commitment'
+  }
+  if (hasGoalLanguage || hasDeadlineLanguage) {
+    return 'goal_plan'
+  }
+  if (hasRecurrencePattern) {
+    return 'goal_plan' // recurring but with a goal verb, e.g. "study every day for finals"
+  }
+  return 'unclear'
+}
+
+/** Days of week (0=Sun … 6=Sat) mentioned by name in free text, e.g. "Tuesday and Thursday". */
+function extractDaysOfWeek(text: string): number[] {
+  const DAY_NAME_TO_NUM: Record<string, number> = {
+    sun: 0, sunday: 0,
+    mon: 1, monday: 1,
+    tue: 2, tues: 2, tuesday: 2,
+    wed: 3, weds: 3, wednesday: 3,
+    thu: 4, thurs: 4, thursday: 4,
+    fri: 5, friday: 5,
+    sat: 6, saturday: 6,
+  };
+  const lower = text.toLowerCase();
+  const found = new Set<number>();
+  const dayPattern = /\b(sun(?:day)?|mon(?:day)?|tue(?:s(?:day)?)?|wed(?:s|nesday)?|thu(?:rs(?:day)?)?|fri(?:day)?|sat(?:urday)?)\b/g;
+  let match: RegExpExecArray | null;
+  while ((match = dayPattern.exec(lower)) !== null) {
+    const num = DAY_NAME_TO_NUM[match[1]];
+    if (num !== undefined) found.add(num);
+  }
+  return Array.from(found).sort((a, b) => a - b);
+}
+
+/** Deterministic (non-AI) time extraction — handles "6pm", "6:30 pm", and 24-hour "18:30". */
+function extractTime(text: string): string | undefined {
+  const lower = text.toLowerCase();
+  const ampm = lower.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/);
+  if (ampm) {
+    let h = parseInt(ampm[1], 10);
+    const m = ampm[2] ? parseInt(ampm[2], 10) : 0;
+    if (ampm[3] === "pm" && h !== 12) h += 12;
+    if (ampm[3] === "am" && h === 12) h = 0;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+  const military = lower.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+  if (military) {
+    return `${military[1].padStart(2, "0")}:${military[2]}`;
+  }
+  return undefined;
+}
+
+/** The activity name is whatever precedes "every" — e.g. "soccer practice" from
+ *  "soccer practice every Tuesday and Thursday". */
+function extractActivityName(text: string): string {
+  const idx = text.search(/\bevery\b/i);
+  const raw = idx !== -1 ? text.slice(0, idx) : text;
+  return raw.trim().replace(/^(add|schedule|create)\s+/i, "").trim() || "Activity";
+}
+
+const SIDE_EC_KEYWORDS = /\b(sport|sports|soccer|basketball|football|baseball|tennis|swim|swimming|track|volleyball|hockey|golf|wrestling|gym|workout|fitness|hobby|hobbies|art|drawing|painting|music|guitar|piano|photograph(?:y)?|cooking|baking|gaming|dance|dancing|yoga|climbing|skiing|surfing|hiking)\b/i;
+
+/** Keyword-based (non-AI) kind default for AI-generated plans — academic-ec unless
+ *  the topic clearly matches a side-EC pattern (sports, hobby keywords). */
+function inferPlanKind(topic: string): TaskKind {
+  return SIDE_EC_KEYWORDS.test(topic) ? "side-ec" : "academic-ec";
+}
+
 function voiceSystemPrompt(userContext?: string): string {
   const today = new Date().toISOString().slice(0, 10);
   const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
@@ -144,7 +225,7 @@ Today is ${today}. Tomorrow is ${tomorrow}. Current year is ${currentYear}.
 
 --- RECURRING COMMAND (use this when user says "every", "each", "weekly", "daily", "monthly", "every Saturday", "every Monday", "every weekday", "every day", "every week", etc.) ---
 Return this exact JSON:
-{"action":"add_recurring_task","title":"task title","startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD or null","frequency":"daily|weekly|monthly|yearly","daysOfWeek":[0,1,2,3,4,5,6] or null,"time":"HH:MM","priority":"high|medium|low","response":"confirmation mentioning how many instances will be created"}
+{"action":"add_recurring_task","title":"task title","startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD or null","frequency":"daily|weekly|monthly|yearly","daysOfWeek":[0,1,2,3,4,5,6] or null,"time":"HH:MM","response":"confirmation mentioning how many instances will be created"}
 
 Day numbers: 0=Sunday 1=Monday 2=Tuesday 3=Wednesday 4=Thursday 5=Friday 6=Saturday
 
@@ -159,7 +240,7 @@ Examples:
 
 --- PLAN REQUEST (use this when user asks for a study plan, workout plan, project plan, weekly schedule, exam prep, or any multi-step goal) ---
 Return this exact JSON:
-{"action":"create_plan","title":"Plan title","tasks":[{"title":"specific task title","date":"YYYY-MM-DD","time":"HH:MM","priority":"high|medium|low","calendarId":"cal_work|cal_personal|cal_study|cal_all","notes":"what to do in this session","startAction":"one specific concrete action under 20 words, starting with a verb","resources":[{"label":"Site — exact page title","url":"https://exact/url"}]}],"response":"friendly confirmation mentioning the plan name and total number of tasks"}
+{"action":"create_plan","title":"Plan title","tasks":[{"title":"specific task title","date":"YYYY-MM-DD","time":"HH:MM","calendarId":"cal_work|cal_personal|cal_study|cal_all","notes":"what to do in this session","startAction":"one specific concrete action under 20 words, starting with a verb","resources":[{"label":"Site — exact page title","url":"https://exact/url"}]}],"response":"friendly confirmation mentioning the plan name and total number of tasks"}
 
 Include a "calendarId" on every task in the plan, following the CALENDAR AWARENESS rules above.
 
@@ -180,13 +261,13 @@ Plan rules:
 
 --- SINGLE TASK COMMAND (add/complete/delete one task) ---
 Return this exact JSON:
-{"action":"add_task"|"complete_task"|"delete_task","title":"task title","date":"YYYY-MM-DD","time":"HH:MM","priority":"high|medium|low","calendarId":"cal_work|cal_personal|cal_study|cal_all","notes":"structured notes following the NOTES FORMAT below","startAction":"one specific concrete action under 20 words, starting with a verb","resources":[{"label":"Site — exact page title","url":"https://exact/url"}],"response":"confirmation under 15 words"}
+{"action":"add_task"|"complete_task"|"delete_task","title":"task title","date":"YYYY-MM-DD","time":"HH:MM","calendarId":"cal_work|cal_personal|cal_study|cal_all","notes":"structured notes following the NOTES FORMAT below","startAction":"one specific concrete action under 20 words, starting with a verb","resources":[{"label":"Site — exact page title","url":"https://exact/url"}],"response":"confirmation under 15 words"}
 
 Example:
-{"action":"add_task","title":"Sales call with client","date":"2026-07-20","time":"10:00","priority":"high","calendarId":"cal_work","notes":"GOAL: ...","startAction":"...","resources":[],"response":"Added sales call to your Work calendar."}
+{"action":"add_task","title":"Sales call with client","date":"2026-07-20","time":"10:00","calendarId":"cal_work","notes":"GOAL: ...","startAction":"...","resources":[],"response":"Added sales call to your Work calendar."}
 
 Another example:
-{"action":"add_task","title":"Study derivatives","date":"2026-07-20","time":"10:00","priority":"high","calendarId":"cal_study","notes":"GOAL: ...\\nFOCUS: ...\\nTIME: ...","startAction":"Open the Khan Academy derivatives unit and complete the first 3 exercises","resources":[{"label":"Khan Academy — Derivatives Intro","url":"https://www.khanacademy.org/..."}],"response":"Added study session for July 20th."}
+{"action":"add_task","title":"Study derivatives","date":"2026-07-20","time":"10:00","calendarId":"cal_study","notes":"GOAL: ...\\nFOCUS: ...\\nTIME: ...","startAction":"Open the Khan Academy derivatives unit and complete the first 3 exercises","resources":[{"label":"Khan Academy — Derivatives Intro","url":"https://www.khanacademy.org/..."}],"response":"Added study session for July 20th."}
 
 CALENDARID — always include a "calendarId" field, following the CALENDAR AWARENESS rules above.
 
@@ -234,7 +315,7 @@ Return this exact JSON:
 Required fields: targetCalendarId (string — the id or exact name of the destination calendar), filter (object with optional "title" keyword and/or "dateRange":{"start":"YYYY-MM-DD","end":"YYYY-MM-DD"}).
 
 Rules:
-- If no date mentioned use today (${today}). Default time: 09:00. Default priority: medium.
+- If no date mentioned use today (${today}). Default time: 09:00.
 - Choose recurring vs single based on whether the user says a repeating word like "every" or "each".
 - Choose plan vs single based on whether the user wants a multi-step schedule (plan) or one specific task (single).
 - Use delete_all_tasks ONLY for explicit clear/wipe/remove-all commands, never for deleting a single task.
@@ -334,6 +415,48 @@ export async function handleVoiceText(text: string): Promise<NextResponse> {
       return requestClearConfirmation(text);
     }
 
+    // ── Deterministic intent classification — runs before any AI plan-generation path ──
+    const classifiedIntent = classifyIntent(text);
+    console.log("[intent] classified as:", classifiedIntent, "for:", text);
+
+    if (classifiedIntent === "recurring_commitment") {
+      const activityName = extractActivityName(text);
+      const extractedDays = extractDaysOfWeek(text);
+      const daysOfWeek = extractedDays.length > 0 ? extractedDays : [1, 2, 3, 4, 5];
+      const time = extractTime(text) ?? "";
+      const calendarId = inferCalendarId(activityName);
+
+      const recurringTasks = addRecurringTask(
+        {
+          title: activityName,
+          date: new Date().toISOString().slice(0, 10),
+          time,
+          kind: "commitment",
+          completed: false,
+          calendarId,
+          notes: `Recurring commitment added by voice: "${text}"`,
+        },
+        { frequency: "weekly", daysOfWeek }
+      );
+
+      const record = recordAction("add_recurring_task", `Added ${recurringTasks.length} recurring "${activityName}" instances`, {
+        addedTaskIds: recurringTasks.map((t) => t.id),
+      });
+
+      const response = `Added "${activityName}" as a recurring commitment. Created ${recurringTasks.length} instances.`;
+      addVoiceLog({ text, response, action: "add_recurring_task", ok: true });
+      console.log("[api/voice] recurring_commitment handled deterministically — instances:", recurringTasks.length);
+
+      return NextResponse.json({
+        ok: true,
+        action: "add_recurring_task",
+        count: recurringTasks.length,
+        response,
+        actionId: record.id,
+        state: getAppState(),
+      });
+    }
+
     // Gmail / Canvas commands — routed through a genuine multi-turn Claude tool-use loop
     // so Claude can read real inbox/assignment data, then act using add_task / create_plan.
     if (needsAgentTools(text)) {
@@ -370,7 +493,7 @@ export async function handleVoiceText(text: string): Promise<NextResponse> {
     const today = new Date().toISOString().slice(0, 10);
 
     // ── Two-step plan approach (FIX 1 + FIX 2) ───────────────────────────────
-    const isPlanRequest = /plan|study|workout|routine|schedule|prepare|curriculum|course|week|month|learn|guide/i.test(text);
+    const isPlanRequest = classifiedIntent === "goal_plan" || /plan|study|workout|routine|schedule|prepare|curriculum|course|week|month|learn|guide/i.test(text);
 
     if (isPlanRequest) {
       console.log("[api/voice] Detected plan request — using two-step approach");
@@ -506,7 +629,7 @@ Expected task count: ${expectedTaskCount}
 Generate exactly ${expectedTaskCount} tasks spaced ${taskInterval} day${taskInterval > 1 ? "s" : ""} apart starting from ${startDate}.
 
 Return exactly this JSON structure:
-{"action":"create_plan","response":"Plan created with ${expectedTaskCount} tasks","tasks":[{"title":"Task name","date":"YYYY-MM-DD","time":"HH:MM","priority":"medium","calendarId":"cal_work|cal_personal|cal_study|cal_all","notes":"structured notes following the NOTES FORMAT below","startAction":"one specific concrete action under 20 words, starting with a verb","resources":[{"label":"Site — exact page title","url":"https://exact/url"}]}]}
+{"action":"create_plan","response":"Plan created with ${expectedTaskCount} tasks","tasks":[{"title":"Task name","date":"YYYY-MM-DD","time":"HH:MM","calendarId":"cal_work|cal_personal|cal_study|cal_all","notes":"structured notes following the NOTES FORMAT below","startAction":"one specific concrete action under 20 words, starting with a verb","resources":[{"label":"Site — exact page title","url":"https://exact/url"}]}]}
 
 CALENDARID — include a "calendarId" on every task. Work related tasks (meetings, calls, projects, deadlines, client work) use cal_work. Personal tasks (gym, health, hobbies, family, errands) use cal_personal. Study/school tasks (assignments, studying, courses, homework) use cal_study. If completely unclear use cal_all.
 
@@ -545,7 +668,6 @@ Rules:
 - Space tasks exactly ${taskInterval} day${taskInterval > 1 ? "s" : ""} apart
 - Make each task different and progressive — build skills/knowledge over time
 - Vary the times between 07:00 and 20:00
-- Vary the priorities: first quarter high, middle medium, last quarter high
 - Keep each title under 7 words and make it specific
 - Return ONLY the JSON nothing else`;
 
@@ -581,6 +703,7 @@ Rules:
           if (rawTasks.length > 0) {
             const taskIds: string[] = [];
             let skippedDuplicates = 0;
+            const planKind = inferPlanKind(text);
             for (const rt of rawTasks) {
               if (!rt || typeof rt !== "object") continue;
               const t = rt as Record<string, unknown>;
@@ -588,8 +711,6 @@ Rules:
               if (!taskTitle) continue;
               const taskDate = typeof t.date === "string" ? t.date : today;
               const taskTime = typeof t.time === "string" ? t.time : "09:00";
-              const rawPri = t.priority as string | undefined;
-              const taskPriority: Priority = rawPri === "high" || rawPri === "low" ? rawPri : "medium";
               const taskNotes = typeof t.notes === "string" ? t.notes.trim() : undefined;
               const taskStartAction = typeof t.startAction === "string" ? t.startAction.trim() : undefined;
               const taskResources = Array.isArray(t.resources)
@@ -603,7 +724,7 @@ Rules:
                 title: taskTitle,
                 date: taskDate,
                 time: taskTime,
-                priority: taskPriority,
+                kind: planKind,
                 completed: false,
                 calendarId: taskCalendarId,
                 notes: taskNotes || undefined,
@@ -653,7 +774,7 @@ Rules:
         title: text.substring(0, 50),
         date: today,
         time: "09:00",
-        priority: "high",
+        kind: inferPlanKind(text),
         completed: false,
         calendarId: null,
         notes: "Plan requested: " + text,
@@ -715,7 +836,7 @@ Rules:
             model: "claude-sonnet-4-5",
             max_tokens: 4096,
             temperature: 0,
-            system: `Return ONLY this JSON with no other text: {"action":"add_task","title":"short title","date":"${today}","time":"09:00","priority":"medium","response":"Task added"}`,
+            system: `Return ONLY this JSON with no other text: {"action":"add_task","title":"short title","date":"${today}","time":"09:00","response":"Task added"}`,
             messages: [{ role: "user", content: text.substring(0, 100) }],
           }),
         });
@@ -729,13 +850,10 @@ Rules:
             if (cmd.action === "add_task" && typeof cmd.title === "string" && cmd.title) {
               const retryDate = typeof cmd.date === "string" ? cmd.date : today;
               const retryTime = typeof cmd.time === "string" ? cmd.time : "09:00";
-              const retryPri = cmd.priority as string | undefined;
-              const retryPriority: Priority = retryPri === "high" || retryPri === "low" ? retryPri : "medium";
               const task = addTask({
                 title: cmd.title,
                 date: retryDate,
                 time: retryTime,
-                priority: retryPriority,
                 completed: false,
                 calendarId: null,
                 notes: "Added after retry: " + text.substring(0, 100),
@@ -817,8 +935,6 @@ Rules:
     const action = cmd.action as string;
     const title = (cmd.title as string | undefined) ?? "";
     const response = (cmd.response as string | undefined) ?? "";
-    const rawPriority = cmd.priority as string | undefined;
-    const priority: Priority = rawPriority === "high" || rawPriority === "low" ? rawPriority : "medium";
     const time = (cmd.time as string | undefined) ?? "09:00";
 
     console.log("[api/voice] Parsed — action:", action, "| title:", title);
@@ -846,7 +962,6 @@ Rules:
           title,
           date: startDate,
           time,
-          priority,
           completed: false,
           calendarId: null,
           notes: `Recurring task added by voice: "${text}"`,
@@ -882,6 +997,7 @@ Rules:
 
       const taskIds: string[] = [];
       let skippedDuplicates = 0;
+      const planKind = inferPlanKind(text);
       for (const rt of rawTasks) {
         if (!rt || typeof rt !== "object") continue;
         const t = rt as Record<string, unknown>;
@@ -889,8 +1005,6 @@ Rules:
         if (!taskTitle) continue;
         const taskDate = typeof t.date === "string" ? t.date : today;
         const taskTime = typeof t.time === "string" ? t.time : "09:00";
-        const rawPri = t.priority as string | undefined;
-        const taskPriority: Priority = rawPri === "high" || rawPri === "low" ? rawPri : "medium";
         const taskStartAction = typeof t.startAction === "string" ? t.startAction.trim() : undefined;
         const taskResources = Array.isArray(t.resources)
           ? (t.resources as unknown[]).filter(
@@ -904,7 +1018,7 @@ Rules:
           title: taskTitle,
           date: taskDate,
           time: taskTime,
-          priority: taskPriority,
+          kind: planKind,
           completed: false,
           calendarId: taskCalendarId,
           notes: taskNotesForPlan,
@@ -1040,7 +1154,7 @@ Rules:
         : undefined;
       const resources = rawResources && rawResources.length > 0 ? rawResources : undefined;
       const calendarId = resolveCalendarId(typeof cmd.calendarId === "string" ? cmd.calendarId : undefined);
-      const task = addTask({ title: displayTitle, date, time, priority, completed: false, calendarId, notes, startAction, resources });
+      const task = addTask({ title: displayTitle, date, time, completed: false, calendarId, notes, startAction, resources });
       if (task.wasDuplicate) {
         const dupResponse = `Skipped 1 duplicate (already have "${task.title}" around ${task.time}).`;
         console.log("[api/voice] add_task skipped duplicate:", task.id, task.title);

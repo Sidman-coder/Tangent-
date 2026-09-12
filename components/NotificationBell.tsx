@@ -47,6 +47,15 @@ export default function NotificationBell({ open: openProp, onOpenChange }: Notif
     }).then(() => fetchNotifications()).catch(() => {})
   }, [fetchNotifications])
 
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false)
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [open, setOpen])
+
   const handleDismiss = async (id: string) => {
     await fetch("/api/notifications", {
       method: "POST",

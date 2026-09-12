@@ -34,7 +34,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
     }
 
-    console.log("[api/task-chat] Found task:", task.title, "| date:", task.date, "| priority:", task.priority);
+    console.log("[api/task-chat] Found task:", task.title, "| date:", task.date, "| kind:", task.kind);
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
@@ -56,7 +56,6 @@ Task details:
 - Title: ${task.title}
 - Date: ${task.date}
 - Time: ${task.time}
-- Priority: ${task.priority}
 - Notes: ${task.notes ?? "none"}
 
 Your job is to help the user plan, break down, think through, and execute this specific task.

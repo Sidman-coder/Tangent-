@@ -1,0 +1,114 @@
+- generic [ref=f36e2]:
+  - complementary "Primary navigation" [ref=f36e3]:
+    - link "Tangent home" [ref=f36e4] [cursor=pointer]:
+      - /url: /
+      - text: T
+    - button "Ask TANGENT" [ref=f36e5] [cursor=pointer]
+    - navigation "Primary" [ref=f36e11]:
+      - link "Today" [ref=f36e12] [cursor=pointer]:
+        - /url: /
+      - link "Calendar" [ref=f36e17] [cursor=pointer]:
+        - /url: /calendar
+      - link "Tasks" [ref=f36e22] [cursor=pointer]:
+        - /url: /tasks
+      - link "Console" [ref=f36e26] [cursor=pointer]:
+        - /url: /ai
+    - generic [ref=f36e31]:
+      - button "Notifications" [ref=f36e32] [cursor=pointer]
+      - link "Settings" [ref=f36e36] [cursor=pointer]:
+        - /url: /settings
+  - generic [ref=f36e40]:
+    - banner [ref=f36e41]:
+      - generic [ref=f36e42]: Calendar
+      - generic [ref=f36e43]:
+        - generic [ref=f36e44]: Thu, Sep 10
+        - button "Notifications" [ref=f36e47] [cursor=pointer]
+    - main [ref=f36e53]:
+      - tablist "Filter by calendar" [ref=f36e55]:
+        - tab "All Calendars" [selected] [ref=f36e56] [cursor=pointer]
+        - button "Add calendar" [ref=f36e57] [cursor=pointer]
+      - generic [ref=f36e59]:
+        - generic [ref=f36e60]:
+          - heading "September 2026" [level=2] [ref=f36e61]
+          - generic [ref=f36e62]:
+            - button "Prev" [ref=f36e63] [cursor=pointer]
+            - button "Next" [ref=f36e66] [cursor=pointer]
+        - generic [ref=f36e69]:
+          - generic [ref=f36e70]: Sun
+          - generic [ref=f36e71]: Mon
+          - generic [ref=f36e72]: Tue
+          - generic [ref=f36e73]: Wed
+          - generic [ref=f36e74]: Thu
+          - generic [ref=f36e75]: Fri
+          - generic [ref=f36e76]: Sat
+          - button "Sun Aug 30 2026" [ref=f36e77] [cursor=pointer]:
+            - generic [ref=f36e78]: "30"
+          - button "Mon Aug 31 2026" [ref=f36e79] [cursor=pointer]:
+            - generic [ref=f36e80]: "31"
+          - button "Tue Sep 01 2026" [ref=f36e81] [cursor=pointer]:
+            - generic [ref=f36e82]: "1"
+          - button "Wed Sep 02 2026" [ref=f36e83] [cursor=pointer]:
+            - generic [ref=f36e84]: "2"
+          - button "Thu Sep 03 2026" [ref=f36e85] [cursor=pointer]:
+            - generic [ref=f36e86]: "3"
+          - button "Fri Sep 04 2026" [ref=f36e87] [cursor=pointer]:
+            - generic [ref=f36e88]: "4"
+          - button "Sat Sep 05 2026" [ref=f36e89] [cursor=pointer]:
+            - generic [ref=f36e90]: "5"
+          - button "Sun Sep 06 2026" [ref=f36e91] [cursor=pointer]:
+            - generic [ref=f36e92]: "6"
+          - button "Mon Sep 07 2026" [ref=f36e93] [cursor=pointer]:
+            - generic [ref=f36e94]: "7"
+          - button "Tue Sep 08 2026" [ref=f36e95] [cursor=pointer]:
+            - generic [ref=f36e96]: "8"
+          - button "Wed Sep 09 2026" [ref=f36e97] [cursor=pointer]:
+            - generic [ref=f36e98]: "9"
+          - button "Thu Sep 10 2026" [ref=f36e99] [cursor=pointer]:
+            - generic [ref=f36e101]: "10"
+          - button "Fri Sep 11 2026" [ref=f36e102] [cursor=pointer]:
+            - generic [ref=f36e103]: "11"
+          - button "Sat Sep 12 2026" [ref=f36e104] [cursor=pointer]:
+            - generic [ref=f36e105]: "12"
+          - button "Sun Sep 13 2026" [ref=f36e106] [cursor=pointer]:
+            - generic [ref=f36e107]: "13"
+          - button "Mon Sep 14 2026" [ref=f36e108] [cursor=pointer]:
+            - generic [ref=f36e109]: "14"
+          - button "Tue Sep 15 2026" [ref=f36e110] [cursor=pointer]:
+            - generic [ref=f36e111]: "15"
+          - button "Wed Sep 16 2026" [ref=f36e112] [cursor=pointer]:
+            - generic [ref=f36e113]: "16"
+          - button "Thu Sep 17 2026" [ref=f36e114] [cursor=pointer]:
+            - generic [ref=f36e115]: "17"
+          - button "Fri Sep 18 2026" [ref=f36e116] [cursor=pointer]:
+            - generic [ref=f36e117]: "18"
+          - button "Sat Sep 19 2026" [ref=f36e118] [cursor=pointer]:
+            - generic [ref=f36e119]: "19"
+          - button "Sun Sep 20 2026" [ref=f36e120] [cursor=pointer]:
+            - generic [ref=f36e121]: "20"
+          - button "Mon Sep 21 2026" [ref=f36e122] [cursor=pointer]:
+            - generic [ref=f36e123]: "21"
+          - button "Tue Sep 22 2026" [ref=f36e124] [cursor=pointer]:
+            - generic [ref=f36e125]: "22"
+          - button "Wed Sep 23 2026" [ref=f36e126] [cursor=pointer]:
+            - generic [ref=f36e127]: "23"
+          - button "Thu Sep 24 2026" [ref=f36e128] [cursor=pointer]:
+            - generic [ref=f36e129]: "24"
+          - button "Fri Sep 25 2026" [ref=f36e130] [cursor=pointer]:
+            - generic [ref=f36e131]: "25"
+          - button "Sat Sep 26 2026" [ref=f36e132] [cursor=pointer]:
+            - generic [ref=f36e133]: "26"
+          - button "Sun Sep 27 2026" [ref=f36e134] [cursor=pointer]:
+            - generic [ref=f36e135]: "27"
+          - button "Mon Sep 28 2026" [ref=f36e136] [cursor=pointer]:
+            - generic [ref=f36e137]: "28"
+          - button "Tue Sep 29 2026" [ref=f36e138] [cursor=pointer]:
+            - generic [ref=f36e139]: "29"
+          - button "Wed Sep 30 2026" [ref=f36e140] [cursor=pointer]:
+            - generic [ref=f36e141]: "30"
+          - button "Thu Oct 01 2026" [ref=f36e142] [cursor=pointer]:
+            - generic [ref=f36e143]: "1"
+          - button "Fri Oct 02 2026" [ref=f36e144] [cursor=pointer]:
+            - generic [ref=f36e145]: "2"
+          - button "Sat Oct 03 2026" [ref=f36e146] [cursor=pointer]:
+            - generic [ref=f36e147]: "3"
+      - button "Open sidebar" [ref=f36e148] [cursor=pointer]: Agent
