@@ -1,12 +1,27 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAppState } from "@/components/AppStateProvider";
 import VoiceRecordButton from "@/components/VoiceRecordButton";
 import ActionReceipt from "@/components/ActionReceipt";
 import PageHeader from "@/components/ui/PageHeader";
 import type { ChatSession } from "@/lib/store";
-import { ArrowUp, Sparkles, CalendarDays, Clock3, Zap } from "lucide-react";
+import type { BriefConfig, BriefSource } from "@/lib/types";
+import { ArrowUp, Sparkles, CalendarDays, Clock3, Zap, X } from "lucide-react";
+
+type ConsoleMode = "ask" | "do" | "brief";
+
+const MODE_LABEL: Record<ConsoleMode, string> = { ask: "Ask", do: "Do", brief: "Brief" };
+const CADENCE_LABEL: Record<BriefConfig["cadence"], string> = {
+  daily: "Daily",
+  weekdays: "Weekdays",
+  weekly: "Weekly",
+};
+const SOURCE_TYPE_LABEL: Record<BriefSource["type"], string> = {
+  rss: "RSS feed",
+  manual_url: "Website URL",
+  stale_check: "Notice stale tasks",
+};
 
 const SUGGESTION_CHIPS = [
   { icon: Sparkles, text: "Plan my week" },
@@ -92,6 +107,70 @@ export default function AiPage() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const [mode, setMode] = useState<ConsoleMode>("ask");
+  const [briefSources, setBriefSources] = useState<BriefSource[]>([]);
+  const [briefCadence, setBriefCadence] = useState<BriefConfig["cadence"]>("daily");
+  const [briefTime, setBriefTime] = useState("07:00");
+  const [showAddSource, setShowAddSource] = useState(false);
+  const [newSourceLabel, setNewSourceLabel] = useState("");
+  const [newSourceType, setNewSourceType] = useState<BriefSource["type"]>("rss");
+  const [newSourceUrl, setNewSourceUrl] = useState("");
+  const [savingBrief, setSavingBrief] = useState(false);
+  const [briefSaved, setBriefSaved] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/brief-config")
+      .then((res) => res.json())
+      .then((data: { ok?: boolean; config?: BriefConfig | null }) => {
+        if (data.ok && data.config) {
+          setBriefSources(data.config.sources ?? []);
+          setBriefCadence(data.config.cadence ?? "daily");
+          setBriefTime(data.config.deliveryTime ?? "07:00");
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const addBriefSource = useCallback(() => {
+    const label = newSourceLabel.trim();
+    if (!label) return;
+    const source: BriefSource = {
+      id: crypto.randomUUID(),
+      type: newSourceType,
+      label,
+      ...(newSourceType !== "stale_check" && newSourceUrl.trim() ? { url: newSourceUrl.trim() } : {}),
+    };
+    setBriefSources((prev) => [...prev, source]);
+    setNewSourceLabel("");
+    setNewSourceUrl("");
+    setNewSourceType("rss");
+    setShowAddSource(false);
+    setBriefSaved(false);
+  }, [newSourceLabel, newSourceType, newSourceUrl]);
+
+  const removeBriefSource = useCallback((id: string) => {
+    setBriefSources((prev) => prev.filter((s) => s.id !== id));
+    setBriefSaved(false);
+  }, []);
+
+  const saveBriefSettings = useCallback(async () => {
+    setSavingBrief(true);
+    setBriefSaved(false);
+    try {
+      const res = await fetch("/api/brief-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sources: briefSources, cadence: briefCadence, deliveryTime: briefTime }),
+      });
+      const data = await res.json();
+      if (data.ok) setBriefSaved(true);
+    } catch {
+      // best-effort — settings stay in local state, user can retry Save
+    } finally {
+      setSavingBrief(false);
+    }
+  }, [briefSources, briefCadence, briefTime]);
 
   const send = useCallback(async (text?: string) => {
     const userText = (text ?? input).trim();
@@ -222,7 +301,144 @@ export default function AiPage() {
         description="Plan your day, reorganize work, or ask about your schedule."
       />
 
+      <div className="console-mode-row-wrap">
+        <div className="console-mode-row" role="tablist" aria-label="Console mode">
+          {(["ask", "do", "brief"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              role="tab"
+              aria-selected={mode === m}
+              className={`console-mode-pill${mode === m ? " console-mode-pill--active" : ""}`}
+              onClick={() => setMode(m)}
+            >
+              {MODE_LABEL[m]}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <section className="console-workspace" aria-label="Tangent assistant">
+        {mode === "brief" ? (
+          <div className="console-brief-setup">
+            <div className="console-brief-sources">
+              {briefSources.length === 0 && (
+                <p className="console-brief-empty">No sources yet. Add one below.</p>
+              )}
+              {briefSources.map((source) => (
+                <div key={source.id} className="card-sm console-brief-source-row">
+                  <div className="console-brief-source-info">
+                    <span className="console-brief-source-label">{source.label}</span>
+                    <span className="console-brief-source-type">{SOURCE_TYPE_LABEL[source.type]}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="console-brief-remove"
+                    aria-label={`Remove ${source.label}`}
+                    onClick={() => removeBriefSource(source.id)}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {showAddSource ? (
+              <div className="card-sm console-brief-add-form">
+                <label className="console-brief-field">
+                  <span>Label</span>
+                  <input
+                    className="console-brief-text-input"
+                    value={newSourceLabel}
+                    onChange={(e) => setNewSourceLabel(e.target.value)}
+                    placeholder="Morning news"
+                  />
+                </label>
+                <label className="console-brief-field">
+                  <span>Type</span>
+                  <select
+                    className="console-brief-text-input"
+                    value={newSourceType}
+                    onChange={(e) => setNewSourceType(e.target.value as BriefSource["type"])}
+                  >
+                    <option value="rss">RSS feed</option>
+                    <option value="manual_url">Website URL</option>
+                    <option value="stale_check">Notice stale tasks</option>
+                  </select>
+                </label>
+                {newSourceType !== "stale_check" && (
+                  <label className="console-brief-field">
+                    <span>URL</span>
+                    <input
+                      className="console-brief-text-input"
+                      value={newSourceUrl}
+                      onChange={(e) => setNewSourceUrl(e.target.value)}
+                      placeholder="https://…"
+                    />
+                  </label>
+                )}
+                <div className="console-brief-actions">
+                  <button type="button" className="console-chip" onClick={() => setShowAddSource(false)}>
+                    Cancel
+                  </button>
+                  <button type="button" className="console-chip" onClick={addBriefSource} disabled={!newSourceLabel.trim()}>
+                    Add
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="console-chip console-brief-add-toggle"
+                onClick={() => setShowAddSource(true)}
+              >
+                + Add source
+              </button>
+            )}
+
+            <div className="console-brief-config-row">
+              <span className="console-brief-config-label">Cadence</span>
+              <div className="console-mode-row">
+                {(["daily", "weekdays", "weekly"] as const).map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    className={`console-mode-pill${briefCadence === c ? " console-mode-pill--active" : ""}`}
+                    onClick={() => {
+                      setBriefCadence(c);
+                      setBriefSaved(false);
+                    }}
+                  >
+                    {CADENCE_LABEL[c]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="console-brief-config-row">
+              <span className="console-brief-config-label">Delivery time</span>
+              <input
+                type="time"
+                className="console-brief-time-input"
+                value={briefTime}
+                onChange={(e) => {
+                  setBriefTime(e.target.value);
+                  setBriefSaved(false);
+                }}
+              />
+            </div>
+
+            <button
+              type="button"
+              className="neu-btn-primary console-brief-save"
+              onClick={() => void saveBriefSettings()}
+              disabled={savingBrief}
+            >
+              {savingBrief ? "Saving…" : briefSaved ? "Saved ✓" : "Save brief settings"}
+            </button>
+          </div>
+        ) : (
+          <>
         <div className="console-thread" aria-live="polite">
           {!busy && turns.length === 0 && (
             <div className="console-empty">
@@ -293,6 +509,8 @@ export default function AiPage() {
           </form>
           <span className="console-composer-hint">Tangent can make changes to your tasks. You’ll always see what changed.</span>
         </div>
+          </>
+        )}
       </section>
     </div>
   );

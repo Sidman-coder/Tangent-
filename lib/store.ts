@@ -16,6 +16,7 @@ import type {
   ActionRecord,
   ActionSnapshot,
   PendingConfirmation,
+  BriefConfig,
 } from "./types";
 
 function uid(prefix: string): string {
@@ -60,6 +61,7 @@ const g = global as typeof global & {
   __tangentNotifications?: Notification[];
   __tangentActions?: ActionRecord[];
   __tangentPending?: PendingConfirmation[];
+  __tangentBriefConfig?: BriefConfig | null;
 };
 if (!g.__tangentStore) {
   g.__tangentStore = {
@@ -117,6 +119,10 @@ if (!g.__tangentActions) {
 
 if (!g.__tangentPending) {
   g.__tangentPending = [] as PendingConfirmation[];
+}
+
+if (g.__tangentBriefConfig === undefined) {
+  g.__tangentBriefConfig = null;
 }
 
 // ─── Task functions ───────────────────────────────────────────────────────────
@@ -910,4 +916,17 @@ export function getPendingConfirmation(id: string): PendingConfirmation | null {
 
 export function resolvePendingConfirmation(id: string): void {
   g.__tangentPending = g.__tangentPending!.filter((p) => p.id !== id);
+}
+
+// ─── Daily Brief config ───────────────────────────────────────────────────────
+
+export function getBriefConfig(): BriefConfig | null {
+  const cfg = g.__tangentBriefConfig;
+  return cfg ? { ...cfg, sources: cfg.sources.map((s) => ({ ...s })) } : null;
+}
+
+export function saveBriefConfig(config: BriefConfig): BriefConfig {
+  g.__tangentBriefConfig = { ...config, sources: config.sources.map((s) => ({ ...s })) };
+  console.log("[store] saveBriefConfig — sources:", config.sources.length, "| cadence:", config.cadence, "| time:", config.deliveryTime);
+  return getBriefConfig()!;
 }

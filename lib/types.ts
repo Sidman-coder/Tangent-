@@ -112,6 +112,20 @@ export interface UserContext {
   totalInteractions: number;
 }
 
+export interface BriefSource {
+  id: string;
+  type: "rss" | "stale_check" | "manual_url";
+  label: string;
+  url?: string;
+  lastFetched?: string;
+}
+
+export interface BriefConfig {
+  sources: BriefSource[];
+  cadence: "daily" | "weekdays" | "weekly";
+  deliveryTime: string; // "07:00"
+}
+
 export interface Notification {
   id: string;
   timestamp: string;
