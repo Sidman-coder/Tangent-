@@ -7,7 +7,7 @@
 // (addTask / addPlan / updateTask) for the "act" side so behavior matches
 // the create_plan / add_task cases already in app/api/voice/route.ts.
 import { addTask, addPlan, updateTask, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction } from "@/lib/store";
-import type { Priority, Task } from "@/lib/types";
+import type { Task, TaskKind } from "@/lib/types";
 import { getRecentEmails, getEmailById } from "@/lib/gmail";
 import {
   getUpcomingAssignments,
@@ -157,7 +157,6 @@ const TOOLS = [
         title: { type: "string" },
         date: { type: "string", description: "YYYY-MM-DD" },
         time: { type: "string", description: "HH:MM 24-hour, default 09:00" },
-        priority: { type: "string", enum: ["high", "medium", "low"] },
         calendarId: { type: "string", description: "The calendar id to file this task under, e.g. cal_work, cal_personal, cal_study, cal_all" },
         notes: { type: "string" },
         startAction: { type: "string", description: "One specific concrete action under 20 words, starting with a verb" },
@@ -191,7 +190,6 @@ const TOOLS = [
               title: { type: "string" },
               date: { type: "string", description: "YYYY-MM-DD" },
               time: { type: "string", description: "HH:MM 24-hour" },
-              priority: { type: "string", enum: ["high", "medium", "low"] },
               calendarId: { type: "string", description: "The calendar id to file this task under, e.g. cal_work, cal_personal, cal_study, cal_all" },
               notes: { type: "string" },
               startAction: { type: "string", description: "One specific concrete action under 20 words, starting with a verb" },
@@ -225,8 +223,12 @@ type AnthropicMessage = {
   content: string | AnthropicContentBlock[] | { type: "tool_result"; tool_use_id: string; content: string }[];
 };
 
-function normalizePriority(p: unknown): Priority {
-  return p === "high" || p === "low" ? p : "medium";
+const SIDE_EC_KEYWORDS = /\b(sport|sports|soccer|basketball|football|baseball|tennis|swim|swimming|track|volleyball|hockey|golf|wrestling|gym|workout|fitness|hobby|hobbies|art|drawing|painting|music|guitar|piano|photograph(?:y)?|cooking|baking|gaming|dance|dancing|yoga|climbing|skiing|surfing|hiking)\b/i;
+
+/** Keyword-based (non-AI) kind default for AI-generated plans — academic-ec unless
+ *  the topic clearly matches a side-EC pattern (sports, hobby keywords). */
+function inferPlanKind(topic: string): TaskKind {
+  return SIDE_EC_KEYWORDS.test(topic) ? "side-ec" : "academic-ec";
 }
 
 function inferCalendarId(title: string, notes?: string): string {
@@ -384,7 +386,6 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
       if (!title) return { data: { error: "Missing title" } };
       const date = typeof input.date === "string" && input.date ? input.date : today;
       const time = typeof input.time === "string" && input.time ? input.time : "09:00";
-      const priority = normalizePriority(input.priority);
       const displayTitle = time !== "09:00" ? `${title} (${time})` : title;
       const notes = typeof input.notes === "string" ? input.notes.trim() || undefined : undefined;
       const startAction = typeof input.startAction === "string" ? input.startAction.trim() || undefined : undefined;
@@ -396,7 +397,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         : undefined;
       const resources = rawResources && rawResources.length > 0 ? rawResources : undefined;
       const calendarId = resolveCalendarId(typeof input.calendarId === "string" ? input.calendarId : undefined);
-      const task = addTask({ title: displayTitle, date, time, priority, completed: false, calendarId, notes, startAction, resources });
+      const task = addTask({ title: displayTitle, date, time, completed: false, calendarId, notes, startAction, resources });
       if (task.wasDuplicate) {
         return { data: { ok: true, task, skipped: true, message: `Skipped 1 duplicate (already have "${task.title}" around ${task.time}).` }, action: "add_task", task };
       }
@@ -409,12 +410,12 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
       const rawTasks = Array.isArray(input.tasks) ? (input.tasks as Record<string, unknown>[]) : [];
       const taskIds: string[] = [];
       let skippedDuplicates = 0;
+      const planKind = inferPlanKind(planTitle);
       for (const rt of rawTasks) {
         const taskTitle = typeof rt.title === "string" ? rt.title.trim() : "";
         if (!taskTitle) continue;
         const taskDate = typeof rt.date === "string" ? rt.date : today;
         const taskTime = typeof rt.time === "string" ? rt.time : "09:00";
-        const taskPriority = normalizePriority(rt.priority);
         const taskStartAction = typeof rt.startAction === "string" ? rt.startAction.trim() || undefined : undefined;
         const rawTaskResources = Array.isArray(rt.resources)
           ? (rt.resources as unknown[]).filter(
@@ -428,7 +429,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           title: taskTitle,
           date: taskDate,
           time: taskTime,
-          priority: taskPriority,
+          kind: planKind,
           completed: false,
           calendarId: taskCalendarId,
           notes: typeof rt.notes === "string" ? rt.notes : "",

@@ -10,7 +10,9 @@ import {
   deleteRecurringTask,
   updateRecurringTask,
 } from "@/lib/store";
-import type { Priority } from "@/lib/types";
+import type { TaskKind } from "@/lib/types";
+
+const TASK_KINDS: TaskKind[] = ["school", "academic-ec", "side-ec", "personal", "commitment"];
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -31,7 +33,7 @@ export async function POST(req: Request) {
       title?: string;
       date?: string;
       time?: string;
-      priority?: string;
+      kind?: string;
       completed?: boolean;
       calendarId?: string | null;
       // recurring
@@ -57,7 +59,7 @@ export async function POST(req: Request) {
         title: body.title.trim(),
         date: body.date ?? new Date().toISOString().slice(0, 10),
         time: body.time ?? "09:00",
-        priority: (["high", "medium", "low"].includes(body.priority ?? "") ? body.priority : "medium") as Priority,
+        kind: TASK_KINDS.includes(body.kind as TaskKind) ? (body.kind as TaskKind) : undefined,
         completed: false,
         calendarId: body.calendarId ?? null,
         notes: body.notes?.trim() || undefined,
@@ -108,8 +110,8 @@ export async function POST(req: Request) {
       if (body.title !== undefined) patch.title = body.title;
       if (body.date !== undefined) patch.date = body.date;
       if (body.time !== undefined) patch.time = body.time;
-      if (body.priority !== undefined && ["high", "medium", "low"].includes(body.priority)) {
-        patch.priority = body.priority as Priority;
+      if (body.kind !== undefined && TASK_KINDS.includes(body.kind as TaskKind)) {
+        patch.kind = body.kind as TaskKind;
       }
       if (body.completed !== undefined) patch.completed = body.completed;
       const task = updateTask(body.id, patch);
@@ -131,7 +133,7 @@ export async function POST(req: Request) {
           title: body.title.trim(),
           date: body.date ?? new Date().toISOString().slice(0, 10),
           time: body.time ?? "09:00",
-          priority: (["high", "medium", "low"].includes(body.priority ?? "") ? body.priority : "medium") as Priority,
+          kind: TASK_KINDS.includes(body.kind as TaskKind) ? (body.kind as TaskKind) : undefined,
           completed: false,
           calendarId: body.calendarId ?? null,
           notes: body.notes?.trim() || undefined,

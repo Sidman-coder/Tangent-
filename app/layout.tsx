@@ -6,7 +6,7 @@ import { ThemeInit } from "@/components/ThemeInit";
 
 export const metadata: Metadata = {
   title: "Tangent",
-  description: "Productivity workspace with AI and voice commands",
+  description: "A focused productivity workspace for students to plan their time and follow through.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -1,0 +1,92 @@
+- generic [active] [ref=f16e1]:
+  - generic [ref=f16e2]:
+    - complementary "Primary navigation" [ref=f16e3]:
+      - link "Tangent home" [ref=f16e4] [cursor=pointer]:
+        - /url: /
+        - text: T
+      - button "Ask TANGENT" [ref=f16e5] [cursor=pointer]
+      - navigation "Primary" [ref=f16e11]:
+        - link "Today" [ref=f16e12] [cursor=pointer]:
+          - /url: /
+        - link "Calendar" [ref=f16e17] [cursor=pointer]:
+          - /url: /calendar
+        - link "Tasks" [ref=f16e21] [cursor=pointer]:
+          - /url: /tasks
+        - link "Console" [ref=f16e26] [cursor=pointer]:
+          - /url: /ai
+      - generic [ref=f16e31]:
+        - button "Notifications" [ref=f16e32] [cursor=pointer]
+        - link "Settings" [ref=f16e36] [cursor=pointer]:
+          - /url: /settings
+    - generic [ref=f16e40]:
+      - banner [ref=f16e41]:
+        - generic [ref=f16e42]: Tasks
+        - generic [ref=f16e43]:
+          - generic [ref=f16e44]:
+            - generic [ref=f16e45]: Wed, Sep 9
+            - generic [aria-hidden] [ref=f16e46]: ·
+            - generic [ref=f16e47]: 11:59 PM EST
+          - button "Notifications" [ref=f16e49] [cursor=pointer]:
+            - generic [ref=f16e53]: "2"
+      - main [ref=f16e56]:
+        - generic [ref=f16e57]:
+          - generic [ref=f16e59]: School
+          - generic [ref=f16e60]: 8h
+          - button "Done" [ref=f16e61] [cursor=pointer]
+        - generic [ref=f16e62]:
+          - generic [ref=f16e63]:
+            - generic [ref=f16e64]: M
+            - generic [ref=f16e65]: "7"
+          - generic [ref=f16e68]:
+            - generic [ref=f16e69]: T
+            - generic [ref=f16e70]: "8"
+          - generic [ref=f16e73]:
+            - generic [ref=f16e74]: W
+            - generic [ref=f16e75]: "9"
+            - generic "1 school task" [ref=f16e77]
+          - generic [ref=f16e78]:
+            - generic [ref=f16e79]: T
+            - generic [ref=f16e80]: "10"
+            - generic "1 school task" [ref=f16e82]
+          - generic [ref=f16e83]:
+            - generic [ref=f16e84]: F
+            - generic [ref=f16e85]: "11"
+            - generic "1 school task" [ref=f16e87]
+          - generic [ref=f16e88]:
+            - generic [ref=f16e89]: S
+            - generic [ref=f16e90]: "12"
+          - generic [ref=f16e93]:
+            - generic [ref=f16e94]: S
+            - generic [ref=f16e95]: "13"
+        - generic [ref=f16e99]:
+          - generic [ref=f16e100]: What To Do Now
+          - generic [ref=f16e103]:
+            - heading "School" [level=3] [ref=f16e104]
+            - generic [ref=f16e105]: Sep 9 · 8:00 AM
+          - generic [ref=f16e106]:
+            - button "View Task" [ref=f16e107] [cursor=pointer]
+            - button "Mark Complete" [ref=f16e108] [cursor=pointer]
+        - generic [ref=f16e109]:
+          - generic [ref=f16e110]:
+            - heading "Today — Thursday, September 10" [level=2] [ref=f16e164]
+            - button "Add task" [ref=f16e113] [cursor=pointer]
+          - paragraph [ref=f16e116]: 0 of 1 complete
+          - generic [ref=f16e117]: You can get ahead — School starts in 8h
+          - list [ref=f16e122]:
+            - listitem [ref=f16e123]:
+              - generic [ref=f16e195]:
+                - generic [ref=f16e196] [cursor=pointer]:
+                  - button "Mark School complete" [ref=f16e197]
+                  - generic [ref=f16e198]:
+                    - generic [ref=f16e199]:
+                      - generic [ref=f16e200]: School
+                      - generic "Every weekday" [ref=f16e201]
+                    - generic [ref=f16e207]: Every weekday
+                  - generic [ref=f16e208]: 8:00 AM
+                  - button "Open AI chat for School" [ref=f16e209]
+                  - button "Delete School" [ref=f16e212]
+                  - button "Expand details for School" [ref=f16e216]
+                - generic: Until 3:00 PM
+          - button "Add another task" [ref=f16e150] [cursor=pointer]
+    - paragraph [ref=f16e221]: Burning the midnight oil, Alex?
+  - alert [ref=f16e163]

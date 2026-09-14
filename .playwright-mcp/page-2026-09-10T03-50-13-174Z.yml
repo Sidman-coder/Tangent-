@@ -1,0 +1,331 @@
+- generic [ref=f11e1]:
+  - generic [ref=f11e2]:
+    - complementary "Primary navigation" [ref=f11e3]:
+      - link "Tangent home" [ref=f11e4] [cursor=pointer]:
+        - /url: /
+        - text: T
+      - button "Ask TANGENT" [ref=f11e5] [cursor=pointer]
+      - navigation "Primary" [ref=f11e11]:
+        - link "Today" [ref=f11e12] [cursor=pointer]:
+          - /url: /
+        - link "Calendar" [ref=f11e18] [cursor=pointer]:
+          - /url: /calendar
+        - link "Tasks" [ref=f11e22] [cursor=pointer]:
+          - /url: /tasks
+        - link "Console" [ref=f11e26] [cursor=pointer]:
+          - /url: /ai
+      - generic [ref=f11e31]:
+        - button "Notifications" [ref=f11e32] [cursor=pointer]
+        - link "Settings" [ref=f11e36] [cursor=pointer]:
+          - /url: /settings
+    - generic [ref=f11e40]:
+      - banner [ref=f11e41]:
+        - generic [ref=f11e42]: Today
+        - generic [ref=f11e43]:
+          - generic [ref=f11e44]:
+            - generic [ref=f11e45]: Wed, Sep 9
+            - generic [aria-hidden] [ref=f11e104]: ·
+            - generic [ref=f11e105]: 11:49 PM EST
+          - generic [ref=f11e46]:
+            - button "Notifications" [active] [ref=f11e47] [cursor=pointer]:
+              - generic [ref=f11e106]: 9+
+            - generic [ref=f11e133]:
+              - generic [ref=f11e134]:
+                - generic [ref=f11e135]: Notifications
+                - generic [ref=f11e136]:
+                  - button "Daily Brief" [ref=f11e137] [cursor=pointer]
+                  - button "Clear all" [ref=f11e144] [cursor=pointer]
+              - generic [ref=f11e145]:
+                - generic [ref=f11e146] [cursor=pointer]:
+                  - generic [ref=f11e150]:
+                    - generic [ref=f11e151]: Reschedule Review Goals task
+                    - generic [ref=f11e152]: Move to tomorrow (Sept 11) at 2:00 PM?
+                    - button "Move it" [ref=f11e153]
+                    - generic [ref=f11e154]: 11:50 PM
+                  - button [ref=f11e155]
+                - generic [ref=f11e159] [cursor=pointer]:
+                  - generic [ref=f11e163]:
+                    - generic [ref=f11e164]: Reschedule Soccer Skills Training
+                    - generic [ref=f11e165]: Move this to tomorrow (Sept 11) at 10:00 AM?
+                    - button "Move it" [ref=f11e166]
+                    - generic [ref=f11e167]: 11:50 PM
+                  - button [ref=f11e168]
+                - generic [ref=f11e172] [cursor=pointer]:
+                  - generic [ref=f11e176]:
+                    - generic [ref=f11e177]: 3 overdue tasks need rescheduling
+                    - generic [ref=f11e178]: Soccer Skills Training, Review Goals, and Weekly Focus Plan are overdue. Reschedule them soon.
+                    - button "View overdue" [ref=f11e179]
+                    - generic [ref=f11e180]: 11:50 PM
+                  - button [ref=f11e181]
+                - generic [ref=f11e185] [cursor=pointer]:
+                  - generic [ref=f11e189]:
+                    - generic [ref=f11e190]: Reschedule Weekly Focus Plan
+                    - generic [ref=f11e191]: Move this to 2026-09-11 at 02:00 PM?
+                    - button "Move it" [ref=f11e192]
+                    - generic [ref=f11e193]: 11:50 PM
+                  - button [ref=f11e194]
+                - generic [ref=f11e198] [cursor=pointer]:
+                  - generic [ref=f11e202]:
+                    - generic [ref=f11e203]: Reschedule Soccer Skills Training
+                    - generic [ref=f11e204]: Move this to 2026-09-11 at 10:00 AM?
+                    - button "Move it" [ref=f11e205]
+                    - generic [ref=f11e206]: 11:50 PM
+                  - button [ref=f11e207]
+                - generic [ref=f11e211] [cursor=pointer]:
+                  - generic [ref=f11e215]:
+                    - generic [ref=f11e216]: 4 overdue tasks need rescheduling
+                    - generic [ref=f11e217]: Soccer Skills Training, Review Activities, Weekly Focus Plan, and Fundamentals Training are overdue. Reschedule them to catch up.
+                    - button "Review overdue" [ref=f11e218]
+                    - generic [ref=f11e219]: 11:50 PM
+                  - button [ref=f11e220]
+                - generic [ref=f11e224] [cursor=pointer]:
+                  - generic [ref=f11e228]:
+                    - generic [ref=f11e229]: 4 overdue tasks need rescheduling
+                    - generic [ref=f11e230]: You have 4 pending tasks from Sept 7-9. Reschedule them to make progress this week.
+                    - button "Review overdue" [ref=f11e231]
+                    - generic [ref=f11e232]: 11:50 PM
+                  - button [ref=f11e233]
+                - generic [ref=f11e237] [cursor=pointer]:
+                  - generic [ref=f11e241]:
+                    - generic [ref=f11e242]: Reschedule Weekly Focus Plan
+                    - generic [ref=f11e243]: Move this to 2026-09-11 at 14:00?
+                    - button "Move it" [ref=f11e244]
+                    - generic [ref=f11e245]: 11:45 PM
+                  - button [ref=f11e246]
+                - generic [ref=f11e250] [cursor=pointer]:
+                  - generic [ref=f11e254]:
+                    - generic [ref=f11e255]: Reschedule Soccer Skills Training
+                    - generic [ref=f11e256]: Move this to 2026-09-11 at 10:00 AM?
+                    - button "Move it" [ref=f11e257]
+                    - generic [ref=f11e258]: 11:45 PM
+                  - button [ref=f11e259]
+                - generic [ref=f11e263] [cursor=pointer]:
+                  - generic [ref=f11e267]:
+                    - generic [ref=f11e268]: 4 overdue tasks need rescheduling
+                    - generic [ref=f11e269]: Soccer Skills Training, Review Activities, Weekly Focus Plan, and Fundamentals Training are overdue. Schedule them now.
+                    - button "View overdue" [ref=f11e270]
+                    - generic [ref=f11e271]: 11:45 PM
+                  - button [ref=f11e272]
+                - generic [ref=f11e276] [cursor=pointer]:
+                  - generic [ref=f11e280]:
+                    - generic [ref=f11e281]: Schedule prep before Tactical Positioning
+                    - generic [ref=f11e282]: Tactical Positioning session is in 2 days. Consider adding 30min prep time tomorrow to review strategy.
+                    - button "Add prep time" [ref=f11e283]
+                    - generic [ref=f11e284]: 11:45 PM
+                  - button [ref=f11e285]
+                - generic [ref=f11e289] [cursor=pointer]:
+                  - generic [ref=f11e293]:
+                    - generic [ref=f11e294]: 4 overdue tasks need rescheduling
+                    - generic [ref=f11e295]: Soccer Skills Training, Review Goals, Weekly Focus Plan, and Fundamentals training are overdue. Reschedule them to clear your list.
+                    - button "View overdue" [ref=f11e296]
+                    - generic [ref=f11e297]: 11:45 PM
+                  - button [ref=f11e298]
+                - generic [ref=f11e302] [cursor=pointer]:
+                  - generic [ref=f11e306]:
+                    - generic [ref=f11e307]: Reschedule Review Goals task
+                    - generic [ref=f11e308]: Move to Friday 2026-09-11 at 2:00 PM?
+                    - button "Move it" [ref=f11e309]
+                    - generic [ref=f11e310]: 11:41 PM
+                  - button [ref=f11e311]
+                - generic [ref=f11e315] [cursor=pointer]:
+                  - generic [ref=f11e319]:
+                    - generic [ref=f11e320]: Reschedule Soccer Skills Training
+                    - generic [ref=f11e321]: Move to Friday 2026-09-11 at 10:00 AM?
+                    - button "Move it" [ref=f11e322]
+                    - generic [ref=f11e323]: 11:41 PM
+                  - button [ref=f11e324]
+                - generic [ref=f11e328] [cursor=pointer]:
+                  - generic [ref=f11e332]:
+                    - generic [ref=f11e333]: 4 overdue tasks need rescheduling
+                    - generic [ref=f11e334]: Soccer Skills Training, Review Goals, Weekly Focus Plan, and Fundamentals Training are overdue since Sept 7-9.
+                    - button "Review overdue" [ref=f11e335]
+                    - generic [ref=f11e336]: 11:41 PM
+                  - button [ref=f11e337]
+                - generic [ref=f11e341] [cursor=pointer]:
+                  - generic [ref=f11e345]:
+                    - generic [ref=f11e346]: Reschedule Review Goals task
+                    - generic [ref=f11e347]: Move Review Activities and Goals to tomorrow (Sept 11) at 11:00 AM?
+                    - button "Move it" [ref=f11e348]
+                    - generic [ref=f11e349]: 11:41 PM
+                  - button [ref=f11e350]
+                - generic [ref=f11e354] [cursor=pointer]:
+                  - generic [ref=f11e358]:
+                    - generic [ref=f11e359]: Reschedule Soccer Skills Training
+                    - generic [ref=f11e360]: Move Soccer Skills Training to tomorrow (Sept 11) at 10:00 AM?
+                    - button "Move it" [ref=f11e361]
+                    - generic [ref=f11e362]: 11:41 PM
+                  - button [ref=f11e363]
+                - generic [ref=f11e367] [cursor=pointer]:
+                  - generic [ref=f11e371]:
+                    - generic [ref=f11e372]: 3 overdue tasks need rescheduling
+                    - generic [ref=f11e373]: Soccer Skills Training, Review Goals, and Weekly Focus Plan are 1-3 days overdue. Schedule them soon.
+                    - button "View overdue" [ref=f11e374]
+                    - generic [ref=f11e375]: 11:41 PM
+                  - button [ref=f11e376]
+                - generic [ref=f11e380] [cursor=pointer]:
+                  - generic [ref=f11e384]:
+                    - generic [ref=f11e385]: Reschedule Review Goals task
+                    - generic [ref=f11e386]: Move this to tomorrow 2026-09-11 at 14:00?
+                    - button "Move it" [ref=f11e387]
+                    - generic [ref=f11e388]: 11:41 PM
+                  - button [ref=f11e389]
+                - generic [ref=f11e393] [cursor=pointer]:
+                  - generic [ref=f11e397]:
+                    - generic [ref=f11e398]: Reschedule Soccer Skills Training
+                    - generic [ref=f11e399]: Move this to tomorrow 2026-09-11 at 10:00 AM?
+                    - button "Move it" [ref=f11e400]
+                    - generic [ref=f11e401]: 11:41 PM
+                  - button [ref=f11e402]
+                - generic [ref=f11e406] [cursor=pointer]:
+                  - generic [ref=f11e410]:
+                    - generic [ref=f11e411]: 4 overdue tasks need rescheduling
+                    - generic [ref=f11e412]: Soccer Skills Training, Review Goals, Weekly Focus Plan, and Fundamentals Training are all overdue. Schedule them today or tomorrow.
+                    - button "View overdue" [ref=f11e413]
+                    - generic [ref=f11e414]: 11:41 PM
+                  - button [ref=f11e415]
+                - generic [ref=f11e419] [cursor=pointer]:
+                  - generic [ref=f11e423]:
+                    - generic [ref=f11e424]: Batch planning tasks this weekend
+                    - generic [ref=f11e425]: You have overdue planning tasks. Saturday morning before soccer practice could be ideal for Review Goals and Weekly Focus Plan.
+                    - button "Plan it" [ref=f11e426]
+                    - generic [ref=f11e427]: 11:41 PM
+                  - button [ref=f11e428]
+                - generic [ref=f11e432] [cursor=pointer]:
+                  - generic [ref=f11e436]:
+                    - generic [ref=f11e437]: 4 overdue tasks need rescheduling
+                    - generic [ref=f11e438]: Soccer Skills Training, Review Goals, Weekly Focus Plan, and Fundamentals Training are overdue. Reschedule them soon.
+                    - button "View overdue" [ref=f11e439]
+                    - generic [ref=f11e440]: 11:41 PM
+                  - button [ref=f11e441]
+                - generic [ref=f11e445] [cursor=pointer]:
+                  - generic [ref=f11e449]:
+                    - generic [ref=f11e450]: Reschedule Review Activities and Goals
+                    - generic [ref=f11e451]: Move to tomorrow 2026-09-11 at 2:00 PM?
+                    - button "Move it" [ref=f11e452]
+                    - generic [ref=f11e453]: 11:39 PM
+                  - button [ref=f11e454]
+                - generic [ref=f11e458] [cursor=pointer]:
+                  - generic [ref=f11e462]:
+                    - generic [ref=f11e463]: Reschedule Soccer Skills Training
+                    - generic [ref=f11e464]: Move to tomorrow 2026-09-11 at 10:00 AM?
+                    - button "Move it" [ref=f11e465]
+                    - generic [ref=f11e466]: 11:39 PM
+                  - button [ref=f11e467]
+                - generic [ref=f11e471] [cursor=pointer]:
+                  - generic [ref=f11e475]:
+                    - generic [ref=f11e476]: 4 overdue tasks need rescheduling
+                    - generic [ref=f11e477]: Soccer Skills Training, Review Activities, Weekly Focus Plan, and Fundamentals Training are overdue. Schedule them soon.
+                    - button "View overdue" [ref=f11e478]
+                    - generic [ref=f11e479]: 11:39 PM
+                  - button [ref=f11e480]
+                - generic [ref=f11e484] [cursor=pointer]:
+                  - generic [ref=f11e488]:
+                    - generic [ref=f11e489]: Reschedule Review Goals task
+                    - generic [ref=f11e490]: Move Review Recent Activities to tomorrow (Sept 11) at 2:00 PM?
+                    - button "Move it" [ref=f11e491]
+                    - generic [ref=f11e492]: 11:39 PM
+                  - button [ref=f11e493]
+                - generic [ref=f11e497] [cursor=pointer]:
+                  - generic [ref=f11e501]:
+                    - generic [ref=f11e502]: Reschedule Soccer Skills Training
+                    - generic [ref=f11e503]: Move Soccer Skills Training to tomorrow (Sept 11) at 10:00 AM?
+                    - button "Move it" [ref=f11e504]
+                    - generic [ref=f11e505]: 11:39 PM
+                  - button [ref=f11e506]
+                - generic [ref=f11e510] [cursor=pointer]:
+                  - generic [ref=f11e514]:
+                    - generic [ref=f11e515]: 3 overdue tasks need rescheduling
+                    - generic [ref=f11e516]: Soccer Skills Training, Review Goals, and Weekly Focus Plan are overdue. Reschedule them to catch up.
+                    - button "Review overdue" [ref=f11e517]
+                    - generic [ref=f11e518]: 11:39 PM
+                  - button [ref=f11e519]
+                - generic [ref=f11e523] [cursor=pointer]:
+                  - generic [ref=f11e527]:
+                    - generic [ref=f11e528]: Reschedule Review Activities and Goals
+                    - generic [ref=f11e529]: Move to 2026-09-11 at 14:00 to complete this 2-day overdue review.
+                    - button "Move it" [ref=f11e530]
+                    - generic [ref=f11e531]: 11:38 PM
+                  - button [ref=f11e532]
+                - generic [ref=f11e536] [cursor=pointer]:
+                  - generic [ref=f11e540]:
+                    - generic [ref=f11e541]: Reschedule Soccer Skills Training
+                    - generic [ref=f11e542]: Move to 2026-09-11 at 10:00 AM to catch up on this overdue task.
+                    - button "Move it" [ref=f11e543]
+                    - generic [ref=f11e544]: 11:38 PM
+                  - button [ref=f11e545]
+                - generic [ref=f11e549] [cursor=pointer]:
+                  - generic [ref=f11e553]:
+                    - generic [ref=f11e554]: 3 overdue tasks need rescheduling
+                    - generic [ref=f11e555]: Soccer Skills Training, Review Activities, and Weekly Focus Plan are 1-3 days overdue.
+                    - button "View overdue" [ref=f11e556]
+                    - generic [ref=f11e557]: 11:38 PM
+                  - button [ref=f11e558]
+                - generic [ref=f11e562] [cursor=pointer]:
+                  - generic [ref=f11e566]:
+                    - generic [ref=f11e567]: Reschedule Review Goals task
+                    - generic [ref=f11e568]: Move to 2026-09-11 at 10:00 to clear backlog?
+                    - button "Move it" [ref=f11e569]
+                    - generic [ref=f11e570]: 11:38 PM
+                  - button [ref=f11e571]
+                - generic [ref=f11e575] [cursor=pointer]:
+                  - generic [ref=f11e579]:
+                    - generic [ref=f11e580]: Reschedule Soccer Skills Training
+                    - generic [ref=f11e581]: Move to 2026-09-11 at 19:00 to catch up?
+                    - button "Move it" [ref=f11e582]
+                    - generic [ref=f11e583]: 11:38 PM
+                  - button [ref=f11e584]
+                - generic [ref=f11e588] [cursor=pointer]:
+                  - generic [ref=f11e592]:
+                    - generic [ref=f11e593]: 4 overdue tasks need rescheduling
+                    - generic [ref=f11e594]: Soccer Skills Training, Review Goals, Weekly Focus Plan, and Fundamentals Training are overdue. Schedule these soon.
+                    - button "View overdue" [ref=f11e595]
+                    - generic [ref=f11e596]: 11:38 PM
+                  - button [ref=f11e597]
+      - main [ref=f11e53]:
+        - generic [ref=f11e54]:
+          - paragraph [ref=f11e107]: Still going. · 11:49 PM EST
+          - generic [ref=f11e55]:
+            - generic [ref=f11e56]:
+              - generic [ref=f11e57]: Focus now
+              - generic [ref=f11e58]: Create Weekly Focus Plan
+            - generic [ref=f11e108]:
+              - generic [ref=f11e109]: 10:00 AM
+              - button "Mark done" [ref=f11e110] [cursor=pointer]
+          - generic [ref=f11e59]:
+            - generic [ref=f11e60]:
+              - generic [ref=f11e61]: M
+              - generic [ref=f11e62]: "7"
+            - generic [ref=f11e65]:
+              - generic [ref=f11e66]: T
+              - generic [ref=f11e67]: "8"
+            - generic [ref=f11e70]:
+              - generic [ref=f11e71]: W
+              - generic [ref=f11e72]: "9"
+            - generic [ref=f11e75]:
+              - generic [ref=f11e76]: T
+              - generic [ref=f11e77]: "10"
+            - generic [ref=f11e80]:
+              - generic [ref=f11e81]: F
+              - generic [ref=f11e82]: "11"
+            - generic [ref=f11e85]:
+              - generic [ref=f11e86]: S
+              - generic [ref=f11e87]: "12"
+            - generic [ref=f11e90]:
+              - generic [ref=f11e91]: S
+              - generic [ref=f11e92]: "13"
+          - generic [ref=f11e96]:
+            - generic [ref=f11e97]: Today
+            - generic [ref=f11e98]: "1"
+            - generic [ref=f11e99]: 0 complete · 1 remaining
+          - generic [ref=f11e101]:
+            - heading "Recent" [level=2] [ref=f11e102]
+            - generic [ref=f11e120]:
+              - generic [ref=f11e121]: Added 33 recurring "soccer practice" instances
+              - button "Undo" [ref=f11e122] [cursor=pointer]
+            - generic [ref=f11e124]:
+              - generic [ref=f11e125]: Created plan "New Plan" with 10 tasks
+              - button "Undo" [ref=f11e126] [cursor=pointer]
+            - generic [ref=f11e128]:
+              - generic [ref=f11e129]: Created plan "New Plan" with 2 tasks
+              - button "Undo" [ref=f11e130] [cursor=pointer]
+  - alert [ref=f11e131]

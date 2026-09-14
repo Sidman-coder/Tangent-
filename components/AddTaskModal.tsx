@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Repeat } from "lucide-react";
 
-type Priority = "high" | "medium" | "low";
 type Frequency = "daily" | "weekly" | "monthly" | "yearly";
 
 interface Props {
@@ -55,7 +54,6 @@ export default function AddTaskModal({ initialDate, initialCalendarId = null, on
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(initialDate ?? todayStr());
   const [time, setTime] = useState("09:00");
-  const [priority, setPriority] = useState<Priority>("medium");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -116,7 +114,6 @@ export default function AddTaskModal({ initialDate, initialCalendarId = null, on
             title: title.trim(),
             date,
             time,
-            priority,
             calendarId: initialCalendarId,
             frequency,
             daysOfWeek: frequency === "weekly" ? daysOfWeek : undefined,
@@ -134,7 +131,6 @@ export default function AddTaskModal({ initialDate, initialCalendarId = null, on
             title: title.trim(),
             date,
             time,
-            priority,
             calendarId: initialCalendarId,
             notes: notes.trim() || undefined,
           }),
@@ -172,15 +168,6 @@ export default function AddTaskModal({ initialDate, initialCalendarId = null, on
         <div className="field">
           <label>Time</label>
           <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
-        </div>
-
-        <div className="field">
-          <label>Priority</label>
-          <select value={priority} onChange={(e) => setPriority(e.target.value as Priority)}>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
-          </select>
         </div>
 
         <div className="field">

@@ -4,6 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Task } from "@/lib/types";
 import { X } from "lucide-react";
 
+const KIND_COLOR = {
+  school: "var(--kind-school)",
+  "academic-ec": "var(--kind-academic-ec)",
+  "side-ec": "var(--kind-side-ec)",
+  commitment: "var(--kind-commitment)",
+  personal: "var(--kind-personal)",
+};
+
 type ChatMsg = { role: "user" | "assistant"; content: string; timestamp: string };
 
 export default function TaskChatModal({ task, onClose }: { task: Task; onClose: () => void }) {
@@ -72,7 +80,7 @@ export default function TaskChatModal({ task, onClose }: { task: Task; onClose: 
     }
   }, [input, busy, task.id]);
 
-  const priorityColor = task.priority === "high" ? "var(--red)" : task.priority === "low" ? "var(--green)" : "var(--amber)";
+  const kindColor = KIND_COLOR[task.kind ?? "personal"];
 
   return (
     <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal aria-label={`AI chat for ${task.title}`}>
@@ -80,7 +88,7 @@ export default function TaskChatModal({ task, onClose }: { task: Task; onClose: 
         {/* Header */}
         <div className="task-chat-header">
           <div className="task-chat-title">
-            <span className="priority-dot" style={{ background: priorityColor }} />
+            <span className="priority-dot" style={{ background: kindColor }} />
             <span>{task.title}</span>
           </div>
           <div className="task-chat-label">AI Task Assistant</div>

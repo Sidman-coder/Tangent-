@@ -1,0 +1,63 @@
+- generic [ref=f39e2]:
+  - complementary "Primary navigation" [ref=f39e3]:
+    - link "Tangent home" [ref=f39e4] [cursor=pointer]:
+      - /url: /
+      - text: T
+    - button "Ask TANGENT" [ref=f39e5] [cursor=pointer]
+    - navigation "Primary" [ref=f39e11]:
+      - link "Today" [ref=f39e12] [cursor=pointer]:
+        - /url: /
+      - link "Calendar" [ref=f39e17] [cursor=pointer]:
+        - /url: /calendar
+      - link "Tasks" [ref=f39e21] [cursor=pointer]:
+        - /url: /tasks
+      - link "Console" [ref=f39e25] [cursor=pointer]:
+        - /url: /ai
+    - generic [ref=f39e30]:
+      - button "Notifications" [ref=f39e31] [cursor=pointer]
+      - link "Settings" [ref=f39e35] [cursor=pointer]:
+        - /url: /settings
+  - generic [ref=f39e40]:
+    - banner [ref=f39e41]:
+      - generic [ref=f39e42]: Settings
+      - generic [ref=f39e43]:
+        - generic [ref=f39e44]: Thu, Sep 10
+        - button "Notifications" [ref=f39e47] [cursor=pointer]
+    - main [ref=f39e53]:
+      - generic [ref=f39e54]:
+        - generic [ref=f39e55]: Profile
+        - generic [ref=f39e56]:
+          - generic [ref=f39e57]: Display name
+          - textbox "Display name" [ref=f39e58]
+        - generic [ref=f39e59]:
+          - generic [ref=f39e60]: Email
+          - textbox "Email" [ref=f39e61]
+        - generic [ref=f39e62]: AI Configuration
+        - generic [ref=f39e63]:
+          - generic [ref=f39e64]: OpenAI API key (browser only)
+          - textbox "OpenAI API key (browser only)" [ref=f39e65]:
+            - /placeholder: sk-…
+          - generic [ref=f39e66]:
+            - text: For production, prefer
+            - code [ref=f39e67]: OPENAI_API_KEY
+            - text: on the server.
+        - generic [ref=f39e68]:
+          - generic [ref=f39e69]: Model
+          - textbox "Model" [ref=f39e70]:
+            - /placeholder: gpt-4o-mini
+            - text: gpt-4o-mini
+        - button "Save changes" [ref=f39e71] [cursor=pointer]
+      - generic [ref=f39e72]:
+        - generic [ref=f39e73]: Appearance Mode
+        - generic [ref=f39e74]:
+          - generic [ref=f39e75]:
+            - generic [ref=f39e76]: Dark mode
+            - generic [ref=f39e77]: Switch between dark and light workspace colors.
+          - switch "Toggle light mode" [ref=f39e78] [cursor=pointer]
+        - generic [ref=f39e80]: Font Mode
+        - generic [ref=f39e81]:
+          - button "Formal" [ref=f39e82] [cursor=pointer]
+          - button "Warm" [pressed] [ref=f39e83] [cursor=pointer]
+      - generic [ref=f39e85]:
+        - generic [ref=f39e86]: Reset onboarding
+        - button "Sign out" [ref=f39e88] [cursor=pointer]

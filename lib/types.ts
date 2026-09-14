@@ -1,4 +1,4 @@
-export type Priority = "high" | "medium" | "low";
+export type TaskKind = "school" | "academic-ec" | "side-ec" | "personal" | "commitment";
 
 export type RecurringConfig = {
   enabled: boolean;
@@ -15,8 +15,15 @@ export type Task = {
   title: string;
   date: string;       // YYYY-MM-DD
   time: string;       // HH:MM 24-hour
-  priority: Priority;
   completed: boolean;
+  /**
+   * school: recurring school block from onboarding
+   * commitment: recurring non-goal activities (practice, coaching, club meetings) — scheduled, no completion tracking, no plan
+   * academic-ec: research, competitions, olympiads — main extracurriculars colleges weigh heavily
+   * side-ec: sports, hobbies, secondary activities
+   * personal: default fallback
+   */
+  kind?: TaskKind;
   calendarId?: string | null;
   planId?: string | null;
   categoryId?: string | null;
@@ -105,6 +112,20 @@ export interface UserContext {
   totalInteractions: number;
 }
 
+export interface BriefSource {
+  id: string;
+  type: "rss" | "stale_check" | "manual_url";
+  label: string;
+  url?: string;
+  lastFetched?: string;
+}
+
+export interface BriefConfig {
+  sources: BriefSource[];
+  cadence: "daily" | "weekdays" | "weekly";
+  deliveryTime: string; // "07:00"
+}
+
 export interface Notification {
   id: string;
   timestamp: string;
@@ -165,8 +186,8 @@ export interface PendingConfirmation {
 export type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 export type Command =
-  | { type: "ADD_TASK"; title: string; date?: string; time?: string; priority?: Priority; dayOfWeek?: DayOfWeek; steps?: string[]; calendarId?: string | null }
-  | { type: "UPDATE_TASK"; id: string; title?: string; date?: string; time?: string; priority?: Priority; dayOfWeek?: DayOfWeek; steps?: string[] }
+  | { type: "ADD_TASK"; title: string; date?: string; time?: string; kind?: TaskKind; dayOfWeek?: DayOfWeek; steps?: string[]; calendarId?: string | null }
+  | { type: "UPDATE_TASK"; id: string; title?: string; date?: string; time?: string; kind?: TaskKind; dayOfWeek?: DayOfWeek; steps?: string[] }
   | { type: "REMOVE_TASK"; id: string }
   | { type: "ADD_CALENDAR"; name: string; category?: CalendarCategory; color?: string }
   | { type: "ADD_EVENT"; calendarId: string; title: string; date: string; time?: string; steps?: string[] }

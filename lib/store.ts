@@ -2,7 +2,6 @@ import type {
   Task,
   Plan,
   Category,
-  Priority,
   RecurringConfig,
   CalendarDef,
   CalendarEvent,
@@ -17,6 +16,7 @@ import type {
   ActionRecord,
   ActionSnapshot,
   PendingConfirmation,
+  BriefConfig,
 } from "./types";
 
 function uid(prefix: string): string {
@@ -61,6 +61,7 @@ const g = global as typeof global & {
   __tangentNotifications?: Notification[];
   __tangentActions?: ActionRecord[];
   __tangentPending?: PendingConfirmation[];
+  __tangentBriefConfig?: BriefConfig | null;
 };
 if (!g.__tangentStore) {
   g.__tangentStore = {
@@ -118,6 +119,10 @@ if (!g.__tangentActions) {
 
 if (!g.__tangentPending) {
   g.__tangentPending = [] as PendingConfirmation[];
+}
+
+if (g.__tangentBriefConfig === undefined) {
+  g.__tangentBriefConfig = null;
 }
 
 // ─── Task functions ───────────────────────────────────────────────────────────
@@ -187,7 +192,7 @@ export function addTask(task: Omit<Task, "id">): Task & { wasDuplicate?: boolean
   }
   const newTask: Task = { id: uid("t"), ...task };
   store.tasks.push(newTask);
-  console.log("[store] addTask:", newTask.id, newTask.title, newTask.date, newTask.time, newTask.priority);
+  console.log("[store] addTask:", newTask.id, newTask.title, newTask.date, newTask.time, newTask.kind);
   return { ...newTask };
 }
 
@@ -678,7 +683,7 @@ export function applyCommands(commands: Command[]): AppState {
           title: cmd.title,
           date,
           time: cmd.time ?? "09:00",
-          priority: (cmd.priority as Priority) ?? "medium",
+          kind: cmd.kind,
           completed: false,
           calendarId: cmd.calendarId ?? null,
         });
@@ -689,7 +694,7 @@ export function applyCommands(commands: Command[]): AppState {
           ...(cmd.title !== undefined && { title: cmd.title }),
           ...(cmd.date !== undefined && { date: cmd.date }),
           ...(cmd.time !== undefined && { time: cmd.time }),
-          ...(cmd.priority !== undefined && { priority: cmd.priority as Priority }),
+          ...(cmd.kind !== undefined && { kind: cmd.kind }),
         });
         break;
       }
@@ -911,4 +916,17 @@ export function getPendingConfirmation(id: string): PendingConfirmation | null {
 
 export function resolvePendingConfirmation(id: string): void {
   g.__tangentPending = g.__tangentPending!.filter((p) => p.id !== id);
+}
+
+// ─── Daily Brief config ───────────────────────────────────────────────────────
+
+export function getBriefConfig(): BriefConfig | null {
+  const cfg = g.__tangentBriefConfig;
+  return cfg ? { ...cfg, sources: cfg.sources.map((s) => ({ ...s })) } : null;
+}
+
+export function saveBriefConfig(config: BriefConfig): BriefConfig {
+  g.__tangentBriefConfig = { ...config, sources: config.sources.map((s) => ({ ...s })) };
+  console.log("[store] saveBriefConfig — sources:", config.sources.length, "| cadence:", config.cadence, "| time:", config.deliveryTime);
+  return getBriefConfig()!;
 }
