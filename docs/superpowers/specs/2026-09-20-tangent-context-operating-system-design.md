@@ -48,14 +48,18 @@ When the environment supports independent agents, Council members should reason 
 
 ## Specialist tasks
 
-Create four user-owned tasks in the saved local `Tangent Project`, running directly in the shared project directory:
+Create six user-owned tasks in the saved local `Tangent Project`, running directly in the shared project directory:
 
-1. `TANGENT — Market & Growth`: competitors, market structure, positioning, customer discovery, distribution, opportunities, and industry developments.
+1. `TANGENT — Market & Growth`: market intelligence, competitors, positioning, customer discovery, distribution, opportunities, industry developments, and evidence-backed strategic directions.
 2. `TANGENT — Grants & Competitions`: grants, fellowships, competitions, accelerators, eligibility, deadlines, fit, and application strategy.
 3. `TANGENT — Product & Website`: product decisions, website implementation, AI pipeline, integrations, data, deployment, and software roadmap.
 4. `TANGENT — Pen Hardware`: prototype electronics, firmware, enclosure, Onshape/CAD, BOM, manufacturability, testing, and hardware roadmap.
+5. `TANGENT — Marketing Strategy`: turn approved positioning and market research into channel plans, campaigns, content formats, audience messaging, launch plans, and measurable experiments. It may recommend positioning changes to the head task but does not adopt them independently.
+6. `TANGENT — Resource Preparation`: create polished briefs, pitch decks, scripts, schedules, presentations, and other requested deliverables from approved TANGENT context and explicitly linked sources.
 
 Each task begins by reading `AGENTS.md` and only the linked TANGENT references relevant to its work. Research and advisory work are read-only by default; code or document changes require a direct user request in that task. Important decisions use the shared Council protocol.
+
+Resource Preparation is the explicit exception. It is a production-only task: it does not invoke the Council, spawn agents, conduct open-ended strategic research, revise product decisions, or update the project's source-of-truth documents. It flags missing or conflicting information instead of inventing it, verifies every deliverable in its final format, and never publishes, sends, or schedules anything without an explicit user request.
 
 ## Context maintenance
 
@@ -75,4 +79,4 @@ Each task begins by reading `AGENTS.md` and only the linked TANGENT references r
 
 ## Completion criteria
 
-The setup is complete when all five context files exist, the Council is discoverable from every TANGENT task, the four specialist tasks point to the shared context, existing code changes remain untouched, and the new documentation passes a consistency and placeholder review.
+The setup is complete when all five context files exist, the Council is discoverable from the five decision-capable TANGENT tasks, Resource Preparation carries its production-only exemption, all six specialist tasks point to the shared context, existing code changes remain untouched, and the new documentation passes a consistency and placeholder review.
