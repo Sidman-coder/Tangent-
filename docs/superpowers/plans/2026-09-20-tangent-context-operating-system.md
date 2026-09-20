@@ -150,10 +150,10 @@ Wait for the task to finish its initial orientation. Expected: it confirms the p
 Run:
 
 ```powershell
-rg -n "four specialist|Create four|Preperation|TBD|TODO|placeholder" AGENTS.md CONTEXT.md docs/tangent docs/superpowers/specs/2026-09-20-tangent-context-operating-system-design.md docs/superpowers/plans/2026-09-20-tangent-context-operating-system.md
+rg -n "Create four user-owned|four specialist tasks|Preperation|\bTBD\b|\bTODO\b" AGENTS.md CONTEXT.md docs/tangent docs/superpowers/specs/2026-09-20-tangent-context-operating-system-design.md
 ```
 
-Expected: no stale count, spelling, or unresolved-placeholder matches.
+Expected: no stale count, spelling, or unresolved-work matches.
 
 - [ ] **Step 2: Confirm Resource Preparation isolation**
 
