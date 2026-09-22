@@ -781,6 +781,19 @@ export function getNotifications(): Notification[] {
 }
 
 export function addNotification(notif: Omit<Notification, "id" | "timestamp" | "read" | "dismissed">): Notification {
+  // Dedup by task + type: proactive checks run on every page load AND on a cron
+  // schedule, so without this the same overdue/reschedule nudge for one task can
+  // stack up every time either trigger fires while it's still unresolved.
+  const taskId = notif.actionData?.taskId;
+  if (taskId) {
+    const existing = g.__tangentNotifications!.find(
+      (n) => !n.dismissed && n.type === notif.type && n.actionData?.taskId === taskId
+    );
+    if (existing) {
+      console.log("[store] Notification deduped:", notif.type, taskId);
+      return existing;
+    }
+  }
   const full: Notification = {
     ...notif,
     id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,

@@ -16,6 +16,7 @@ import {
 import NotificationBell from "./NotificationBell";
 import CommandPalette from "./CommandPalette";
 import FirstRun from "./FirstRun";
+import DesktopNotifPrompt from "./DesktopNotifPrompt";
 
 const NAV_LINKS = [
   {
@@ -199,6 +200,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </nav>
 
       <CommandPalette />
+      {!showOnboarding && <DesktopNotifPrompt />}
 
       {showOnboarding && <FirstRun onComplete={() => setShowOnboarding(false)} />}
     </div>
