@@ -6,7 +6,7 @@
 // (see needsAgentTools below). It reuses the existing store functions
 // (addTask / addPlan / updateTask) for the "act" side so behavior matches
 // the create_plan / add_task cases already in app/api/voice/route.ts.
-import { addTask, addPlan, updateTask, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, getAllTasks, getTasksByDate } from "@/lib/store";
+import { addTask, addPlan, updateTask, getCalendars, getTasksMatchingFilter, getContextAsString, recordAction, getAllTasks, getTasksByDate, addPendingConfirmation } from "@/lib/store";
 import type { Task, TaskKind } from "@/lib/types";
 import { getRecentEmails, getEmailById } from "@/lib/gmail";
 import {
@@ -18,10 +18,6 @@ import { getUpcomingEvents, getEventsForDate } from "@/lib/calendar";
 
 const MODEL = "claude-sonnet-4-5";
 const MAX_TOOL_TURNS = 8;
-/** Same threshold as lib/voice-handler.ts — move_tasks operations affecting more tasks
- *  than this are too destructive to run unattended inside a multi-turn tool loop. */
-const MOVE_CONFIRM_THRESHOLD = 5;
-
 const GMAIL_KEYWORDS = /\b(email|emails|gmail|inbox|unread|message|messages)\b/i;
 const CANVAS_KEYWORDS = /\b(canvas|assignment|assignments|course|due|homework|class|syllabus|professor)\b/i;
 const CALENDAR_KEYWORDS = /\b(calendar|event|events|schedule|meeting|appointment|what do i have|what's on my)\b/i;
@@ -338,6 +334,7 @@ type ToolExecResult = {
   plan?: { id: string; title: string; taskCount: number; color: string };
   count?: number;
   actionId?: string;
+  pending?: { id: string; kind: string; message: string };
 };
 
 async function executeTool(name: string, input: Record<string, unknown>): Promise<ToolExecResult> {
@@ -369,24 +366,21 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
       }
 
       const matching = getTasksMatchingFilter(filter);
-      if (matching.length > MOVE_CONFIRM_THRESHOLD) {
-        return {
-          data: {
-            confirmRequired: true,
-            count: matching.length,
-            message: `This would move ${matching.length} tasks — too many to move automatically. Tell the user what would be affected and ask them to confirm before retrying.`,
-          },
-        };
+      if (matching.length === 0) {
+        return { data: { ok: true, moved: 0, targetCalendar: targetCalendar.name } };
       }
 
-      const moves = matching.map((t) => ({ taskId: t.id, fromCalendarId: t.calendarId ?? null }));
-      const moved = moveTasksToCalendar(filter, targetCalendar.id);
-      const record = recordAction("move_tasks", `Moved ${moved} tasks to ${targetCalendar.name}`, { moves });
+      // Moving tasks that already exist on the calendar is a change to existing content,
+      // not new creation — always confirm before it happens, regardless of count. See the
+      // matching gate in lib/voice-handler.ts's move_tasks handling for the same rule.
+      const pending = addPendingConfirmation(
+        "move_tasks",
+        `Move ${matching.length} task${matching.length !== 1 ? "s" : ""} to your ${targetCalendar.name} calendar?`,
+        { filter, targetCalendarId: targetCalendar.id, targetCalendarName: targetCalendar.name }
+      );
       return {
-        data: { ok: true, moved, targetCalendar: targetCalendar.name },
-        action: "move_tasks",
-        count: moved,
-        actionId: record.id,
+        data: { confirmRequired: true, message: pending.message },
+        pending: { id: pending.id, kind: pending.kind, message: pending.message },
       };
     }
 
@@ -606,6 +600,10 @@ export type ToolLoopResult = {
   /** Friendly labels (e.g. "Gmail", "Canvas") for which real data sources this
    *  turn actually read, so the UI can show that the agent path fired. */
   sourcesChecked?: string[];
+  /** Set when a tool call in the loop hit a confirm-gated action (e.g. move_tasks)
+   *  — the loop stops immediately and the caller must surface a confirm/cancel prompt
+   *  rather than letting the LLM take further turns on top of an unresolved change. */
+  pending?: { id: string; kind: string; message: string };
 };
 
 /** Maps a data-read tool name to the friendly source label shown in the UI.
@@ -695,6 +693,14 @@ export async function runVoiceAgentToolLoop(userText: string): Promise<ToolLoopR
         if (exec.count !== undefined) lastCount = exec.count;
         if (exec.actionId) lastActionId = exec.actionId;
         console.log(`[voice-agent-tools] Tool result (${block.name}):`, summarize(resultPayload));
+        if (exec.pending) {
+          return {
+            response: exec.pending.message,
+            action: "confirm_required",
+            sourcesChecked: sourcesChecked.size > 0 ? Array.from(sourcesChecked) : undefined,
+            pending: exec.pending,
+          };
+        }
       } catch (e) {
         resultPayload = { error: e instanceof Error ? e.message : "Tool failed" };
         console.error(`[voice-agent-tools] Tool error (${block.name}):`, resultPayload);

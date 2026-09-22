@@ -4301,6 +4301,11 @@ textarea:focus {
   cursor: default;
 }
 
+.confirm-toast-btns--inline {
+  justify-content: flex-start;
+  margin-top: 10px;
+}
+
 /* ── Console page (AI console) ────────────────────────────────────────────── */
 
 .console-page {

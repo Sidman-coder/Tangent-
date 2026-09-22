@@ -10,9 +10,9 @@ import type { BriefConfig, BriefSource } from "@/lib/types";
 import type { SuggestedBriefSource } from "@/lib/brief-sources";
 import { ArrowUp, Sparkles, CalendarDays, Clock3, Zap, X } from "lucide-react";
 
-type ConsoleMode = "ask" | "do" | "brief";
+type ConsoleMode = "chat" | "brief";
 
-const MODE_LABEL: Record<ConsoleMode, string> = { ask: "Ask", do: "Do", brief: "Brief" };
+const MODE_LABEL: Record<ConsoleMode, string> = { chat: "Chat", brief: "Brief" };
 const CADENCE_LABEL: Record<BriefConfig["cadence"], string> = {
   daily: "Daily",
   weekdays: "Weekdays",
@@ -39,6 +39,7 @@ type Turn = {
   response: string;
   actionId?: string;
   actionLabel?: string;
+  pendingConfirm?: { id: string; message: string } | null;
 };
 
 const LIVE_STEPS = ["Reading your request", "Checking your tasks", "Composing a response"] as const;
@@ -135,7 +136,7 @@ export default function AiPage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const [mode, setMode] = useState<ConsoleMode>("ask");
+  const [mode, setMode] = useState<ConsoleMode>("chat");
   const [briefSources, setBriefSources] = useState<BriefSource[]>([]);
   const [briefCadence, setBriefCadence] = useState<BriefConfig["cadence"]>("daily");
   const [briefTime, setBriefTime] = useState("07:00");
@@ -328,8 +329,33 @@ export default function AiPage() {
         plan?: { id: string; title: string; taskCount: number; color: string } | null;
         recurringCount?: number;
         sourcesChecked?: string[];
+        pending?: { id: string; kind: string; message: string };
       };
       if (!res.ok || !data.ok) throw new Error(data.error || "Request failed");
+
+      if (data.action === "confirm_required" && data.pending) {
+        const pendingId = data.pending.id;
+        const pendingMessage = data.pending.message;
+        setTurns((prev) => [
+          {
+            id: crypto.randomUUID(),
+            request: userText,
+            tools: toolsForAction("confirm_required"),
+            sourcesChecked: [],
+            response: pendingMessage,
+            pendingConfirm: { id: pendingId, message: pendingMessage },
+          },
+          ...prev,
+        ]);
+        if (sessionId) {
+          void fetch("/api/sessions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "add_message", sessionId, role: "assistant", content: pendingMessage }),
+          });
+        }
+        return;
+      }
 
       const rawReply = data.message ?? data.reply ?? data.response ?? data.text ?? "";
       const reply = cleanMessage(typeof rawReply === "string" ? rawReply : "");
@@ -390,17 +416,58 @@ export default function AiPage() {
     }
   }, [input, busy, activeSessionId, turns, refresh]);
 
+  const resolveConfirm = useCallback(async (turnId: string, pendingId: string, confirm: boolean) => {
+    setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, pendingConfirm: null } : t)));
+    try {
+      const res = await fetch("/api/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: pendingId, confirm }),
+      });
+      const data = (await res.json()) as { ok?: boolean; response?: string; error?: string; actionId?: string };
+      const reply = !res.ok || !data.ok
+        ? (data.error || "Something went wrong.")
+        : (data.response || (confirm ? "Done." : "Cancelled."));
+
+      setTurns((prev) =>
+        prev.map((t) =>
+          t.id === turnId
+            ? {
+                ...t,
+                response: reply,
+                actionId: confirm && data.ok ? data.actionId : undefined,
+                actionLabel: confirm && data.ok && data.actionId ? "Change applied" : undefined,
+              }
+            : t
+        )
+      );
+
+      if (activeSessionId) {
+        void fetch("/api/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "add_message", sessionId: activeSessionId, role: "assistant", content: reply }),
+        });
+      }
+
+      await refresh();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Something went wrong.";
+      setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, response: message } : t)));
+    }
+  }, [activeSessionId, refresh]);
+
   return (
     <div className="console-page">
       <PageHeader
         eyebrow="Assistant"
-        title="Console"
+        title="Tangent AI"
         description="Plan your day, reorganize work, or ask about your schedule."
       />
 
       <div className="console-mode-row-wrap">
-        <div className="console-mode-row" role="tablist" aria-label="Console mode">
-          {(["ask", "do", "brief"] as const).map((m) => (
+        <div className="console-mode-row" role="tablist" aria-label="Tangent AI mode">
+          {(["chat", "brief"] as const).map((m) => (
             <button
               key={m}
               type="button"
@@ -619,6 +686,24 @@ export default function AiPage() {
                     </div>
                   )}
                   <div className="console-turn-response">{t.response}</div>
+                  {t.pendingConfirm && (
+                    <div className="confirm-toast-btns confirm-toast-btns--inline">
+                      <button
+                        type="button"
+                        className="surface-action-primary"
+                        onClick={() => void resolveConfirm(t.id, t.pendingConfirm!.id, true)}
+                      >
+                        Confirm
+                      </button>
+                      <button
+                        type="button"
+                        className="surface-action-secondary"
+                        onClick={() => void resolveConfirm(t.id, t.pendingConfirm!.id, false)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
                   {t.actionId && t.actionLabel && (
                     <ActionReceipt actionId={t.actionId} label={t.actionLabel} onUndone={() => void refresh()} />
                   )}

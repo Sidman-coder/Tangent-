@@ -35,7 +35,7 @@ const NAV_LINKS = [
   },
   {
     href: "/ai",
-    label: "Console",
+    label: "Tangent AI",
     icon: MessageSquareText,
   },
   { href: "/settings", label: "Settings", icon: Settings },
@@ -45,7 +45,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/": "Today",
   "/calendar": "Calendar",
   "/tasks": "Tasks",
-  "/ai": "Console",
+  "/ai": "Tangent AI",
   "/settings": "Settings",
 };
 

@@ -15,12 +15,9 @@
 // Next.js route files may only export HTTP method handlers, so this can't
 // live in route.ts itself.
 import { NextResponse } from "next/server";
-import { addTask, addPlan, addRecurringTask, completeTask, deleteTask, addVoiceLog, updateTask, getAppState, getAllTasks, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, addPendingConfirmation } from "@/lib/store";
+import { addTask, addPlan, addRecurringTask, completeTask, addVoiceLog, updateTask, getAppState, getAllTasks, getCalendars, getTasksMatchingFilter, getContextAsString, recordAction, addPendingConfirmation } from "@/lib/store";
 import type { TaskKind } from "@/lib/types";
 import { needsAgentTools, runVoiceAgentToolLoop } from "@/lib/voice-agent-tools";
-
-/** How many tasks a move_tasks command can affect before it requires confirmation. */
-const MOVE_CONFIRM_THRESHOLD = 5;
 
 /** Clearing the whole schedule always requires confirmation — it's total and irreversible
  *  from the user's perspective without the undo system. Shared by all three call sites
@@ -465,6 +462,14 @@ export async function handleVoiceText(text: string): Promise<NextResponse> {
         const result = await runVoiceAgentToolLoop(text);
         addVoiceLog({ text, response: result.response, action: result.action, ok: true });
         console.log("[api/voice] Agent tool loop finished — action:", result.action);
+        if (result.action === "confirm_required" && result.pending) {
+          return NextResponse.json({
+            ok: true,
+            action: "confirm_required",
+            pending: result.pending,
+            response: result.response,
+          });
+        }
         return NextResponse.json({
           ok: true,
           action: result.action,
@@ -1104,34 +1109,26 @@ Rules:
       }
 
       const matching = getTasksMatchingFilter(filter);
-      if (matching.length > MOVE_CONFIRM_THRESHOLD) {
-        const pending = addPendingConfirmation(
-          "move_tasks",
-          `Move ${matching.length} tasks to your ${targetCalendar.name} calendar?`,
-          { filter, targetCalendarId: targetCalendar.id, targetCalendarName: targetCalendar.name }
-        );
-        addVoiceLog({ text, response: "Awaiting confirmation to move tasks", action: "confirm_required", ok: true });
-        return NextResponse.json({
-          ok: true,
-          action: "confirm_required",
-          pending: { id: pending.id, kind: pending.kind, message: pending.message },
-          response: pending.message,
-        });
+      if (matching.length === 0) {
+        const msg = "No matching tasks to move.";
+        addVoiceLog({ text, response: msg, action: "move_tasks", ok: true });
+        return NextResponse.json({ ok: true, action: "move_tasks", moved: 0, response: msg, state: getAppState() });
       }
 
-      const moves = matching.map((t) => ({ taskId: t.id, fromCalendarId: t.calendarId ?? null }));
-      const moved = moveTasksToCalendar(filter, targetCalendar.id);
-      const record = recordAction("move_tasks", `Moved ${moved} tasks to ${targetCalendar.name}`, { moves });
-      const msg = `Moved ${moved} tasks to your ${targetCalendar.name} calendar.`;
-      addVoiceLog({ text, response: msg, action, ok: true });
-      console.log("[api/voice] move_tasks success — moved:", moved, "-> ", targetCalendar.id);
+      // Any move that changes existing tasks' calendars requires explicit confirmation,
+      // regardless of how many tasks match — moving is a change to something that already
+      // exists on the calendar, not new content, so it's held to the same bar as delete/reschedule.
+      const pending = addPendingConfirmation(
+        "move_tasks",
+        `Move ${matching.length} task${matching.length !== 1 ? "s" : ""} to your ${targetCalendar.name} calendar?`,
+        { filter, targetCalendarId: targetCalendar.id, targetCalendarName: targetCalendar.name }
+      );
+      addVoiceLog({ text, response: "Awaiting confirmation to move tasks", action: "confirm_required", ok: true });
       return NextResponse.json({
         ok: true,
-        action: "move_tasks",
-        moved,
-        response: msg,
-        actionId: record.id,
-        state: getAppState(),
+        action: "confirm_required",
+        pending: { id: pending.id, kind: pending.kind, message: pending.message },
+        response: pending.message,
       });
     }
 
@@ -1186,11 +1183,20 @@ Rules:
         addVoiceLog({ text, response: `Task not found: ${title}`, action, ok: false });
         return NextResponse.json({ ok: false, error: `Task not found: ${title}` }, { status: 404 });
       }
-      deleteTask(found.id);
-      const deleteRecord = recordAction("delete_task", `Deleted "${found.title}"`, { removedTasks: [found] });
-      console.log("[api/voice] delete_task success:", found.id);
-      addVoiceLog({ text, response, action, ok: true });
-      return NextResponse.json({ ok: true, action, response, actionId: deleteRecord.id, state: getAppState() });
+      // Deleting a task that already exists on the calendar is a destructive change to
+      // existing content, not new creation — always confirm before it happens.
+      const pending = addPendingConfirmation(
+        "delete_task",
+        `Delete "${found.title}" from your schedule?`,
+        { taskId: found.id, title: found.title }
+      );
+      addVoiceLog({ text, response: "Awaiting confirmation to delete task", action: "confirm_required", ok: true });
+      return NextResponse.json({
+        ok: true,
+        action: "confirm_required",
+        pending: { id: pending.id, kind: pending.kind, message: pending.message },
+        response: pending.message,
+      });
     }
 
     console.log("[api/voice] Unknown action from AI:", action);
