@@ -6,7 +6,7 @@
 // (see needsAgentTools below). It reuses the existing store functions
 // (addTask / addPlan / updateTask) for the "act" side so behavior matches
 // the create_plan / add_task cases already in app/api/voice/route.ts.
-import { addTask, addPlan, updateTask, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction } from "@/lib/store";
+import { addTask, addPlan, updateTask, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, getAllTasks, getTasksByDate } from "@/lib/store";
 import type { Task, TaskKind } from "@/lib/types";
 import { getRecentEmails, getEmailById } from "@/lib/gmail";
 import {
@@ -49,6 +49,7 @@ const TOOLS = [
     name: "get_recent_emails",
     description:
       "Read recent emails from the user's Gmail inbox including sender, subject, date, and content",
+    strict: true,
     input_schema: {
       type: "object",
       properties: {
@@ -58,30 +59,36 @@ const TOOLS = [
           description: "Optional Gmail search query like 'is:unread' or 'from:professor'",
         },
       },
+      additionalProperties: false,
     },
   },
   {
     name: "get_canvas_assignments",
     description: "Read upcoming Canvas assignments with due dates across all courses",
+    strict: true,
     input_schema: {
       type: "object",
       properties: {
         days_ahead: { type: "number", description: "How many days ahead to look, default 14" },
       },
+      additionalProperties: false,
     },
   },
   {
     name: "get_canvas_course_files",
     description: "List files available in a specific Canvas course",
+    strict: true,
     input_schema: {
       type: "object",
       properties: { course_id: { type: "string" } },
       required: ["course_id"],
+      additionalProperties: false,
     },
   },
   {
     name: "read_canvas_file",
     description: "Download and read the text content of a specific Canvas file such as a PDF or Word document",
+    strict: true,
     input_schema: {
       type: "object",
       properties: {
@@ -89,40 +96,61 @@ const TOOLS = [
         file_name: { type: "string" },
       },
       required: ["file_url", "file_name"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "get_my_tasks",
+    description:
+      "Read the user's own TANGENT tasks (their internal schedule/to-do list) — always available, does not depend on Google Calendar being connected. Use this for questions about what the user has on their schedule/plate unless they specifically ask about their Google Calendar.",
+    strict: true,
+    input_schema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Optional single date YYYY-MM-DD to filter to. Omit to get all tasks." },
+      },
+      additionalProperties: false,
     },
   },
   {
     name: "get_upcoming_events",
-    description: "Read upcoming events from the user's Google Calendar",
+    description: "Read upcoming events from the user's connected Google Calendar (a separate, optional integration from their TANGENT tasks — prefer get_my_tasks unless the user specifically asks about Google Calendar).",
+    strict: true,
     input_schema: {
       type: "object",
       properties: {
         days_ahead: { type: "number", description: "How many days ahead to look, default 7" },
       },
+      additionalProperties: false,
     },
   },
   {
     name: "get_events_for_date",
-    description: "Get all calendar events for a specific date",
+    description: "Get all events for a specific date from the user's connected Google Calendar (prefer get_my_tasks for the user's own TANGENT tasks unless they specifically ask about Google Calendar).",
+    strict: true,
     input_schema: {
       type: "object",
       properties: {
         date: { type: "string", description: "Date in YYYY-MM-DD format" },
       },
       required: ["date"],
+      additionalProperties: false,
     },
   },
   {
     name: "get_calendars",
     description: "Get the list of all calendars the user has with their ids and names",
+    strict: true,
     input_schema: {
       type: "object",
       properties: {},
+      additionalProperties: false,
     },
   },
   {
     name: "move_tasks",
     description: "Move tasks matching a description or date range to a different calendar",
+    strict: true,
     input_schema: {
       type: "object",
       properties: {
@@ -141,16 +169,20 @@ const TOOLS = [
                 start: { type: "string", description: "Start date YYYY-MM-DD" },
                 end: { type: "string", description: "End date YYYY-MM-DD" },
               },
+              additionalProperties: false,
             },
           },
+          additionalProperties: false,
         },
       },
       required: ["targetCalendarId"],
+      additionalProperties: false,
     },
   },
   {
     name: "add_task",
     description: "Add a single task to the user's calendar",
+    strict: true,
     input_schema: {
       type: "object",
       properties: {
@@ -169,15 +201,18 @@ const TOOLS = [
               url: { type: "string" },
             },
             required: ["label", "url"],
+            additionalProperties: false,
           },
         },
       },
       required: ["title"],
+      additionalProperties: false,
     },
   },
   {
     name: "create_plan",
     description: "Create a multi-task plan (e.g. a study plan) spread across several days on the calendar",
+    strict: true,
     input_schema: {
       type: "object",
       properties: {
@@ -202,14 +237,17 @@ const TOOLS = [
                     url: { type: "string" },
                   },
                   required: ["label", "url"],
+                  additionalProperties: false,
                 },
               },
             },
             required: ["title", "date"],
+            additionalProperties: false,
           },
         },
       },
       required: ["title", "tasks"],
+      additionalProperties: false,
     },
   },
 ];
@@ -271,6 +309,21 @@ function resolveCalendarId(input: string | undefined): string {
     if (studyCal) return studyCal.id;
   }
   return inferCalendarId(input, "");
+}
+
+/** Distinguishes "Google Calendar isn't configured on this server" (a missing-credential
+ *  setup problem the developer needs to fix, not a transient failure) from any other
+ *  error, so the system prompt can tell the model to explain it plainly instead of
+ *  vaguely saying it "can't connect". */
+function googleCalendarErrorPayload(e: unknown): { error: string; detail: string } {
+  const message = e instanceof Error ? e.message : "Google Calendar request failed";
+  if (message.startsWith("Missing GOOGLE_")) {
+    return {
+      error: "google_calendar_not_connected",
+      detail: "Google Calendar is not connected on this server (missing GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/GOOGLE_REFRESH_TOKEN). This is a one-time setup step the developer needs to complete — it is not the user's fault and not something they can fix by asking again.",
+    };
+  }
+  return { error: "google_calendar_error", detail: message };
 }
 
 function summarize(payload: unknown): string {
@@ -368,17 +421,31 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
       return { data: { supported: true, text: text.slice(0, 8000) } };
     }
 
+    case "get_my_tasks": {
+      const date = typeof input.date === "string" ? input.date : undefined;
+      const tasks = date ? getTasksByDate(date) : getAllTasks();
+      return { data: { tasks } };
+    }
+
     case "get_upcoming_events": {
       const daysAhead = typeof input.days_ahead === "number" ? input.days_ahead : 7;
-      const events = await getUpcomingEvents(daysAhead);
-      return { data: { events } };
+      try {
+        const events = await getUpcomingEvents(daysAhead);
+        return { data: { events } };
+      } catch (e) {
+        return { data: googleCalendarErrorPayload(e) };
+      }
     }
 
     case "get_events_for_date": {
       const date = typeof input.date === "string" ? input.date : "";
       if (!date) return { data: { error: "Missing date" } };
-      const events = await getEventsForDate(date);
-      return { data: { events } };
+      try {
+        const events = await getEventsForDate(date);
+        return { data: { events } };
+      } catch (e) {
+        return { data: googleCalendarErrorPayload(e) };
+      }
     }
 
     case "add_task": {
@@ -495,6 +562,8 @@ Call get_calendars if you need to confirm what calendars exist before assigning 
 
 Rules:
 - Use get_recent_emails / get_canvas_assignments / get_canvas_course_files / read_canvas_file to gather whatever real data you need BEFORE answering. Never guess or invent emails, assignments, or due dates.
+- TANGENT has TWO separate, unrelated notions of "calendar": (1) the user's own TANGENT tasks — always available, read with get_my_tasks — and (2) an optional read-only Google Calendar integration — read with get_upcoming_events / get_events_for_date. For "what's on my schedule", "what do I have today/this week", or similar questions about the user's own plate, call get_my_tasks. Only call get_upcoming_events / get_events_for_date when the user specifically asks about their Google Calendar, or after get_my_tasks turns up nothing relevant and you want to check if it's on Google Calendar instead.
+- If get_upcoming_events or get_events_for_date returns {"error":"google_calendar_not_connected", ...}, do NOT say something vague like "I can't connect to your calendar right now" or imply it's a temporary glitch. Say plainly that Google Calendar isn't connected/set up yet, and offer to check their TANGENT tasks instead (via get_my_tasks) if relevant.
 - If the user wants something added to their calendar (a single task, or a multi-day plan built around real due dates), call add_task or create_plan with the real data you gathered.
 - If the user is just asking a question (e.g. "summarize my unread emails"), do not call add_task or create_plan — just answer in plain text using the data you fetched.
 - Your final reply (once you are done calling tools) must be plain natural language only — no JSON, no markdown, no code fences. Keep it under 60 words unless the user asked for a detailed summary.
@@ -534,7 +603,31 @@ export type ToolLoopResult = {
   plan?: { id: string; title: string; taskCount: number; color: string };
   count?: number;
   actionId?: string;
+  /** Friendly labels (e.g. "Gmail", "Canvas") for which real data sources this
+   *  turn actually read, so the UI can show that the agent path fired. */
+  sourcesChecked?: string[];
 };
+
+/** Maps a data-read tool name to the friendly source label shown in the UI.
+ *  Action tools (add_task, create_plan, move_tasks, get_calendars) are
+ *  excluded — this is only for "we went and read your real data" moments. */
+function sourceLabelForTool(name: string): string | null {
+  switch (name) {
+    case "get_recent_emails":
+      return "Gmail";
+    case "get_canvas_assignments":
+    case "get_canvas_course_files":
+    case "read_canvas_file":
+      return "Canvas";
+    case "get_my_tasks":
+      return "your tasks";
+    case "get_upcoming_events":
+    case "get_events_for_date":
+      return "your calendar";
+    default:
+      return null;
+  }
+}
 
 /** Runs a genuine multi-turn Claude tool-use loop: fetch real data, then act on it. */
 export async function runVoiceAgentToolLoop(userText: string): Promise<ToolLoopResult> {
@@ -551,6 +644,7 @@ export async function runVoiceAgentToolLoop(userText: string): Promise<ToolLoopR
   let lastPlan: ToolLoopResult["plan"];
   let lastCount: number | undefined;
   let lastActionId: string | undefined;
+  const sourcesChecked = new Set<string>();
 
   for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -589,6 +683,8 @@ export async function runVoiceAgentToolLoop(userText: string): Promise<ToolLoopR
     const toolResults: { type: "tool_result"; tool_use_id: string; content: string }[] = [];
     for (const block of toolUseBlocks) {
       console.log(`[voice-agent-tools] Calling tool: ${block.name}`, JSON.stringify(block.input));
+      const sourceLabel = sourceLabelForTool(block.name);
+      if (sourceLabel) sourcesChecked.add(sourceLabel);
       let resultPayload: unknown;
       try {
         const exec = await executeTool(block.name, block.input);
@@ -619,5 +715,6 @@ export async function runVoiceAgentToolLoop(userText: string): Promise<ToolLoopR
     plan: lastPlan,
     count: lastCount,
     actionId: lastActionId,
+    sourcesChecked: sourcesChecked.size > 0 ? Array.from(sourcesChecked) : undefined,
   };
 }
