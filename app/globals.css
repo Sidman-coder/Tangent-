@@ -5267,6 +5267,27 @@ textarea:focus {
   flex-shrink: 0;
 }
 
+.cal-kind-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 2px 4px;
+}
+.cal-kind-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.cal-kind-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 /* ── Day panel — tasks grouped by kind ───────────────────────────────────────── */
 .day-panel-kind-group + .day-panel-kind-group {
   margin-top: 0.6rem;

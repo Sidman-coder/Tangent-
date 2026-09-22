@@ -351,6 +351,15 @@ export default function CalendarPage() {
         )}
       </section>
 
+      <div className="cal-kind-legend" aria-label="Task kind color legend">
+        {KIND_SORT_ORDER.map((kind) => (
+          <span key={kind} className="cal-kind-legend-item">
+            <span className="cal-kind-legend-dot" style={{ background: getKindColor(kind) }} />
+            {KIND_DISPLAY_NAME[kind]}
+          </span>
+        ))}
+      </div>
+
       <section className="calendar-grid-shell">
         <div className="cal-month-grid">
           {WEEKDAY_LABELS.map((d) => (
