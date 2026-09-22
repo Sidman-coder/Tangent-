@@ -95,6 +95,7 @@ export function getMonthDensity(tasks: Task[], year: number, monthIndex: number)
   }
 
   for (const task of tasks) {
+    if (task.completed) continue;
     const date = readCalendarDate(task.date);
     if (!date || date.year !== year || date.month !== monthIndex + 1) continue;
     density.set(task.date, (density.get(task.date) ?? 0) + 1);

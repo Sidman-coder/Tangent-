@@ -452,7 +452,7 @@ export default function CalendarPage() {
                   const freq = recurringLabel(t);
                   const categoryColor = getTaskCategoryColor(t);
                   return (
-                    <div key={t.id} className="calendar-modal-task" style={{ borderLeftColor: categoryColor }}>
+                    <div key={t.id} className={`calendar-modal-task${t.completed ? " calendar-modal-task--done" : ""}`} style={{ borderLeftColor: categoryColor }}>
                       <div className="calendar-modal-task-top">
                         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0 }}>
                           <input

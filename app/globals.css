@@ -3191,6 +3191,9 @@ textarea:focus {
   text-decoration: line-through;
   color: var(--faint);
 }
+.calendar-modal-task--done {
+  opacity: 0.55;
+}
 .calendar-modal-task-time {
   font-family: var(--font-mono);
   font-size: 0.78rem;
