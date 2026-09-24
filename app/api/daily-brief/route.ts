@@ -1,5 +1,13 @@
+// Backs the on-demand "Today's Summary" button in the Bell panel (NotificationBell.tsx).
+// This is deliberately NOT the "Daily Brief" feature — that name now belongs to the
+// scheduled, source-aggregating pipeline in app/api/cron/daily-brief/route.ts. This
+// route stays synchronous (Messages API, not Batch) because a student clicking the
+// button wants an answer now, not in up to an hour. Both routes publish through the
+// same publishDailyBrief() so the Bell only ever shows one pinned brief per day.
 import { NextResponse } from "next/server";
-import { getAllTasks, getContextAsString, addNotification } from "@/lib/store";
+import { getAllTasks, getContextAsString } from "@/lib/store";
+import { extractStructuredJson } from "@/lib/anthropic-json";
+import { DAILY_BRIEF_SCHEMA, DEFAULT_DAILY_BRIEF, publishDailyBrief, type DailyBrief } from "@/lib/daily-brief";
 
 export const dynamic = "force-dynamic";
 
@@ -46,52 +54,34 @@ ${userContext}
       body: JSON.stringify({
         model: "claude-sonnet-4-5",
         max_tokens: 300,
-        system: `Generate a concise daily brief for the user. Sound like a smart personal assistant, not a chatbot. Be specific to their actual schedule. No filler phrases. Direct and useful.
+        // Static system prompt in its own cached block — only per-user variable
+        // data (briefContext) goes in the user message, so this block hits cache
+        // on every subsequent brief generation.
+        system: [
+          {
+            type: "text",
+            text: `Generate a concise daily brief for the user. Sound like a smart personal assistant, not a chatbot. Be specific to their actual schedule. No filler phrases. Direct and useful.
 
-Format as JSON:
-{
-  "greeting": "one sentence greeting referencing something specific about their day",
-  "summary": "2 to 3 sentences covering what matters most today",
-  "topPriority": "the single most important thing to focus on",
-  "suggestion": "one specific time-based suggestion based on their schedule and preferences",
-  "overdueAlert": "mention overdue items only if there are any, otherwise null"
-}
-
-Return ONLY the JSON. No other text.`,
+The greeting is one sentence referencing something specific about their day. The summary is 2 to 3 sentences covering what matters most today. topPriority is the single most important thing to focus on. suggestion is one specific time-based suggestion based on their schedule and preferences. overdueAlert mentions overdue items only if there are any, otherwise null.`,
+            cache_control: { type: "ephemeral" },
+          },
+        ],
+        output_config: { format: { type: "json_schema", schema: DAILY_BRIEF_SCHEMA } },
         messages: [{ role: "user", content: briefContext }],
       }),
     });
 
     const data = await response.json();
-    const text = data.content?.[0]?.text || "{}";
 
-    let brief: {
-      greeting: string;
-      summary: string;
-      topPriority: string;
-      suggestion: string;
-      overdueAlert: string | null;
-    } = {
-      greeting: "Good morning.",
-      summary: "Here is your day.",
-      topPriority: "Check your tasks.",
-      suggestion: "Stay focused.",
-      overdueAlert: null,
-    };
+    let brief: DailyBrief = DEFAULT_DAILY_BRIEF;
 
     try {
-      const cleaned = text.replace(/```json|```/g, "").trim();
-      brief = JSON.parse(cleaned);
-    } catch {}
+      brief = extractStructuredJson<DailyBrief>(data);
+    } catch (e) {
+      console.error("[api/daily-brief] Brief parsing failed:", e instanceof Error ? e.message : e);
+    }
 
-    // Store as notification
-    addNotification({
-      type: "daily_brief",
-      title: brief.greeting,
-      body: `${brief.summary} Priority: ${brief.topPriority}`,
-      actionLabel: "View full brief",
-      actionData: { brief },
-    });
+    publishDailyBrief(brief);
 
     return NextResponse.json({ ok: true, brief });
   } catch (e) {

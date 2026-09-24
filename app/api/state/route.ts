@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getState, replaceState } from "@/lib/store-server";
+import { getState, replaceState } from "@/lib/store";
 import type { AppState } from "@/lib/types";
 
 export const dynamic = "force-dynamic";

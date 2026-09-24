@@ -88,6 +88,7 @@ export default function TasksPage() {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [, setBannerTick] = useState(0);
   const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
+  const [duplicateToast, setDuplicateToast] = useState(false);
 
   useEffect(() => {
     const id = setInterval(() => setBannerTick((n) => n + 1), 60000);
@@ -383,7 +384,17 @@ export default function TasksPage() {
           initialDate={today}
           onClose={() => setShowModal(false)}
           onSuccess={() => void refresh()}
+          onDuplicate={() => {
+            setDuplicateToast(true);
+            window.setTimeout(() => setDuplicateToast(false), 3000);
+          }}
         />
+      )}
+
+      {duplicateToast && (
+        <div className="command-toast" role="status">
+          <span>Already on your calendar</span>
+        </div>
       )}
 
       {recurDeleteTarget && (

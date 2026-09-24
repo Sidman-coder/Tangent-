@@ -1,8 +1,32 @@
 import { NextResponse } from "next/server";
 import { getUserContext, addContextEntry, setCompressedSummary, getContextAsString } from "@/lib/store";
 import type { ContextEntry } from "@/lib/types";
+import { extractStructuredJson } from "@/lib/anthropic-json";
 
 export const dynamic = "force-dynamic";
+
+const CONTEXT_EXTRACT_SCHEMA = {
+  type: "object",
+  properties: {
+    facts: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          category: {
+            type: "string",
+            enum: ["preference", "habit", "commitment", "goal", "person", "work", "general"],
+          },
+          fact: { type: "string" },
+        },
+        required: ["category", "fact"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["facts"],
+  additionalProperties: false,
+} as const;
 
 export async function GET() {
   return NextResponse.json({
@@ -34,10 +58,8 @@ export async function POST(request: Request) {
 
 Categories: preference (how they like to work), habit (what they regularly do), commitment (recurring schedule), goal (what they are working toward), person (someone they mention), work (their job/projects), general (other durable facts)
 
-Return ONLY a JSON array. No other text:
-[{"category": "preference", "fact": "prefers working in mornings"}, ...]
-
-If nothing durable is found return an empty array: []`,
+If nothing durable is found return an empty facts array.`,
+          output_config: { format: { type: "json_schema", schema: CONTEXT_EXTRACT_SCHEMA } },
           messages: [{
             role: "user",
             content: `Conversation:\n${body.conversation}`,
@@ -46,14 +68,11 @@ If nothing durable is found return an empty array: []`,
       });
 
       const data = await response.json();
-      const text = data.content?.[0]?.text || "[]";
-
       let facts: Array<{ category: string; fact: string }> = [];
       try {
-        const cleaned = text.replace(/```json|```/g, "").trim();
-        facts = JSON.parse(cleaned);
-      } catch {
-        facts = [];
+        facts = extractStructuredJson<{ facts: Array<{ category: string; fact: string }> }>(data).facts;
+      } catch (e) {
+        console.error("[api/context] Fact extraction parsing failed:", e instanceof Error ? e.message : e);
       }
 
       const added: ContextEntry[] = [];

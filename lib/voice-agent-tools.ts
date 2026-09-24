@@ -6,7 +6,7 @@
 // (see needsAgentTools below). It reuses the existing store functions
 // (addTask / addPlan / updateTask) for the "act" side so behavior matches
 // the create_plan / add_task cases already in app/api/voice/route.ts.
-import { addTask, addPlan, updateTask, getCalendars, getTasksMatchingFilter, getContextAsString, recordAction, getAllTasks, getTasksByDate, addPendingConfirmation } from "@/lib/store";
+import { addTask, addPlan, updateTask, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, getAllTasks, getTasksByDate, addPendingConfirmation } from "@/lib/store";
 import type { Task, TaskKind } from "@/lib/types";
 import { getRecentEmails, getEmailById } from "@/lib/gmail";
 import {
@@ -18,6 +18,7 @@ import { getUpcomingEvents, getEventsForDate } from "@/lib/calendar";
 
 const MODEL = "claude-sonnet-4-5";
 const MAX_TOOL_TURNS = 8;
+
 const GMAIL_KEYWORDS = /\b(email|emails|gmail|inbox|unread|message|messages)\b/i;
 const CANVAS_KEYWORDS = /\b(canvas|assignment|assignments|course|due|homework|class|syllabus|professor)\b/i;
 const CALENDAR_KEYWORDS = /\b(calendar|event|events|schedule|meeting|appointment|what do i have|what's on my)\b/i;

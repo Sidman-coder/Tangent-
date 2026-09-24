@@ -79,7 +79,7 @@ export default function NotificationBell({ open: openProp, onOpenChange }: Notif
     fetchNotifications()
   }
 
-  const handleGenerateBrief = async () => {
+  const handleGenerateSummary = async () => {
     setLoading(true)
     await fetch("/api/daily-brief", { method: "POST" })
     await fetchNotifications()
@@ -172,11 +172,11 @@ export default function NotificationBell({ open: openProp, onOpenChange }: Notif
               <div className="notif-panel-actions">
                 {!pinnedBrief && (
                   <button
-                    className="notif-brief-btn"
-                    onClick={handleGenerateBrief}
+                    className="notif-summary-btn"
+                    onClick={handleGenerateSummary}
                     disabled={loading}
                   >
-                    {loading ? "Generating..." : (<><Sun size={14} strokeWidth={2} /> Daily Brief</>)}
+                    {loading ? "Generating..." : (<><Sun size={14} strokeWidth={2} /> Today's Summary</>)}
                   </button>
                 )}
                 <button

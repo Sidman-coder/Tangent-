@@ -1,14 +1,12 @@
 import type {
   Task,
   Plan,
-  Category,
   RecurringConfig,
   CalendarDef,
   CalendarEvent,
   UserProfile,
   AppState,
   VoiceLogEntry,
-  Command,
   ContextEntry,
   UserContext,
   Notification,
@@ -17,6 +15,8 @@ import type {
   ActionSnapshot,
   PendingConfirmation,
   BriefConfig,
+  CanvasFeedConfig,
+  PendingBriefBatch,
 } from "./types";
 
 function uid(prefix: string): string {
@@ -49,7 +49,6 @@ interface StoreData {
   lastVoiceCommand: string | null;
   lastVoiceResponse: string | null;
   plans: Plan[];
-  categories: Category[];
   taskChats: Record<string, ChatMessage[]>;
   chatSessions: ChatSession[];
 }
@@ -62,6 +61,8 @@ const g = global as typeof global & {
   __tangentActions?: ActionRecord[];
   __tangentPending?: PendingConfirmation[];
   __tangentBriefConfig?: BriefConfig | null;
+  __tangentCanvasFeed?: CanvasFeedConfig | null;
+  __tangentPendingBriefBatch?: PendingBriefBatch | null;
 };
 if (!g.__tangentStore) {
   g.__tangentStore = {
@@ -85,12 +86,6 @@ if (!g.__tangentStore) {
     lastVoiceCommand: null,
     lastVoiceResponse: null,
     plans: [],
-    categories: [
-      { id: "cat_work", name: "Work", color: "#34d399", icon: "💼" },
-      { id: "cat_personal", name: "Personal", color: "#a78bfa", icon: "🏠" },
-      { id: "cat_health", name: "Health", color: "#f472b6", icon: "💪" },
-      { id: "cat_learning", name: "Learning", color: "#38bdf8", icon: "📚" },
-    ],
     taskChats: {},
     chatSessions: [],
   };
@@ -123,6 +118,14 @@ if (!g.__tangentPending) {
 
 if (g.__tangentBriefConfig === undefined) {
   g.__tangentBriefConfig = null;
+}
+
+if (g.__tangentCanvasFeed === undefined) {
+  g.__tangentCanvasFeed = null;
+}
+
+if (g.__tangentPendingBriefBatch === undefined) {
+  g.__tangentPendingBriefBatch = null;
 }
 
 // ─── Task functions ───────────────────────────────────────────────────────────
@@ -529,44 +532,6 @@ export function deletePlan(planId: string): boolean {
   return true;
 }
 
-// ─── Category functions ───────────────────────────────────────────────────────
-
-export function getAllCategories(): Category[] {
-  return store.categories.map((c) => ({ ...c }));
-}
-
-export function addCategory(name: string, color?: string, icon?: string): Category {
-  const cat: Category = {
-    id: uid("cat"),
-    name,
-    color: color ?? "#a78bfa",
-    icon,
-  };
-  store.categories.push(cat);
-  console.log("[store] addCategory:", cat.id, cat.name);
-  return { ...cat };
-}
-
-export function deleteCategory(categoryId: string): boolean {
-  const idx = store.categories.findIndex((c) => c.id === categoryId);
-  if (idx === -1) return false;
-  store.categories.splice(idx, 1);
-  // Clear categoryId from tasks in that category
-  for (const t of store.tasks) {
-    if (t.categoryId === categoryId) t.categoryId = null;
-  }
-  console.log("[store] deleteCategory:", categoryId);
-  return true;
-}
-
-export function deleteTasksByCategory(categoryId: string): number {
-  const before = store.tasks.length;
-  store.tasks = store.tasks.filter((t) => t.categoryId !== categoryId);
-  const removed = before - store.tasks.length;
-  console.log("[store] deleteTasksByCategory:", categoryId, "| removed:", removed);
-  return removed;
-}
-
 // ─── Task chat functions ──────────────────────────────────────────────────────
 
 export function getTaskChat(taskId: string): ChatMessage[] {
@@ -646,7 +611,6 @@ export function getAppState(): AppState {
     lastVoiceCommand: store.lastVoiceCommand,
     lastVoiceResponse: store.lastVoiceResponse,
     plans: getAllPlans(),
-    categories: getAllCategories(),
   };
 }
 
@@ -661,76 +625,6 @@ export function replaceState(next: AppState): void {
   if (next.user) store.user = { ...next.user };
   if (Array.isArray(next.weeklyPlan)) store.weeklyPlan = [...next.weeklyPlan];
   if (Array.isArray(next.plans)) store.plans = next.plans.map((p) => ({ ...p, taskIds: [...p.taskIds] }));
-}
-
-// ─── Legacy applyCommands (used by /api/commands for calendar operations) ─────
-
-function findTaskByTitle(title: string): Task | undefined {
-  const n = title.trim().toLowerCase();
-  if (!n) return undefined;
-  return (
-    store.tasks.find((t) => t.title.toLowerCase() === n) ??
-    store.tasks.find((t) => t.title.toLowerCase().includes(n) || n.includes(t.title.toLowerCase()))
-  );
-}
-
-export function applyCommands(commands: Command[]): AppState {
-  for (const cmd of commands) {
-    switch (cmd.type) {
-      case "ADD_TASK": {
-        const date = cmd.date ?? todayDate();
-        addTask({
-          title: cmd.title,
-          date,
-          time: cmd.time ?? "09:00",
-          kind: cmd.kind,
-          completed: false,
-          calendarId: cmd.calendarId ?? null,
-        });
-        break;
-      }
-      case "UPDATE_TASK": {
-        updateTask(cmd.id, {
-          ...(cmd.title !== undefined && { title: cmd.title }),
-          ...(cmd.date !== undefined && { date: cmd.date }),
-          ...(cmd.time !== undefined && { time: cmd.time }),
-          ...(cmd.kind !== undefined && { kind: cmd.kind }),
-        });
-        break;
-      }
-      case "REMOVE_TASK": {
-        deleteTask(cmd.id);
-        break;
-      }
-      case "ADD_CALENDAR": {
-        addCalendar(cmd.name, cmd.color);
-        break;
-      }
-      case "ADD_EVENT": {
-        addEvent({
-          calendarId: cmd.calendarId,
-          title: cmd.title,
-          date: cmd.date,
-          time: cmd.time,
-        });
-        break;
-      }
-      case "UPDATE_USER": {
-        updateUser({
-          ...(cmd.displayName !== undefined && { displayName: cmd.displayName }),
-          ...(cmd.email !== undefined && { email: cmd.email }),
-        });
-        break;
-      }
-      case "SET_WEEKLY_PLAN": {
-        setWeeklyPlan(cmd.items);
-        break;
-      }
-      default:
-        break;
-    }
-  }
-  return getAppState();
 }
 
 // ─── User context functions ───────────────────────────────────────────────────
@@ -942,4 +836,42 @@ export function saveBriefConfig(config: BriefConfig): BriefConfig {
   g.__tangentBriefConfig = { ...config, sources: config.sources.map((s) => ({ ...s })) };
   console.log("[store] saveBriefConfig — sources:", config.sources.length, "| cadence:", config.cadence, "| time:", config.deliveryTime);
   return getBriefConfig()!;
+}
+
+// Tracks an in-flight Anthropic Message Batch submitted by the daily-brief cron job
+// (see app/api/cron/daily-brief/route.ts) so the next cron tick knows to poll for the
+// result instead of resubmitting. Single-tenant store — one pending batch at a time.
+export function getPendingBriefBatch(): PendingBriefBatch | null {
+  return g.__tangentPendingBriefBatch ? { ...g.__tangentPendingBriefBatch } : null;
+}
+
+export function setPendingBriefBatch(batch: PendingBriefBatch | null): void {
+  g.__tangentPendingBriefBatch = batch;
+  console.log("[store] setPendingBriefBatch:", batch ? `${batch.batchId} (submitted ${batch.submittedAt})` : "cleared");
+}
+
+// ─── Canvas .ics feed connection ──────────────────────────────────────────────
+
+export function getCanvasFeed(): CanvasFeedConfig | null {
+  return g.__tangentCanvasFeed ? { ...g.__tangentCanvasFeed } : null;
+}
+
+export function saveCanvasFeed(icsUrl: string): CanvasFeedConfig {
+  const config: CanvasFeedConfig = {
+    icsUrl,
+    connectedAt: new Date().toISOString(),
+    lastSyncedAt: null,
+    lastSyncCount: 0,
+  };
+  g.__tangentCanvasFeed = config;
+  console.log("[store] saveCanvasFeed:", icsUrl);
+  return { ...config };
+}
+
+export function recordCanvasSync(count: number): CanvasFeedConfig | null {
+  if (!g.__tangentCanvasFeed) return null;
+  g.__tangentCanvasFeed.lastSyncedAt = new Date().toISOString();
+  g.__tangentCanvasFeed.lastSyncCount = count;
+  console.log("[store] recordCanvasSync — count:", count);
+  return { ...g.__tangentCanvasFeed };
 }

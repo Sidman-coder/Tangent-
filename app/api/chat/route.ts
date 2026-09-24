@@ -93,6 +93,7 @@ export async function POST(req: Request) {
     let voiceOk = false;
     let voiceActionId: string | undefined;
     let voicePending: { id: string; kind: string; message: string } | undefined;
+    let voiceSourcesChecked: string[] | undefined;
     try {
       console.log("[api/chat] Calling voice pipeline:", userText);
       const voiceRes = await fetch(`${baseUrl}/api/voice`, {
@@ -106,6 +107,7 @@ export async function POST(req: Request) {
         ok?: boolean;
         actionId?: string;
         pending?: { id: string; kind: string; message: string };
+        sourcesChecked?: string[];
       };
       console.log("[api/chat] Voice pipeline result:", JSON.stringify(voiceData).slice(0, 300));
       voiceResponse = voiceData.response ?? "";
@@ -113,6 +115,7 @@ export async function POST(req: Request) {
       voiceOk = voiceData.ok === true;
       voiceActionId = voiceData.actionId;
       voicePending = voiceData.pending;
+      voiceSourcesChecked = voiceData.sourcesChecked;
     } catch (err) {
       console.error("[api/chat] Voice pipeline error:", err);
     }
@@ -133,6 +136,7 @@ export async function POST(req: Request) {
         message: voiceResponse.trim(),
         action: voiceAction,
         actionId: voiceActionId,
+        sourcesChecked: voiceSourcesChecked,
         ok: true,
       });
     }

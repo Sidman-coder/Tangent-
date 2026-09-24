@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   CalendarDays,
+  CalendarSync,
   CheckSquare2,
   Home,
   MessageSquareText,
@@ -16,6 +17,8 @@ import {
 import NotificationBell from "./NotificationBell";
 import CommandPalette from "./CommandPalette";
 import FirstRun from "./FirstRun";
+import CanvasConnectGuide from "./CanvasConnectGuide";
+import VoiceCaptureFab from "./VoiceCaptureFab";
 import DesktopNotifPrompt from "./DesktopNotifPrompt";
 
 const NAV_LINKS = [
@@ -73,6 +76,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [estTime, setEstTime] = useState<string | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [profileInitial, setProfileInitial] = useState("T");
+  const [canvasGuideOpen, setCanvasGuideOpen] = useState(false);
   const title = pageTitleFor(pathname);
   const today = new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 
@@ -170,6 +174,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <Plus size={16} strokeWidth={2} aria-hidden="true" />
               <span>New task</span>
             </button>
+            <button
+              type="button"
+              className="topbar-canvas-connect"
+              onClick={() => setCanvasGuideOpen(true)}
+              aria-label="Connect Canvas calendar"
+              title="Connect Canvas calendar"
+            >
+              <CalendarSync size={16} strokeWidth={1.8} aria-hidden="true" />
+              <span>Connect Canvas</span>
+            </button>
             <NotificationBell open={notifOpen} onOpenChange={setNotifOpen} />
             <Link href="/settings" className="topbar-avatar" aria-label="Open account settings">
               {profileInitial}
@@ -200,6 +214,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </nav>
 
       <CommandPalette />
+      <CanvasConnectGuide open={canvasGuideOpen} onClose={() => setCanvasGuideOpen(false)} />
+      <VoiceCaptureFab />
       {!showOnboarding && <DesktopNotifPrompt />}
 
       {showOnboarding && <FirstRun onComplete={() => setShowOnboarding(false)} />}

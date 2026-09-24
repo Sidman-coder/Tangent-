@@ -3,6 +3,14 @@ import { Check, Repeat2 } from "lucide-react";
 import type { Task } from "@/lib/types";
 import { formatTime12 } from "@/lib/dates";
 
+const KIND_LABEL: Record<string, string> = {
+  school: "School",
+  "academic-ec": "Academics",
+  "side-ec": "Activities",
+  commitment: "Commitment",
+  personal: "Personal",
+};
+
 type TaskRowProps = {
   task: Task;
   kindColor?: string;
@@ -54,7 +62,7 @@ export default function TaskRow({
           )}
           <div className="ui-task-meta">
             <time dateTime={`${task.date}T${task.time}`}>{formatTime12(task.time)}</time>
-            {task.kind && <span className="ui-task-kind-label">{task.kind.replace("-", " ")}</span>}
+            {task.kind && <span className="ui-task-kind-label">{KIND_LABEL[task.kind] ?? task.kind.replaceAll("-", " ")}</span>}
             {task.recurring?.enabled && (
               <span className="ui-task-recurring"><Repeat2 size={12} aria-hidden="true" /> Recurring</span>
             )}

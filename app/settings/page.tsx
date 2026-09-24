@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useAppState } from "@/components/AppStateProvider";
 import Button from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
+import CanvasConnectGuide from "@/components/CanvasConnectGuide";
+import { CalendarSync } from "lucide-react";
 import type { AppState } from "@/lib/types";
 import {
   type AppearanceMode,
@@ -30,6 +32,7 @@ export default function SettingsPage() {
   const [email, setEmail] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [canvasGuideOpen, setCanvasGuideOpen] = useState(false);
 
   const [appearance, setAppearance] = useState<AppearanceMode>("dark");
   const [fontMode, setFontModeState] = useState<FontMode>("warm");
@@ -119,6 +122,7 @@ export default function SettingsPage() {
           <a href="#profile">Profile</a>
           <a href="#appearance">Appearance</a>
           <a href="#notifications">Notifications</a>
+          <a href="#integrations">Integrations</a>
           <a href="#onboarding">Onboarding</a>
         </nav>
 
@@ -180,6 +184,19 @@ export default function SettingsPage() {
             </div>
           </section>
 
+          <section id="integrations" className="settings-panel settings-integration-panel">
+            <div className="settings-option-row">
+              <div className="settings-integration-copy">
+                <span className="settings-integration-icon" aria-hidden="true"><CalendarSync size={19} /></span>
+                <div>
+                  <strong>Canvas calendar</strong>
+                  <span>Bring assignments and due dates into your Tangent calendar.</span>
+                </div>
+              </div>
+              <Button variant="primary" onClick={() => setCanvasGuideOpen(true)}>Connect Canvas</Button>
+            </div>
+          </section>
+
           <section id="onboarding" className="settings-panel">
             <div className="settings-option-row">
               <div><strong>Restart onboarding</strong><span>Revisit the setup questions for this browser.</span></div>
@@ -188,6 +205,7 @@ export default function SettingsPage() {
           </section>
         </div>
       </div>
+      <CanvasConnectGuide open={canvasGuideOpen} onClose={() => setCanvasGuideOpen(false)} />
     </div>
   );
 }
