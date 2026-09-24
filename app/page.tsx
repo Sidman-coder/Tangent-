@@ -38,6 +38,21 @@ function startOfWeekMonday(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() - diff);
 }
 
+// Most urgent incomplete task across the current month, not just today — so
+// "You're clear" only shows when nothing is due for the rest of the month.
+function findMostUrgentTask(tasks: Task[], now: Date): Task | null {
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const candidates = tasks.filter((task) => {
+    if (task.completed) return false;
+    const d = new Date(`${task.date}T00:00:00`);
+    return d.getFullYear() === year && d.getMonth() === month;
+  });
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => (a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date)));
+  return candidates[0];
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const { state, loading, error, refresh } = useAppState();
@@ -72,7 +87,13 @@ export default function DashboardPage() {
     () => tasks.filter((task) => task.date === today).slice().sort((a, b) => a.time.localeCompare(b.time)),
     [tasks, today]
   );
-  const focusTask = useMemo(() => todaysTasks.find((task) => !task.completed) ?? null, [todaysTasks]);
+  const focusTask = useMemo(() => findMostUrgentTask(tasks, now), [tasks, now]);
+  const focusTaskIsToday = focusTask?.date === today;
+  const focusDateLabel = useMemo(() => {
+    if (!focusTask) return "";
+    const d = new Date(`${focusTask.date}T00:00:00`);
+    return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  }, [focusTask]);
   const daylineTasks = useMemo(
     () => todaysTasks.filter((task) => task.id !== focusTask?.id),
     [focusTask?.id, todaysTasks]
@@ -158,9 +179,10 @@ export default function DashboardPage() {
         <FocusPanel
           task={focusTask}
           kindColor={focusTask ? colorForTask(focusTask) : "var(--accent)"}
-          relativeLabel="Up next"
+          relativeLabel={focusTaskIsToday ? "Up next" : focusTask ? `Up next · ${focusDateLabel}` : "Up next"}
+          nextStep={focusTask?.startAction}
           onComplete={focusTask ? () => void toggleTask(focusTask) : undefined}
-          onOpen={focusTask ? () => router.push("/tasks") : undefined}
+          onOpen={focusTask ? () => router.push(focusTaskIsToday ? "/tasks" : `/calendar?date=${focusTask.date}`) : undefined}
           completing={completingTaskId === focusTask?.id}
         />
         <MonthRhythm tasks={tasks} year={now.getFullYear()} monthIndex={now.getMonth()} />
@@ -171,7 +193,7 @@ export default function DashboardPage() {
           <div className="today-section-heading">
             <div>
               <span className="today-section-label">Today</span>
-              <h2 id="today-dayline-title">{focusTask ? "What comes next" : "Your schedule"}</h2>
+              <h2 id="today-dayline-title">{focusTaskIsToday ? "What comes next" : "Your schedule"}</h2>
             </div>
             <span>{todaysTasks.length} task{todaysTasks.length === 1 ? "" : "s"}</span>
           </div>
@@ -190,8 +212,8 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="today-empty-line">
-              <p>{focusTask ? "No more tasks are scheduled after this one." : "Nothing is scheduled for today."}</p>
-              {!focusTask && <Button variant="secondary" size="sm" onClick={openCapture}>Add a task</Button>}
+              <p>{focusTaskIsToday ? "No more tasks are scheduled after this one." : "Nothing is scheduled for today."}</p>
+              {!focusTaskIsToday && <Button variant="secondary" size="sm" onClick={openCapture}>Add a task</Button>}
             </div>
           )}
         </section>

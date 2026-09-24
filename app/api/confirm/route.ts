@@ -10,6 +10,7 @@ import {
   resolvePendingConfirmation,
   recordAction,
   addVoiceLog,
+  deleteTask,
 } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -73,6 +74,24 @@ export async function POST(req: Request) {
         action: "move_tasks",
         moved,
         response: `Moved ${moved} tasks to your ${targetCalendar.name} calendar.`,
+        actionId: record.id,
+        state: getAppState(),
+      });
+    }
+
+    if (pending.kind === "delete_task") {
+      const payload = pending.payload as { taskId: string; title: string };
+      const found = getAllTasks().find((t) => t.id === payload.taskId);
+      if (!found) {
+        return NextResponse.json({ ok: false, error: "That task no longer exists." }, { status: 422 });
+      }
+      deleteTask(found.id);
+      const record = recordAction("delete_task", `Deleted "${found.title}"`, { removedTasks: [found] });
+      addVoiceLog({ text: "(confirmed) delete task", response: `Deleted "${found.title}"`, action: "delete_task", ok: true });
+      return NextResponse.json({
+        ok: true,
+        action: "delete_task",
+        response: `Deleted "${found.title}".`,
         actionId: record.id,
         state: getAppState(),
       });

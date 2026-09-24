@@ -18,9 +18,94 @@ import { NextResponse } from "next/server";
 import { addTask, addPlan, addRecurringTask, completeTask, deleteTask, addVoiceLog, updateTask, getAppState, getAllTasks, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, addPendingConfirmation } from "@/lib/store";
 import type { TaskKind } from "@/lib/types";
 import { needsAgentTools, runVoiceAgentToolLoop } from "@/lib/voice-agent-tools";
+import { extractStructuredJson } from "@/lib/anthropic-json";
 
-/** How many tasks a move_tasks command can affect before it requires confirmation. */
-const MOVE_CONFIRM_THRESHOLD = 5;
+const RESOURCE_ITEM_SCHEMA = {
+  type: "object",
+  properties: {
+    label: { type: "string" },
+    url: { type: "string" },
+  },
+  required: ["label", "url"],
+  additionalProperties: false,
+} as const;
+
+const PLAN_TASK_ITEM_SCHEMA = {
+  type: "object",
+  properties: {
+    title: { type: "string" },
+    date: { type: "string" },
+    time: { type: "string" },
+    calendarId: { type: "string" },
+    notes: { type: "string" },
+    startAction: { type: "string" },
+    resources: { type: "array", items: RESOURCE_ITEM_SCHEMA },
+  },
+  required: ["title", "date"],
+  additionalProperties: false,
+} as const;
+
+/** Shape returned by the standard single-task/command call (voiceSystemPrompt)
+ *  and reused for the 429-retry call, which only ever populates a subset of it. */
+const VOICE_COMMAND_SCHEMA = {
+  type: "object",
+  properties: {
+    action: {
+      type: "string",
+      enum: ["add_task", "complete_task", "delete_task", "add_recurring_task", "create_plan", "delete_all_tasks", "get_calendars", "move_tasks"],
+    },
+    response: { type: "string" },
+    title: { type: "string" },
+    date: { type: "string" },
+    time: { type: "string" },
+    calendarId: { type: "string" },
+    notes: { type: "string" },
+    startAction: { type: "string" },
+    resources: { type: "array", items: RESOURCE_ITEM_SCHEMA },
+    frequency: { type: "string", enum: ["daily", "weekly", "monthly", "yearly"] },
+    startDate: { type: "string" },
+    endDate: { type: ["string", "null"] },
+    daysOfWeek: { type: ["array", "null"], items: { type: "integer" } },
+    targetCalendarId: { type: "string" },
+  },
+  required: ["action", "response"],
+  additionalProperties: false,
+} as const;
+// NOTE: intentionally has no "tasks" field and no dedicated move_tasks filter
+// fields. The Anthropic API's undocumented schema-complexity ceiling ("Schema
+// is too complex", 400) was empirically bisected against this exact schema:
+// it is not tied to any one nested structure (a populated "tasks" array, a
+// nested filter/dateRange object, and the flat "resources" array were each
+// tested independently) but to the *total top-level property count* — 14
+// properties (this schema, as written) succeeds; 16-17 fails regardless of
+// which fields those are or how they're shaped. So move_tasks reuses the
+// existing "title" field as the filter keyword and "startDate"/"endDate" as
+// the filter date range instead of adding dedicated fields — see the
+// move_tasks handling in handleVoiceText and the MOVE TASKS prompt section
+// below. This schema also has no "tasks" field, so it can only signal plan
+// intent (action: create_plan); handleVoiceText then re-enters with forcePlan to
+// generate the tasks via the separate, simpler PLAN_SCHEMA below (confirmed
+// independently safe despite nesting PLAN_TASK_ITEM_SCHEMA/RESOURCE_ITEM_SCHEMA, since it only
+// has 3 top-level properties).
+
+/** Shape returned by the dedicated two-step plan-generation call (planSystemPrompt). */
+const PLAN_SCHEMA = {
+  type: "object",
+  properties: {
+    action: { const: "create_plan" },
+    response: { type: "string" },
+    tasks: { type: "array", items: PLAN_TASK_ITEM_SCHEMA },
+  },
+  required: ["action", "response", "tasks"],
+  additionalProperties: false,
+} as const;
+
+/** Number of tasks/sessions a plan summary sentence promises (e.g. "18 focused sessions"), or null if it names none. */
+function claimedSessionCount(summary: unknown): number | null {
+  if (typeof summary !== "string") return null;
+  const m = summary.match(/(\d+)\s+(?:[a-z-]+\s+){0,2}(?:tasks?|sessions?)\b/i);
+  return m ? Number(m[1]) : null;
+}
 
 /** Clearing the whole schedule always requires confirmation — it's total and irreversible
  *  from the user's perspective without the undo system. Shared by all three call sites
@@ -214,13 +299,6 @@ When the user says "move tasks to X calendar" use the move_tasks action.
 When the user says "add this to my work calendar" or any named calendar use that calendar's id.
 When the user asks what calendars they have, use the get_calendars action.
 
-CRITICAL INSTRUCTION: Your response must be a single raw JSON object only.
-Do not use markdown. Do not use backticks. Do not use code fences.
-Do not write any explanation before or after the JSON.
-Do not write anything like "Here is the JSON" or "Sure!" before the JSON.
-Your entire response must start with the character { and end with the character }.
-If your response contains any character before { or after } it is wrong.
-
 Today is ${today}. Tomorrow is ${tomorrow}. Current year is ${currentYear}.
 
 --- RECURRING COMMAND (use this when user says "every", "each", "weekly", "daily", "monthly", "every Saturday", "every Monday", "every weekday", "every day", "every week", etc.) ---
@@ -240,24 +318,10 @@ Examples:
 
 --- PLAN REQUEST (use this when user asks for a study plan, workout plan, project plan, weekly schedule, exam prep, or any multi-step goal) ---
 Return this exact JSON:
-{"action":"create_plan","title":"Plan title","tasks":[{"title":"specific task title","date":"YYYY-MM-DD","time":"HH:MM","calendarId":"cal_work|cal_personal|cal_study|cal_all","notes":"what to do in this session","startAction":"one specific concrete action under 20 words, starting with a verb","resources":[{"label":"Site — exact page title","url":"https://exact/url"}]}],"response":"friendly confirmation mentioning the plan name and total number of tasks"}
+{"action":"create_plan","response":"one short sentence acknowledging the goal — do not state task or session counts"}
 
-Include a "calendarId" on every task in the plan, following the CALENDAR AWARENESS rules above.
-
-For every task generate a "startAction" field alongside title, date, time, notes, and resources.
-The startAction must be one specific concrete thing the user can do in the first 2 minutes to begin this task.
-It must reference something real — a specific resource linked in the resources array, a specific page number, a specific action, or a specific tool to open.
-It must be under 20 words.
-It must start with a verb — Watch, Read, Open, Write, Complete, Solve, Review, Draft.
-Never say "Start by" or "Begin with" — just give the direct action.
-
-Plan rules:
-- Spread tasks across multiple days — 2 to 4 tasks per day maximum
-- Use logical progression (foundations first, then build up, review at the end)
-- Make task titles specific and actionable (e.g. "Review Chapter 3: Calculus" not "Study")
-- Default time 09:00, vary times realistically (09:00, 11:00, 14:00, 16:00)
-- Generate 8-25 tasks depending on the scope of the request
-- Start dates from today (${today}) unless the user specifies otherwise
+Do NOT list tasks here. The individual tasks are generated by a dedicated planner after you return create_plan.
+Use create_plan for any open-ended goal or skill the user wants to improve at or make progress on (e.g. "help me get better at chess", "help me start my history essay").
 
 --- SINGLE TASK COMMAND (add/complete/delete one task) ---
 Return this exact JSON:
@@ -311,8 +375,8 @@ Use this when you are unsure what calendars exist before assigning a task.
 
 --- MOVE TASKS (use this when the user says "move tasks to X calendar", "move my sales calls to work calendar", "move everything from last week to personal", etc.) ---
 Return this exact JSON:
-{"action":"move_tasks","targetCalendarId":"cal_work","filter":{"title":"sales call"},"response":"Moving sales calls to Work calendar."}
-Required fields: targetCalendarId (string — the id or exact name of the destination calendar), filter (object with optional "title" keyword and/or "dateRange":{"start":"YYYY-MM-DD","end":"YYYY-MM-DD"}).
+{"action":"move_tasks","targetCalendarId":"cal_work","title":"sales call","response":"Moving sales calls to Work calendar."}
+Required fields: targetCalendarId (string — the id or exact name of the destination calendar). For move_tasks, reuse the "title" field as a keyword to match task titles, and "startDate"/"endDate" as an optional YYYY-MM-DD date range to filter by. Omit them entirely to match all tasks.
 
 Rules:
 - If no date mentioned use today (${today}). Default time: 09:00.
@@ -333,77 +397,10 @@ function findTaskByTitle(title: string) {
   );
 }
 
-function extractJson(text: string): unknown | null {
-  if (!text || typeof text !== "string") return null;
-
-  console.log("[extractJson] Input length:", text.length);
-  console.log("[extractJson] First 300 chars:", text.substring(0, 300));
-
-  // Step 1: Direct parse of trimmed text
-  const trimmed = text.trim();
-  try {
-    const parsed = JSON.parse(trimmed);
-    console.log("[extractJson] SUCCESS via direct parse");
-    return parsed;
-  } catch {}
-
-  // Step 2: Remove all variations of markdown code fences and lone backticks
-  const noFences = trimmed
-    .replace(/^```json\s*/im, "")
-    .replace(/^```\s*/im, "")
-    .replace(/\s*```$/im, "")
-    .replace(/^`/im, "")
-    .replace(/`$/im, "")
-    .trim();
-  try {
-    const parsed = JSON.parse(noFences);
-    console.log("[extractJson] SUCCESS after removing fences");
-    return parsed;
-  } catch {}
-
-  // Step 3: Find first { and last } and extract
-  const firstBrace = text.indexOf("{");
-  const lastBrace = text.lastIndexOf("}");
-  if (firstBrace !== -1 && lastBrace > firstBrace) {
-    const slice = text.slice(firstBrace, lastBrace + 1);
-    try {
-      const parsed = JSON.parse(slice);
-      console.log("[extractJson] SUCCESS via brace slice");
-      return parsed;
-    } catch {}
-  }
-
-  // Step 4: Depth counting to find valid JSON object
-  let depth = 0;
-  let start = -1;
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] === "{") {
-      if (depth === 0) start = i;
-      depth++;
-    } else if (text[i] === "}") {
-      depth--;
-      if (depth === 0 && start !== -1) {
-        const candidate = text.slice(start, i + 1);
-        try {
-          const parsed = JSON.parse(candidate);
-          console.log("[extractJson] SUCCESS via depth counting");
-          return parsed;
-        } catch {
-          start = -1;
-        }
-      }
-    }
-  }
-
-  console.error("[extractJson] FAILED all methods");
-  console.error("[extractJson] Full response was:", text);
-  return null;
-}
-
 /** Shared voice-command handler — used by both the pen/text pipeline (app/api/voice/route.ts)
  *  and the browser hold-to-record endpoint (app/api/voice-browser/route.ts), so the
  *  downstream Claude tool-use logic is only implemented once. */
-export async function handleVoiceText(text: string): Promise<NextResponse> {
+export async function handleVoiceText(text: string, opts: { forcePlan?: boolean } = {}): Promise<NextResponse> {
   try {
     console.log("[api/voice] Handler called. Task count:", getAllTasks().length);
     console.log("[api/voice] POST received text:", text);
@@ -465,6 +462,14 @@ export async function handleVoiceText(text: string): Promise<NextResponse> {
         const result = await runVoiceAgentToolLoop(text);
         addVoiceLog({ text, response: result.response, action: result.action, ok: true });
         console.log("[api/voice] Agent tool loop finished — action:", result.action);
+        if (result.action === "confirm_required" && result.pending) {
+          return NextResponse.json({
+            ok: true,
+            action: "confirm_required",
+            pending: result.pending,
+            response: result.response,
+          });
+        }
         return NextResponse.json({
           ok: true,
           action: result.action,
@@ -473,6 +478,7 @@ export async function handleVoiceText(text: string): Promise<NextResponse> {
           plan: result.plan,
           count: result.count,
           actionId: result.actionId,
+          sourcesChecked: result.sourcesChecked,
           state: getAppState(),
         });
       } catch (e) {
@@ -493,7 +499,7 @@ export async function handleVoiceText(text: string): Promise<NextResponse> {
     const today = new Date().toISOString().slice(0, 10);
 
     // ── Two-step plan approach (FIX 1 + FIX 2) ───────────────────────────────
-    const isPlanRequest = classifiedIntent === "goal_plan" || /plan|study|workout|routine|schedule|prepare|curriculum|course|week|month|learn|guide/i.test(text);
+    const isPlanRequest = opts.forcePlan || classifiedIntent === "goal_plan" || /plan|study|workout|routine|schedule|prepare|curriculum|course|week|month|learn|guide/i.test(text);
 
     if (isPlanRequest) {
       console.log("[api/voice] Detected plan request — using two-step approach");
@@ -617,7 +623,7 @@ export async function handleVoiceText(text: string): Promise<NextResponse> {
       const expectedTaskCount = Math.ceil(dayCount / taskInterval);
       console.log("[api/voice] taskInterval:", taskInterval, "| expectedTaskCount:", expectedTaskCount);
 
-      const planSystemPrompt = `You are a task generator. Return ONLY a JSON object. No markdown. No backticks. No explanation. Start with { end with }.
+      const planSystemPrompt = `You are a task generator.
 
 Today is ${today}.
 Start date: ${startDate}
@@ -668,38 +674,55 @@ Rules:
 - Space tasks exactly ${taskInterval} day${taskInterval > 1 ? "s" : ""} apart
 - Make each task different and progressive — build skills/knowledge over time
 - Vary the times between 07:00 and 20:00
-- Keep each title under 7 words and make it specific
-- Return ONLY the JSON nothing else`;
+- Keep each title under 7 words and make it specific`;
 
-      // FIX 3 — max_tokens 4096 (already set); FIX 4 — explicit user message
-      const planResponse = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-5",
-          max_tokens: 4096,
-          temperature: 0,
-          system: planSystemPrompt,
-          messages: [{
-            role: "user",
-            content: `Create a plan from ${startDate} to ${endDate} (${dayCount} days, ${expectedTaskCount} tasks, one task every ${taskInterval} day${taskInterval > 1 ? "s" : ""}). Request: ${text}`,
-          }],
-        }),
-      });
+      // A response that is schema-valid but empty, or whose own summary promises a
+      // different number of sessions than it returned, is treated as a failure and
+      // retried once — never reported to the user as a successful plan.
+      let planJson: Record<string, unknown> | null = null;
+      let rawTasks: unknown[] = [];
+      for (let attempt = 1; attempt <= 2 && rawTasks.length === 0; attempt++) {
+        const planResponse = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-5",
+            max_tokens: 4096,
+            temperature: 0,
+            system: planSystemPrompt,
+            output_config: { format: { type: "json_schema", schema: PLAN_SCHEMA } },
+            messages: [{
+              role: "user",
+              content: `Create a plan from ${startDate} to ${endDate} (${dayCount} days, ${expectedTaskCount} tasks, one task every ${taskInterval} day${taskInterval > 1 ? "s" : ""}). Request: ${text}`,
+            }],
+          }),
+        });
+        if (!planResponse.ok) {
+          console.error("[api/voice] Plan API call failed:", planResponse.status, "(attempt", attempt, ")");
+          continue;
+        }
+        try {
+          planJson = extractStructuredJson<Record<string, unknown>>(await planResponse.json());
+        } catch (e) {
+          console.error("[api/voice] Plan response parsing failed:", e instanceof Error ? e.message : e);
+          continue;
+        }
+        const candidate = Array.isArray(planJson.tasks) ? planJson.tasks : [];
+        const claimed = claimedSessionCount(planJson.response);
+        if (candidate.length === 0 || (claimed !== null && claimed !== candidate.length)) {
+          console.error("[api/voice] Plan response invalid — tasks:", candidate.length, "| claimed:", claimed, "| attempt", attempt);
+          continue;
+        }
+        rawTasks = candidate;
+      }
 
-      if (planResponse.ok) {
-        const planData = (await planResponse.json()) as { content?: { type: string; text: string }[] };
-        const planText = planData.content?.[0]?.text ?? "";
-        console.log("[api/voice] Plan response:", planText.substring(0, 300));
-
-        const planJson = extractJson(planText);
-        if (planJson && typeof planJson === "object") {
-          const cmd = planJson as Record<string, unknown>;
-          const rawTasks = Array.isArray(cmd.tasks) ? cmd.tasks : [];
+      {
+        if (planJson) {
+          const cmd = planJson;
           if (rawTasks.length > 0) {
             const taskIds: string[] = [];
             let skippedDuplicates = 0;
@@ -764,8 +787,6 @@ Rules:
             });
           }
         }
-      } else {
-        console.error("[api/voice] Plan API call failed:", planResponse.status);
       }
 
       // Fallback: add as a single generic task if plan generation failed
@@ -811,6 +832,7 @@ Rules:
         max_tokens: 4096,
         temperature: 0,
         system: voiceSystemPrompt(userContext),
+        output_config: { format: { type: "json_schema", schema: VOICE_COMMAND_SCHEMA } },
         messages: [
           { role: "user", content: text },
         ],
@@ -836,17 +858,22 @@ Rules:
             model: "claude-sonnet-4-5",
             max_tokens: 4096,
             temperature: 0,
-            system: `Return ONLY this JSON with no other text: {"action":"add_task","title":"short title","date":"${today}","time":"09:00","response":"Task added"}`,
+            system: `Extract a short task title from the user's message and respond with an add_task command. Today is ${today}.`,
+            output_config: { format: { type: "json_schema", schema: VOICE_COMMAND_SCHEMA } },
             messages: [{ role: "user", content: text.substring(0, 100) }],
           }),
         });
 
         if (retryResponse.ok) {
-          const retryData = (await retryResponse.json()) as { content?: { type: string; text: string }[] };
-          const retryText = retryData.content?.[0]?.text ?? "";
-          const retryJson = extractJson(retryText);
-          if (retryJson && typeof retryJson === "object") {
-            const cmd = retryJson as Record<string, unknown>;
+          const retryData = await retryResponse.json();
+          let retryJson: Record<string, unknown> | null = null;
+          try {
+            retryJson = extractStructuredJson<Record<string, unknown>>(retryData);
+          } catch (e) {
+            console.error("[api/voice] Retry response parsing failed:", e instanceof Error ? e.message : e);
+          }
+          if (retryJson) {
+            const cmd = retryJson;
             if (cmd.action === "add_task" && typeof cmd.title === "string" && cmd.title) {
               const retryDate = typeof cmd.date === "string" ? cmd.date : today;
               const retryTime = typeof cmd.time === "string" ? cmd.time : "09:00";
@@ -889,49 +916,22 @@ Rules:
     }
 
     const anthropicData = await anthropicResponse.json();
-    console.log("[api/voice] Anthropic raw response:", JSON.stringify(anthropicData));
 
-    if (!anthropicData.content || !anthropicData.content[0] || !anthropicData.content[0].text) {
-      console.error("[api/voice] Unexpected Anthropic response structure:", JSON.stringify(anthropicData));
-      addVoiceLog({ text, response: "Unexpected Anthropic response", action: "error", ok: false });
-      return NextResponse.json({ ok: false, error: "Unexpected Anthropic response" }, { status: 502 });
-    }
-
-    const groqText = anthropicData.content[0].text;
-    console.log("[api/voice] Anthropic text:", groqText);
-
-    const parsed = extractJson(groqText);
-    if (!parsed || typeof parsed !== "object") {
-      console.error("[api/voice] JSON parsing failed completely. Raw text:", groqText);
-
-      const lowerText = text.toLowerCase();
-      if (
-        lowerText.includes("clear") ||
-        lowerText.includes("delete all") ||
-        lowerText.includes("remove all") ||
-        lowerText.includes("wipe")
-      ) {
-        return requestClearConfirmation(text);
-      }
-
-      if (/add|create|schedule|new task|remind/i.test(text)) {
-        addVoiceLog({ text, response: "Command received but could not parse fully", action: "error", ok: false });
-        return NextResponse.json({
-          ok: false,
-          error: "Could not process that command fully. Please try again.",
-          response: "Sorry I could not process that. Try: Add a meeting tomorrow at 2pm",
-        }, { status: 422 });
-      }
-
-      addVoiceLog({ text, response: `Parse failed: ${text.substring(0, 50)}`, action: "error", ok: false });
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = extractStructuredJson<Record<string, unknown>>(anthropicData);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Could not understand that command.";
+      console.error("[api/voice] Structured response parsing failed:", message);
+      addVoiceLog({ text, response: message, action: "error", ok: false });
       return NextResponse.json({
         ok: false,
-        error: "Could not understand that command.",
+        error: message,
         response: "Sorry I did not understand that command. Please try again.",
       }, { status: 422 });
     }
 
-    const cmd = parsed as Record<string, unknown>;
+    const cmd = parsed;
     const action = cmd.action as string;
     const title = (cmd.title as string | undefined) ?? "";
     const response = (cmd.response as string | undefined) ?? "";
@@ -988,77 +988,12 @@ Rules:
     }
 
     // ── Plan ──────────────────────────────────────────────────────────────────
+    // VOICE_COMMAND_SCHEMA cannot carry a tasks array, so the model can only signal
+    // plan intent here. Hand off to the dedicated plan generator (PLAN_SCHEMA) instead
+    // of creating a plan with no tasks.
     if (action === "create_plan") {
-      const planTitle = (cmd.title as string | undefined) ?? "New Plan";
-      const rawTasks = Array.isArray(cmd.tasks) ? cmd.tasks : [];
-      const today = new Date().toISOString().slice(0, 10);
-
-      console.log("[api/voice] create_plan — title:", planTitle, "| raw tasks:", rawTasks.length);
-
-      const taskIds: string[] = [];
-      let skippedDuplicates = 0;
-      const planKind = inferPlanKind(text);
-      for (const rt of rawTasks) {
-        if (!rt || typeof rt !== "object") continue;
-        const t = rt as Record<string, unknown>;
-        const taskTitle = typeof t.title === "string" ? t.title.trim() : "";
-        if (!taskTitle) continue;
-        const taskDate = typeof t.date === "string" ? t.date : today;
-        const taskTime = typeof t.time === "string" ? t.time : "09:00";
-        const taskStartAction = typeof t.startAction === "string" ? t.startAction.trim() : undefined;
-        const taskResources = Array.isArray(t.resources)
-          ? (t.resources as unknown[]).filter(
-              (r): r is { label: string; url: string } =>
-                !!r && typeof r === "object" && typeof (r as Record<string, unknown>).label === "string" && typeof (r as Record<string, unknown>).url === "string"
-            )
-          : undefined;
-        const taskNotesForPlan = (t.notes as string) || "";
-        const taskCalendarId = resolveCalendarId(typeof t.calendarId === "string" ? t.calendarId : undefined);
-        const task = addTask({
-          title: taskTitle,
-          date: taskDate,
-          time: taskTime,
-          kind: planKind,
-          completed: false,
-          calendarId: taskCalendarId,
-          notes: taskNotesForPlan,
-          startAction: taskStartAction || undefined,
-          resources: taskResources && taskResources.length > 0 ? taskResources : undefined,
-        });
-        // Duplicates return a pre-existing task's id — excluded from the plan so
-        // undo never deletes a task the plan didn't actually create.
-        if (task.wasDuplicate) {
-          skippedDuplicates++;
-          continue;
-        }
-        taskIds.push(task.id);
-      }
-
-      const plan = addPlan({ title: planTitle, description: "", taskIds, taskCount: taskIds.length });
-
-      for (const id of taskIds) {
-        updateTask(id, { planId: plan.id });
-      }
-
-      const record = recordAction("create_plan", `Created plan "${plan.title}" with ${taskIds.length} tasks`, {
-        addedTaskIds: taskIds,
-        addedPlanId: plan.id,
-      });
-
-      const dupSuffix = skippedDuplicates > 0 ? ` Skipped ${skippedDuplicates} duplicate${skippedDuplicates > 1 ? "s" : ""}.` : "";
-      const confirmMsg = `${response} (${taskIds.length} tasks created)${dupSuffix}`;
-      addVoiceLog({ text, response: confirmMsg, action, ok: true });
-      console.log("[api/voice] create_plan success — plan:", plan.id, "| tasks:", taskIds.length, "| skipped:", skippedDuplicates);
-
-      return NextResponse.json({
-        ok: true,
-        action: "create_plan",
-        count: taskIds.length,
-        response: `${response} Created ${taskIds.length} tasks across your calendar.${dupSuffix}`,
-        plan: { id: plan.id, title: plan.title, taskCount: taskIds.length, color: plan.color },
-        actionId: record.id,
-        state: getAppState(),
-      });
+      console.log("[api/voice] create_plan from standard path — delegating to plan generator");
+      return handleVoiceText(text, { forcePlan: true });
     }
 
     // ── Clear all tasks ────────────────────────────────────────────────────────
@@ -1085,7 +1020,15 @@ Rules:
     // ── Move tasks between calendars ───────────────────────────────────────────
     if (action === "move_tasks") {
       const targetCalendarId = (cmd.targetCalendarId as string | undefined) ?? (cmd.calendarId as string | undefined);
-      const filter = (cmd.filter as { title?: string; calendarId?: string; dateRange?: { start: string; end: string } } | undefined) ?? {};
+      // move_tasks reuses the schema's existing "title"/"startDate"/"endDate" fields as its
+      // filter — see the VOICE_COMMAND_SCHEMA comment above for why there are no dedicated
+      // filterTitle/filterDateStart/filterDateEnd fields.
+      const filterTitle = cmd.title as string | undefined;
+      const filterDateStart = cmd.startDate as string | undefined;
+      const filterDateEnd = cmd.endDate as string | undefined;
+      const filter: { title?: string; calendarId?: string; dateRange?: { start: string; end: string } } = {};
+      if (filterTitle) filter.title = filterTitle;
+      if (filterDateStart && filterDateEnd) filter.dateRange = { start: filterDateStart, end: filterDateEnd };
 
       if (!targetCalendarId) {
         addVoiceLog({ text, response: "No target calendar specified", action, ok: false });
@@ -1104,34 +1047,26 @@ Rules:
       }
 
       const matching = getTasksMatchingFilter(filter);
-      if (matching.length > MOVE_CONFIRM_THRESHOLD) {
-        const pending = addPendingConfirmation(
-          "move_tasks",
-          `Move ${matching.length} tasks to your ${targetCalendar.name} calendar?`,
-          { filter, targetCalendarId: targetCalendar.id, targetCalendarName: targetCalendar.name }
-        );
-        addVoiceLog({ text, response: "Awaiting confirmation to move tasks", action: "confirm_required", ok: true });
-        return NextResponse.json({
-          ok: true,
-          action: "confirm_required",
-          pending: { id: pending.id, kind: pending.kind, message: pending.message },
-          response: pending.message,
-        });
+      if (matching.length === 0) {
+        const msg = "No matching tasks to move.";
+        addVoiceLog({ text, response: msg, action, ok: true });
+        return NextResponse.json({ ok: true, action: "move_tasks", moved: 0, response: msg, state: getAppState() });
       }
 
-      const moves = matching.map((t) => ({ taskId: t.id, fromCalendarId: t.calendarId ?? null }));
-      const moved = moveTasksToCalendar(filter, targetCalendar.id);
-      const record = recordAction("move_tasks", `Moved ${moved} tasks to ${targetCalendar.name}`, { moves });
-      const msg = `Moved ${moved} tasks to your ${targetCalendar.name} calendar.`;
-      addVoiceLog({ text, response: msg, action, ok: true });
-      console.log("[api/voice] move_tasks success — moved:", moved, "-> ", targetCalendar.id);
+      // Any move that changes existing tasks' calendars requires explicit confirmation,
+      // regardless of how many tasks match — moving is a change to something that already
+      // exists on the calendar, not new content, so it's held to the same bar as delete/reschedule.
+      const pending = addPendingConfirmation(
+        "move_tasks",
+        `Move ${matching.length} task${matching.length !== 1 ? "s" : ""} to your ${targetCalendar.name} calendar?`,
+        { filter, targetCalendarId: targetCalendar.id, targetCalendarName: targetCalendar.name }
+      );
+      addVoiceLog({ text, response: "Awaiting confirmation to move tasks", action: "confirm_required", ok: true });
       return NextResponse.json({
         ok: true,
-        action: "move_tasks",
-        moved,
-        response: msg,
-        actionId: record.id,
-        state: getAppState(),
+        action: "confirm_required",
+        pending: { id: pending.id, kind: pending.kind, message: pending.message },
+        response: pending.message,
       });
     }
 
@@ -1186,11 +1121,20 @@ Rules:
         addVoiceLog({ text, response: `Task not found: ${title}`, action, ok: false });
         return NextResponse.json({ ok: false, error: `Task not found: ${title}` }, { status: 404 });
       }
-      deleteTask(found.id);
-      const deleteRecord = recordAction("delete_task", `Deleted "${found.title}"`, { removedTasks: [found] });
-      console.log("[api/voice] delete_task success:", found.id);
-      addVoiceLog({ text, response, action, ok: true });
-      return NextResponse.json({ ok: true, action, response, actionId: deleteRecord.id, state: getAppState() });
+      // Deleting a task that already exists on the calendar is a destructive change to
+      // existing content, not new creation — always confirm before it happens.
+      const pending = addPendingConfirmation(
+        "delete_task",
+        `Delete "${found.title}" from your schedule?`,
+        { taskId: found.id, title: found.title }
+      );
+      addVoiceLog({ text, response: "Awaiting confirmation to delete task", action: "confirm_required", ok: true });
+      return NextResponse.json({
+        ok: true,
+        action: "confirm_required",
+        pending: { id: pending.id, kind: pending.kind, message: pending.message },
+        response: pending.message,
+      });
     }
 
     console.log("[api/voice] Unknown action from AI:", action);

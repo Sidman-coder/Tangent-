@@ -86,6 +86,42 @@ export async function summarizeManualUrl(url: string): Promise<string> {
   }
 }
 
+const FIND_SOURCES_SYSTEM_PROMPT = `You suggest RSS feeds and websites a user could add as daily-brief sources, based on a topic or interest they describe. Return a JSON array (2-5 items) of objects shaped exactly like:
+[{ "label": "short display name", "type": "rss" or "manual_url", "url": "https://...", "reason": "one short sentence on why this fits" }]
+Prefer well-known, stable, real feeds/sites. Use "rss" only when you are confident the URL is an actual RSS/Atom feed; otherwise use "manual_url" for a normal page. Return ONLY the JSON array. No other text.`;
+
+export type SuggestedBriefSource = {
+  label: string;
+  type: "rss" | "manual_url";
+  url: string;
+  reason: string;
+};
+
+/** AI-assisted source discovery — user describes an interest, picks which suggestions to keep. */
+export async function findSuggestedSources(query: string): Promise<SuggestedBriefSource[]> {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+  try {
+    const text = await callHaikuCached(FIND_SOURCES_SYSTEM_PROMPT, trimmed, 500);
+    const cleaned = text.replace(/```json|```/g, "").trim();
+    const parsed = JSON.parse(cleaned);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (item): item is SuggestedBriefSource =>
+          item &&
+          typeof item.label === "string" &&
+          (item.type === "rss" || item.type === "manual_url") &&
+          typeof item.url === "string" &&
+          typeof item.reason === "string"
+      )
+      .slice(0, 5);
+  } catch (e) {
+    console.error("[brief-sources] findSuggestedSources error:", e);
+    return [];
+  }
+}
+
 const BRIEF_NARRATION_SYSTEM_PROMPT = `You write the narration for a user's daily brief. You will receive plain-text data that has already been assembled: stale-task reminders, feed headlines, and page summaries. Stitch it into 2-4 short, direct sentences. Do not invent facts that aren't in the data. No filler, no chatbot tone. Return plain text only, no markdown, no JSON.`;
 
 /** Final narration pass — only called after stale-check and RSS data is assembled with zero AI cost. */

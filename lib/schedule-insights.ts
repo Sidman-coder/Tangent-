@@ -1,9 +1,18 @@
 import type { Task } from "./types";
 
+/** A natural next action for an insight — deep-links into the calendar,
+ *  optionally opening the add-task modal pre-filled for that date/time. */
+export type ScheduleInsightLink = {
+  label: string;
+  date: string;
+  time?: string;
+};
+
 export type ScheduleInsight = {
   title: string;
   detail: string;
   tone: "neutral" | "positive" | "warning";
+  link?: ScheduleInsightLink;
 };
 
 type CalendarDate = { year: number; month: number; day: number };
@@ -95,6 +104,7 @@ export function getMonthDensity(tasks: Task[], year: number, monthIndex: number)
   }
 
   for (const task of tasks) {
+    if (task.completed) continue;
     const date = readCalendarDate(task.date);
     if (!date || date.year !== year || date.month !== monthIndex + 1) continue;
     density.set(task.date, (density.get(task.date) ?? 0) + 1);
@@ -133,6 +143,7 @@ export function getSchedulePulse(tasks: Task[], now: Date = new Date()): Schedul
       title: "A heavier week than usual",
       detail: `This week has ${currentWeekTasks.length} scheduled tasks, above your prior four-week average of ${formatAverage(previousFourWeekAverage)}.`,
       tone: "warning",
+      link: { label: "View this week", date: weekStartYmd },
     };
   }
 
@@ -143,10 +154,21 @@ export function getSchedulePulse(tasks: Task[], now: Date = new Date()): Schedul
   const openEvenings = 7 - scheduledEvenings.size;
 
   if (openEvenings >= 3) {
+    const todayYmd = toYmd(now);
+    let openEveningDate: string | undefined;
+    for (let i = 0; i < 7; i++) {
+      const candidate = toYmd(addDays(weekStart, i));
+      if (candidate < todayYmd) continue;
+      if (!scheduledEvenings.has(candidate)) {
+        openEveningDate = candidate;
+        break;
+      }
+    }
     return {
       title: "Open evenings this week",
       detail: `${openEvenings} evenings have no tasks scheduled from 5 PM onward.`,
       tone: "positive",
+      link: openEveningDate ? { label: "Add a task", date: openEveningDate, time: "18:00" } : undefined,
     };
   }
 

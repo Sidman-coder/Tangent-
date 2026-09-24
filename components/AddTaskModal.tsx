@@ -7,9 +7,11 @@ type Frequency = "daily" | "weekly" | "monthly" | "yearly";
 
 interface Props {
   initialDate?: string;
+  initialTime?: string;
   initialCalendarId?: string | null;
   onClose: () => void;
   onSuccess?: () => void;
+  onDuplicate?: () => void;
 }
 
 const DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -50,10 +52,10 @@ function countOccurrences(
   return count;
 }
 
-export default function AddTaskModal({ initialDate, initialCalendarId = null, onClose, onSuccess }: Props) {
+export default function AddTaskModal({ initialDate, initialTime, initialCalendarId = null, onClose, onSuccess, onDuplicate }: Props) {
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(initialDate ?? todayStr());
-  const [time, setTime] = useState("09:00");
+  const [time, setTime] = useState(initialTime ?? "09:00");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -123,7 +125,7 @@ export default function AddTaskModal({ initialDate, initialCalendarId = null, on
         });
       } else {
         console.log("[AddTaskModal] Submitting single task:", title, date, time);
-        await fetch("/api/tasks", {
+        const res = await fetch("/api/tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -135,6 +137,8 @@ export default function AddTaskModal({ initialDate, initialCalendarId = null, on
             notes: notes.trim() || undefined,
           }),
         });
+        const data = (await res.json().catch(() => null)) as { wasDuplicate?: boolean } | null;
+        if (data?.wasDuplicate) onDuplicate?.();
       }
     } finally {
       setSubmitting(false);

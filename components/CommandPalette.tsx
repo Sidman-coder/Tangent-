@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppState } from "@/components/AppStateProvider";
 import ActionReceipt from "@/components/ActionReceipt";
+import { useVoiceCapture, type VoiceCaptureResult } from "@/hooks/useVoiceCapture";
 import { Check } from "lucide-react";
 
 type QuickAction = {
@@ -47,15 +48,9 @@ export default function CommandPalette() {
   const [receiptId, setReceiptId] = useState<string | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<{ id: string; message: string } | null>(null);
 
-  const [voiceStatus, setVoiceStatus] = useState<"idle" | "recording" | "uploading">("idle");
-
   const inputRef = useRef<HTMLInputElement>(null);
   const openRef = useRef(open);
   openRef.current = open;
-
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const chunksRef = useRef<BlobPart[]>([]);
 
   const closePalette = useCallback(() => {
     setOpen(false);
@@ -214,73 +209,32 @@ export default function CommandPalette() {
   );
 
   // Hold Space (400ms) to start voice recording, when no form field is focused and the palette is closed.
-  const stopStream = useCallback(() => {
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-  }, []);
-
-  const uploadRecording = useCallback(
-    async (blob: Blob) => {
-      setVoiceStatus("uploading");
-      try {
-        const formData = new FormData();
-        formData.append("audio", blob, "recording.webm");
-        const res = await fetch("/api/voice-browser", { method: "POST", body: formData });
-        const data = (await res.json()) as {
-          ok: boolean;
-          response?: string;
-          error?: string;
-          action?: string;
-          actionId?: string;
-          pending?: { id: string; kind: string; message: string };
-        };
-        if (!res.ok || !data.ok) throw new Error(data.error || "Voice command failed");
-        if (data.action === "confirm_required" && data.pending) {
-          setReceiptId(null);
-          setPendingConfirm({ id: data.pending.id, message: data.pending.message });
-          return;
-        }
-        setReceiptId(data.actionId ?? null);
-        showToast(data.response ?? "Done!");
-        await refresh();
-      } catch (e) {
+  const handleVoiceResult = useCallback(
+    async (result: VoiceCaptureResult) => {
+      if (result.action === "confirm_required" && result.pending) {
         setReceiptId(null);
-        showToast(e instanceof Error ? e.message : "Voice command failed");
-      } finally {
-        setVoiceStatus("idle");
+        setPendingConfirm({ id: result.pending.id, message: result.pending.message });
+        return;
       }
+      setReceiptId(result.actionId ?? null);
+      showToast(result.response ?? "Done!");
+      await refresh();
     },
     [refresh, showToast]
   );
 
-  const startVoiceRecording = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      chunksRef.current = [];
-      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
-      mediaRecorderRef.current = recorder;
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
-      recorder.onstop = () => {
-        stopStream();
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        if (blob.size > 0) void uploadRecording(blob);
-        else setVoiceStatus("idle");
-      };
-      recorder.start();
-      setVoiceStatus("recording");
-    } catch (e) {
-      showToast(e instanceof Error ? e.message : "Microphone access denied");
-      setVoiceStatus("idle");
-    }
-  }, [stopStream, uploadRecording, showToast]);
+  const handleVoiceError = useCallback(
+    (message: string) => {
+      setReceiptId(null);
+      showToast(message);
+    },
+    [showToast]
+  );
 
-  const stopVoiceRecording = useCallback(() => {
-    const recorder = mediaRecorderRef.current;
-    if (recorder && recorder.state === "recording") recorder.stop();
-  }, []);
+  const { status: voiceStatus, startRecording: startVoiceRecording, stopRecording: stopVoiceRecording } = useVoiceCapture({
+    onResult: handleVoiceResult,
+    onError: handleVoiceError,
+  });
 
   useEffect(() => {
     let holdTimer: number | null = null;

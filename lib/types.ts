@@ -26,11 +26,12 @@ export type Task = {
   kind?: TaskKind;
   calendarId?: string | null;
   planId?: string | null;
-  categoryId?: string | null;
   notes?: string;
   recurring?: RecurringConfig;
   resources?: Array<{ label: string; url: string }>;
   startAction?: string;
+  /** Set when this task was created by an external ingestion path rather than the user or AI. */
+  source?: "canvas";
 };
 
 export type Plan = {
@@ -41,13 +42,6 @@ export type Plan = {
   color: string;
   createdAt: string;
   taskCount: number;
-};
-
-export type Category = {
-  id: string;
-  name: string;
-  color: string;
-  icon?: string;
 };
 
 export type CalendarCategory = "ALL" | string;
@@ -94,7 +88,6 @@ export type AppState = {
   lastVoiceCommand: string | null;
   lastVoiceResponse: string | null;
   plans: Plan[];
-  categories: Category[];
 };
 
 export interface ContextEntry {
@@ -124,6 +117,20 @@ export interface BriefConfig {
   sources: BriefSource[];
   cadence: "daily" | "weekdays" | "weekly";
   deliveryTime: string; // "07:00"
+}
+
+export interface CanvasFeedConfig {
+  icsUrl: string;
+  connectedAt: string;
+  lastSyncedAt: string | null;
+  lastSyncCount: number;
+}
+
+// An Anthropic Message Batch submitted by the daily-brief cron job, awaiting a
+// result on a later cron tick. See app/api/cron/daily-brief/route.ts.
+export interface PendingBriefBatch {
+  batchId: string;
+  submittedAt: string;
 }
 
 export interface Notification {
@@ -182,14 +189,3 @@ export interface PendingConfirmation {
   payload: Record<string, unknown>;
 }
 
-// Legacy command type kept for /api/commands route (calendar add event etc.)
-export type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6;
-
-export type Command =
-  | { type: "ADD_TASK"; title: string; date?: string; time?: string; kind?: TaskKind; dayOfWeek?: DayOfWeek; steps?: string[]; calendarId?: string | null }
-  | { type: "UPDATE_TASK"; id: string; title?: string; date?: string; time?: string; kind?: TaskKind; dayOfWeek?: DayOfWeek; steps?: string[] }
-  | { type: "REMOVE_TASK"; id: string }
-  | { type: "ADD_CALENDAR"; name: string; category?: CalendarCategory; color?: string }
-  | { type: "ADD_EVENT"; calendarId: string; title: string; date: string; time?: string; steps?: string[] }
-  | { type: "UPDATE_USER"; displayName?: string; email?: string }
-  | { type: "SET_WEEKLY_PLAN"; items: string[] };

@@ -4,7 +4,6 @@ import { useState, useCallback, useEffect } from "react";
 import { useAppState } from "@/components/AppStateProvider";
 import AddTaskModal from "@/components/AddTaskModal";
 import Button from "@/components/ui/Button";
-import PageHeader from "@/components/ui/PageHeader";
 import SidePeek from "@/components/ui/SidePeek";
 import { handleResourceClick } from "@/lib/task-utils";
 import { toYMD, formatTime12 } from "@/lib/dates";
@@ -34,11 +33,11 @@ function getKindColor(kind?: string): string {
 
 const KIND_SORT_ORDER = ["school", "academic-ec", "commitment", "side-ec", "personal"];
 const KIND_DISPLAY_NAME: Record<string, string> = {
-  school: "SCHOOL",
-  commitment: "COMMITMENT",
-  "academic-ec": "ACADEMICS",
-  "side-ec": "ACTIVITIES",
-  personal: "PERSONAL",
+  school: "School",
+  commitment: "Commitment",
+  "academic-ec": "Academics",
+  "side-ec": "Activities",
+  personal: "Personal",
 };
 const NO_KIND = "__none__";
 
@@ -114,6 +113,8 @@ export default function CalendarPage() {
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [addModalDate, setAddModalDate] = useState(todayYmd);
+  const [addModalTime, setAddModalTime] = useState<string | undefined>(undefined);
+  const [duplicateToast, setDuplicateToast] = useState(false);
   const [planFilter, setPlanFilter] = useState<string | null>(null);
   const [recurDeleteTarget, setRecurDeleteTarget] = useState<RecurDeleteTarget | null>(null);
   const [recurEditTarget, setRecurEditTarget] = useState<RecurEditTarget | null>(null);
@@ -201,10 +202,10 @@ export default function CalendarPage() {
   const addCalendar = async () => {
     const name = newCalName.trim();
     if (!name) return;
-    await fetch("/api/commands", {
+    await fetch("/api/calendars", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ commands: [{ type: "ADD_CALENDAR", name, category: "personal" }] }),
+      body: JSON.stringify({ name }),
     });
     setNewCalName("");
     setShowAddCal(false);
@@ -265,12 +266,19 @@ export default function CalendarPage() {
     setSelectedDay(ymd);
   }, []);
 
-  // Cross-page "View Task" navigation from WhatToDoNow lands here with ?date=YYYY-MM-DD
+  // Cross-page "Open" navigation (e.g. the Today page's focus card or an insight
+  // link) lands here with ?date=YYYY-MM-DD, optionally &add=1[&time=HH:MM] to
+  // jump straight into adding a task on that date.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const dateParam = params.get("date");
     if (dateParam) {
       openTaskDate(dateParam);
+      if (params.get("add") === "1") {
+        setAddModalDate(dateParam);
+        setAddModalTime(params.get("time") ?? undefined);
+        setShowAddModal(true);
+      }
       window.history.replaceState(null, "", "/calendar");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -282,38 +290,14 @@ export default function CalendarPage() {
   return (
     <>
       <div className="calendar-page">
-        <PageHeader
-          eyebrow="Schedule"
-          title="Calendar"
-          description="See your workload, commitments, and open space in one place."
-          actions={
-            <Button
-              variant="primary"
-              onClick={() => { setAddModalDate(todayYmd); setShowAddModal(true); }}
-              icon={<Plus size={16} aria-hidden="true" />}
-            >
-              New task
-            </Button>
-          }
-        />
-
-        {activePlan && (
-          <div className="plan-filter-banner" style={{ borderLeft: `3px solid ${activePlan.color}` }}>
-            <span>Filtering by plan: <strong>{activePlan.title}</strong></span>
-            <Button variant="quiet" size="sm" onClick={() => setPlanFilter(null)} icon={<X size={14} aria-hidden="true" />}>Clear filter</Button>
-          </div>
-        )}
-
         <section className="calendar-toolbar" aria-label="Calendar controls">
           <div className="calendar-toolbar-primary">
-            <div>
-              <span className="calendar-toolbar-label">Month</span>
-              <h2 className="cal-month-heading">{monthLabel}</h2>
-            </div>
+            <Button variant="secondary" size="sm" onClick={() => { setYear(now.getFullYear()); setMonth(now.getMonth()); }}>Today</Button>
             <div className="calendar-month-actions">
-              <Button variant="quiet" size="sm" onClick={prevMonth} aria-label="Previous month" icon={<ChevronLeft size={16} aria-hidden="true" />}>Prev</Button>
-              <Button variant="quiet" size="sm" onClick={nextMonth} aria-label="Next month">Next <ChevronRight size={16} aria-hidden="true" /></Button>
+              <Button variant="quiet" size="sm" onClick={prevMonth} aria-label="Previous month" icon={<ChevronLeft size={16} aria-hidden="true" />}>Previous</Button>
+              <Button variant="quiet" size="sm" onClick={nextMonth} aria-label="Next month" icon={<ChevronRight size={16} aria-hidden="true" />}>Next</Button>
             </div>
+            <h1 className="cal-month-heading">{monthLabel}</h1>
           </div>
           <div className="cal-segment-bar" role="tablist" aria-label="Filter by calendar">
             {calendars.map((cal, idx) => (
@@ -350,6 +334,22 @@ export default function CalendarPage() {
           </div>
         )}
       </section>
+
+      {activePlan && (
+        <div className="plan-filter-banner" style={{ borderLeft: `3px solid ${activePlan.color}` }}>
+          <span>Filtering by plan: <strong>{activePlan.title}</strong></span>
+          <Button variant="quiet" size="sm" onClick={() => setPlanFilter(null)} icon={<X size={14} aria-hidden="true" />}>Clear filter</Button>
+        </div>
+      )}
+
+      <div className="cal-kind-legend" aria-label="Task kind color legend">
+        {KIND_SORT_ORDER.map((kind) => (
+          <span key={kind} className="cal-kind-legend-item">
+            <span className="cal-kind-legend-dot" style={{ background: getKindColor(kind) }} />
+            {KIND_DISPLAY_NAME[kind]}
+          </span>
+        ))}
+      </div>
 
       <section className="calendar-grid-shell">
         <div className="cal-month-grid">
@@ -436,14 +436,14 @@ export default function CalendarPage() {
                 <div key={kind ?? "other"} className="day-panel-kind-group">
                   <div className="day-panel-kind-header">
                     <span className="day-panel-kind-pill" style={{ background: getKindColor(kind) }} />
-                    <span className="day-panel-kind-label">{KIND_DISPLAY_NAME[kind ?? ""] ?? "OTHER"}</span>
+                    <span className="day-panel-kind-label">{KIND_DISPLAY_NAME[kind ?? ""] ?? "Other"}</span>
                   </div>
                   {tasks.map((t) => {
                   const plan = getPlan(t.planId);
                   const freq = recurringLabel(t);
                   const categoryColor = getTaskCategoryColor(t);
                   return (
-                    <div key={t.id} className="calendar-modal-task" style={{ borderLeftColor: categoryColor }}>
+                    <div key={t.id} className={`calendar-modal-task${t.completed ? " calendar-modal-task--done" : ""}`} style={{ borderLeftColor: categoryColor }}>
                       <div className="calendar-modal-task-top">
                         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0 }}>
                           <input
@@ -517,6 +517,7 @@ export default function CalendarPage() {
               className="calendar-peek-add"
               onClick={() => {
                 setAddModalDate(selectedDay);
+                setAddModalTime(undefined);
                 setShowAddModal(true);
                 setSelectedDay(null);
               }}
@@ -567,13 +568,25 @@ export default function CalendarPage() {
       {showAddModal && (
         <AddTaskModal
           initialDate={addModalDate}
+          initialTime={addModalTime}
           initialCalendarId={activeCal.category !== "ALL" ? activeCal.id : null}
           onClose={() => {
             setShowAddModal(false);
+            setAddModalTime(undefined);
             setSelectedDay(addModalDate);
           }}
           onSuccess={() => void refresh()}
+          onDuplicate={() => {
+            setDuplicateToast(true);
+            window.setTimeout(() => setDuplicateToast(false), 3000);
+          }}
         />
+      )}
+
+      {duplicateToast && (
+        <div className="command-toast" role="status">
+          <span>Already on your calendar</span>
+        </div>
       )}
 
       {/* Recurring delete modal */}

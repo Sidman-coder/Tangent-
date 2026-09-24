@@ -1,15 +1,16 @@
 // lib/deepgram.ts
 //
-// PLACEHOLDER STT PROVIDER — Deepgram nova-2, added per explicit user instruction
-// even though DEEPGRAM_API_KEY is not yet configured. To swap providers later,
-// replace the body of transcribeAudio() below (see SETUP_GMAIL_CANVAS.md for
-// details on which env var to change and where).
+// Deepgram nova-2 speech-to-text provider for browser voice capture. To swap
+// providers later, replace the body of transcribeAudio() below (see
+// SETUP_GMAIL_CANVAS.md for details on which env var to change and where).
 
 /** Transcribes a raw audio buffer via Deepgram's nova-2 model. Requires DEEPGRAM_API_KEY. */
 export async function transcribeAudio(audioBuffer: Buffer, mimeType: string): Promise<string> {
   const apiKey = process.env.DEEPGRAM_API_KEY;
   if (!apiKey) {
-    throw new Error("Missing DEEPGRAM_API_KEY in .env.local");
+    // Surfaced as-is to the caller (app/api/voice-browser) and shown to the
+    // student in the voice UI, rather than a generic 500 or a silent failure.
+    throw new Error("Voice capture isn't set up yet — DEEPGRAM_API_KEY is missing from .env.local.");
   }
 
   const res = await fetch("https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true", {

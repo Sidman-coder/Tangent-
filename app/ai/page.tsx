@@ -7,11 +7,12 @@ import ActionReceipt from "@/components/ActionReceipt";
 import PageHeader from "@/components/ui/PageHeader";
 import type { ChatSession } from "@/lib/store";
 import type { BriefConfig, BriefSource } from "@/lib/types";
+import type { SuggestedBriefSource } from "@/lib/brief-sources";
 import { ArrowUp, Sparkles, CalendarDays, Clock3, Zap, X } from "lucide-react";
 
-type ConsoleMode = "ask" | "do" | "brief";
+type ConsoleMode = "chat" | "brief";
 
-const MODE_LABEL: Record<ConsoleMode, string> = { ask: "Ask", do: "Do", brief: "Brief" };
+const MODE_LABEL: Record<ConsoleMode, string> = { chat: "Chat", brief: "Brief" };
 const CADENCE_LABEL: Record<BriefConfig["cadence"], string> = {
   daily: "Daily",
   weekdays: "Weekdays",
@@ -34,12 +35,39 @@ type Turn = {
   id: string;
   request: string;
   tools: string[];
+  sourcesChecked: string[];
   response: string;
   actionId?: string;
   actionLabel?: string;
+  pendingConfirm?: { id: string; message: string } | null;
 };
 
 const LIVE_STEPS = ["Reading your request", "Checking your tasks", "Composing a response"] as const;
+
+/** Persists the active chat session id across navigation/refresh within the same
+ *  browser (not the server — the in-memory store still resets on server restart,
+ *  in which case the GET below 404s and we fall back to starting fresh). */
+const SESSION_STORAGE_KEY = "tangent:ai:activeSessionId";
+
+/** Reconstructs the turn list (newest-first, matching the `turns` state convention)
+ *  from a session's chronological [user, assistant, user, assistant, …] messages. */
+function turnsFromMessages(messages: { role: "user" | "assistant"; content: string }[]): Turn[] {
+  const result: Turn[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    if (messages[i].role !== "user") continue;
+    const next = messages[i + 1];
+    const response = next && next.role === "assistant" ? next.content : "";
+    result.push({
+      id: crypto.randomUUID(),
+      request: messages[i].content,
+      tools: [],
+      sourcesChecked: [],
+      response,
+    });
+    if (next && next.role === "assistant") i++;
+  }
+  return result.reverse();
+}
 
 function cleanMessage(text: string): string {
   if (!text) return "Done! Your request has been processed.";
@@ -108,7 +136,7 @@ export default function AiPage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const [mode, setMode] = useState<ConsoleMode>("ask");
+  const [mode, setMode] = useState<ConsoleMode>("chat");
   const [briefSources, setBriefSources] = useState<BriefSource[]>([]);
   const [briefCadence, setBriefCadence] = useState<BriefConfig["cadence"]>("daily");
   const [briefTime, setBriefTime] = useState("07:00");
@@ -118,6 +146,31 @@ export default function AiPage() {
   const [newSourceUrl, setNewSourceUrl] = useState("");
   const [savingBrief, setSavingBrief] = useState(false);
   const [briefSaved, setBriefSaved] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [findLoading, setFindLoading] = useState(false);
+  const [findError, setFindError] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<SuggestedBriefSource[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const storedId = window.localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!storedId) return;
+    fetch(`/api/sessions?sessionId=${encodeURIComponent(storedId)}`)
+      .then((res) => res.json())
+      .then((data: { ok?: boolean; session?: ChatSession }) => {
+        if (cancelled) return;
+        if (data.ok && data.session) {
+          setActiveSessionId(data.session.id);
+          setTurns(turnsFromMessages(data.session.messages));
+        } else {
+          window.localStorage.removeItem(SESSION_STORAGE_KEY);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     fetch("/api/brief-config")
@@ -152,6 +205,47 @@ export default function AiPage() {
   const removeBriefSource = useCallback((id: string) => {
     setBriefSources((prev) => prev.filter((s) => s.id !== id));
     setBriefSaved(false);
+  }, []);
+
+  const findSources = useCallback(async () => {
+    const query = findQuery.trim();
+    if (!query || findLoading) return;
+    setFindLoading(true);
+    setFindError(null);
+    try {
+      const res = await fetch("/api/brief-sources/find", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setSuggestions(data.suggestions ?? []);
+        if (!data.suggestions?.length) setFindError("No sources found — try a different topic.");
+      } else {
+        setFindError(data.error ?? "Couldn't find sources.");
+      }
+    } catch {
+      setFindError("Couldn't find sources.");
+    } finally {
+      setFindLoading(false);
+    }
+  }, [findQuery, findLoading]);
+
+  const confirmSuggestion = useCallback((suggestion: SuggestedBriefSource) => {
+    const source: BriefSource = {
+      id: crypto.randomUUID(),
+      type: suggestion.type,
+      label: suggestion.label,
+      url: suggestion.url,
+    };
+    setBriefSources((prev) => [...prev, source]);
+    setSuggestions((prev) => prev.filter((s) => s.url !== suggestion.url));
+    setBriefSaved(false);
+  }, []);
+
+  const dismissSuggestion = useCallback((suggestion: SuggestedBriefSource) => {
+    setSuggestions((prev) => prev.filter((s) => s.url !== suggestion.url));
   }, []);
 
   const saveBriefSettings = useCallback(async () => {
@@ -193,6 +287,7 @@ export default function AiPage() {
         if (data.ok) {
           sessionId = data.session.id;
           setActiveSessionId(sessionId);
+          window.localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
           isNewSession = true;
         }
       } catch {}
@@ -233,8 +328,34 @@ export default function AiPage() {
         actionId?: string;
         plan?: { id: string; title: string; taskCount: number; color: string } | null;
         recurringCount?: number;
+        sourcesChecked?: string[];
+        pending?: { id: string; kind: string; message: string };
       };
       if (!res.ok || !data.ok) throw new Error(data.error || "Request failed");
+
+      if (data.action === "confirm_required" && data.pending) {
+        const pendingId = data.pending.id;
+        const pendingMessage = data.pending.message;
+        setTurns((prev) => [
+          {
+            id: crypto.randomUUID(),
+            request: userText,
+            tools: toolsForAction("confirm_required"),
+            sourcesChecked: [],
+            response: pendingMessage,
+            pendingConfirm: { id: pendingId, message: pendingMessage },
+          },
+          ...prev,
+        ]);
+        if (sessionId) {
+          void fetch("/api/sessions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "add_message", sessionId, role: "assistant", content: pendingMessage }),
+          });
+        }
+        return;
+      }
 
       const rawReply = data.message ?? data.reply ?? data.response ?? data.text ?? "";
       const reply = cleanMessage(typeof rawReply === "string" ? rawReply : "");
@@ -253,6 +374,7 @@ export default function AiPage() {
           id: crypto.randomUUID(),
           request: userText,
           tools: toolsForAction(action),
+          sourcesChecked: data.sourcesChecked ?? [],
           response: reply,
           actionId: data.actionId,
           actionLabel: notif ?? undefined,
@@ -283,6 +405,7 @@ export default function AiPage() {
           id: crypto.randomUUID(),
           request: userText,
           tools: [],
+          sourcesChecked: [],
           response: "Something went wrong. Check that ANTHROPIC_API_KEY is set in .env.local.",
         },
         ...prev,
@@ -293,17 +416,58 @@ export default function AiPage() {
     }
   }, [input, busy, activeSessionId, turns, refresh]);
 
+  const resolveConfirm = useCallback(async (turnId: string, pendingId: string, confirm: boolean) => {
+    setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, pendingConfirm: null } : t)));
+    try {
+      const res = await fetch("/api/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: pendingId, confirm }),
+      });
+      const data = (await res.json()) as { ok?: boolean; response?: string; error?: string; actionId?: string };
+      const reply = !res.ok || !data.ok
+        ? (data.error || "Something went wrong.")
+        : (data.response || (confirm ? "Done." : "Cancelled."));
+
+      setTurns((prev) =>
+        prev.map((t) =>
+          t.id === turnId
+            ? {
+                ...t,
+                response: reply,
+                actionId: confirm && data.ok ? data.actionId : undefined,
+                actionLabel: confirm && data.ok && data.actionId ? "Change applied" : undefined,
+              }
+            : t
+        )
+      );
+
+      if (activeSessionId) {
+        void fetch("/api/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "add_message", sessionId: activeSessionId, role: "assistant", content: reply }),
+        });
+      }
+
+      await refresh();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Something went wrong.";
+      setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, response: message } : t)));
+    }
+  }, [activeSessionId, refresh]);
+
   return (
     <div className="console-page">
       <PageHeader
         eyebrow="Assistant"
-        title="Console"
+        title="Tangent AI"
         description="Plan your day, reorganize work, or ask about your schedule."
       />
 
       <div className="console-mode-row-wrap">
-        <div className="console-mode-row" role="tablist" aria-label="Console mode">
-          {(["ask", "do", "brief"] as const).map((m) => (
+        <div className="console-mode-row" role="tablist" aria-label="Tangent AI mode">
+          {(["chat", "brief"] as const).map((m) => (
             <button
               key={m}
               type="button"
@@ -339,6 +503,53 @@ export default function AiPage() {
                   >
                     <X size={14} />
                   </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="card-sm console-brief-find">
+              <label className="console-brief-field">
+                <span>Find sources</span>
+                <div className="console-brief-find-row">
+                  <input
+                    className="console-brief-text-input"
+                    value={findQuery}
+                    onChange={(e) => setFindQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void findSources();
+                      }
+                    }}
+                    placeholder="e.g. AI news, F1, climate policy"
+                  />
+                  <button
+                    type="button"
+                    className="console-chip"
+                    onClick={() => void findSources()}
+                    disabled={findLoading || !findQuery.trim()}
+                  >
+                    {findLoading ? "Finding…" : "Find sources"}
+                  </button>
+                </div>
+              </label>
+              {findError && <p className="console-brief-empty">{findError}</p>}
+              {suggestions.map((s) => (
+                <div key={s.url} className="card-sm console-brief-suggestion-row">
+                  <div className="console-brief-source-info">
+                    <span className="console-brief-source-label">{s.label}</span>
+                    <span className="console-brief-source-type">
+                      {s.type === "rss" ? "RSS feed" : "Website URL"} · {s.reason}
+                    </span>
+                  </div>
+                  <div className="console-brief-actions">
+                    <button type="button" className="console-chip" onClick={() => dismissSuggestion(s)}>
+                      Skip
+                    </button>
+                    <button type="button" className="console-chip" onClick={() => confirmSuggestion(s)}>
+                      Add
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -467,7 +678,32 @@ export default function AiPage() {
                       {t.tools.map((tool) => <span key={tool} className="console-tool-chip">{tool}</span>)}
                     </div>
                   )}
+                  {t.sourcesChecked.length > 0 && (
+                    <div className="console-turn-sources">
+                      {t.sourcesChecked.map((source) => (
+                        <span key={source} className="console-source-chip">Checked {source}</span>
+                      ))}
+                    </div>
+                  )}
                   <div className="console-turn-response">{t.response}</div>
+                  {t.pendingConfirm && (
+                    <div className="confirm-toast-btns confirm-toast-btns--inline">
+                      <button
+                        type="button"
+                        className="surface-action-primary"
+                        onClick={() => void resolveConfirm(t.id, t.pendingConfirm!.id, true)}
+                      >
+                        Confirm
+                      </button>
+                      <button
+                        type="button"
+                        className="surface-action-secondary"
+                        onClick={() => void resolveConfirm(t.id, t.pendingConfirm!.id, false)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
                   {t.actionId && t.actionLabel && (
                     <ActionReceipt actionId={t.actionId} label={t.actionLabel} onUndone={() => void refresh()} />
                   )}

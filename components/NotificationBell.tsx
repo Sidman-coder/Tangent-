@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { Sun, Lightbulb, AlertTriangle, Clock, Calendar, Bell, X, type LucideIcon } from "lucide-react"
 import { Notification } from "@/lib/types"
+import { notifyNewDesktopNotifications } from "@/lib/desktop-notifications"
 
 type NotificationBellProps = {
   open?: boolean
@@ -26,8 +27,12 @@ export default function NotificationBell({ open: openProp, onOpenChange }: Notif
     try {
       const r = await fetch("/api/notifications")
       const data = await r.json()
-      setNotifications(data.notifications || [])
+      const list: Notification[] = data.notifications || []
+      setNotifications(list)
       setUnreadCount(data.unreadCount || 0)
+      // Desktop notifications piggyback on this same poll — no extra fetch.
+      // See lib/desktop-notifications.ts for the opt-in + anti-spam rules.
+      notifyNewDesktopNotifications(list)
     } catch {}
   }, [])
 
@@ -74,7 +79,7 @@ export default function NotificationBell({ open: openProp, onOpenChange }: Notif
     fetchNotifications()
   }
 
-  const handleGenerateBrief = async () => {
+  const handleGenerateSummary = async () => {
     setLoading(true)
     await fetch("/api/daily-brief", { method: "POST" })
     await fetchNotifications()
@@ -167,11 +172,11 @@ export default function NotificationBell({ open: openProp, onOpenChange }: Notif
               <div className="notif-panel-actions">
                 {!pinnedBrief && (
                   <button
-                    className="notif-brief-btn"
-                    onClick={handleGenerateBrief}
+                    className="notif-summary-btn"
+                    onClick={handleGenerateSummary}
                     disabled={loading}
                   >
-                    {loading ? "Generating..." : (<><Sun size={14} strokeWidth={2} /> Daily Brief</>)}
+                    {loading ? "Generating..." : (<><Sun size={14} strokeWidth={2} /> Today's Summary</>)}
                   </button>
                 )}
                 <button
