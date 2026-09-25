@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppState } from "@/components/AppStateProvider";
 import ChatSidebar from "@/components/console/ChatSidebar";
 import ChatThread from "@/components/console/ChatThread";
@@ -10,18 +10,20 @@ import {
   cleanMessage,
   toolsForAction,
   turnsFromMessages,
+  type ChatMode,
   type Turn,
 } from "@/components/console/turns";
+import ModeSwitch from "@/components/console/ModeSwitch";
 import {
   VOICE_TRANSCRIPT_EVENT,
   type VoiceCaptureStatus,
   type VoiceTranscriptDetail,
 } from "@/hooks/useVoiceCapture";
 import type { ChatSession } from "@/lib/store";
-import { ArrowLeft, CalendarClock, CalendarRange, MessageSquare, Newspaper, Sun, Timer } from "lucide-react";
+import { ArrowLeft, CalendarClock, CalendarRange, MessageSquare, Newspaper, PanelRightOpen, Sun, Timer } from "lucide-react";
 import PenMark from "@/components/console/PenMark";
 import BriefPanel, { CADENCE_LABEL, type BriefSummary } from "@/components/console/BriefPanel";
-import { formatTime12 } from "@/lib/dates";
+import { formatTime12, toYMD } from "@/lib/dates";
 import "./console.css";
 
 type ConsoleMode = "chat" | "brief";
@@ -47,6 +49,23 @@ function greetingFor(hour: number, name: string): string {
  *  browser (not the server — the in-memory store still resets on server restart,
  *  in which case the GET below 404s and we fall back to starting fresh). */
 const SESSION_STORAGE_KEY = "tangent:ai:activeSessionId";
+const MODE_STORAGE_KEY = "tangent:ai:mode";
+const CHATS_HIDDEN_KEY = "tangent:ai:chatsHidden";
+
+function readStored(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(key: string, value: string | null) {
+  try {
+    if (value === null) window.localStorage.removeItem(key);
+    else window.localStorage.setItem(key, value);
+  } catch {}
+}
 
 export default function AiPage() {
   const { state, refresh } = useAppState();
@@ -57,6 +76,37 @@ export default function AiPage() {
   const [brief, setBrief] = useState<BriefSummary | null>(null);
   const [greeting, setGreeting] = useState("");
   const [chatsOpen, setChatsOpen] = useState(false);
+  const [chatsHidden, setChatsHidden] = useState(false);
+  const [chatMode, setChatMode] = useState<ChatMode>("calendar");
+
+  useEffect(() => {
+    if (readStored(MODE_STORAGE_KEY) === "plan") setChatMode("plan");
+    if (readStored(CHATS_HIDDEN_KEY) === "1") setChatsHidden(true);
+  }, []);
+
+  const changeMode = useCallback((next: ChatMode) => {
+    setChatMode(next);
+    writeStored(MODE_STORAGE_KEY, next);
+  }, []);
+
+  const setHidden = useCallback((hidden: boolean) => {
+    setChatsHidden(hidden);
+    writeStored(CHATS_HIDDEN_KEY, hidden ? "1" : null);
+  }, []);
+
+  // "3 tasks left today · next: Chem review at 3:00 PM" under the greeting.
+  const todayLine = useMemo(() => {
+    if (!state) return "";
+    const today = toYMD(new Date());
+    const now = new Date().toTimeString().slice(0, 5);
+    const open = state.tasks
+      .filter((t) => t.date === today && !t.completed)
+      .sort((a, b) => (a.time || "99").localeCompare(b.time || "99"));
+    if (open.length === 0) return "Your calendar is clear today.";
+    const next = open.find((t) => t.time && t.time >= now);
+    const count = `${open.length} task${open.length === 1 ? "" : "s"} left today`;
+    return next ? `${count} · next: ${next.title} at ${formatTime12(next.time)}` : count;
+  }, [state]);
 
   useEffect(() => {
     const name = window.localStorage.getItem("tangent-user-name")?.trim().split(/\s+/)[0] ?? "";
@@ -165,7 +215,8 @@ export default function AiPage() {
   }, [loadSessions, openSession]);
 
 
-  const send = useCallback(async (text?: string) => {
+  const send = useCallback(async (text?: string, modeOverride?: ChatMode) => {
+    const sendMode = modeOverride ?? chatMode;
     const userText = (text ?? input).trim();
     if (!userText || busy) return;
     setErr(null);
@@ -210,7 +261,7 @@ export default function AiPage() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history }),
+        body: JSON.stringify({ messages: history, mode: sendMode }),
       });
       const data = (await res.json()) as {
         ok?: boolean;
@@ -233,9 +284,10 @@ export default function AiPage() {
         const pendingId = data.pending.id;
         const pendingMessage = data.pending.message;
         setTurns((prev) => [
-          ...prev,
+          ...prev.map((t) => (t.fresh ? { ...t, fresh: false } : t)),
           {
             id: crypto.randomUUID(),
+            fresh: true,
             request: userText,
             tools: toolsForAction("confirm_required"),
             sourcesChecked: [],
@@ -266,9 +318,11 @@ export default function AiPage() {
       );
 
       setTurns((prev) => [
-        ...prev,
+        ...prev.map((t) => (t.fresh ? { ...t, fresh: false } : t)),
         {
           id: crypto.randomUUID(),
+          fresh: true,
+          planDraft: action === "plan_reply",
           request: userText,
           tools: toolsForAction(action),
           sourcesChecked: data.sourcesChecked ?? [],
@@ -312,7 +366,55 @@ export default function AiPage() {
       setPendingRequest(null);
       void loadSessions();
     }
-  }, [input, busy, activeSessionId, turns, refresh, linkAction, loadSessions]);
+  }, [input, busy, chatMode, activeSessionId, turns, refresh, linkAction, loadSessions]);
+
+  /** Plan-mode draft → Calendar: flip the mode and ask for it to be added. */
+  const addPlanToCalendar = useCallback(
+    (turnId: string) => {
+      setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, planDraft: false } : t)));
+      changeMode("calendar");
+      void send("Add this plan to my calendar", "calendar");
+    },
+    [changeMode, send]
+  );
+
+  const postSession = useCallback(async (body: Record<string, unknown>) => {
+    try {
+      await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    } catch {}
+  }, []);
+
+  const renameChat = useCallback(
+    async (id: string, title: string) => {
+      setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, title } : s)));
+      await postSession({ action: "rename", sessionId: id, title });
+      void loadSessions();
+    },
+    [postSession, loadSessions]
+  );
+
+  const styleChat = useCallback(
+    async (id: string, style: { color?: string | null; pinned?: boolean }) => {
+      setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, ...style } : s)));
+      await postSession({ action: "style", sessionId: id, ...style });
+      void loadSessions();
+    },
+    [postSession, loadSessions]
+  );
+
+  const deleteChat = useCallback(
+    async (id: string) => {
+      setSessions((prev) => prev.filter((s) => s.id !== id));
+      if (id === activeSessionId) newChat();
+      await postSession({ action: "delete", sessionId: id });
+      void loadSessions();
+    },
+    [activeSessionId, newChat, postSession, loadSessions]
+  );
 
   const resolveConfirm = useCallback(async (turnId: string, pendingId: string, confirm: boolean) => {
     setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, pendingConfirm: null } : t)));
@@ -367,26 +469,13 @@ export default function AiPage() {
       onVoiceStatus={setVoiceStatus}
       onTranscript={acceptTranscript}
       onVoiceError={setErr}
+      mode={chatMode}
+      toolbar={<ModeSwitch mode={chatMode} onChange={changeMode} disabled={busy} />}
     />
   );
 
   return (
-    <div className="tg-console">
-      <ChatSidebar
-        sessions={sessions}
-        activeId={activeSessionId}
-        state={state}
-        open={chatsOpen}
-        onClose={() => setChatsOpen(false)}
-        onSelect={(id) => {
-          setChatsOpen(false);
-          void openSession(id);
-        }}
-        onNew={() => {
-          setChatsOpen(false);
-          newChat();
-        }}
-      />
+    <div className={`tg-console is-${chatMode}${chatsHidden ? " chats-hidden" : ""}`}>
       <section className="tg-main" aria-label="Tangent assistant">
         <header className="tg-main-head">
           {mode === "brief" ? (
@@ -399,30 +488,46 @@ export default function AiPage() {
             </div>
           ) : (
             <div className="tg-head-title">
-              <button
-                type="button"
-                className="tg-icon-btn tg-chats-toggle"
-                aria-label="Show chats"
-                aria-expanded={chatsOpen}
-                onClick={() => setChatsOpen(true)}
-              >
-                <MessageSquare size={17} strokeWidth={1.8} />
-              </button>
               <h1 className="tg-main-title">Tangent AI</h1>
+              <span key={chatMode} className={`tg-mode-badge is-${chatMode}`}>
+                {chatMode === "calendar" ? "Calendar mode" : "Plan mode"}
+              </span>
             </div>
           )}
-          {mode === "chat" && (
+          <div className="tg-head-actions">
+            {mode === "chat" && (
+              <button
+                type="button"
+                className="tg-brief-pill"
+                onClick={() => setMode("brief")}
+                aria-label={brief ? `Your Brief, ${briefWhen(brief)}. Open brief settings` : "Set up your brief"}
+              >
+                <Newspaper size={15} strokeWidth={1.8} aria-hidden="true" />
+                <span>Your Brief</span>
+                <span className="tg-brief-pill-when">{brief ? briefWhen(brief) : "Set up"}</span>
+              </button>
+            )}
+            {chatsHidden && (
+              <button
+                type="button"
+                className="tg-icon-btn tg-chats-show"
+                aria-label="Show chats"
+                title="Show chats"
+                onClick={() => setHidden(false)}
+              >
+                <PanelRightOpen size={17} strokeWidth={1.8} />
+              </button>
+            )}
             <button
               type="button"
-              className="tg-brief-pill"
-              onClick={() => setMode("brief")}
-              aria-label={brief ? `Your Brief, ${briefWhen(brief)}. Open brief settings` : "Set up your brief"}
+              className="tg-icon-btn tg-chats-toggle"
+              aria-label="Show chats"
+              aria-expanded={chatsOpen}
+              onClick={() => setChatsOpen(true)}
             >
-              <Newspaper size={15} strokeWidth={1.8} aria-hidden="true" />
-              <span>Your Brief</span>
-              <span className="tg-brief-pill-when">{brief ? briefWhen(brief) : "Set up"}</span>
+              <MessageSquare size={17} strokeWidth={1.8} />
             </button>
-          )}
+          </div>
         </header>
 
         {mode === "brief" ? (
@@ -434,8 +539,11 @@ export default function AiPage() {
             <PenMark className="tg-hero-mark" size={26} />
             <h2 className="tg-hero-title">
               <span className="tg-hero-hello">{greeting || " "}</span>
-              <span className="tg-hero-ask">What would you like to get done?</span>
+              <span key={chatMode} className="tg-hero-ask">
+                {chatMode === "calendar" ? "What should go on your calendar?" : "What would you like to plan?"}
+              </span>
             </h2>
+            {todayLine && <p className="tg-hero-today">{todayLine}</p>}
             {err && <p className="tg-error" role="alert">{err}</p>}
             {composer}
             <p className="tg-examples-label">Try asking</p>
@@ -465,15 +573,42 @@ export default function AiPage() {
               pendingRequest={pendingRequest}
               onConfirm={(turnId, pendingId, confirm) => void resolveConfirm(turnId, pendingId, confirm)}
               onUndone={() => void refresh()}
+              mode={chatMode}
+              onAddPlan={addPlanToCalendar}
             />
             <div className="tg-dock">
               {err && <p className="tg-error" role="alert">{err}</p>}
               {composer}
-              <p className="tg-dock-hint">Tangent can change your tasks. You’ll always see what changed.</p>
+              <p className="tg-dock-hint">
+                {chatMode === "calendar"
+                  ? "Calendar mode adds and changes tasks. You’ll always see what changed."
+                  : "Plan mode only drafts — switch to Calendar to add it."}
+              </p>
             </div>
           </>
         )}
       </section>
+      {(!chatsHidden || chatsOpen) && (
+        <ChatSidebar
+          sessions={sessions}
+          activeId={activeSessionId}
+          state={state}
+          open={chatsOpen}
+          onClose={() => setChatsOpen(false)}
+          onSelect={(id) => {
+            setChatsOpen(false);
+            void openSession(id);
+          }}
+          onNew={() => {
+            setChatsOpen(false);
+            newChat();
+          }}
+          onRename={(id, title) => void renameChat(id, title)}
+          onDelete={(id) => void deleteChat(id)}
+          onStyle={(id, style) => void styleChat(id, style)}
+          onCollapse={() => setHidden(true)}
+        />
+      )}
     </div>
   );
 }

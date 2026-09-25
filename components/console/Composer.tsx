@@ -8,6 +8,7 @@ import { useLayoutEffect, type ReactNode, type RefObject } from "react";
 import { ArrowUp } from "lucide-react";
 import VoiceRecordButton from "@/components/VoiceRecordButton";
 import type { VoiceCaptureStatus } from "@/hooks/useVoiceCapture";
+import type { ChatMode } from "@/components/console/turns";
 
 const MAX_HEIGHT = 220;
 
@@ -24,6 +25,8 @@ type Props = {
   /** Extra controls rendered on the left of the toolbar row. */
   toolbar?: ReactNode;
   placeholder?: string;
+  /** Tints the box: Calendar mode gets the accent ring. */
+  mode?: ChatMode;
 };
 
 export default function Composer({
@@ -37,22 +40,41 @@ export default function Composer({
   onTranscript,
   onVoiceError,
   toolbar,
-  placeholder = "Ask about your schedule or make a change…",
+  placeholder,
+  mode = "calendar",
 }: Props) {
+  const idlePlaceholder =
+    placeholder ??
+    (mode === "calendar"
+      ? "Add or change something on your calendar…"
+      : "Think a plan through — nothing is added until you say so…");
   // Grow to fit the text, then scroll inside the box past MAX_HEIGHT.
   useLayoutEffect(() => {
     const el = inputRef.current;
     if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT)}px`;
-    el.style.overflowY = el.scrollHeight > MAX_HEIGHT ? "auto" : "hidden";
+    const fit = () => {
+      el.style.height = "auto";
+      el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT)}px`;
+      el.style.overflowY = el.scrollHeight > MAX_HEIGHT ? "auto" : "hidden";
+    };
+    fit();
+    // Re-measure when the box changes width (first paint, sidebar toggles,
+    // window resizes) so an early narrow measurement never sticks.
+    let lastWidth = el.offsetWidth;
+    const observer = new ResizeObserver(() => {
+      if (el.offsetWidth === lastWidth) return;
+      lastWidth = el.offsetWidth;
+      fit();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
   }, [value, inputRef]);
 
   const canSend = !busy && value.trim().length > 0 && voiceStatus === "idle";
 
   return (
     <form
-      className={`tg-composer is-voice-${voiceStatus}${value.trim() ? " has-text" : ""}`}
+      className={`tg-composer is-${mode} is-voice-${voiceStatus}${value.trim() ? " has-text" : ""}`}
       onSubmit={(e) => {
         e.preventDefault();
         if (canSend) onSubmit();
@@ -75,7 +97,7 @@ export default function Composer({
             ? "Listening… click the mic again to stop"
             : voiceStatus === "transcribing"
               ? "Transcribing…"
-              : placeholder
+              : idlePlaceholder
         }
         aria-label="Message Tangent"
         disabled={busy}

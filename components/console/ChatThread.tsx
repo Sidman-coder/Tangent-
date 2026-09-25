@@ -8,14 +8,37 @@
 // clipping text.
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowDown } from "lucide-react";
+import { ArrowDown, CalendarPlus } from "lucide-react";
 import ActionReceipt from "@/components/ActionReceipt";
 import PenMark from "@/components/console/PenMark";
-import type { Turn } from "@/components/console/turns";
+import type { ChatMode, Turn } from "@/components/console/turns";
 
 /** Turns kept open by default; anything older folds behind the divider. */
 const VISIBLE_TURNS = 3;
-const LIVE_STEPS = ["Reading your request", "Checking your tasks", "Composing a response"] as const;
+const LIVE_STEPS: Record<ChatMode, readonly string[]> = {
+  plan: ["Reading your request", "Weighing your free time", "Drafting a plan"],
+  calendar: ["Reading your request", "Checking your calendar", "Updating your calendar"],
+};
+
+/** A fresh reply fades in word by word; the stagger is capped so long replies
+ *  finish within about a second. Older replies render as plain text. */
+function RevealText({ text }: { text: string }) {
+  const parts = text.split(/(\s+)/);
+  let word = 0;
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (!part.trim()) return part;
+        const delay = Math.min(word++ * 22, 1100);
+        return (
+          <span key={i} className="tg-word" style={{ animationDelay: `${delay}ms` }}>
+            {part}
+          </span>
+        );
+      })}
+    </>
+  );
+}
 
 type Props = {
   turns: Turn[];
@@ -23,9 +46,12 @@ type Props = {
   pendingRequest: string | null;
   onConfirm: (turnId: string, pendingId: string, confirm: boolean) => void;
   onUndone: () => void;
+  mode: ChatMode;
+  /** Adds a Plan-mode draft to the calendar. */
+  onAddPlan: (turnId: string) => void;
 };
 
-export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onUndone }: Props) {
+export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onUndone, mode, onAddPlan }: Props) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const latestRef = useRef<HTMLElement>(null);
   const [expanded, setExpanded] = useState(false);
@@ -91,7 +117,7 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
           {shown.map((t, i) => {
             const isLatest = !busy && i === shown.length - 1;
             return (
-              <article key={t.id} className="tg-turn" ref={isLatest ? latestRef : undefined}>
+              <article key={t.id} className={`tg-turn${t.fresh ? " is-fresh" : ""}`} ref={isLatest ? latestRef : undefined}>
                 <div className="tg-msg-user">{t.request}</div>
                 <div className="tg-msg-assistant">
                   <PenMark className="tg-msg-mark" />
@@ -106,12 +132,12 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
                         ))}
                       </div>
                     )}
-                    <div className="tg-msg-text">{t.response}</div>
+                    <div className="tg-msg-text">{t.fresh ? <RevealText text={t.response} /> : t.response}</div>
                     {t.pendingConfirm && (
                       <div className="tg-confirm">
                         <button
                           type="button"
-                          className="tg-btn tg-btn-dark"
+                          className="tg-btn tg-btn-accent"
                           onClick={() => onConfirm(t.id, t.pendingConfirm!.id, true)}
                         >
                           Confirm
@@ -125,6 +151,15 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
                         </button>
                       </div>
                     )}
+                    {t.planDraft && (
+                      <div className="tg-plan-cta">
+                        <button type="button" className="tg-btn tg-btn-accent" onClick={() => onAddPlan(t.id)} disabled={busy}>
+                          <CalendarPlus size={14} strokeWidth={2} aria-hidden="true" />
+                          Add to calendar
+                        </button>
+                        <span>Switches to Calendar mode and adds this plan.</span>
+                      </div>
+                    )}
                     {t.actionId && t.actionLabel && (
                       <ActionReceipt actionId={t.actionId} label={t.actionLabel} onUndone={onUndone} />
                     )}
@@ -135,12 +170,12 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
           })}
 
           {busy && (
-            <article className="tg-turn is-pending" ref={latestRef}>
+            <article className="tg-turn is-pending is-fresh" ref={latestRef}>
               <div className="tg-msg-user">{pendingRequest}</div>
               <div className="tg-msg-assistant">
                 <PenMark className="tg-msg-mark is-working" />
                 <ol className="tg-steps">
-                  {LIVE_STEPS.map((step, i) => (
+                  {LIVE_STEPS[mode].map((step, i) => (
                     <li key={step} style={{ animationDelay: `${i * 0.35}s` }}>{step}</li>
                   ))}
                 </ol>

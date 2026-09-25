@@ -9,7 +9,14 @@ export type Turn = {
   actionId?: string;
   actionLabel?: string;
   pendingConfirm?: { id: string; message: string } | null;
+  /** A schedule drafted in Plan mode — offers "Add to calendar". */
+  planDraft?: boolean;
+  /** Just arrived this session — its reply animates in word by word. */
+  fresh?: boolean;
 };
+
+/** "calendar" acts on the calendar; "plan" only talks a plan through. */
+export type ChatMode = "plan" | "calendar";
 
 /** Rebuilds chronological turns from a session's [user, assistant, …] messages. */
 export function turnsFromMessages(messages: { role: "user" | "assistant"; content: string }[]): Turn[] {
@@ -80,6 +87,10 @@ export function toolsForAction(action: string | null | undefined): string[] {
       return ["Planner", "Tasks"];
     case "confirm_required":
       return ["Confirmation"];
+    case "plan_reply":
+      return ["Plan mode"];
+    case "error":
+      return ["Not added"];
     default:
       return ["Assistant"];
   }
