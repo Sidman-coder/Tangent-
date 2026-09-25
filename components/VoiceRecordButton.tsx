@@ -1,87 +1,47 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { useAppState } from "@/components/AppStateProvider";
-import { useVoiceCapture, type VoiceCaptureResult } from "@/hooks/useVoiceCapture";
+// Composer mic for the AI console. Click to start, click again to stop (the
+// Claude/Gemini pattern). The transcript is handed to the parent through
+// onTranscript so it lands in the editable composer — nothing is submitted.
 
-type Status = "idle" | "recording" | "uploading" | "success" | "error";
+import { useEffect } from "react";
+import { Mic, Square } from "lucide-react";
+import { useVoiceCapture, type VoiceCaptureStatus } from "@/hooks/useVoiceCapture";
 
-const LABELS: Record<Status, string> = {
-  idle: "Hold to talk",
-  recording: "Listening…",
-  uploading: "Thinking…",
-  success: "Done!",
-  error: "Try again",
+type Props = {
+  onTranscript: (text: string) => void;
+  onError?: (message: string) => void;
+  onStatusChange?: (status: VoiceCaptureStatus) => void;
+  disabled?: boolean;
+  className?: string;
 };
 
-export default function VoiceRecordButton() {
-  const { refresh } = useAppState();
-  const [settledStatus, setSettledStatus] = useState<"idle" | "success" | "error">("idle");
-  const [lastResponse, setLastResponse] = useState<string | null>(null);
+export default function VoiceRecordButton({ onTranscript, onError, onStatusChange, disabled, className }: Props) {
+  const { status, startRecording, stopRecording } = useVoiceCapture({ onTranscript, onError });
 
-  const resetSoon = useCallback((delayMs: number) => {
-    window.setTimeout(() => setSettledStatus("idle"), delayMs);
-  }, []);
+  useEffect(() => {
+    onStatusChange?.(status);
+  }, [status, onStatusChange]);
 
-  const handleResult = useCallback(
-    async (result: VoiceCaptureResult) => {
-      setLastResponse(result.response ?? "Done!");
-      setSettledStatus("success");
-      await refresh();
-      resetSoon(2500);
-    },
-    [refresh, resetSoon]
-  );
-
-  const handleError = useCallback(
-    (message: string) => {
-      setLastResponse(message);
-      setSettledStatus("error");
-      resetSoon(2500);
-    },
-    [resetSoon]
-  );
-
-  const { status: captureStatus, startRecording, stopRecording } = useVoiceCapture({
-    onResult: handleResult,
-    onError: handleError,
-  });
-
-  // Capture status (recording/uploading) takes priority while active; once it
-  // settles back to idle, show whatever the last result was for a couple seconds.
-  const status: Status = captureStatus === "idle" ? settledStatus : captureStatus;
-  const disabled = captureStatus === "uploading";
+  const label = status === "recording" ? "Stop recording" : status === "transcribing" ? "Transcribing…" : "Dictate";
 
   return (
-    <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: "0.4rem" }}>
-      <button
-        type="button"
-        className={`voice-record-btn ${status}`}
-        disabled={disabled}
-        onMouseDown={(e) => {
-          e.preventDefault();
-          void startRecording();
-        }}
-        onMouseUp={stopRecording}
-        onMouseLeave={() => {
-          if (captureStatus === "recording") stopRecording();
-        }}
-        onTouchStart={(e) => {
-          e.preventDefault();
-          void startRecording();
-        }}
-        onTouchEnd={stopRecording}
-        onTouchCancel={stopRecording}
-      >
-        {status === "recording" && <span className="voice-dot" />}
-        {status === "uploading" && <span className="voice-spinner" />}
-        {LABELS[status]}
-      </button>
-      {(status === "success" || status === "error") && lastResponse && (
-        <span style={{ fontSize: "0.8rem", color: "var(--muted)", maxWidth: 260, textAlign: "center" }}>
-          {lastResponse}
-        </span>
+    <button
+      type="button"
+      className={`${className ?? "voice-record-btn"} is-${status}`}
+      aria-label={label}
+      title={label}
+      aria-pressed={status === "recording"}
+      disabled={disabled || status === "transcribing"}
+      onClick={() => (status === "recording" ? stopRecording() : void startRecording())}
+    >
+      {status === "recording" ? (
+        <Square size={13} strokeWidth={0} fill="currentColor" aria-hidden="true" />
+      ) : status === "transcribing" ? (
+        <span className="voice-pill-spinner" aria-hidden="true" />
+      ) : (
+        <Mic size={17} strokeWidth={1.8} aria-hidden="true" />
       )}
-    </div>
+    </button>
   );
 }

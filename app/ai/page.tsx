@@ -1,10 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppState } from "@/components/AppStateProvider";
 import VoiceRecordButton from "@/components/VoiceRecordButton";
 import ActionReceipt from "@/components/ActionReceipt";
 import PageHeader from "@/components/ui/PageHeader";
+import {
+  VOICE_TRANSCRIPT_EVENT,
+  type VoiceCaptureStatus,
+  type VoiceTranscriptDetail,
+} from "@/hooks/useVoiceCapture";
 import type { ChatSession } from "@/lib/store";
 import type { BriefConfig, BriefSource } from "@/lib/types";
 import type { SuggestedBriefSource } from "@/lib/brief-sources";
@@ -129,14 +134,41 @@ function toolsForAction(action: string | null | undefined): string[] {
 export default function AiPage() {
   const { refresh } = useAppState();
 
+  const [mode, setMode] = useState<ConsoleMode>("chat");
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [pendingRequest, setPendingRequest] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [voiceStatus, setVoiceStatus] = useState<VoiceCaptureStatus>("idle");
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const [mode, setMode] = useState<ConsoleMode>("chat");
+  /** Drops a voice transcript into the composer — visible, editable, cursor at
+   *  the end — and stops there. The student presses Enter/Send to submit. */
+  const acceptTranscript = useCallback((text: string) => {
+    setMode("chat");
+    setErr(null);
+    setInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${text}` : text));
+    window.setTimeout(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    }, 0);
+  }, []);
+
+  // Claim transcripts from the global mic / hold-Space so they land here
+  // instead of in the command palette while the console is on screen.
+  useEffect(() => {
+    const onTranscript = (e: Event) => {
+      e.preventDefault();
+      acceptTranscript((e as CustomEvent<VoiceTranscriptDetail>).detail.text);
+    };
+    window.addEventListener(VOICE_TRANSCRIPT_EVENT, onTranscript);
+    return () => window.removeEventListener(VOICE_TRANSCRIPT_EVENT, onTranscript);
+  }, [acceptTranscript]);
+
   const [briefSources, setBriefSources] = useState<BriefSource[]>([]);
   const [briefCadence, setBriefCadence] = useState<BriefConfig["cadence"]>("daily");
   const [briefTime, setBriefTime] = useState("07:00");
@@ -731,14 +763,22 @@ export default function AiPage() {
           {err && <p className="console-error" role="alert">{err}</p>}
           <form className="console-input-row" onSubmit={(e) => { e.preventDefault(); void send(); }}>
             <input
+              ref={inputRef}
               className="console-pill-input"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask about your schedule or make a change…"
+              placeholder={
+                voiceStatus === "recording"
+                  ? "Listening… click the mic again to stop"
+                  : voiceStatus === "transcribing"
+                    ? "Transcribing…"
+                    : "Ask about your schedule or make a change…"
+              }
               aria-label="Command input"
               disabled={busy}
+              readOnly={voiceStatus === "transcribing"}
             />
-            <VoiceRecordButton />
+            <VoiceRecordButton onTranscript={acceptTranscript} onError={setErr} onStatusChange={setVoiceStatus} />
             <button type="submit" className="console-send-pill" aria-label="Send" disabled={busy || !input.trim()}>
               <ArrowUp size={17} strokeWidth={2} />
             </button>

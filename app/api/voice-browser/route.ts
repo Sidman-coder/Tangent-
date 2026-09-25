@@ -25,6 +25,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Could not transcribe audio" }, { status: 422 });
     }
 
+    // Browser capture only transcribes: the text goes back into an editable
+    // input so the student can fix mishearings before anything is submitted.
+    if (formData.get("mode") === "transcribe") {
+      return NextResponse.json({ ok: true, text });
+    }
+
     return handleVoiceText(text);
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";

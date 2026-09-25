@@ -4157,6 +4157,15 @@ textarea:focus {
   animation: voice-pulse 1.2s ease-in-out infinite;
 }
 
+.voice-pill-spinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--text);
+  animation: voice-spin 0.7s linear infinite;
+}
+
 .command-toast {
   position: fixed;
   bottom: 28px;

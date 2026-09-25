@@ -4,7 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppState } from "@/components/AppStateProvider";
 import ActionReceipt from "@/components/ActionReceipt";
-import { useVoiceCapture, type VoiceCaptureResult } from "@/hooks/useVoiceCapture";
+import {
+  OPEN_PALETTE_EVENT,
+  routeVoiceTranscript,
+  useVoiceCapture,
+  type OpenPaletteDetail,
+} from "@/hooks/useVoiceCapture";
 import { Check } from "lucide-react";
 
 type QuickAction = {
@@ -59,18 +64,33 @@ export default function CommandPalette() {
   }, []);
 
   // Open via ⌘K / Ctrl+K, or via the topbar command input dispatching this event.
+  // A voice transcript arrives as `detail.prefill`: it lands in the input,
+  // editable, cursor at the end — the student presses Enter to actually ask.
   useEffect(() => {
-    const onOpenEvent = () => setOpen(true);
+    const onOpenEvent = (e: Event) => {
+      const prefill = (e as CustomEvent<OpenPaletteDetail>).detail?.prefill;
+      setOpen(true);
+      if (prefill) {
+        setValue(prefill);
+        setHighlighted(0);
+        setTimeout(() => {
+          const el = inputRef.current;
+          if (!el) return;
+          el.focus();
+          el.setSelectionRange(prefill.length, prefill.length);
+        }, 30);
+      }
+    };
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setOpen((o) => !o);
       }
     };
-    window.addEventListener("tangent:open-palette", onOpenEvent);
+    window.addEventListener(OPEN_PALETTE_EVENT, onOpenEvent);
     window.addEventListener("keydown", onKeyDown);
     return () => {
-      window.removeEventListener("tangent:open-palette", onOpenEvent);
+      window.removeEventListener(OPEN_PALETTE_EVENT, onOpenEvent);
       window.removeEventListener("keydown", onKeyDown);
     };
   }, []);
@@ -209,20 +229,8 @@ export default function CommandPalette() {
   );
 
   // Hold Space (400ms) to start voice recording, when no form field is focused and the palette is closed.
-  const handleVoiceResult = useCallback(
-    async (result: VoiceCaptureResult) => {
-      if (result.action === "confirm_required" && result.pending) {
-        setReceiptId(null);
-        setPendingConfirm({ id: result.pending.id, message: result.pending.message });
-        return;
-      }
-      setReceiptId(result.actionId ?? null);
-      showToast(result.response ?? "Done!");
-      await refresh();
-    },
-    [refresh, showToast]
-  );
-
+  // The transcript is routed to an editable input (the AI console's composer if
+  // it's on screen, otherwise this palette, pre-filled) — never auto-submitted.
   const handleVoiceError = useCallback(
     (message: string) => {
       setReceiptId(null);
@@ -232,9 +240,17 @@ export default function CommandPalette() {
   );
 
   const { status: voiceStatus, startRecording: startVoiceRecording, stopRecording: stopVoiceRecording } = useVoiceCapture({
-    onResult: handleVoiceResult,
+    onTranscript: routeVoiceTranscript,
     onError: handleVoiceError,
   });
+
+  // The recorder callbacks change identity with every status change; read them
+  // through refs so the key listeners (and their `holding` flag) stay mounted
+  // for the whole press instead of resetting mid-recording.
+  const startVoiceRef = useRef(startVoiceRecording);
+  const stopVoiceRef = useRef(stopVoiceRecording);
+  startVoiceRef.current = startVoiceRecording;
+  stopVoiceRef.current = stopVoiceRecording;
 
   useEffect(() => {
     let holdTimer: number | null = null;
@@ -247,7 +263,7 @@ export default function CommandPalette() {
       holdTimer = window.setTimeout(() => {
         holdTimer = null;
         holding = true;
-        void startVoiceRecording();
+        void startVoiceRef.current();
       }, 400);
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -258,7 +274,7 @@ export default function CommandPalette() {
       }
       if (holding) {
         holding = false;
-        stopVoiceRecording();
+        stopVoiceRef.current();
       }
     };
 
@@ -269,7 +285,7 @@ export default function CommandPalette() {
       window.removeEventListener("keyup", onKeyUp);
       if (holdTimer !== null) clearTimeout(holdTimer);
     };
-  }, [startVoiceRecording, stopVoiceRecording]);
+  }, []);
 
   return (
     <>
@@ -309,14 +325,16 @@ export default function CommandPalette() {
         </div>
       )}
 
-      {(voiceStatus === "recording" || voiceStatus === "uploading") && (
+      {voiceStatus !== "idle" && (
         <div className="voice-pill" role="status">
           {voiceStatus === "recording" ? (
             <>
               <span className="voice-pill-dot" /> Listening…
             </>
           ) : (
-            "Thinking…"
+            <>
+              <span className="voice-pill-spinner" aria-hidden="true" /> Transcribing…
+            </>
           )}
         </div>
       )}
