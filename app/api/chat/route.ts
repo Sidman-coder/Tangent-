@@ -1,31 +1,7 @@
 import { NextResponse } from "next/server";
+import { handleVoiceText } from "@/lib/voice-handler";
 
 export const dynamic = "force-dynamic";
-
-const CHAT_SYSTEM = `You are TANGENT AI, a friendly productivity assistant.
-NEVER return JSON in your response. NEVER use backticks or code blocks. Always respond in plain English only. Keep responses under 40 words.
-Never return JSON. Never use backticks or code blocks. Never use markdown formatting.
-The command has already been executed. Just confirm it happened naturally.
-Examples:
-"Done! Your meeting has been added for tomorrow at 2pm."
-"Your workout plan is all set for this week!"
-"Schedule cleared! Starting fresh."
-"Got it! I have added that to your calendar."
-"I have marked that task as complete."`;
-
-function cleanResponse(text: string, fallback: string): string {
-  if (!text) return fallback || "Done!";
-  let clean = text.replace(/```[\s\S]*?```/gi, "").trim();
-  if (
-    clean.startsWith("{") ||
-    clean.includes('"action"') ||
-    clean.includes('"tasks"') ||
-    clean.includes('"planTitle"')
-  ) {
-    return fallback || "Done! Your request has been processed.";
-  }
-  return clean;
-}
 
 function lastUserMessage(messages: { role: string; content: string }[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -85,36 +61,45 @@ export async function POST(req: Request) {
 
     console.log("[api/chat] User message:", userText);
 
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+    // Same-origin base for fire-and-forget helpers — derived from the request so it
+    // works on any port and on Vercel, never a hardcoded localhost.
+    const baseUrl = new URL(req.url).origin;
 
-    // Step 1 — Execute command via voice pipeline
+    // Step 1 — Execute command via voice pipeline. Called in-process: the old
+    // HTTP self-call to NEXT_PUBLIC_BASE_URL failed whenever the app wasn't on
+    // localhost:3000 (Vercel, another port), silently degrading to plain chat.
     let voiceResponse = "";
     let voiceAction = "";
     let voiceOk = false;
+    let voiceError = "";
     let voiceActionId: string | undefined;
     let voicePending: { id: string; kind: string; message: string } | undefined;
     let voiceSourcesChecked: string[] | undefined;
+    let voicePlan: { id: string; title: string; taskCount: number; color: string } | undefined;
+    let voiceCount: number | undefined;
     try {
       console.log("[api/chat] Calling voice pipeline:", userText);
-      const voiceRes = await fetch(`${baseUrl}/api/voice`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: userText }),
-      });
+      const voiceRes = await handleVoiceText(userText);
       const voiceData = (await voiceRes.json()) as {
         response?: string;
         action?: string;
         ok?: boolean;
+        error?: string;
         actionId?: string;
         pending?: { id: string; kind: string; message: string };
         sourcesChecked?: string[];
+        plan?: { id: string; title: string; taskCount: number; color: string };
+        count?: number;
       };
       console.log("[api/chat] Voice pipeline result:", JSON.stringify(voiceData).slice(0, 300));
       voiceResponse = voiceData.response ?? "";
       voiceAction = voiceData.action ?? "";
       voiceOk = voiceData.ok === true;
+      voiceError = voiceData.error ?? "";
       voiceActionId = voiceData.actionId;
       voicePending = voiceData.pending;
+      voicePlan = voiceData.plan;
+      voiceCount = voiceData.count;
       voiceSourcesChecked = voiceData.sourcesChecked;
     } catch (err) {
       console.error("[api/chat] Voice pipeline error:", err);
@@ -137,50 +122,20 @@ export async function POST(req: Request) {
         action: voiceAction,
         actionId: voiceActionId,
         sourcesChecked: voiceSourcesChecked,
+        plan: voicePlan,
+        recurringCount: voiceAction === "add_recurring_task" ? voiceCount : undefined,
         ok: true,
       });
     }
 
-    // Step 2 — Get friendly AI confirmation from Anthropic
-    console.log("[api/chat] Calling Anthropic for friendly response...");
-    let aiMessage = voiceResponse || "Done! Your request has been processed.";
-
-    const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-5",
-        max_tokens: 500,
-        temperature: 0.3,
-        system: CHAT_SYSTEM,
-        messages,
-      }),
-    });
-
-    if (anthropicRes.ok) {
-      const anthropicData = (await anthropicRes.json()) as {
-        content?: { type: string; text: string }[];
-      };
-      if (anthropicData.content?.[0]?.text) {
-        aiMessage = anthropicData.content[0].text;
-        console.log("[api/chat] Anthropic friendly response:", aiMessage.slice(0, 100));
-      }
-    } else {
-      console.error("[api/chat] Anthropic error:", anthropicRes.status);
-    }
-
-    const finalMessage = cleanResponse(aiMessage, voiceResponse || "Done!");
-    console.log("[api/chat] Final message to user:", finalMessage);
-
-    extractContextFireAndForget(baseUrl, userText, finalMessage);
-
+    // Step 2 — The pipeline did not act. Say so plainly: the previous fallback asked
+    // a plain chat model to "confirm it happened", which reported success for
+    // tasks that were never created.
+    const reason = voiceError || voiceResponse || "the task pipeline did not respond";
+    console.error("[api/chat] Voice pipeline did not act:", reason);
     return NextResponse.json({
-      message: finalMessage,
-      action: voiceAction,
+      message: `I couldn't add that to your calendar — ${reason}.`,
+      action: "error",
       ok: true,
     });
   } catch (e) {
