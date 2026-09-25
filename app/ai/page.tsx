@@ -2,9 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppState } from "@/components/AppStateProvider";
-import VoiceRecordButton from "@/components/VoiceRecordButton";
-import ActionReceipt from "@/components/ActionReceipt";
-import PageHeader from "@/components/ui/PageHeader";
+import ChatThread from "@/components/console/ChatThread";
+import Composer from "@/components/console/Composer";
+import {
+  actionLabel,
+  cleanMessage,
+  toolsForAction,
+  turnsFromMessages,
+  type Turn,
+} from "@/components/console/turns";
 import {
   VOICE_TRANSCRIPT_EVENT,
   type VoiceCaptureStatus,
@@ -13,7 +19,8 @@ import {
 import type { ChatSession } from "@/lib/store";
 import type { BriefConfig, BriefSource } from "@/lib/types";
 import type { SuggestedBriefSource } from "@/lib/brief-sources";
-import { ArrowUp, Sparkles, CalendarDays, Clock3, Zap, X } from "lucide-react";
+import { X } from "lucide-react";
+import "./console.css";
 
 type ConsoleMode = "chat" | "brief";
 
@@ -29,107 +36,17 @@ const SOURCE_TYPE_LABEL: Record<BriefSource["type"], string> = {
   stale_check: "Notice stale tasks",
 };
 
-const SUGGESTION_CHIPS = [
-  { icon: Sparkles, text: "Plan my week" },
-  { icon: CalendarDays, text: "What's today?" },
-  { icon: Clock3, text: "What fits in 30 minutes?" },
-  { icon: Zap, text: "Move overdue tasks" },
+const SUGGESTIONS = [
+  "Plan my week",
+  "What's on today?",
+  "What fits in 30 minutes?",
+  "Move overdue tasks",
 ] as const;
-
-type Turn = {
-  id: string;
-  request: string;
-  tools: string[];
-  sourcesChecked: string[];
-  response: string;
-  actionId?: string;
-  actionLabel?: string;
-  pendingConfirm?: { id: string; message: string } | null;
-};
-
-const LIVE_STEPS = ["Reading your request", "Checking your tasks", "Composing a response"] as const;
 
 /** Persists the active chat session id across navigation/refresh within the same
  *  browser (not the server — the in-memory store still resets on server restart,
  *  in which case the GET below 404s and we fall back to starting fresh). */
 const SESSION_STORAGE_KEY = "tangent:ai:activeSessionId";
-
-/** Reconstructs the turn list (newest-first, matching the `turns` state convention)
- *  from a session's chronological [user, assistant, user, assistant, …] messages. */
-function turnsFromMessages(messages: { role: "user" | "assistant"; content: string }[]): Turn[] {
-  const result: Turn[] = [];
-  for (let i = 0; i < messages.length; i++) {
-    if (messages[i].role !== "user") continue;
-    const next = messages[i + 1];
-    const response = next && next.role === "assistant" ? next.content : "";
-    result.push({
-      id: crypto.randomUUID(),
-      request: messages[i].content,
-      tools: [],
-      sourcesChecked: [],
-      response,
-    });
-    if (next && next.role === "assistant") i++;
-  }
-  return result.reverse();
-}
-
-function cleanMessage(text: string): string {
-  if (!text) return "Done! Your request has been processed.";
-  let cleaned = text.replace(/```json[\s\S]*?```/gi, "").trim();
-  cleaned = cleaned.replace(/```[\s\S]*?```/gi, "").trim();
-  if (cleaned.trim().startsWith("{")) {
-    try {
-      const parsed = JSON.parse(cleaned) as Record<string, unknown>;
-      if (typeof parsed.response === "string") return parsed.response;
-      if (typeof parsed.reply === "string") return parsed.reply;
-      if (typeof parsed.message === "string") return parsed.message;
-      if (typeof parsed.planTitle === "string") return `Your ${parsed.planTitle} has been created!`;
-    } catch {}
-    return "Done! Your request has been processed.";
-  }
-  if (cleaned.includes('"action"') || cleaned.includes('"tasks"')) {
-    return "Done! Your request has been processed.";
-  }
-  return cleaned || "Done! Your request has been processed.";
-}
-
-function actionLabel(action: string | null | undefined, extra?: Record<string, unknown>): string | null {
-  if (!action) return null;
-  if (action === "add_task") return "Task added to calendar";
-  if (action === "complete_task") return "Task marked as complete";
-  if (action === "delete_task") return "Task deleted";
-  if (action === "add_recurring_task") {
-    const count = typeof extra?.taskCount === "number" ? extra.taskCount : 0;
-    return `Recurring task — ${count} instance${count !== 1 ? "s" : ""} added`;
-  }
-  if (action === "plan" || action === "create_plan") {
-    const count = typeof extra?.taskCount === "number" ? extra.taskCount : 0;
-    const title = typeof extra?.planTitle === "string" ? extra.planTitle : "Plan";
-    return `${title} — ${count} task${count !== 1 ? "s" : ""} created`;
-  }
-  return null;
-}
-
-function toolsForAction(action: string | null | undefined): string[] {
-  switch (action) {
-    case "add_task":
-      return ["Tasks"];
-    case "complete_task":
-      return ["Tasks"];
-    case "delete_task":
-      return ["Tasks"];
-    case "add_recurring_task":
-      return ["Tasks", "Recurring"];
-    case "plan":
-    case "create_plan":
-      return ["Planner", "Tasks"];
-    case "confirm_required":
-      return ["Confirmation"];
-    default:
-      return ["Assistant"];
-  }
-}
 
 export default function AiPage() {
   const { refresh } = useAppState();
@@ -142,7 +59,7 @@ export default function AiPage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [voiceStatus, setVoiceStatus] = useState<VoiceCaptureStatus>("idle");
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   /** Drops a voice transcript into the composer — visible, editable, cursor at
    *  the end — and stops there. The student presses Enter/Send to submit. */
@@ -333,13 +250,10 @@ export default function AiPage() {
       });
     }
 
-    const history = turns
-      .slice()
-      .reverse()
-      .flatMap((t) => [
-        { role: "user", content: t.request },
-        { role: "assistant", content: t.response },
-      ]);
+    const history = turns.flatMap((t) => [
+      { role: "user", content: t.request },
+      { role: "assistant", content: t.response },
+    ]);
     history.push({ role: "user", content: userText });
 
     try {
@@ -369,6 +283,7 @@ export default function AiPage() {
         const pendingId = data.pending.id;
         const pendingMessage = data.pending.message;
         setTurns((prev) => [
+          ...prev,
           {
             id: crypto.randomUUID(),
             request: userText,
@@ -377,7 +292,6 @@ export default function AiPage() {
             response: pendingMessage,
             pendingConfirm: { id: pendingId, message: pendingMessage },
           },
-          ...prev,
         ]);
         if (sessionId) {
           void fetch("/api/sessions", {
@@ -402,6 +316,7 @@ export default function AiPage() {
       );
 
       setTurns((prev) => [
+        ...prev,
         {
           id: crypto.randomUUID(),
           request: userText,
@@ -411,7 +326,6 @@ export default function AiPage() {
           actionId: data.actionId,
           actionLabel: notif ?? undefined,
         },
-        ...prev,
       ]);
 
       if (sessionId) {
@@ -433,6 +347,7 @@ export default function AiPage() {
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Error");
       setTurns((prev) => [
+        ...prev,
         {
           id: crypto.randomUUID(),
           request: userText,
@@ -440,7 +355,6 @@ export default function AiPage() {
           sourcesChecked: [],
           response: "Something went wrong. Check that ANTHROPIC_API_KEY is set in .env.local.",
         },
-        ...prev,
       ]);
     } finally {
       setBusy(false);
@@ -489,33 +403,43 @@ export default function AiPage() {
     }
   }, [activeSessionId, refresh]);
 
+  const composer = (
+    <Composer
+      value={input}
+      onChange={setInput}
+      onSubmit={() => void send()}
+      busy={busy}
+      inputRef={inputRef}
+      voiceStatus={voiceStatus}
+      onVoiceStatus={setVoiceStatus}
+      onTranscript={acceptTranscript}
+      onVoiceError={setErr}
+    />
+  );
+
   return (
-    <div className="console-page">
-      <PageHeader
-        eyebrow="Assistant"
-        title="Tangent AI"
-        description="Plan your day, reorganize work, or ask about your schedule."
-      />
+    <div className="tg-console">
+      <section className="tg-main" aria-label="Tangent assistant">
+        <header className="tg-main-head">
+          <h1 className="tg-main-title">Tangent AI</h1>
+          <div className="console-mode-row" role="tablist" aria-label="Tangent AI mode">
+            {(["chat", "brief"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="tab"
+                aria-selected={mode === m}
+                className={`console-mode-pill${mode === m ? " console-mode-pill--active" : ""}`}
+                onClick={() => setMode(m)}
+              >
+                {MODE_LABEL[m]}
+              </button>
+            ))}
+          </div>
+        </header>
 
-      <div className="console-mode-row-wrap">
-        <div className="console-mode-row" role="tablist" aria-label="Tangent AI mode">
-          {(["chat", "brief"] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              role="tab"
-              aria-selected={mode === m}
-              className={`console-mode-pill${mode === m ? " console-mode-pill--active" : ""}`}
-              onClick={() => setMode(m)}
-            >
-              {MODE_LABEL[m]}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <section className="console-workspace" aria-label="Tangent assistant">
         {mode === "brief" ? (
+          <div className="tg-brief-scroll">
           <div className="console-brief-setup">
             <div className="console-brief-sources">
               {briefSources.length === 0 && (
@@ -680,111 +604,42 @@ export default function AiPage() {
               {savingBrief ? "Saving…" : briefSaved ? "Saved ✓" : "Save brief settings"}
             </button>
           </div>
+          </div>
+        ) : turns.length === 0 && !busy ? (
+          <div className="tg-hero">
+            <h2 className="tg-hero-title">What would you like to get done?</h2>
+            {err && <p className="tg-error" role="alert">{err}</p>}
+            {composer}
+            <div className="tg-suggestions">
+              {SUGGESTIONS.map((text) => (
+                <button
+                  key={text}
+                  type="button"
+                  className="tg-suggestion"
+                  onClick={() => {
+                    setInput(text);
+                    inputRef.current?.focus();
+                  }}
+                >
+                  {text}
+                </button>
+              ))}
+            </div>
+          </div>
         ) : (
           <>
-        <div className="console-thread" aria-live="polite">
-          {!busy && turns.length === 0 && (
-            <div className="console-empty">
-              <span className="console-empty-icon" aria-hidden="true"><Sparkles size={22} /></span>
-              <h2>What would you like to get done?</h2>
-              <p>Ask a question or describe a change. Tangent uses your live tasks and calendar.</p>
-              <div className="console-suggestions">
-                {SUGGESTION_CHIPS.map(({ icon: Icon, text }) => (
-                  <button key={text} type="button" className="console-suggestion-chip" onClick={() => setInput(text)}>
-                    <Icon size={15} strokeWidth={1.75} aria-hidden="true" />
-                    <span>{text}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {[...turns].reverse().map((t) => (
-            <article key={t.id} className="console-turn">
-              <div className="console-user-message">{t.request}</div>
-              <div className="console-assistant-message">
-                <span className="console-response-mark" aria-hidden="true"><Sparkles size={15} /></span>
-                <div className="console-response-body">
-                  {t.tools.length > 0 && (
-                    <div className="console-turn-tools">
-                      {t.tools.map((tool) => <span key={tool} className="console-tool-chip">{tool}</span>)}
-                    </div>
-                  )}
-                  {t.sourcesChecked.length > 0 && (
-                    <div className="console-turn-sources">
-                      {t.sourcesChecked.map((source) => (
-                        <span key={source} className="console-source-chip">Checked {source}</span>
-                      ))}
-                    </div>
-                  )}
-                  <div className="console-turn-response">{t.response}</div>
-                  {t.pendingConfirm && (
-                    <div className="confirm-toast-btns confirm-toast-btns--inline">
-                      <button
-                        type="button"
-                        className="surface-action-primary"
-                        onClick={() => void resolveConfirm(t.id, t.pendingConfirm!.id, true)}
-                      >
-                        Confirm
-                      </button>
-                      <button
-                        type="button"
-                        className="surface-action-secondary"
-                        onClick={() => void resolveConfirm(t.id, t.pendingConfirm!.id, false)}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  )}
-                  {t.actionId && t.actionLabel && (
-                    <ActionReceipt actionId={t.actionId} label={t.actionLabel} onUndone={() => void refresh()} />
-                  )}
-                </div>
-              </div>
-            </article>
-          ))}
-
-          {busy && (
-            <article className="console-turn console-turn-pending">
-              <div className="console-user-message">{pendingRequest}</div>
-              <div className="console-assistant-message">
-                <span className="console-response-mark is-working" aria-hidden="true"><Sparkles size={15} /></span>
-                <ul className="console-steps">
-                  {LIVE_STEPS.map((step, i) => (
-                    <li key={step} className="console-step" style={{ animationDelay: `${i * 0.25}s` }}>{step}</li>
-                  ))}
-                </ul>
-              </div>
-            </article>
-          )}
-        </div>
-
-        <div className="console-composer-wrap">
-          {err && <p className="console-error" role="alert">{err}</p>}
-          <form className="console-input-row" onSubmit={(e) => { e.preventDefault(); void send(); }}>
-            <input
-              ref={inputRef}
-              className="console-pill-input"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={
-                voiceStatus === "recording"
-                  ? "Listening… click the mic again to stop"
-                  : voiceStatus === "transcribing"
-                    ? "Transcribing…"
-                    : "Ask about your schedule or make a change…"
-              }
-              aria-label="Command input"
-              disabled={busy}
-              readOnly={voiceStatus === "transcribing"}
+            <ChatThread
+              turns={turns}
+              busy={busy}
+              pendingRequest={pendingRequest}
+              onConfirm={(turnId, pendingId, confirm) => void resolveConfirm(turnId, pendingId, confirm)}
+              onUndone={() => void refresh()}
             />
-            <VoiceRecordButton onTranscript={acceptTranscript} onError={setErr} onStatusChange={setVoiceStatus} />
-            <button type="submit" className="console-send-pill" aria-label="Send" disabled={busy || !input.trim()}>
-              <ArrowUp size={17} strokeWidth={2} />
-            </button>
-          </form>
-          <span className="console-composer-hint">Tangent can make changes to your tasks. You’ll always see what changed.</span>
-        </div>
+            <div className="tg-dock">
+              {err && <p className="tg-error" role="alert">{err}</p>}
+              {composer}
+              <p className="tg-dock-hint">Tangent can change your tasks. You’ll always see what changed.</p>
+            </div>
           </>
         )}
       </section>
