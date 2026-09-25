@@ -56,6 +56,66 @@
   color: var(--text);
 }
 
+.tg-head-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.tg-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 10px 0 6px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-2);
+  font: 500 13px/1 var(--font-body);
+  cursor: pointer;
+}
+
+.tg-back:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* "Your Brief" — the OpenAI Platform "Create" pill: solid black, white text. */
+.tg-brief-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 14px 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--surface);
+  font: 600 13px/1 var(--font-body);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tg-brief-pill:hover {
+  opacity: 0.88;
+}
+
+.tg-brief-pill-when {
+  padding-left: 8px;
+  border-left: 1px solid rgb(from var(--surface) r g b / 0.28);
+  color: rgb(from var(--surface) r g b / 0.72);
+  font-weight: 500;
+}
+
+.tg-brief-intro {
+  max-width: 560px;
+  margin: 0;
+  color: var(--text-2);
+  font: 400 14px/1.55 var(--font-body);
+}
+
 /* ── Empty state: heading, composer and suggestions centered (v0 / Notion) ─── */
 .tg-hero {
   flex: 1;
@@ -415,12 +475,18 @@
   cursor: default;
 }
 
-/* Brief settings still use their own layout; give them a scroll area. */
+/* Brief settings keep their own layout; give them a scroll area. */
 .tg-brief-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+}
+
+.tg-brief-scroll .console-brief-setup {
+  max-width: calc(var(--tg-measure) + 48px);
+  margin: 0 auto;
   padding: 8px 24px 32px;
+  overflow: visible;
 }
 
 /* ── Chat list (v0 / Notion sidebar) ────────────────────────────────────────── */
@@ -761,6 +827,10 @@
 
   .tg-hero-title {
     font-size: 26px;
+  }
+
+  .tg-brief-pill-when {
+    display: none;
   }
 
   .tg-msg-user {
