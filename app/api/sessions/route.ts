@@ -6,6 +6,7 @@ import {
   addChatSessionMessage,
   renameChatSession,
   deleteChatSession,
+  linkChatSession,
 } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +30,9 @@ export async function POST(req: Request) {
       title?: string;
       role?: string;
       content?: string;
+      actionId?: string;
+      taskIds?: string[];
+      planId?: string | null;
     };
     const { action } = body;
 
@@ -54,6 +58,16 @@ export async function POST(req: Request) {
       }
       renameChatSession(sessionId, title);
       return NextResponse.json({ ok: true });
+    }
+
+    if (action === "link") {
+      const { sessionId, actionId, taskIds, planId } = body;
+      if (!sessionId || (!actionId && !taskIds?.length && !planId)) {
+        return NextResponse.json({ ok: false, error: "Missing sessionId or link target" }, { status: 400 });
+      }
+      const session = linkChatSession(sessionId, { actionId, taskIds, planId });
+      if (!session) return NextResponse.json({ ok: false, error: "Session not found" }, { status: 404 });
+      return NextResponse.json({ ok: true, session });
     }
 
     if (action === "delete") {

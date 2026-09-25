@@ -37,6 +37,10 @@ export type ChatSession = {
   messages: ChatMessage[];
   createdAt: string;
   updatedAt: string;
+  /** Tasks this chat created or changed — gives the chat its task color. */
+  taskIds?: string[];
+  /** Plan this chat created, when it made one. Takes precedence over taskIds. */
+  planId?: string | null;
 };
 
 interface StoreData {
@@ -589,6 +593,35 @@ export function renameChatSession(sessionId: string, title: string): boolean {
   session.title = title.trim() || session.title;
   session.updatedAt = new Date().toISOString();
   return true;
+}
+
+/** Links a chat to the tasks/plan an action touched (read from the action's
+ *  undo snapshot), or to explicit ids. Links accumulate across the chat. */
+export function linkChatSession(
+  sessionId: string,
+  link: { actionId?: string; taskIds?: string[]; planId?: string | null }
+): ChatSession | null {
+  const session = store.chatSessions.find((s) => s.id === sessionId);
+  if (!session) return null;
+  const taskIds = new Set(session.taskIds ?? []);
+  let planId = session.planId ?? null;
+
+  if (link.actionId) {
+    const snap = g.__tangentActions!.find((a) => a.id === link.actionId)?.snapshot;
+    if (snap) {
+      if (snap.addedPlanId) planId = snap.addedPlanId;
+      for (const id of snap.addedTaskIds ?? []) taskIds.add(id);
+      if (snap.completedTaskId) taskIds.add(snap.completedTaskId);
+      if (snap.rescheduled) taskIds.add(snap.rescheduled.taskId);
+      for (const m of snap.moves ?? []) taskIds.add(m.taskId);
+    }
+  }
+  for (const id of link.taskIds ?? []) taskIds.add(id);
+  if (link.planId) planId = link.planId;
+
+  session.taskIds = Array.from(taskIds);
+  session.planId = planId;
+  return getChatSession(sessionId);
 }
 
 export function deleteChatSession(sessionId: string): boolean {

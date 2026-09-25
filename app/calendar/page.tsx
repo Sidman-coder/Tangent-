@@ -7,16 +7,10 @@ import Button from "@/components/ui/Button";
 import SidePeek from "@/components/ui/SidePeek";
 import { handleResourceClick } from "@/lib/task-utils";
 import { toYMD, formatTime12 } from "@/lib/dates";
+import { taskColor } from "@/lib/task-colors";
 import type { Plan, Task } from "@/lib/types";
 import { X, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil } from "lucide-react";
 
-const KIND_COLOR = {
-  school: "var(--kind-school)",
-  "academic-ec": "var(--kind-academic-ec)",
-  "side-ec": "var(--kind-side-ec)",
-  commitment: "var(--kind-commitment)",
-  personal: "var(--kind-personal)",
-};
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -132,17 +126,10 @@ export default function CalendarPage() {
     return plans.find((p) => p.id === planId) ?? null;
   }, [plans]);
 
-  const getTaskCategoryColor = useCallback((t: Task): string => {
-    const plan = getPlan(t.planId);
-    if (plan) return plan.color;
-    const cal = calendars.find((c) => c.id === t.calendarId);
-    if (cal) {
-      if (cal.category === "work") return "var(--cal-work)";
-      if (cal.category === "personal") return "var(--cal-personal)";
-      if (cal.category !== "ALL") return "var(--cal-all)";
-    }
-    return KIND_COLOR[t.kind ?? "personal"];
-  }, [getPlan, calendars]);
+  const getTaskCategoryColor = useCallback(
+    (t: Task): string => taskColor(t, plans, calendars),
+    [plans, calendars]
+  );
 
   const tasksForDay = useCallback((ymd: string): Task[] => {
     let tasks = state?.tasks ?? [];

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppState } from "@/components/AppStateProvider";
+import ChatSidebar from "@/components/console/ChatSidebar";
 import ChatThread from "@/components/console/ChatThread";
 import Composer from "@/components/console/Composer";
 import {
@@ -49,10 +50,11 @@ const SUGGESTIONS = [
 const SESSION_STORAGE_KEY = "tangent:ai:activeSessionId";
 
 export default function AiPage() {
-  const { refresh } = useAppState();
+  const { state, refresh } = useAppState();
 
   const [mode, setMode] = useState<ConsoleMode>("chat");
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [pendingRequest, setPendingRequest] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -100,26 +102,62 @@ export default function AiPage() {
   const [findError, setFindError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<SuggestedBriefSource[]>([]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const storedId = window.localStorage.getItem(SESSION_STORAGE_KEY);
-    if (!storedId) return;
-    fetch(`/api/sessions?sessionId=${encodeURIComponent(storedId)}`)
-      .then((res) => res.json())
-      .then((data: { ok?: boolean; session?: ChatSession }) => {
-        if (cancelled) return;
-        if (data.ok && data.session) {
-          setActiveSessionId(data.session.id);
-          setTurns(turnsFromMessages(data.session.messages));
-        } else {
-          window.localStorage.removeItem(SESSION_STORAGE_KEY);
-        }
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
+  const loadSessions = useCallback(async () => {
+    try {
+      const res = await fetch("/api/sessions");
+      const data = (await res.json()) as { ok?: boolean; sessions?: ChatSession[] };
+      if (data.ok) setSessions(data.sessions ?? []);
+    } catch {}
   }, []);
+
+  const openSession = useCallback(async (sessionId: string) => {
+    try {
+      const res = await fetch(`/api/sessions?sessionId=${encodeURIComponent(sessionId)}`);
+      const data = (await res.json()) as { ok?: boolean; session?: ChatSession };
+      if (data.ok && data.session) {
+        setActiveSessionId(data.session.id);
+        setTurns(turnsFromMessages(data.session.messages));
+        setMode("chat");
+        setErr(null);
+        window.localStorage.setItem(SESSION_STORAGE_KEY, data.session.id);
+      } else {
+        window.localStorage.removeItem(SESSION_STORAGE_KEY);
+      }
+    } catch {}
+  }, []);
+
+  const newChat = useCallback(() => {
+    if (busy) return;
+    setActiveSessionId(null);
+    setTurns([]);
+    setInput("");
+    setErr(null);
+    setMode("chat");
+    window.localStorage.removeItem(SESSION_STORAGE_KEY);
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  }, [busy]);
+
+  /** Tags the chat with the tasks/plan an action touched (its task color). */
+  const linkAction = useCallback(
+    async (sessionId: string | null, actionId: string | undefined) => {
+      if (!sessionId || !actionId) return;
+      try {
+        await fetch("/api/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "link", sessionId, actionId }),
+        });
+      } catch {}
+      void loadSessions();
+    },
+    [loadSessions]
+  );
+
+  useEffect(() => {
+    void loadSessions();
+    const storedId = window.localStorage.getItem(SESSION_STORAGE_KEY);
+    if (storedId) void openSession(storedId);
+  }, [loadSessions, openSession]);
 
   useEffect(() => {
     fetch("/api/brief-config")
@@ -343,6 +381,7 @@ export default function AiPage() {
         }
       }
 
+      await linkAction(sessionId, data.actionId);
       await refresh();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Error");
@@ -359,8 +398,9 @@ export default function AiPage() {
     } finally {
       setBusy(false);
       setPendingRequest(null);
+      void loadSessions();
     }
-  }, [input, busy, activeSessionId, turns, refresh]);
+  }, [input, busy, activeSessionId, turns, refresh, linkAction, loadSessions]);
 
   const resolveConfirm = useCallback(async (turnId: string, pendingId: string, confirm: boolean) => {
     setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, pendingConfirm: null } : t)));
@@ -396,12 +436,13 @@ export default function AiPage() {
         });
       }
 
+      if (confirm && data.ok) await linkAction(activeSessionId, data.actionId);
       await refresh();
     } catch (e) {
       const message = e instanceof Error ? e.message : "Something went wrong.";
       setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, response: message } : t)));
     }
-  }, [activeSessionId, refresh]);
+  }, [activeSessionId, refresh, linkAction]);
 
   const composer = (
     <Composer
@@ -419,6 +460,13 @@ export default function AiPage() {
 
   return (
     <div className="tg-console">
+      <ChatSidebar
+        sessions={sessions}
+        activeId={activeSessionId}
+        state={state}
+        onSelect={(id) => void openSession(id)}
+        onNew={newChat}
+      />
       <section className="tg-main" aria-label="Tangent assistant">
         <header className="tg-main-head">
           <h1 className="tg-main-title">Tangent AI</h1>
