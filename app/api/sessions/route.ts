@@ -7,6 +7,7 @@ import {
   renameChatSession,
   deleteChatSession,
   linkChatSession,
+  styleChatSession,
 } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +34,8 @@ export async function POST(req: Request) {
       actionId?: string;
       taskIds?: string[];
       planId?: string | null;
+      color?: string | null;
+      pinned?: boolean;
     };
     const { action } = body;
 
@@ -66,6 +69,17 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, error: "Missing sessionId or link target" }, { status: 400 });
       }
       const session = linkChatSession(sessionId, { actionId, taskIds, planId });
+      if (!session) return NextResponse.json({ ok: false, error: "Session not found" }, { status: 404 });
+      return NextResponse.json({ ok: true, session });
+    }
+
+    if (action === "style") {
+      const { sessionId, color, pinned } = body;
+      if (!sessionId) return NextResponse.json({ ok: false, error: "Missing sessionId" }, { status: 400 });
+      if (color !== undefined && color !== null && !/^#[0-9a-f]{6}$/i.test(color)) {
+        return NextResponse.json({ ok: false, error: "Color must be a #rrggbb hex" }, { status: 400 });
+      }
+      const session = styleChatSession(sessionId, { color, pinned });
       if (!session) return NextResponse.json({ ok: false, error: "Session not found" }, { status: 404 });
       return NextResponse.json({ ok: true, session });
     }

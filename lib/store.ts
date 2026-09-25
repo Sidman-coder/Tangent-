@@ -41,6 +41,10 @@ export type ChatSession = {
   taskIds?: string[];
   /** Plan this chat created, when it made one. Takes precedence over taskIds. */
   planId?: string | null;
+  /** User-chosen highlight color; overrides the task color in the chat list. */
+  color?: string | null;
+  /** Pinned chats sit in their own section at the top of the list. */
+  pinned?: boolean;
 };
 
 interface StoreData {
@@ -593,6 +597,18 @@ export function renameChatSession(sessionId: string, title: string): boolean {
   session.title = title.trim() || session.title;
   session.updatedAt = new Date().toISOString();
   return true;
+}
+
+/** Sets a chat's user-chosen highlight color (null clears it) and/or pin state. */
+export function styleChatSession(
+  sessionId: string,
+  style: { color?: string | null; pinned?: boolean }
+): ChatSession | null {
+  const session = store.chatSessions.find((s) => s.id === sessionId);
+  if (!session) return null;
+  if (style.color !== undefined) session.color = style.color;
+  if (style.pinned !== undefined) session.pinned = style.pinned;
+  return getChatSession(sessionId);
 }
 
 /** Links a chat to the tasks/plan an action touched (read from the action's

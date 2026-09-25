@@ -400,7 +400,19 @@ function findTaskByTitle(title: string) {
 /** Shared voice-command handler — used by both the pen/text pipeline (app/api/voice/route.ts)
  *  and the browser hold-to-record endpoint (app/api/voice-browser/route.ts), so the
  *  downstream Claude tool-use logic is only implemented once. */
-export async function handleVoiceText(text: string, opts: { forcePlan?: boolean } = {}): Promise<NextResponse> {
+/**
+ * `opts.context` is earlier conversation (e.g. a plan drafted in Plan mode) that
+ * the model may draw on. It only reaches the LLM prompts — never the keyword
+ * detectors, so words inside a drafted plan can't trigger a clear or a reroute.
+ */
+export async function handleVoiceText(
+  text: string,
+  opts: { forcePlan?: boolean; context?: string } = {}
+): Promise<NextResponse> {
+  const withContext = (t: string) =>
+    opts.context
+      ? `${t}\n\nEarlier in this conversation (use it for what "it", "that", or "this plan" refers to):\n${opts.context}`
+      : t;
   try {
     console.log("[api/voice] Handler called. Task count:", getAllTasks().length);
     console.log("[api/voice] POST received text:", text);
@@ -459,7 +471,7 @@ export async function handleVoiceText(text: string, opts: { forcePlan?: boolean 
     if (needsAgentTools(text)) {
       console.log("[api/voice] Detected Gmail/Canvas/Calendar command — running agent tool loop");
       try {
-        const result = await runVoiceAgentToolLoop(text);
+        const result = await runVoiceAgentToolLoop(withContext(text));
         addVoiceLog({ text, response: result.response, action: result.action, ok: true });
         console.log("[api/voice] Agent tool loop finished — action:", result.action);
         if (result.action === "confirm_required" && result.pending) {
@@ -697,7 +709,7 @@ Rules:
             output_config: { format: { type: "json_schema", schema: PLAN_SCHEMA } },
             messages: [{
               role: "user",
-              content: `Create a plan from ${startDate} to ${endDate} (${dayCount} days, ${expectedTaskCount} tasks, one task every ${taskInterval} day${taskInterval > 1 ? "s" : ""}). Request: ${text}`,
+              content: `Create a plan from ${startDate} to ${endDate} (${dayCount} days, ${expectedTaskCount} tasks, one task every ${taskInterval} day${taskInterval > 1 ? "s" : ""}). Request: ${withContext(text)}`,
             }],
           }),
         });
@@ -834,7 +846,7 @@ Rules:
         system: voiceSystemPrompt(userContext),
         output_config: { format: { type: "json_schema", schema: VOICE_COMMAND_SCHEMA } },
         messages: [
-          { role: "user", content: text },
+          { role: "user", content: withContext(text) },
         ],
       }),
     });
@@ -993,7 +1005,7 @@ Rules:
     // of creating a plan with no tasks.
     if (action === "create_plan") {
       console.log("[api/voice] create_plan from standard path — delegating to plan generator");
-      return handleVoiceText(text, { forcePlan: true });
+      return handleVoiceText(text, { forcePlan: true, context: opts.context });
     }
 
     // ── Clear all tasks ────────────────────────────────────────────────────────

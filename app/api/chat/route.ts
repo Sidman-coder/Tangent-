@@ -3,6 +3,44 @@ import { handleVoiceText } from "@/lib/voice-handler";
 
 export const dynamic = "force-dynamic";
 
+/** "calendar" acts on the calendar; "plan" only talks a plan through. */
+type ChatMode = "plan" | "calendar";
+
+const PLAN_SYSTEM = (today: string) => `You are TANGENT AI in Plan mode — a thinking partner for planning time.
+Today is ${today}.
+In Plan mode you never add, move, or delete anything; you help the user work out what to do and when.
+- Ask at most one short clarifying question when something essential (dates, hours per week, deadline) is missing.
+- When you propose a schedule, list each session on its own line as "Day, date — time — what", 3 to 10 lines.
+- Keep it under 150 words. Plain text only: no markdown headings, bold, tables, JSON, or code fences. Simple "- " bullets are fine.
+- End a proposed schedule with: "Switch to Calendar and say \"add this plan\" to put it on your calendar."`;
+
+/** Earlier turns, newest last, trimmed — lets Calendar mode resolve "add this plan". */
+function conversationContext(messages: { role: string; content: string }[]): string | undefined {
+  const earlier = messages.slice(0, -1).slice(-4);
+  if (earlier.length === 0) return undefined;
+  const text = earlier.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`).join("\n");
+  return text.length > 2400 ? text.slice(-2400) : text;
+}
+
+async function planReply(apiKey: string, messages: { role: "user" | "assistant"; content: string }[]): Promise<string> {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-5",
+      max_tokens: 700,
+      temperature: 0.4,
+      system: PLAN_SYSTEM(new Date().toISOString().slice(0, 10)),
+      messages: messages.slice(-12),
+    }),
+  });
+  if (!res.ok) throw new Error(`Anthropic error ${res.status}`);
+  const data = (await res.json()) as { content?: { type: string; text?: string }[] };
+  const text = (data.content ?? []).filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n").trim();
+  if (!text) throw new Error("Empty plan reply");
+  return text.replace(/```[\s\S]*?```/g, "").replace(/\*\*(.+?)\*\*/g, "$1").trim();
+}
+
 function lastUserMessage(messages: { role: string; content: string }[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
     if (messages[i].role === "user") return messages[i].content.trim();
@@ -29,7 +67,8 @@ function extractContextFireAndForget(baseUrl: string, userMessage: string, final
 export async function POST(req: Request) {
   try {
     console.log("[api/chat] === CHAT REQUEST START ===");
-    const body = (await req.json()) as { messages?: unknown };
+    const body = (await req.json()) as { messages?: unknown; mode?: unknown };
+    const mode: ChatMode = body.mode === "plan" ? "plan" : "calendar";
     const raw = body.messages;
     if (!Array.isArray(raw) || raw.length === 0) {
       return NextResponse.json({ ok: false, error: "Missing messages array" }, { status: 400 });
@@ -61,6 +100,11 @@ export async function POST(req: Request) {
 
     console.log("[api/chat] User message:", userText);
 
+    if (mode === "plan") {
+      const reply = await planReply(apiKey, messages);
+      return NextResponse.json({ message: reply, action: "plan_reply", mode, ok: true });
+    }
+
     // Same-origin base for fire-and-forget helpers — derived from the request so it
     // works on any port and on Vercel, never a hardcoded localhost.
     const baseUrl = new URL(req.url).origin;
@@ -79,7 +123,7 @@ export async function POST(req: Request) {
     let voiceCount: number | undefined;
     try {
       console.log("[api/chat] Calling voice pipeline:", userText);
-      const voiceRes = await handleVoiceText(userText);
+      const voiceRes = await handleVoiceText(userText, { context: conversationContext(messages) });
       const voiceData = (await voiceRes.json()) as {
         response?: string;
         action?: string;
