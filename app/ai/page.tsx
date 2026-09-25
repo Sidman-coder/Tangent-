@@ -18,7 +18,8 @@ import {
   type VoiceTranscriptDetail,
 } from "@/hooks/useVoiceCapture";
 import type { ChatSession } from "@/lib/store";
-import { ArrowLeft, Newspaper } from "lucide-react";
+import { ArrowLeft, CalendarClock, CalendarRange, MessageSquare, Newspaper, Sun, Timer } from "lucide-react";
+import PenMark from "@/components/console/PenMark";
 import BriefPanel, { CADENCE_LABEL, type BriefSummary } from "@/components/console/BriefPanel";
 import { formatTime12 } from "@/lib/dates";
 import "./console.css";
@@ -29,12 +30,18 @@ function briefWhen(b: BriefSummary): string {
   return `${CADENCE_LABEL[b.cadence]} · ${formatTime12(b.deliveryTime)}`;
 }
 
+// Linear-style starter cards: fill the composer, never send on their own.
 const SUGGESTIONS = [
-  "Plan my week",
-  "What's on today?",
-  "What fits in 30 minutes?",
-  "Move overdue tasks",
+  { icon: CalendarRange, text: "Plan my week", detail: "Spread this week’s work across your free time" },
+  { icon: Sun, text: "What's on today?", detail: "Today’s tasks and events, in order" },
+  { icon: Timer, text: "What fits in 30 minutes?", detail: "Quick tasks for a short gap" },
+  { icon: CalendarClock, text: "Move overdue tasks", detail: "Find new slots for anything that slipped" },
 ] as const;
+
+function greetingFor(hour: number, name: string): string {
+  const part = hour >= 5 && hour < 12 ? "Morning" : hour >= 12 && hour < 17 ? "Afternoon" : "Evening";
+  return name ? `${part}, ${name}.` : `Good ${part.toLowerCase()}.`;
+}
 
 /** Persists the active chat session id across navigation/refresh within the same
  *  browser (not the server — the in-memory store still resets on server restart,
@@ -48,6 +55,13 @@ export default function AiPage() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [brief, setBrief] = useState<BriefSummary | null>(null);
+  const [greeting, setGreeting] = useState("");
+  const [chatsOpen, setChatsOpen] = useState(false);
+
+  useEffect(() => {
+    const name = window.localStorage.getItem("tangent-user-name")?.trim().split(/\s+/)[0] ?? "";
+    setGreeting(greetingFor(new Date().getHours(), name));
+  }, []);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [pendingRequest, setPendingRequest] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -362,8 +376,16 @@ export default function AiPage() {
         sessions={sessions}
         activeId={activeSessionId}
         state={state}
-        onSelect={(id) => void openSession(id)}
-        onNew={newChat}
+        open={chatsOpen}
+        onClose={() => setChatsOpen(false)}
+        onSelect={(id) => {
+          setChatsOpen(false);
+          void openSession(id);
+        }}
+        onNew={() => {
+          setChatsOpen(false);
+          newChat();
+        }}
       />
       <section className="tg-main" aria-label="Tangent assistant">
         <header className="tg-main-head">
@@ -376,7 +398,18 @@ export default function AiPage() {
               <h1 className="tg-main-title">Your Brief</h1>
             </div>
           ) : (
-            <h1 className="tg-main-title">Tangent AI</h1>
+            <div className="tg-head-title">
+              <button
+                type="button"
+                className="tg-icon-btn tg-chats-toggle"
+                aria-label="Show chats"
+                aria-expanded={chatsOpen}
+                onClick={() => setChatsOpen(true)}
+              >
+                <MessageSquare size={17} strokeWidth={1.8} />
+              </button>
+              <h1 className="tg-main-title">Tangent AI</h1>
+            </div>
           )}
           {mode === "chat" && (
             <button
@@ -398,21 +431,28 @@ export default function AiPage() {
           </div>
         ) : turns.length === 0 && !busy ? (
           <div className="tg-hero">
-            <h2 className="tg-hero-title">What would you like to get done?</h2>
+            <PenMark className="tg-hero-mark" size={26} />
+            <h2 className="tg-hero-title">
+              <span className="tg-hero-hello">{greeting || " "}</span>
+              <span className="tg-hero-ask">What would you like to get done?</span>
+            </h2>
             {err && <p className="tg-error" role="alert">{err}</p>}
             {composer}
-            <div className="tg-suggestions">
-              {SUGGESTIONS.map((text) => (
+            <p className="tg-examples-label">Try asking</p>
+            <div className="tg-examples">
+              {SUGGESTIONS.map(({ icon: Icon, text, detail }) => (
                 <button
                   key={text}
                   type="button"
-                  className="tg-suggestion"
+                  className="tg-example"
                   onClick={() => {
                     setInput(text);
                     inputRef.current?.focus();
                   }}
                 >
-                  {text}
+                  <Icon size={16} strokeWidth={1.7} aria-hidden="true" />
+                  <span className="tg-example-title">{text}</span>
+                  <span className="tg-example-detail">{detail}</span>
                 </button>
               ))}
             </div>

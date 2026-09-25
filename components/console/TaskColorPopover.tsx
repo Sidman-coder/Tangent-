@@ -11,7 +11,7 @@ import { formatTime12, getMonthGrid, toYMD } from "@/lib/dates";
 import type { ChatTask } from "@/components/console/chatTask";
 
 const WEEKDAY_INITIAL = ["S", "M", "T", "W", "T", "F", "S"];
-const WIDTH = 264;
+const WIDTH = 300;
 
 type Props = {
   task: ChatTask;

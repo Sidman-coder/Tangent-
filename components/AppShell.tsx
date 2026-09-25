@@ -215,7 +215,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       <CommandPalette />
       <CanvasConnectGuide open={canvasGuideOpen} onClose={() => setCanvasGuideOpen(false)} />
-      <VoiceCaptureFab />
+      {/* The AI console has its own mic in the composer; the FAB would cover Send. */}
+      {pathname !== "/ai" && <VoiceCaptureFab />}
       {!showOnboarding && <DesktopNotifPrompt />}
 
       {showOnboarding && <FirstRun onComplete={() => setShowOnboarding(false)} />}

@@ -52,7 +52,7 @@ export default function Composer({
 
   return (
     <form
-      className={`tg-composer is-voice-${voiceStatus}`}
+      className={`tg-composer is-voice-${voiceStatus}${value.trim() ? " has-text" : ""}`}
       onSubmit={(e) => {
         e.preventDefault();
         if (canSend) onSubmit();
