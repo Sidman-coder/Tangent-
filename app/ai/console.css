@@ -15,13 +15,19 @@
 
 .tg-console {
   --tg-radius: 12px;
-  --tg-measure: 720px;
+  --tg-measure: 780px;
+  --tg-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --tg-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   height: calc(100dvh - var(--topbar-h));
   min-height: 520px;
   display: flex;
   gap: 10px;
   padding: 10px;
   background: var(--bg);
+}
+
+.tg-console.chats-hidden {
+  --tg-measure: 820px;
 }
 
 /* ── Main panel ─────────────────────────────────────────────────────────────── */
@@ -82,8 +88,10 @@
   color: var(--text);
 }
 
-/* "Your Brief" — the OpenAI Platform "Create" pill: solid black, white text. */
+/* "Your Brief" — a solid accent pill with a light sweep on hover. */
 .tg-brief-pill {
+  position: relative;
+  overflow: hidden;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -91,22 +99,48 @@
   padding: 0 14px 0 12px;
   border: 0;
   border-radius: 999px;
-  background: var(--text);
-  color: var(--surface);
+  background: var(--accent);
+  color: #fff;
   font: 600 13px/1 var(--font-body);
   white-space: nowrap;
   cursor: pointer;
+  box-shadow: 0 4px 14px rgb(from var(--accent) r g b / 0.28);
+  transition: transform 0.25s var(--tg-spring), box-shadow 0.25s ease;
+}
+
+.tg-brief-pill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.35) 50%, transparent 70%);
+  transform: translateX(-120%);
+  pointer-events: none;
 }
 
 .tg-brief-pill:hover {
-  opacity: 0.88;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgb(from var(--accent) r g b / 0.36);
+}
+
+.tg-brief-pill:hover::after {
+  animation: tg-shine 0.8s ease;
+}
+
+.tg-brief-pill:active {
+  transform: scale(0.97);
 }
 
 .tg-brief-pill-when {
   padding-left: 8px;
-  border-left: 1px solid rgb(from var(--surface) r g b / 0.28);
-  color: rgb(from var(--surface) r g b / 0.72);
+  border-left: 1px solid rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.78);
   font-weight: 500;
+}
+
+.tg-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .tg-brief-intro {
@@ -352,15 +386,45 @@
   background: var(--bg);
 }
 
-.tg-btn-dark {
-  border-color: var(--text);
-  background: var(--text);
-  color: var(--surface);
+.tg-btn {
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.2s var(--tg-spring), box-shadow 0.2s ease;
 }
 
-.tg-btn-dark:hover {
-  background: var(--text);
-  opacity: 0.88;
+.tg-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.tg-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.tg-btn-dark,
+.tg-btn-accent {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 2px 10px rgb(from var(--accent) r g b / 0.25);
+}
+
+.tg-btn-dark:hover:not(:disabled),
+.tg-btn-accent:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: 0 6px 18px rgb(from var(--accent) r g b / 0.35);
+  transform: translateY(-1px);
+}
+
+.tg-btn-danger {
+  border-color: var(--red);
+  background: var(--red);
+  color: #fff;
+}
+
+.tg-btn-danger:hover:not(:disabled) {
+  border-color: var(--red);
+  background: var(--red);
+  opacity: 0.9;
 }
 
 .tg-steps {
@@ -515,33 +579,53 @@
   width: 32px;
   height: 32px;
   border: 0;
-  border-radius: 8px;
-  background: var(--text);
-  color: var(--surface);
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
   cursor: pointer;
+  box-shadow: 0 3px 12px rgb(from var(--accent) r g b / 0.32);
+  transition: transform 0.3s var(--tg-spring), opacity 0.2s ease, box-shadow 0.2s ease, width 0.3s var(--tg-ease-out);
+}
+
+.tg-send:hover:not(:disabled) {
+  transform: translateY(-1px) scale(1.04);
+}
+
+.tg-send:active:not(:disabled) {
+  transform: scale(0.9);
 }
 
 .tg-send:disabled {
   background: var(--line);
   color: var(--text-3);
+  box-shadow: none;
   cursor: default;
 }
 
-/* v0: with nothing typed, the mic is the primary (black) action and Send
-   steps back; once there is text, Send takes over. */
+/* With nothing typed, the mic is the primary (accent) action and Send
+   folds away; once there is text, Send pops in. */
 .tg-composer:not(.has-text).is-voice-idle .tg-mic {
-  background: var(--text);
-  color: var(--surface);
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 3px 12px rgb(from var(--accent) r g b / 0.3);
 }
 
 .tg-composer:not(.has-text).is-voice-idle .tg-mic:hover:not(:disabled) {
-  background: var(--text);
-  color: var(--surface);
-  opacity: 0.88;
+  background: var(--accent);
+  color: #fff;
+  opacity: 0.9;
 }
 
 .tg-composer:not(.has-text) .tg-send {
-  display: none;
+  width: 0;
+  opacity: 0;
+  transform: scale(0.4) rotate(-30deg);
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.tg-composer:not(.has-text) .tg-composer-actions {
+  gap: 0;
 }
 
 /* Brief settings keep their own layout; give them a scroll area. */
@@ -559,36 +643,113 @@
 }
 
 /* ── Chat list (v0 / Notion sidebar) ────────────────────────────────────────── */
+/* Saved chats sit to the right of the conversation, narrower than the thread. */
 .tg-side {
-  flex: 0 0 236px;
+  order: 2;
+  flex: 0 0 224px;
   min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 6px 4px 6px 6px;
+  padding: 6px 6px 6px 4px;
   overflow-y: auto;
+  scrollbar-width: thin;
+  animation: tg-side-in 0.45s var(--tg-ease-out);
+}
+
+.tg-side-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tg-side-close {
+  display: none;
 }
 
 .tg-new-chat {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
   height: 36px;
   padding: 0 12px;
   border: 1px solid var(--line-strong);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--surface);
   color: var(--text);
   font: 550 13px/1 var(--font-body);
   cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, box-shadow 0.2s ease, transform 0.25s var(--tg-spring);
+}
+
+.tg-new-chat svg {
+  color: var(--accent);
+  transition: transform 0.35s var(--tg-spring);
 }
 
 .tg-new-chat:hover {
-  border-color: var(--text-3);
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 3px rgb(from var(--accent) r g b / 0.08);
+}
+
+.tg-new-chat:hover svg {
+  transform: rotate(90deg);
+}
+
+.tg-new-chat:active {
+  transform: scale(0.97);
+}
+
+.tg-side-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  margin-top: 6px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: rgb(from var(--text) r g b / 0.045);
+  color: var(--text-3);
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.2s ease;
+}
+
+.tg-side-search:focus-within {
+  border-color: var(--accent-line);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px rgb(from var(--accent) r g b / 0.1);
+  color: var(--accent);
+}
+
+.tg-console .tg-side .tg-side-search input[type="search"] {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  box-shadow: none;
+  background: transparent;
+  color: var(--text);
+  font: 400 12.5px/1 var(--font-body);
+}
+
+.tg-side-search input[type="search"]::-webkit-search-cancel-button {
+  cursor: pointer;
+}
+
+.tg-side-search input::placeholder {
+  color: var(--text-3);
 }
 
 .tg-side-label {
-  margin: 18px 10px 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 16px 10px 6px;
   color: var(--text-3);
   font: 500 12px/1 var(--font-body);
 }
@@ -615,27 +776,271 @@
   position: relative;
   display: flex;
   align-items: center;
-  border-radius: 8px;
+  max-height: 64px;
+  border-radius: 9px;
+  transition: background 0.18s ease, max-height 0.24s ease, opacity 0.2s ease, transform 0.24s ease;
+  animation: tg-row-in 0.4s var(--tg-ease-out) both;
+  animation-delay: calc(var(--i, 0) * 28ms);
 }
 
 .tg-chat-row:hover {
-  background: rgb(from var(--text) r g b / 0.04);
+  background: rgb(from var(--text) r g b / 0.045);
 }
 
 .tg-chat-row.is-active {
-  background: rgb(from var(--text) r g b / 0.07);
+  background: rgb(from var(--accent) r g b / 0.09);
 }
 
-/* Task tag: a thin bar in the task's calendar color. */
-.tg-chat-row.has-task::before {
+.tg-chat-row.is-active .tg-chat-title {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Highlight: the whole row is tinted in the chosen color. */
+.tg-chat-row.is-highlighted {
+  background: color-mix(in srgb, var(--chat-color) 11%, transparent);
+}
+
+.tg-chat-row.is-highlighted:hover {
+  background: color-mix(in srgb, var(--chat-color) 17%, transparent);
+}
+
+.tg-chat-row.is-highlighted.is-active {
+  background: color-mix(in srgb, var(--chat-color) 22%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chat-color) 40%, transparent);
+}
+
+.tg-chat-row.is-highlighted .tg-chat-title {
+  color: color-mix(in srgb, var(--chat-color) 70%, var(--text));
+}
+
+.tg-chat-row.is-removing {
+  overflow: hidden;
+  pointer-events: none;
+  animation: tg-row-out 0.24s ease forwards;
+}
+
+/* Color tag: a thin bar in the chat's highlight or task color. */
+.tg-chat-row.has-color::before {
   content: "";
   position: absolute;
   left: 0;
-  top: 8px;
-  bottom: 8px;
+  top: 9px;
+  bottom: 9px;
   width: 3px;
   border-radius: 2px;
   background: var(--chat-color);
+  transform-origin: center;
+  transition: top 0.2s var(--tg-spring), bottom 0.2s var(--tg-spring);
+}
+
+.tg-chat-row.has-color:hover::before,
+.tg-chat-row.has-color.is-active::before {
+  top: 6px;
+  bottom: 6px;
+}
+
+.tg-chat-more {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin-right: 5px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-2);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.tg-chat-row:hover .tg-chat-more,
+.tg-chat-row:focus-within .tg-chat-more,
+.tg-chat-row.has-menu .tg-chat-more,
+.tg-chat-row.is-active .tg-chat-more {
+  opacity: 1;
+}
+
+.tg-chat-more:hover,
+.tg-chat-more[aria-expanded="true"] {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  color: var(--text);
+}
+
+@media (hover: none) {
+  .tg-chat-more {
+    opacity: 1;
+  }
+}
+
+.tg-chat-rename {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 6px 5px 8px;
+}
+
+.tg-console .tg-side .tg-chat-rename input {
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--accent);
+  border-radius: 7px;
+  outline: none;
+  background: var(--surface);
+  box-shadow: 0 0 0 3px rgb(from var(--accent) r g b / 0.14);
+  color: var(--text);
+  font: 500 13px/1 var(--font-body);
+  animation: tg-pop-in 0.22s var(--tg-spring);
+}
+
+/* ── Chat options menu ──────────────────────────────────────────────────────── */
+.tg-menu {
+  position: fixed;
+  z-index: 210;
+  display: flex;
+  flex-direction: column;
+  padding: 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgba(20, 20, 24, 0.14), 0 2px 6px rgba(20, 20, 24, 0.06);
+  font-family: var(--font-body);
+  transform-origin: top right;
+  animation: tg-pop-in 0.22s var(--tg-spring);
+}
+
+.tg-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 32px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--text);
+  font: 500 13px/1 var(--font-body);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.tg-menu-item svg {
+  color: var(--text-2);
+}
+
+.tg-menu-item:hover,
+.tg-menu-item:focus-visible {
+  background: rgb(from var(--accent) r g b / 0.08);
+  color: var(--accent);
+  outline: none;
+}
+
+.tg-menu-item:hover svg {
+  color: var(--accent);
+}
+
+.tg-menu-item.is-danger,
+.tg-menu-item.is-danger svg {
+  color: var(--red);
+}
+
+.tg-menu-item.is-danger:hover {
+  background: rgb(from var(--red) r g b / 0.08);
+}
+
+.tg-menu-sep {
+  height: 1px;
+  margin: 5px 4px;
+  background: var(--line);
+}
+
+.tg-menu-label {
+  padding: 4px 9px 6px;
+  color: var(--text-3);
+  font: 500 11.5px/1 var(--font-body);
+}
+
+.tg-menu-colors {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 3px;
+  padding: 0 6px 6px;
+}
+
+.tg-color-dot {
+  --dot: var(--line-strong);
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin: 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--dot);
+  color: #fff;
+  cursor: pointer;
+  transition: transform 0.2s var(--tg-spring), box-shadow 0.15s ease;
+}
+
+.tg-color-dot:hover {
+  transform: scale(1.22);
+}
+
+.tg-color-dot.is-on {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--dot);
+}
+
+.tg-color-dot.is-none {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  color: var(--text-3);
+}
+
+.tg-color-dot.is-none.is-on {
+  box-shadow: inset 0 0 0 1px var(--line-strong), 0 0 0 2px var(--surface), 0 0 0 3.5px var(--text-3);
+}
+
+.tg-color-dot svg {
+  animation: tg-pop-in 0.25s var(--tg-spring);
+}
+
+.tg-menu-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 8px 6px;
+  animation: tg-fade-up 0.2s var(--tg-ease-out);
+}
+
+.tg-menu-confirm p {
+  margin: 0;
+  color: var(--text);
+  font: 500 13px/1.4 var(--font-body);
+  overflow-wrap: anywhere;
+}
+
+.tg-menu-confirm p span {
+  display: block;
+  color: var(--text-3);
+  font-weight: 400;
+  font-size: 12px;
+}
+
+.tg-menu-confirm div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.tg-menu-confirm .tg-btn {
+  height: 30px;
+  padding: 0 12px;
 }
 
 .tg-chat-open {
@@ -815,7 +1220,7 @@
 }
 
 .tg-pop-day.is-today {
-  box-shadow: inset 0 0 0 1px var(--text);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
 }
 
 .tg-pop-day.is-session {
@@ -866,11 +1271,19 @@
   display: none;
 }
 
-/* Narrow screens: the chat list becomes a drawer opened from the header. */
+/* Narrow screens: the chat list becomes a drawer that slides in from the right. */
 @media (max-width: 900px) {
   .tg-chats-toggle {
     display: grid;
-    margin-left: -8px;
+  }
+
+  .tg-chats-show,
+  .tg-side-collapse {
+    display: none;
+  }
+
+  .tg-side-close {
+    display: grid;
   }
 
   .tg-side {
@@ -882,13 +1295,14 @@
     z-index: 150;
     top: 0;
     bottom: 0;
-    left: 0;
+    right: 0;
     display: flex;
     width: min(300px, 86vw);
     padding: 14px 10px;
-    border-right: 1px solid var(--line);
+    border-left: 1px solid var(--line);
     background: var(--bg);
-    box-shadow: 8px 0 24px rgba(20, 20, 24, 0.08);
+    box-shadow: -8px 0 24px rgba(20, 20, 24, 0.1);
+    animation: tg-drawer-in 0.38s var(--tg-ease-out);
   }
 
   .tg-side-backdrop {
@@ -896,7 +1310,531 @@
     position: fixed;
     z-index: 149;
     inset: 0;
-    background: rgba(20, 20, 24, 0.24);
+    background: rgba(20, 20, 24, 0.28);
+    backdrop-filter: blur(2px);
+    animation: tg-fade 0.25s ease;
+  }
+}
+
+/* ── Plan / Calendar mode switch ────────────────────────────────────────────── */
+.tg-mode {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgb(from var(--text) r g b / 0.055);
+  box-shadow: inset 0 0 0 1px rgb(from var(--text) r g b / 0.04);
+}
+
+.tg-mode-thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc(50% - 3px);
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgba(20, 20, 24, 0.12);
+  transition: transform 0.5s var(--tg-spring), background 0.3s ease, box-shadow 0.3s ease;
+}
+
+.tg-mode.is-calendar .tg-mode-thumb {
+  transform: translateX(100%);
+  background: var(--accent);
+  box-shadow: 0 4px 14px rgb(from var(--accent) r g b / 0.45);
+}
+
+.tg-mode-opt {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-2);
+  font: 550 12.5px/1 var(--font-body);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.25s ease;
+}
+
+.tg-mode-opt:hover:not(.is-on):not(:disabled) {
+  color: var(--text);
+}
+
+.tg-mode-opt:disabled {
+  cursor: default;
+}
+
+.tg-mode-opt.is-on {
+  color: var(--text);
+}
+
+.tg-mode.is-calendar .tg-mode-opt.is-on {
+  color: #fff;
+}
+
+.tg-mode-opt.is-on svg {
+  animation: tg-wiggle 0.5s var(--tg-spring);
+}
+
+/* Header badge that names the active mode. */
+.tg-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: rgb(from var(--text) r g b / 0.06);
+  color: var(--text-2);
+  font: 550 11.5px/1 var(--font-body);
+  white-space: nowrap;
+  animation: tg-pop-in 0.35s var(--tg-spring);
+}
+
+.tg-mode-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.tg-mode-badge.is-calendar {
+  background: rgb(from var(--accent) r g b / 0.12);
+  color: var(--accent);
+}
+
+.tg-mode-badge.is-calendar::before {
+  animation: tg-pulse 2.2s ease-out infinite;
+}
+
+/* Calendar mode: the composer carries the accent, and a light runs around
+   its edge while you type. */
+.tg-composer {
+  position: relative;
+  transition: border-color 0.2s ease, box-shadow 0.3s ease, transform 0.3s var(--tg-ease-out);
+}
+
+.tg-composer.is-calendar {
+  border-color: var(--accent-line);
+}
+
+.tg-composer.is-calendar:focus-within {
+  border-color: rgb(from var(--accent) r g b / 0.45);
+  box-shadow: 0 0 0 4px rgb(from var(--accent) r g b / 0.1), 0 10px 32px rgb(from var(--accent) r g b / 0.14);
+}
+
+.tg-composer.is-plan:focus-within {
+  box-shadow: 0 0 0 4px rgb(from var(--text) r g b / 0.05), 0 8px 28px rgba(20, 20, 24, 0.08);
+}
+
+@property --tg-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.tg-composer.is-calendar::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  padding: 1.5px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--tg-angle),
+    transparent 0deg,
+    var(--accent) 60deg,
+    #c084fc 110deg,
+    transparent 170deg,
+    transparent 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s ease;
+  animation: tg-spin 3.2s linear infinite;
+}
+
+.tg-composer.is-calendar:focus-within::before,
+.tg-composer.is-calendar.has-text::before {
+  opacity: 1;
+}
+
+.tg-icon-btn {
+  transition: background 0.15s ease, color 0.15s ease, transform 0.25s var(--tg-spring);
+}
+
+.tg-icon-btn:active:not(:disabled) {
+  transform: scale(0.9);
+}
+
+/* ── Accent marks, bubbles and plan call-to-action ──────────────────────────── */
+.tg-hero-mark,
+.tg-msg-mark {
+  color: var(--accent);
+}
+
+.tg-msg-user {
+  background: rgb(from var(--accent) r g b / 0.08);
+  border-bottom-right-radius: 5px;
+}
+
+.tg-plan-cta,
+.tg-confirm {
+  animation: tg-fade-up 0.45s var(--tg-ease-out) both;
+  animation-delay: 0.25s;
+}
+
+.tg-plan-cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  padding: 10px 12px;
+  border: 1px dashed rgb(from var(--accent) r g b / 0.4);
+  border-radius: 12px;
+  background: rgb(from var(--accent) r g b / 0.05);
+}
+
+.tg-plan-cta .tg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.tg-plan-cta span {
+  color: var(--text-2);
+  font: 400 12.5px/1.4 var(--font-body);
+}
+
+.tg-hero-today {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 8px;
+  margin: -10px 0 20px;
+  padding: 6px 12px 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-2);
+  font: 500 12.5px/1.3 var(--font-body);
+}
+
+.tg-hero-today::before {
+  content: "";
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: tg-pulse 2.4s ease-out infinite;
+}
+
+/* Undo receipt: a check that draws itself in, Lottie-style. */
+.tg-console .action-receipt {
+  animation: tg-fade-up 0.4s var(--tg-ease-out) both;
+  animation-delay: 0.3s;
+}
+
+.tg-console .action-receipt-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.tg-console .action-receipt-label::before {
+  content: "";
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M3.8 7.2l2.1 2.1 4.3-4.6' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+      center / 14px no-repeat,
+    var(--green, #22a06b);
+  animation: tg-check 0.6s var(--tg-spring) both;
+  animation-delay: 0.45s;
+}
+
+/* ── Fluid background: a quiet grid and drifting accent light behind the hero ─ */
+.tg-main {
+  position: relative;
+  isolation: isolate;
+}
+
+.tg-main:has(> .tg-hero)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    linear-gradient(rgb(from var(--text) r g b / 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(from var(--text) r g b / 0.045) 1px, transparent 1px);
+  background-size: 36px 36px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 42%, #000 20%, transparent 75%);
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 42%, #000 20%, transparent 75%);
+  pointer-events: none;
+  animation: tg-fade 1.2s ease both;
+}
+
+.tg-main:has(> .tg-hero)::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: 50%;
+  top: 38%;
+  width: min(620px, 80%);
+  aspect-ratio: 1.4;
+  border-radius: 42% 58% 63% 37% / 45% 40% 60% 55%;
+  background:
+    radial-gradient(circle at 30% 40%, rgb(from var(--accent) r g b / 0.2), transparent 60%),
+    radial-gradient(circle at 72% 60%, rgba(192, 132, 252, 0.16), transparent 58%);
+  filter: blur(48px);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  animation: tg-blob 18s ease-in-out infinite alternate;
+}
+
+.tg-console.is-plan .tg-main:has(> .tg-hero)::after {
+  opacity: 0.55;
+}
+
+/* ── Motion ─────────────────────────────────────────────────────────────────── */
+/* Hero: pieces rise into place one after another. */
+.tg-hero > * {
+  animation: tg-rise 0.7s var(--tg-ease-out) both;
+}
+
+.tg-hero > :nth-child(2) { animation-delay: 60ms; }
+.tg-hero > :nth-child(3) { animation-delay: 120ms; }
+.tg-hero > :nth-child(4) { animation-delay: 180ms; }
+.tg-hero > :nth-child(5) { animation-delay: 240ms; }
+.tg-hero > :nth-child(6) { animation-delay: 300ms; }
+
+.tg-hero-mark {
+  animation: tg-rise 0.7s var(--tg-ease-out) both, tg-float 5s ease-in-out 0.8s infinite;
+}
+
+.tg-hero-ask {
+  animation: tg-swap 0.5s var(--tg-ease-out) both;
+}
+
+.tg-example {
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.3s var(--tg-spring), box-shadow 0.25s ease;
+}
+
+.tg-example svg {
+  transition: color 0.2s ease, transform 0.35s var(--tg-spring);
+}
+
+.tg-example:hover {
+  border-color: var(--accent-line);
+  background: var(--surface);
+  box-shadow: 0 8px 22px rgb(from var(--accent) r g b / 0.1);
+  transform: translateY(-2px);
+}
+
+.tg-example:hover svg {
+  color: var(--accent);
+  transform: scale(1.15) rotate(-6deg);
+}
+
+.tg-example:active {
+  transform: scale(0.98);
+}
+
+/* Thread: your message slides in, the reply resolves word by word. */
+.tg-turn.is-pending .tg-msg-user {
+  transform-origin: bottom right;
+  animation: tg-bubble-in 0.45s var(--tg-spring) both;
+}
+
+.tg-turn.is-pending .tg-msg-assistant {
+  animation: tg-fade-up 0.4s var(--tg-ease-out) 0.12s both;
+}
+
+.tg-word {
+  animation: tg-word-in 0.5s ease both;
+}
+
+.tg-turn.is-fresh:not(.is-pending) .tg-meta-chip {
+  animation: tg-pop-in 0.35s var(--tg-spring) both;
+}
+
+.tg-turn.is-fresh:not(.is-pending) .tg-meta-chip:nth-child(2) { animation-delay: 60ms; }
+.tg-turn.is-fresh:not(.is-pending) .tg-meta-chip:nth-child(3) { animation-delay: 120ms; }
+
+/* The step being worked on shimmers. */
+.tg-steps li:last-child {
+  background: linear-gradient(90deg, var(--text-2) 0%, var(--text-2) 35%, var(--accent) 50%, var(--text-2) 65%, var(--text-2) 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation-name: tg-step-in, tg-shimmer;
+  animation-duration: 0.35s, 1.8s;
+  animation-timing-function: ease, linear;
+  animation-iteration-count: 1, infinite;
+  animation-fill-mode: forwards, none;
+}
+
+.tg-msg-mark.is-working {
+  position: relative;
+}
+
+.tg-msg-mark.is-working::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1.5px solid transparent;
+  border-top-color: var(--accent);
+  animation: tg-spin-plain 1s linear infinite;
+}
+
+.tg-below {
+  animation: tg-pop-in 0.3s var(--tg-spring);
+}
+
+.tg-pop {
+  transform-origin: top left;
+  animation: tg-pop-in 0.25s var(--tg-spring);
+}
+
+.tg-side-empty {
+  animation: tg-fade-up 0.4s var(--tg-ease-out) both;
+}
+
+.tg-error {
+  animation: tg-shake 0.4s ease;
+}
+
+@keyframes tg-shine {
+  to { transform: translateX(120%); }
+}
+
+@keyframes tg-fade {
+  from { opacity: 0; }
+}
+
+@keyframes tg-fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes tg-rise {
+  from { opacity: 0; transform: translateY(14px); filter: blur(6px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+
+@keyframes tg-swap {
+  from { opacity: 0; transform: translateY(8px); filter: blur(4px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+
+@keyframes tg-pop-in {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes tg-bubble-in {
+  from { opacity: 0; transform: translate(14px, 8px) scale(0.92); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes tg-word-in {
+  from { opacity: 0; filter: blur(5px); }
+  to { opacity: 1; filter: none; }
+}
+
+@keyframes tg-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -150% 0; }
+}
+
+@keyframes tg-side-in {
+  from { opacity: 0; transform: translateX(14px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes tg-drawer-in {
+  from { transform: translateX(100%); }
+  to { transform: none; }
+}
+
+@keyframes tg-row-in {
+  from { opacity: 0; transform: translateX(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes tg-row-out {
+  from { max-height: 64px; opacity: 1; transform: none; }
+  to { max-height: 0; opacity: 0; transform: translateX(24px); }
+}
+
+@keyframes tg-wiggle {
+  0% { transform: scale(0.6) rotate(-20deg); }
+  60% { transform: scale(1.15) rotate(8deg); }
+  100% { transform: none; }
+}
+
+@keyframes tg-pulse {
+  0% { box-shadow: 0 0 0 0 rgb(from var(--accent) r g b / 0.5); }
+  70%, 100% { box-shadow: 0 0 0 6px rgb(from var(--accent) r g b / 0); }
+}
+
+@keyframes tg-spin {
+  to { --tg-angle: 360deg; }
+}
+
+@keyframes tg-spin-plain {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes tg-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes tg-blob {
+  0% { border-radius: 42% 58% 63% 37% / 45% 40% 60% 55%; transform: translate(-50%, -50%) rotate(0deg) scale(1); }
+  50% { border-radius: 60% 40% 38% 62% / 55% 62% 38% 45%; transform: translate(-46%, -54%) rotate(40deg) scale(1.08); }
+  100% { border-radius: 38% 62% 50% 50% / 62% 38% 55% 45%; transform: translate(-54%, -47%) rotate(-25deg) scale(0.96); }
+}
+
+@keyframes tg-check {
+  0% { transform: scale(0); clip-path: inset(0 100% 0 0 round 50%); }
+  60% { transform: scale(1.2); }
+  100% { transform: none; clip-path: inset(0 0 0 0 round 50%); }
+}
+
+@keyframes tg-shake {
+  0%, 100% { transform: none; }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-console *,
+  .tg-console *::before,
+  .tg-console *::after,
+  .tg-main::before,
+  .tg-main::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
@@ -935,7 +1873,8 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .tg-brief-pill-when {
+  .tg-brief-pill-when,
+  .tg-mode-badge {
     display: none;
   }
 
