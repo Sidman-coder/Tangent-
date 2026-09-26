@@ -187,6 +187,21 @@
   transform: translateY(0);
 }
 
+/* App-wide reduced-motion net. Motion components are handled by
+   <MotionConfig reducedMotion="user"> (components/MotionProvider.tsx); this
+   stops every CSS keyframe animation and smooth scroll. Transitions are left
+   alone so color and opacity fades still work — transform transitions are
+   neutralised per component below. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .neu-btn-primary,
   .card-md,
@@ -5810,98 +5825,6 @@ textarea:focus {
   flex: 0 0 auto;
 }
 
-.focus-panel {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  min-height: 170px;
-  padding: 28px 30px 28px 34px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--surface);
-  box-shadow: var(--shadow-sm);
-}
-
-.focus-panel-rail {
-  position: absolute;
-  top: 18px;
-  bottom: 18px;
-  left: 0;
-  width: 4px;
-  border-radius: 0 4px 4px 0;
-}
-
-.focus-panel-copy {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-  flex: 1;
-}
-
-.focus-panel-label {
-  color: var(--text-3);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.045em;
-  text-transform: uppercase;
-}
-
-.focus-panel-title {
-  margin: 0;
-  overflow: hidden;
-  color: var(--text);
-  font-family: var(--font-display);
-  font-size: clamp(26px, 3vw, 36px);
-  font-weight: 700;
-  letter-spacing: -0.04em;
-  line-height: 1.12;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.focus-panel-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  color: var(--text-2);
-  font-size: 13px;
-}
-
-.focus-panel-kind {
-  padding: 3px 7px;
-  border-radius: 999px;
-  background: var(--bg);
-  color: var(--text-2);
-  font-size: 11px;
-  text-transform: capitalize;
-}
-
-.focus-panel-nextstep {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  padding-top: 2px;
-  color: var(--text-2);
-  font-size: 13px;
-}
-
-.focus-panel-nextstep-arrow {
-  display: inline-flex;
-  flex: 0 0 auto;
-  color: var(--accent);
-}
-
-.focus-panel-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 0 0 auto;
-}
-
 .ui-task-row {
   border-bottom: 1px solid var(--line);
   background: transparent;
@@ -6108,27 +6031,6 @@ textarea:focus {
     font-size: 13px;
   }
 
-  .focus-panel {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 20px;
-    min-height: 0;
-    padding: 24px 20px 22px 24px;
-  }
-
-  .focus-panel-title {
-    font-size: 27px;
-    white-space: normal;
-  }
-
-  .focus-panel-actions {
-    justify-content: flex-end;
-  }
-
-  .focus-panel-actions .ui-button--primary {
-    flex: 1;
-  }
-
   .ui-task-row-main {
     gap: 9px;
     padding-inline: 4px;
@@ -6156,7 +6058,9 @@ textarea:focus {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
-   TODAY — decision surface, schedule pulse, and monthly rhythm
+   TODAY — needs attention, the rest of today, week ahead, monthly rhythm
+   Depth comes from soft shadow rather than borders; color is reserved for
+   meaning (urgency, task kind), never decoration.
    ══════════════════════════════════════════════════════════════════════════════ */
 
 .today-page {
@@ -6185,123 +6089,10 @@ textarea:focus {
   font-size: 12px;
 }
 
-.today-overview-grid,
-.today-content-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(286px, 0.78fr);
-  gap: 18px;
-}
-
-.today-overview-grid {
-  align-items: stretch;
-}
-
-.month-rhythm {
-  min-width: 0;
-  padding: 20px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--surface);
-}
-
-.month-rhythm-heading {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 14px;
-}
-
-.month-rhythm-label,
-.schedule-pulse-label,
 .today-section-label {
   display: block;
   margin-bottom: 3px;
   color: var(--text-3);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.045em;
-  text-transform: uppercase;
-}
-
-.month-rhythm-heading h2,
-.today-section-heading h2 {
-  margin: 0;
-  color: var(--text);
-  font-family: var(--font-display);
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
-.month-rhythm-legend {
-  color: var(--text-3);
-  font-size: 9px;
-  white-space: nowrap;
-}
-
-.month-rhythm-weekdays,
-.month-rhythm-grid {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 4px;
-}
-
-.month-rhythm-weekdays {
-  margin-bottom: 4px;
-}
-
-.month-rhythm-weekdays span {
-  color: var(--text-3);
-  font-size: 8px;
-  font-weight: 600;
-  text-align: center;
-}
-
-.month-rhythm-day {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-  aspect-ratio: 1;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  color: var(--text-2);
-  background: var(--bg);
-  font-size: 9px;
-  line-height: 1;
-}
-
-.month-rhythm-day.level-1 {
-  border-color: color-mix(in srgb, var(--accent) 8%, transparent);
-  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
-  color: var(--accent);
-}
-
-.month-rhythm-day.level-2 {
-  border-color: color-mix(in srgb, var(--accent) 14%, transparent);
-  background: color-mix(in srgb, var(--accent) 19%, var(--surface));
-  color: var(--accent-hover);
-}
-
-.month-rhythm-day.level-3 {
-  border-color: color-mix(in srgb, var(--accent) 22%, transparent);
-  background: color-mix(in srgb, var(--accent) 31%, var(--surface));
-  color: var(--accent-hover);
-  font-weight: 600;
-}
-
-.month-rhythm-day.is-outside {
-  opacity: 0.26;
-}
-
-.today-content-grid {
-  align-items: start;
-  margin-top: 30px;
-}
-
-.today-dayline {
-  min-width: 0;
 }
 
 .today-section-heading {
@@ -6313,11 +6104,391 @@ textarea:focus {
   margin-bottom: 12px;
 }
 
-.today-section-heading > span {
-  color: var(--text-3);
-  font-size: 11px;
+.today-section-heading h2 {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
+.today-section-heading > span {
+  color: var(--text-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-card {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(26, 23, 32, 0.04), 0 10px 28px -16px rgba(26, 23, 32, 0.14);
+}
+
+.dash-card-heading {
+  min-height: 0;
+  margin-bottom: 16px;
+}
+
+/* ── Needs attention ─────────────────────────────────────────────────────── */
+
+.attention {
+  --urgency-rgb: 124 92 255;
+  --urgency: 0;
+  --urgency-pulse: 5s;
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(112px, 10vw, 144px);
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding: 20px 24px 20px 30px;
+  border-radius: 22px;
+  background:
+    radial-gradient(90% 130% at 100% 20%, rgb(var(--urgency-rgb) / calc(0.05 + var(--urgency) * 0.09)), transparent 62%),
+    var(--surface);
+  box-shadow:
+    0 0 0 1px rgb(var(--urgency-rgb) / calc(0.08 + var(--urgency) * 0.22)),
+    0 1px 2px rgba(26, 23, 32, 0.04),
+    0 26px 60px -30px rgb(var(--urgency-rgb) / calc(0.22 + var(--urgency) * 0.38));
+  transition: box-shadow 0.6s ease, background 0.6s ease;
+}
+
+/* The breathing ring: rate and strength both come from the urgency score. */
+.attention::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    0 0 0 1px rgb(var(--urgency-rgb) / 0.35),
+    0 0 36px -6px rgb(var(--urgency-rgb) / calc(0.15 + var(--urgency) * 0.4));
+  opacity: 0;
+  pointer-events: none;
+  content: "";
+  animation: attention-breathe var(--urgency-pulse) ease-in-out infinite;
+}
+
+.attention--clear::after {
+  animation: none;
+}
+
+@keyframes attention-breathe {
+  0%, 100% { opacity: 0; }
+  50% { opacity: calc(0.35 + var(--urgency) * 0.65); }
+}
+
+.attention-body {
+  min-width: 0;
+}
+
+.attention-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.attention:not(.attention--clear) .attention-label {
+  color: color-mix(in srgb, rgb(var(--urgency-rgb)) 78%, var(--text));
+  font-weight: 600;
+}
+
+.attention-count {
+  min-width: 20px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgb(var(--urgency-rgb) / 0.13);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.attention-title {
+  max-width: 24ch;
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: clamp(26px, 3.1vw, 38px);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+  text-wrap: balance;
+}
+
+.attention-guidance {
+  margin: 10px 0 0;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.attention-guidance strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.attention-list {
+  display: grid;
+  gap: 2px;
+  margin: 20px 0 0 -10px;
+  padding: 0;
+  list-style: none;
+}
+
+.attention-row {
+  display: grid;
+  grid-template-areas: "check kind copy chip defer";
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  transition: background 0.15s ease;
+}
+
+.attention-row:hover {
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+}
+
+.attention-check {
+  grid-area: check;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 50%;
+  background: var(--surface);
+  color: transparent;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.attention-check:hover,
+.attention-check:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.attention-check:disabled {
+  cursor: progress;
+  opacity: 0.5;
+}
+
+.attention-kind {
+  grid-area: kind;
+  width: 3px;
+  height: 26px;
+  border-radius: 999px;
+}
+
+.attention-copy {
+  grid-area: copy;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.attention-task-title {
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 550;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.attention-task-title:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+}
+
+.attention-meta {
+  color: var(--text-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.attention-chip {
+  grid-area: chip;
+  justify-self: end;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.attention-chip--overdue {
+  background: color-mix(in srgb, var(--red) 11%, transparent);
+  color: color-mix(in srgb, var(--red) 82%, var(--text));
+}
+
+.attention-chip--slipped,
+.attention-chip--deadline {
+  background: color-mix(in srgb, var(--amber) 13%, transparent);
+  color: color-mix(in srgb, var(--amber) 72%, var(--text));
+}
+
+.attention-chip--soon {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.attention-defer {
+  grid-area: defer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.attention-defer:hover,
+.attention-defer:focus-visible {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.attention-defer:disabled {
+  cursor: progress;
+  opacity: 0.5;
+}
+
+.attention-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 0;
+  margin-top: 8px;
+}
+
+.attention-footer:empty {
+  display: none;
+}
+
+.attention-receipt {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 12.5px;
+}
+
+.attention-receipt span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attention-receipt button,
+.attention-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.attention-more {
+  margin-left: auto;
+  color: var(--text-2);
+}
+
+.attention-more:hover {
+  color: var(--text);
+}
+
+/* ── Urgency orb (WebGL with a CSS fallback underneath) ──────────────────── */
+
+.urgency-orb {
+  position: relative;
+  justify-self: end;
+  width: 100%;
+  max-width: 144px;
+  aspect-ratio: 1;
+}
+
+.urgency-orb-glow {
+  position: absolute;
+  inset: 4%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(var(--orb-rgb) / calc(0.16 + var(--orb-score) * 0.3)), transparent 66%);
+  filter: blur(14px);
+  transition: background 0.8s ease;
+}
+
+.urgency-orb-static {
+  position: absolute;
+  inset: 18%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 34% 30%,
+    rgb(255 255 255 / 0.85),
+    rgb(var(--orb-rgb) / 0.95) 26%,
+    rgb(var(--orb-rgb) / 0.8) 55%,
+    color-mix(in srgb, rgb(var(--orb-rgb)) 50%, #0c0816) 100%
+  );
+  box-shadow:
+    inset -10px -16px 32px rgb(0 0 0 / 0.2),
+    0 22px 44px -20px rgb(var(--orb-rgb) / 0.7);
+  transition: opacity 0.6s ease, background 0.8s ease;
+  animation: orb-breathe var(--urgency-pulse, 5s) ease-in-out infinite;
+}
+
+@keyframes orb-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(calc(1.015 + var(--orb-score) * 0.03)); }
+}
+
+.urgency-orb-canvas {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.7s ease;
+}
+
+.urgency-orb.is-3d .urgency-orb-canvas {
+  opacity: 1;
+}
+
+.urgency-orb.is-3d .urgency-orb-static {
+  opacity: 0;
+  animation: none;
+}
+
+/* ── The rest of today ───────────────────────────────────────────────────── */
+
+.today-dayline,
 .today-dayline-list {
   min-width: 0;
 }
@@ -6339,157 +6510,251 @@ textarea:focus {
   font-size: 13px;
 }
 
+/* Week ahead gets the wider column: it's the quicker glance of the two. Both
+   cards stretch to the row's height so their bottoms line up. */
 .today-insights {
   display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  align-items: stretch;
   gap: 18px;
   min-width: 0;
+  margin-bottom: 20px;
 }
 
-.schedule-pulse {
-  position: relative;
+/* ── Week ahead ──────────────────────────────────────────────────────────── */
+
+.week-ahead {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Extra row height goes into taller bars rather than empty space. */
+.week-ahead-bars {
+  flex: 1;
+}
+
+.week-ahead-day {
+  grid-template-rows: minmax(64px, 1fr) auto auto;
+}
+
+.week-ahead-bars {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 12px;
-  padding: 17px 18px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.week-ahead-day {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 2px 4px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.week-ahead-day:hover,
+.week-ahead-day:focus-visible {
+  background: var(--bg);
+}
+
+.week-ahead-track {
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  max-width: 22px;
+  height: 100%;
+  min-height: 64px;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--surface);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--line) 55%, transparent);
 }
 
-.schedule-pulse::before {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 3px;
+.week-ahead-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 45%, var(--surface));
+  transform-origin: bottom;
+}
+
+.week-ahead-day.is-peak .week-ahead-fill {
   background: var(--accent);
-  content: "";
 }
 
-.schedule-pulse--positive::before { background: var(--green); }
-.schedule-pulse--warning::before { background: var(--amber); }
+.week-ahead-count {
+  min-height: 14px;
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
 
-.schedule-pulse-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
-  background: var(--accent-soft);
+.week-ahead-letter {
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.week-ahead-day.is-today .week-ahead-letter {
   color: var(--accent);
+  font-weight: 600;
 }
 
-.schedule-pulse--positive .schedule-pulse-icon {
-  background: color-mix(in srgb, var(--green) 10%, var(--surface));
-  color: var(--green);
+.week-ahead-insight {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
 }
 
-.schedule-pulse--warning .schedule-pulse-icon {
-  background: color-mix(in srgb, var(--amber) 10%, var(--surface));
-  color: var(--amber);
-}
-
-.schedule-pulse-title {
-  margin: 2px 0 4px;
-  color: var(--text);
-  font-family: var(--font-display);
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.3;
-}
-
-.schedule-pulse-detail {
+.week-ahead-insight p {
   margin: 0;
   color: var(--text-2);
-  font-size: 12px;
+  font-size: 12.5px;
   line-height: 1.5;
 }
 
-.schedule-pulse-link {
+.week-ahead-insight strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.week-ahead-link {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-top: 10px;
+  margin-top: 8px;
   padding: 0;
-  border: none;
+  border: 0;
   background: none;
   color: var(--accent);
+  font: inherit;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
 
-.schedule-pulse-link:hover {
+.week-ahead-link:hover {
   text-decoration: underline;
 }
 
-.week-preview {
-  padding: 17px 18px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--surface);
+/* ── Monthly rhythm (heatmap) ────────────────────────────────────────────── */
+
+.month-rhythm-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-3);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
-.week-preview-heading {
-  min-height: 0;
-  margin-bottom: 12px;
+.month-rhythm-legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
 }
 
-.week-preview-grid {
+.month-rhythm-legend i:first-of-type {
+  margin-left: 3px;
+}
+
+.month-rhythm-legend i:last-of-type {
+  margin-right: 3px;
+}
+
+.month-rhythm-weekdays,
+.month-rhythm-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 3px;
-}
-
-.week-preview-day {
-  display: grid;
-  justify-items: center;
   gap: 4px;
-  min-width: 0;
-  padding: 7px 2px;
-  border-radius: 7px;
 }
 
-.week-preview-day.is-today {
-  background: var(--accent-soft);
+.month-rhythm-weekdays {
+  margin-bottom: 6px;
 }
 
-.week-preview-letter {
+.month-rhythm-weekdays span {
   color: var(--text-3);
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 600;
+  text-align: center;
 }
 
-.week-preview-number {
+.month-rhythm-day {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
   color: var(--text-2);
-  font-size: 11px;
-  font-weight: 600;
+  font: inherit;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  cursor: pointer;
 }
 
-.week-preview-day.is-today .week-preview-number {
+/* Beside Week ahead the card is wide, so square cells would make the row tall;
+   cells flatten to a height that tracks the viewport instead. */
+@media (min-width: 721px) {
+  .today-insights .month-rhythm-day {
+    aspect-ratio: auto;
+    height: clamp(22px, calc(3vh - 1px), 34px);
+  }
+}
+
+.month-rhythm-day.level-0,
+.month-rhythm-legend .level-0 {
+  background: color-mix(in srgb, var(--line) 45%, transparent);
+}
+
+.month-rhythm-day.level-1,
+.month-rhythm-legend .level-1 {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
   color: var(--accent);
 }
 
-.week-preview-density {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  min-height: 4px;
+.month-rhythm-day.level-2,
+.month-rhythm-legend .level-2 {
+  background: color-mix(in srgb, var(--accent) 30%, var(--surface));
+  color: var(--accent-hover);
 }
 
-.week-preview-density i {
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
+.month-rhythm-day.level-3,
+.month-rhythm-legend .level-3 {
+  background: color-mix(in srgb, var(--accent) 55%, var(--surface));
+  color: var(--accent-ink);
+  font-weight: 600;
 }
 
-.week-preview-density i.is-empty {
-  background: var(--line-strong);
+.month-rhythm-day.is-past:not(.is-today) {
+  opacity: 0.5;
 }
+
+.month-rhythm-day.is-today {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+  font-weight: 700;
+}
+
+.month-rhythm-day.is-outside {
+  opacity: 0.2;
+  pointer-events: none;
+}
+
+.month-rhythm-day:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Recent activity ─────────────────────────────────────────────────────── */
 
 .today-recent {
   margin-top: 28px;
@@ -6522,8 +6787,10 @@ textarea:focus {
   padding-bottom: 10px;
 }
 
+/* ── Loading ─────────────────────────────────────────────────────────────── */
+
 .today-loading-heading,
-.today-loading-focus,
+.today-loading-attention,
 .today-loading-month,
 .today-loading-rows span {
   border-radius: var(--r-md);
@@ -6537,15 +6804,20 @@ textarea:focus {
   margin-bottom: 28px;
 }
 
-.today-loading-focus,
+.today-loading-attention {
+  min-height: 208px;
+  margin-bottom: 20px;
+  border-radius: 22px;
+}
+
 .today-loading-month {
   min-height: 220px;
+  border-radius: 16px;
 }
 
 .today-loading-rows {
   display: grid;
   gap: 1px;
-  margin-top: 30px;
 }
 
 .today-loading-rows span {
@@ -6558,16 +6830,53 @@ textarea:focus {
   to { opacity: 1; }
 }
 
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+
+/* Laptop and up: the whole dashboard fits in one viewport. The page is capped
+   at the space under the top bar; hero and insight cards keep their natural
+   height and "Your day" takes what's left, scrolling inside itself on a busy
+   day instead of pushing the page into a scroll. Short windows (under 700px)
+   fall back to normal page flow. */
+@media (min-width: 901px) and (min-height: 700px) {
+  .shell-content:has(> .content-inner > main > .today-page) {
+    padding-bottom: 28px;
+  }
+
+  .today-page {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100dvh - var(--topbar-h) - 32px - 28px);
+  }
+
+  .today-page > * {
+    flex-shrink: 0;
+  }
+
+  .today-page > .today-dayline {
+    display: flex;
+    flex: 0 1 auto;
+    flex-direction: column;
+  }
+
+  /* Floors so a squeezed day still shows its heading and a row or two. */
+  .today-page > .today-dayline:has(.today-dayline-list) {
+    min-height: 112px;
+  }
+
+  .today-page > .today-dayline:has(.today-dayline-list > :nth-child(2)) {
+    min-height: 150px;
+  }
+
+  .today-dayline-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+}
+
 @media (max-width: 900px) {
-  .today-overview-grid,
-  .today-content-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .today-overview-grid .month-rhythm {
-    max-width: 420px;
-  }
-
   .today-insights {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -6589,25 +6898,49 @@ textarea:focus {
     display: none;
   }
 
-  .today-overview-grid,
-  .today-content-grid {
-    gap: 14px;
+  .attention {
+    grid-template-columns: 1fr;
+    margin-bottom: 24px;
+    padding: 20px 16px 16px 20px;
+    border-radius: 18px;
   }
 
-  .today-overview-grid .month-rhythm {
-    max-width: none;
+  /* The orb shrinks into the top-right corner so the list stays above the fold. */
+  .urgency-orb {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 92px;
   }
 
-  .today-content-grid {
-    margin-top: 24px;
+  .attention-label,
+  .attention-title {
+    padding-right: 84px;
+  }
+
+  .attention-row {
+    grid-template-areas:
+      "check kind copy defer"
+      "check kind chip defer";
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    row-gap: 4px;
+  }
+
+  .attention-chip {
+    justify-self: start;
+  }
+
+  .attention-defer span {
+    display: none;
+  }
+
+  .attention-defer {
+    padding: 8px;
   }
 
   .today-insights {
     grid-template-columns: 1fr;
-  }
-
-  .month-rhythm {
-    padding: 17px;
+    margin-bottom: 24px;
   }
 
   .today-empty-line {
@@ -6617,8 +6950,15 @@ textarea:focus {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* Keep the urgency legible as a static ring and glow — just not moving. */
+  .attention::after {
+    animation: none;
+    opacity: calc(0.25 + var(--urgency) * 0.5);
+  }
+
+  .urgency-orb-static,
   .today-loading-heading,
-  .today-loading-focus,
+  .today-loading-attention,
   .today-loading-month,
   .today-loading-rows span {
     animation: none;

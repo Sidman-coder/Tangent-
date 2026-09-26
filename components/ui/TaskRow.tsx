@@ -1,5 +1,8 @@
 import type { ReactNode } from "react";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import { Check, Repeat2 } from "lucide-react";
+import { press, spring } from "@/lib/motion";
 import type { Task } from "@/lib/types";
 import { formatTime12 } from "@/lib/dates";
 
@@ -39,15 +42,28 @@ export default function TaskRow({
     >
       <div className="ui-task-row-main">
         {onComplete ? (
-          <button
+          <m.button
             type="button"
             className="ui-task-check"
             onClick={onComplete}
             aria-label={`${task.completed ? "Mark incomplete" : "Complete"} ${task.title}`}
             aria-pressed={task.completed}
+            {...press}
           >
-            {task.completed && <Check size={13} strokeWidth={2.5} aria-hidden="true" />}
-          </button>
+            <AnimatePresence initial={false}>
+              {task.completed && (
+                <m.span
+                  key="check"
+                  className="ui-task-check-mark"
+                  initial={{ scale: 0.3, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1, transition: { ...spring.snappy, bounce: 0.45 } }}
+                  exit={{ scale: 0.3, opacity: 0, transition: { duration: 0.1 } }}
+                >
+                  <Check size={13} strokeWidth={2.5} aria-hidden="true" />
+                </m.span>
+              )}
+            </AnimatePresence>
+          </m.button>
         ) : (
           <span className="ui-task-check" aria-hidden="true" />
         )}
