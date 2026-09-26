@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { getTaskChat, addTaskChatMessage, getAllTasks } from "@/lib/store";
+import { withUser } from "@/lib/request-context";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
+export const GET = withUser(async (req: Request) => {
   const { searchParams } = new URL(req.url);
   const taskId = searchParams.get("taskId");
   if (!taskId) {
@@ -12,9 +14,9 @@ export async function GET(req: Request) {
   const history = getTaskChat(taskId);
   console.log("[api/task-chat] GET taskId:", taskId, "| history length:", history.length);
   return NextResponse.json({ ok: true, history });
-}
+});
 
-export async function POST(req: Request) {
+export const POST = withUser(async (req: Request) => {
   try {
     const body = (await req.json()) as { taskId?: string; message?: string };
     const { taskId, message } = body;
@@ -127,4 +129,4 @@ Do not output JSON. Respond only in plain conversational text.`;
     console.error("[api/task-chat] Unhandled error:", message);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
-}
+});

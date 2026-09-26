@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { handleVoiceText } from "@/lib/voice-handler";
+import { withUser } from "@/lib/request-context";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** "calendar" acts on the calendar; "plan" only talks a plan through. */
@@ -64,7 +66,7 @@ function extractContextFireAndForget(baseUrl: string, userMessage: string, final
   void contextPromise;
 }
 
-export async function POST(req: Request) {
+export const POST = withUser(async (req: Request) => {
   try {
     console.log("[api/chat] === CHAT REQUEST START ===");
     const body = (await req.json()) as { messages?: unknown; mode?: unknown };
@@ -187,4 +189,4 @@ export async function POST(req: Request) {
     console.error("[api/chat] Unhandled error:", message);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
-}
+});

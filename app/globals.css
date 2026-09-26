@@ -516,6 +516,28 @@ textarea:focus-visible {
   font-size: 11px;
 }
 
+.rail-signout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 4px;
+  padding: 7px 6px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.rail-signout:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
 /* ── Shell main / topbar ─────────────────────────────────────────────────────── */
 .shell-main {
   flex: 1;
@@ -5539,8 +5561,15 @@ textarea:focus {
   .rail-capture-label,
   .rail-capture-key,
   .rail-btn-label,
-  .rail-profile-copy {
+  .rail-profile-copy,
+  .rail-signout-label {
     display: none;
+  }
+
+  .rail-signout {
+    justify-content: center;
+    width: 40px;
+    padding-inline: 0;
   }
 
   .rail-capture-btn,

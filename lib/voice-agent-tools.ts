@@ -15,6 +15,7 @@ import {
   getFileTextContent,
 } from "@/lib/canvas";
 import { getUpcomingEvents, getEventsForDate } from "@/lib/calendar";
+import { currentUserIsOwner } from "@/lib/request-context";
 
 const MODEL = "claude-sonnet-4-5";
 const MAX_TOOL_TURNS = 8;
@@ -328,6 +329,14 @@ function summarize(payload: unknown): string {
   return json.length > 200 ? json.slice(0, 200) + "…" : json;
 }
 
+const GOOGLE_TOOLS = new Set(["get_recent_emails", "get_upcoming_events", "get_events_for_date"]);
+
+const GOOGLE_COMING_SOON = {
+  error: "google_not_connected",
+  detail:
+    "Google connection coming soon. Gmail and Google Calendar aren't available for this account yet. Tell the student plainly that connecting their own Google account is coming soon — it is not something they can fix by asking again.",
+};
+
 type ToolExecResult = {
   data: unknown;
   action?: string;
@@ -340,6 +349,12 @@ type ToolExecResult = {
 
 async function executeTool(name: string, input: Record<string, unknown>): Promise<ToolExecResult> {
   const today = new Date().toISOString().slice(0, 10);
+
+  // Gmail / Google Calendar run on the owner's credentials, so only the owner
+  // may use them until each student can connect their own Google account.
+  if (GOOGLE_TOOLS.has(name) && !currentUserIsOwner()) {
+    return { data: GOOGLE_COMING_SOON };
+  }
 
   switch (name) {
     case "get_calendars": {

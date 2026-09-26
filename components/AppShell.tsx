@@ -8,6 +8,7 @@ import {
   CalendarSync,
   CheckSquare2,
   Home,
+  LogOut,
   MessageSquareText,
   Plus,
   Search,
@@ -146,6 +147,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <span>Student plan</span>
             </span>
           </Link>
+          <form action="/auth/signout" method="post">
+            <button type="submit" className="rail-signout" aria-label="Sign out" title="Sign out">
+              <LogOut size={16} strokeWidth={1.8} aria-hidden="true" />
+              <span className="rail-signout-label">Sign out</span>
+            </button>
+          </form>
         </div>
       </aside>
 

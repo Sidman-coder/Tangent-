@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import { getAllPlans, deletePlan, deleteTask, getAllTasks, getAppState } from "@/lib/store";
+import { withUser } from "@/lib/request-context";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export const GET = withUser(async () => {
   return NextResponse.json({ ok: true, plans: getAllPlans() });
-}
+});
 
-export async function POST(req: Request) {
+export const POST = withUser(async (req: Request) => {
   try {
     const body = (await req.json()) as { action?: string; planId?: string; deleteTasks?: boolean };
     const { action, planId } = body;
@@ -27,4 +29,4 @@ export async function POST(req: Request) {
     const message = e instanceof Error ? e.message : "Unknown error";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
-}
+});

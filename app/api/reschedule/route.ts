@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { updateTask, recordAction } from "@/lib/store";
+import { withUser } from "@/lib/request-context";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(request: Request) {
+export const POST = withUser(async (request: Request) => {
   const body = await request.json();
   const { taskId, suggestedDate, suggestedTime } = body as {
     taskId?: string;
@@ -34,4 +36,4 @@ export async function POST(request: Request) {
   );
 
   return NextResponse.json({ ok: true, task, actionId: action.id });
-}
+});

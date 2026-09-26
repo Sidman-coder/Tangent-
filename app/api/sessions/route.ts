@@ -9,10 +9,12 @@ import {
   linkChatSession,
   styleChatSession,
 } from "@/lib/store";
+import { withUser } from "@/lib/request-context";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
+export const GET = withUser(async (req: Request) => {
   const { searchParams } = new URL(req.url);
   const sessionId = searchParams.get("sessionId");
   if (sessionId) {
@@ -21,9 +23,9 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, session });
   }
   return NextResponse.json({ ok: true, sessions: getAllChatSessions() });
-}
+});
 
-export async function POST(req: Request) {
+export const POST = withUser(async (req: Request) => {
   try {
     const body = (await req.json()) as {
       action?: string;
@@ -96,4 +98,4 @@ export async function POST(req: Request) {
     const message = e instanceof Error ? e.message : "Unknown error";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
-}
+});

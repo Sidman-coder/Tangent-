@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { getUserContext, addContextEntry, setCompressedSummary, getContextAsString } from "@/lib/store";
 import type { ContextEntry } from "@/lib/types";
 import { extractStructuredJson } from "@/lib/anthropic-json";
+import { withUser } from "@/lib/request-context";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const CONTEXT_EXTRACT_SCHEMA = {
@@ -28,14 +30,14 @@ const CONTEXT_EXTRACT_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-export async function GET() {
+export const GET = withUser(async () => {
   return NextResponse.json({
     context: getUserContext(),
     contextString: getContextAsString(),
   });
-}
+});
 
-export async function POST(request: Request) {
+export const POST = withUser(async (request: Request) => {
   try {
     const body = await request.json();
 
@@ -121,4 +123,4 @@ If nothing durable is found return an empty facts array.`,
     console.error("[api/context] Error:", message);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
-}
+});

@@ -1,16 +1,18 @@
 import { NextResponse } from "next/server";
 import { getNotifications, markNotificationRead, dismissNotification, getUnreadNotificationCount } from "@/lib/store";
+import { withUser } from "@/lib/request-context";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export const GET = withUser(async () => {
   return NextResponse.json({
     notifications: getNotifications(),
     unreadCount: getUnreadNotificationCount(),
   });
-}
+});
 
-export async function POST(request: Request) {
+export const POST = withUser(async (request: Request) => {
   try {
     const body = await request.json();
 
@@ -35,4 +37,4 @@ export async function POST(request: Request) {
     console.error("[api/notifications] Error:", message);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
-}
+});

@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server";
 import { getAppState, getRecentActions, undoAction } from "@/lib/store";
+import { withUser } from "@/lib/request-context";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** GET recent action receipts (for a future "recent activity" list). */
-export async function GET() {
+export const GET = withUser(async () => {
   return NextResponse.json({ ok: true, actions: getRecentActions(20) });
-}
+});
 
 /** POST { id } to undo a previously recorded action. */
-export async function POST(req: Request) {
+export const POST = withUser(async (req: Request) => {
   try {
     const body = (await req.json()) as { id?: string };
     if (!body.id) {
@@ -24,4 +26,4 @@ export async function POST(req: Request) {
     const message = e instanceof Error ? e.message : "Unknown error";
     return NextResponse.json({ ok: false, message }, { status: 500 });
   }
-}
+});

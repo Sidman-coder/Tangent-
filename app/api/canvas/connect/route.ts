@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { fetchAndValidateIcs, syncCanvasFeed } from "@/lib/canvas-ics";
 import { getCanvasFeed, saveCanvasFeed, recordCanvasSync } from "@/lib/store";
+import { withUser } from "@/lib/request-context";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(req: Request) {
+export const POST = withUser(async (req: Request) => {
   try {
     const body = (await req.json()) as { icsUrl?: string };
     const icsUrl = body.icsUrl?.trim();
@@ -27,10 +29,10 @@ export async function POST(req: Request) {
     console.error("[api/canvas/connect] POST error:", message);
     return NextResponse.json({ ok: false, error: "Canvas could not be connected. Check the link and try again." }, { status: 500 });
   }
-}
+});
 
 /** Re-syncs the already-connected feed on demand. */
-export async function GET() {
+export const GET = withUser(async () => {
   try {
     const feed = getCanvasFeed();
     if (!feed) {
@@ -46,4 +48,4 @@ export async function GET() {
     console.error("[api/canvas/connect] GET error:", message);
     return NextResponse.json({ ok: false, error: "Couldn't re-sync your Canvas feed right now." }, { status: 500 });
   }
-}
+});

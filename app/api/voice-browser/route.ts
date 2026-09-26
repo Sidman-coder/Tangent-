@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { transcribeAudio } from "@/lib/deepgram";
 import { handleVoiceText } from "@/lib/voice-handler";
+import { withUser } from "@/lib/request-context";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(req: Request) {
+export const POST = withUser(async (req: Request) => {
   try {
     const formData = await req.formData();
     const audioFile = formData.get("audio") as File | null;
@@ -37,4 +39,4 @@ export async function POST(req: Request) {
     console.error("[api/voice-browser] Error:", message);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
-}
+});

@@ -124,6 +124,7 @@ export default function SettingsPage() {
           <a href="#notifications">Notifications</a>
           <a href="#integrations">Integrations</a>
           <a href="#onboarding">Onboarding</a>
+          <a href="#account">Account</a>
         </nav>
 
         <div className="settings-content">
@@ -201,6 +202,15 @@ export default function SettingsPage() {
             <div className="settings-option-row">
               <div><strong>Restart onboarding</strong><span>Revisit the setup questions for this browser.</span></div>
               <Button variant="secondary" onClick={onRestartOnboarding}>Restart setup</Button>
+            </div>
+          </section>
+
+          <section id="account" className="settings-panel">
+            <div className="settings-option-row">
+              <div><strong>Sign out</strong><span>Sign out of Tangent on this device.</span></div>
+              <form action="/auth/signout" method="post">
+                <Button type="submit" variant="secondary">Sign out</Button>
+              </form>
             </div>
           </section>
         </div>

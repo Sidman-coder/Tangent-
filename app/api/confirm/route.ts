@@ -12,13 +12,15 @@ import {
   addVoiceLog,
   deleteTask,
 } from "@/lib/store";
+import { withUser } from "@/lib/request-context";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** Resolves a confirm-tier gated action (see lib/voice-handler.ts) — either executes
  *  it now (confirm: true) or discards it (confirm: false). Used by CommandPalette's
  *  confirm/cancel prompt. */
-export async function POST(req: Request) {
+export const POST = withUser(async (req: Request) => {
   try {
     const body = (await req.json()) as { id?: string; confirm?: boolean };
     const id = body.id;
@@ -102,4 +104,4 @@ export async function POST(req: Request) {
     const message = e instanceof Error ? e.message : "Unknown error";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
-}
+});
