@@ -1,5 +1,7 @@
 "use client";
 
+import TangentLogo from "@/components/TangentLogo";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Task } from "@/lib/types";
 import { X } from "lucide-react";
@@ -112,14 +114,14 @@ export default function TaskChatModal({ task, onClose }: { task: Task; onClose: 
               </div>
             ) : (
               <div key={i} className="chat-row assistant-row">
-                <div className="tangent-avatar" aria-hidden>T</div>
+                <TangentLogo />
                 <div className="bubble assistant">{m.content}</div>
               </div>
             )
           )}
           {busy && (
             <div className="chat-row assistant-row">
-              <div className="tangent-avatar" aria-hidden>T</div>
+              <TangentLogo />
               <div className="bubble assistant chat-loading-bubble" aria-busy>
                 <div className="typing-dots">
                   <span className="typing-dot" />

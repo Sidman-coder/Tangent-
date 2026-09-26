@@ -1,5 +1,7 @@
 "use client";
 
+import TangentLogo from "@/components/TangentLogo";
+
 import { useEffect, useRef, useState } from "react";
 import { toYMD, formatTime12 } from "@/lib/dates";
 import { getGreeting } from "@/lib/greetings";
@@ -113,7 +115,7 @@ export default function FirstRun({ onComplete }: { onComplete: () => Promise<voi
     <div className={`firstrun-overlay${leaving ? " is-leaving" : ""}`}>
       {step === "login" && (
         <div className="card-md firstrun-card">
-          <div className="firstrun-meta"><span className="firstrun-brand-mark">T</span><span>Step 1 of 3</span></div>
+          <div className="firstrun-meta"><TangentLogo /><span>Step 1 of 3</span></div>
           <div className="firstrun-heading-group">
             <h1 className="firstrun-h1">Make Tangent yours</h1>
             <p>A few details help us shape your day around what matters.</p>
@@ -160,7 +162,7 @@ export default function FirstRun({ onComplete }: { onComplete: () => Promise<voi
 
       {step === "schedule" && (
         <div className="card-md firstrun-card">
-          <div className="firstrun-meta"><span className="firstrun-brand-mark">T</span><span>Step 2 of 3</span></div>
+          <div className="firstrun-meta"><TangentLogo /><span>Step 2 of 3</span></div>
           <div className="firstrun-heading-group">
             <h2 className="firstrun-h2">When are you at school?</h2>
             <p>We’ll protect this time and plan the rest of your work around it.</p>
@@ -210,7 +212,7 @@ export default function FirstRun({ onComplete }: { onComplete: () => Promise<voi
 
       {step === "confirm" && (
         <div className="card-md firstrun-card">
-          <div className="firstrun-meta"><span className="firstrun-brand-mark">T</span><span>Step 3 of 3</span></div>
+          <div className="firstrun-meta"><TangentLogo /><span>Step 3 of 3</span></div>
           <div className="firstrun-heading-group">
             <h2 className="firstrun-h2">Your starting rhythm</h2>
             <p>Here’s the first commitment Tangent will use to understand your capacity.</p>
@@ -246,7 +248,7 @@ export default function FirstRun({ onComplete }: { onComplete: () => Promise<voi
 
       {step === "splash" && (
         <div className="firstrun-splash">
-          <span className="firstrun-brand-mark">T</span>
+          <TangentLogo size={42} />
           <p className="firstrun-splash-text">{greetingRef.current}</p>
         </div>
       )}

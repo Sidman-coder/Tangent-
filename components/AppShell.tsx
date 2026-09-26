@@ -19,6 +19,7 @@ import CommandPalette from "./CommandPalette";
 import FirstRun from "./FirstRun";
 import CanvasConnectGuide from "./CanvasConnectGuide";
 import VoiceCaptureFab from "./VoiceCaptureFab";
+import TangentLogo from "@/components/TangentLogo";
 import DesktopNotifPrompt from "./DesktopNotifPrompt";
 
 const NAV_LINKS = [
@@ -101,7 +102,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <div className="shell">
       <aside className="rail" aria-label="Primary navigation">
         <Link href="/" className="rail-logo" aria-label="Tangent home">
-          <span className="rail-logo-mark" aria-hidden="true">T</span>
+          <TangentLogo />
           <span className="rail-logo-word">Tangent</span>
         </Link>
 

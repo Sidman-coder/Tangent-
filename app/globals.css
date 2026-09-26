@@ -334,19 +334,6 @@ textarea:focus-visible {
   background: var(--bg);
 }
 
-.rail-logo-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
-  border-radius: 9px;
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-size: 13px;
-  font-weight: 800;
-}
 
 .rail-logo-word {
   white-space: nowrap;
@@ -862,21 +849,6 @@ textarea:focus-visible {
   gap: 0.5rem;
 }
 
-.tangent-avatar {
-  flex-shrink: 0;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: var(--accent);
-  border: 1px solid var(--accent);
-  color: var(--accent-ink);
-  font-size: 0.78rem;
-  font-weight: 800;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-}
 
 .bubble {
   max-width: min(85%, 560px);
@@ -5194,19 +5166,6 @@ textarea:focus {
   letter-spacing: 0.01em;
 }
 
-.firstrun-brand-mark {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  display: inline-grid;
-  place-items: center;
-  background: var(--accent);
-  color: #fff;
-  font-family: var(--font-display);
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0;
-}
 
 .firstrun-heading-group { text-align: left; }
 
@@ -5290,7 +5249,6 @@ textarea:focus {
   gap: 16px;
 }
 
-.firstrun-splash .firstrun-brand-mark { width: 42px; height: 42px; border-radius: 12px; font-size: 18px; }
 .firstrun-splash-text { margin: 0; font-size: 26px; letter-spacing: -0.03em; }
 
 @media (max-width: 520px) {
