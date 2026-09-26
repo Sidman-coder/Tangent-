@@ -307,7 +307,6 @@ export default function DashboardPage() {
         ) : (
           <div className="today-empty-line">
             <p>{todayInAttention > 0 ? "Nothing else is scheduled today." : "Nothing scheduled yet."}</p>
-            <Button variant="secondary" size="sm" onClick={openCapture}>Add a task</Button>
           </div>
         )}
       </m.section>

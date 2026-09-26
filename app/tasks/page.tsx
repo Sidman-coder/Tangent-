@@ -354,7 +354,6 @@ export default function TasksPage() {
             {incompleteTasks.length > 0 ? incompleteTasks.map(renderTask) : (
               <div className="tasks-empty-state">
                 <p>No incomplete tasks for today.</p>
-                <Button variant="secondary" size="sm" onClick={() => setShowModal(true)}>Add a task</Button>
               </div>
             )}
           </div>

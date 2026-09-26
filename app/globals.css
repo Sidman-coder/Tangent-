@@ -1752,16 +1752,16 @@ select option {
   width: 52px;
   height: 28px;
   border-radius: 999px;
-  border: 1px solid var(--line);
-  background: var(--line);
+  border: 1px solid var(--line-strong);
+  background: var(--elev-2);
   cursor: pointer;
   flex-shrink: 0;
   transition: background 0.2s ease, border-color 0.2s ease;
   padding: 0;
 }
 .toggle-switch.on {
-  background: var(--accent-soft);
-  border-color: var(--accent-line);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 .toggle-switch:hover {
   border-color: var(--line-strong);
@@ -1790,7 +1790,7 @@ select option {
 }
 .toggle-switch.on .toggle-knob {
   transform: translateX(24px);
-  background: var(--accent);
+  background: var(--accent-ink);
 }
 
 /* ── Recurring section (shown when toggle is on) ─────────────────────────────── */
@@ -3316,31 +3316,6 @@ textarea:focus {
   color: var(--muted);
 }
 
-.font-toggle-row {
-  display: flex;
-  gap: 0.65rem;
-  margin-top: 0.75rem;
-}
-.font-toggle-btn {
-  flex: 1;
-  padding: 0.85rem 0.9rem;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: var(--bg-elevated);
-  cursor: pointer;
-  text-align: center;
-  font-size: 1rem;
-  color: var(--muted);
-  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
-}
-.font-toggle-btn:hover {
-  border-color: rgb(from var(--accent-hover) r g b / 0.5);
-}
-.font-toggle-btn.is-active {
-  border: 2px solid var(--accent);
-  background: var(--surface-2);
-  color: var(--text);
-}
 
 /* ══════════════════════════════════════════════════════════════════════════════
    CHANGE 2 — Resource link buttons
@@ -4941,7 +4916,6 @@ textarea:focus {
   border-top: 1px solid var(--line);
 }
 
-.settings-option-block .font-toggle-row { flex-shrink: 0; }
 
 @media (max-width: 900px) {
   .settings-layout { grid-template-columns: 1fr; gap: 16px; }
@@ -4961,8 +4935,6 @@ textarea:focus {
   .settings-option-row,
   .settings-option-block { align-items: flex-start; flex-direction: column; }
   .settings-option-row .ui-button { width: 100%; }
-  .settings-option-block .font-toggle-row { width: 100%; }
-  .settings-option-block .font-toggle-btn { flex: 1; }
 }
 
 /* Onboarding */

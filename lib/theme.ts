@@ -1,35 +1,23 @@
 export type AppearanceMode = "dark" | "light";
-export type FontMode = "formal" | "warm";
 
 const THEME_KEY = "tangent-theme";
-const FONT_MODE_KEY = "tangent-font-mode";
+
+/** Always writes an explicit data-theme, so both palette blocks in
+ *  globals.css are reachable. Removing the attribute instead of setting
+ *  "light" left [data-theme="light"] dead and only worked by accident,
+ *  because :root happened to carry the same values. */
+function paint(theme: AppearanceMode): void {
+  document.documentElement.setAttribute("data-theme", theme);
+}
 
 export function applyTheme(): void {
   if (typeof window === "undefined") return;
-
-  const theme = (localStorage.getItem(THEME_KEY) as AppearanceMode | null) ?? "light";
-  if (theme === "dark") {
-    document.documentElement.setAttribute("data-theme", "dark");
-  } else {
-    document.documentElement.removeAttribute("data-theme");
-  }
-
-  const fontMode = (localStorage.getItem(FONT_MODE_KEY) as FontMode | null) ?? "warm";
-  document.documentElement.setAttribute("data-font", fontMode);
+  const stored = localStorage.getItem(THEME_KEY) as AppearanceMode | null;
+  paint(stored === "dark" ? "dark" : "light");
 }
 
 export function setTheme(theme: AppearanceMode): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(THEME_KEY, theme);
-  if (theme === "dark") {
-    document.documentElement.setAttribute("data-theme", "dark");
-  } else {
-    document.documentElement.removeAttribute("data-theme");
-  }
-}
-
-export function setFontMode(mode: FontMode): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(FONT_MODE_KEY, mode);
-  document.documentElement.setAttribute("data-font", mode);
+  paint(theme);
 }
