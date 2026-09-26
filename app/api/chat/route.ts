@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 import { handleVoiceText } from "@/lib/voice-handler";
+import { currentWorkspaceId } from "@/lib/workspace";
+import { WORKSPACE_HEADER } from "@/lib/workspace-cookie";
+import { withWorkspaceRoute } from "@/lib/with-workspace";
 
 export const dynamic = "force-dynamic";
+// Calendar mode runs a multi-turn Claude tool loop; measured at ~48s in
+// production. With no maxDuration declared, the platform default killed it
+// partway through and the console blamed a missing API key.
+export const maxDuration = 60;
 
 /** "calendar" acts on the calendar; "plan" only talks a plan through. */
 type ChatMode = "plan" | "calendar";
@@ -51,9 +58,14 @@ function lastUserMessage(messages: { role: string; content: string }[]): string 
 // Fire-and-forget: extract durable facts about the user from this exchange and
 // store them in the rolling context file. Never awaited — must not block the response.
 function extractContextFireAndForget(baseUrl: string, userMessage: string, finalResponse: string): void {
+  // A self-call has no cookie jar, so the workspace has to be named explicitly or
+  // this would write the user's remembered context into the wrong workspace.
   const contextPromise = fetch(`${baseUrl}/api/context`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      [WORKSPACE_HEADER]: currentWorkspaceId(),
+    },
     body: JSON.stringify({
       action: "extract",
       conversation: `User: ${userMessage}\nAssistant: ${finalResponse}`,
@@ -64,7 +76,7 @@ function extractContextFireAndForget(baseUrl: string, userMessage: string, final
   void contextPromise;
 }
 
-export async function POST(req: Request) {
+async function POSTHandler(req: Request) {
   try {
     console.log("[api/chat] === CHAT REQUEST START ===");
     const body = (await req.json()) as { messages?: unknown; mode?: unknown };
@@ -188,3 +200,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
+
+// Runs against the caller's own workspace, loaded and saved around the request.
+export const POST = withWorkspaceRoute(POSTHandler);

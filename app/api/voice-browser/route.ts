@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { transcribeAudio } from "@/lib/deepgram";
 import { handleVoiceText } from "@/lib/voice-handler";
+import { withWorkspaceRoute } from "@/lib/with-workspace";
 
 export const dynamic = "force-dynamic";
+// Browser voice path runs the same tool loop.
+export const maxDuration = 60;
 
-export async function POST(req: Request) {
+async function POSTHandler(req: Request) {
   try {
     const formData = await req.formData();
     const audioFile = formData.get("audio") as File | null;
@@ -38,3 +41,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
+
+// Runs against the caller's own workspace, loaded and saved around the request.
+export const POST = withWorkspaceRoute(POSTHandler);

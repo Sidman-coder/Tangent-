@@ -8,10 +8,13 @@ import { NextResponse } from "next/server";
 import { getAllTasks, getContextAsString } from "@/lib/store";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import { DAILY_BRIEF_SCHEMA, DEFAULT_DAILY_BRIEF, publishDailyBrief, type DailyBrief } from "@/lib/daily-brief";
+import { withWorkspaceRoute } from "@/lib/with-workspace";
 
 export const dynamic = "force-dynamic";
+// Aggregates sources, then summarises them with Claude.
+export const maxDuration = 60;
 
-export async function POST() {
+async function POSTHandler() {
   try {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) return NextResponse.json({ ok: false, error: "No API key" });
@@ -90,3 +93,6 @@ The greeting is one sentence referencing something specific about their day. The
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
+
+// Runs against the caller's own workspace, loaded and saved around the request.
+export const POST = withWorkspaceRoute(POSTHandler);

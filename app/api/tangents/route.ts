@@ -12,8 +12,11 @@ import {
   setTangentStatus,
 } from "@/lib/store";
 import type { Anchor, AnchorKind, TangentStatus } from "@/lib/types";
+import { withWorkspaceRoute } from "@/lib/with-workspace";
 
 export const dynamic = "force-dynamic";
+// Claude drafts three branches per anchor.
+export const maxDuration = 60;
 
 const ANCHOR_KINDS: AnchorKind[] = ["ec", "award", "course", "project"];
 
@@ -58,11 +61,11 @@ function anchorLine(a: Anchor): string {
   return bits.join(" · ");
 }
 
-export async function GET() {
+async function GETHandler() {
   return NextResponse.json(getTangentSpace());
 }
 
-export async function POST(req: Request) {
+async function POSTHandler(req: Request) {
   let body: Record<string, unknown>;
   try {
     body = (await req.json()) as Record<string, unknown>;
@@ -185,3 +188,7 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
 }
+
+// Runs against the caller's own workspace, loaded and saved around the request.
+export const GET = withWorkspaceRoute(GETHandler);
+export const POST = withWorkspaceRoute(POSTHandler);

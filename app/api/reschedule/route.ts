@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { updateTask, recordAction } from "@/lib/store";
+import { withWorkspaceRoute } from "@/lib/with-workspace";
 
 export const dynamic = "force-dynamic";
+// Asks Claude for replacement slots.
+export const maxDuration = 60;
 
-export async function POST(request: Request) {
+async function POSTHandler(request: Request) {
   const body = await request.json();
   const { taskId, suggestedDate, suggestedTime } = body as {
     taskId?: string;
@@ -35,3 +38,6 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ ok: true, task, actionId: action.id });
 }
+
+// Runs against the caller's own workspace, loaded and saved around the request.
+export const POST = withWorkspaceRoute(POSTHandler);

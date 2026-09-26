@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import { pollPendingBriefBatch, submitDailyBriefBatch } from "@/lib/daily-brief";
+import { forEachWorkspace } from "@/lib/workspace";
 
 export const dynamic = "force-dynamic";
+// Now loops over every workspace.
+export const maxDuration = 60;
 
 // Scheduled in vercel.json (once daily). This is the real "Daily Brief" feature —
 // it aggregates the student's saved brief-sources config (RSS feeds, manual URLs,
@@ -31,21 +34,25 @@ export async function GET(request: Request) {
   }
 
   try {
-    const pollResult = await pollPendingBriefBatch();
+    // One brief per workspace; a cron request has no cookie to pick one with.
+    const runs = await forEachWorkspace(async () => {
+      const pollResult = await pollPendingBriefBatch();
 
-    if (pollResult.checked && !pollResult.finalized) {
-      // Either still processing, or the check itself failed — either way, don't
-      // submit a second batch on top of one that might still resolve.
-      return NextResponse.json({ ok: true, phase: "pending", ...pollResult });
-    }
+      if (pollResult.checked && !pollResult.finalized) {
+        // Either still processing, or the check itself failed — either way, don't
+        // submit a second batch on top of one that might still resolve.
+        return { phase: "pending" as const, ...pollResult };
+      }
 
-    const submission = await submitDailyBriefBatch();
-    return NextResponse.json({
-      ok: true,
-      phase: "submitted",
-      ...submission,
-      finalizedFromPreviousTick: pollResult.finalized ? pollResult.notification : undefined,
+      const submission = await submitDailyBriefBatch();
+      return {
+        phase: "submitted" as const,
+        ...submission,
+        finalizedFromPreviousTick: pollResult.finalized ? pollResult.notification : undefined,
+      };
     });
+
+    return NextResponse.json({ ok: true, workspaces: runs.length, runs });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     console.error("[api/cron/daily-brief] Error:", message);

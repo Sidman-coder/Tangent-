@@ -1016,6 +1016,18 @@ textarea:focus-visible {
   margin-top: 1.25rem;
   justify-content: flex-end;
 }
+
+/* A failed save says so in the form, rather than closing as if it worked. */
+.form-error {
+  margin-top: 1rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--red) 40%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--red) 10%, transparent);
+  color: var(--red);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
 .btn-ghost {
   background: transparent;
   border: 1px solid var(--line);

@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { findSuggestedSources } from "@/lib/brief-sources";
+import { withWorkspaceRoute } from "@/lib/with-workspace";
 
 export const dynamic = "force-dynamic";
+// Fetches and classifies candidate feeds.
+export const maxDuration = 60;
 
-export async function POST(req: Request) {
+async function POSTHandler(req: Request) {
   try {
     const body = (await req.json()) as { query?: string };
     if (!body.query || !body.query.trim()) {
@@ -16,3 +19,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
+
+// Runs against the caller's own workspace, loaded and saved around the request.
+export const POST = withWorkspaceRoute(POSTHandler);

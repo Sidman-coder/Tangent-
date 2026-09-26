@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { fetchAndValidateIcs, syncCanvasFeed } from "@/lib/canvas-ics";
 import { getCanvasFeed, saveCanvasFeed, recordCanvasSync } from "@/lib/store";
+import { withWorkspaceRoute } from "@/lib/with-workspace";
 
 export const dynamic = "force-dynamic";
+// Fetches and parses a full Canvas .ics feed.
+export const maxDuration = 60;
 
-export async function POST(req: Request) {
+async function POSTHandler(req: Request) {
   try {
     const body = (await req.json()) as { icsUrl?: string };
     const icsUrl = body.icsUrl?.trim();
@@ -18,7 +21,7 @@ export async function POST(req: Request) {
     }
 
     const feed = saveCanvasFeed(icsUrl);
-    const result = await syncCanvasFeed(icsUrl, feed.connectedAt);
+    const result = await syncCanvasFeed(icsUrl, feed.connectedAt, validation.icsText);
     recordCanvasSync(result.total);
 
     return NextResponse.json({ ok: true, ...result });
@@ -30,7 +33,7 @@ export async function POST(req: Request) {
 }
 
 /** Re-syncs the already-connected feed on demand. */
-export async function GET() {
+async function GETHandler() {
   try {
     const feed = getCanvasFeed();
     if (!feed) {
@@ -47,3 +50,7 @@ export async function GET() {
     return NextResponse.json({ ok: false, error: "Couldn't re-sync your Canvas feed right now." }, { status: 500 });
   }
 }
+
+// Runs against the caller's own workspace, loaded and saved around the request.
+export const POST = withWorkspaceRoute(POSTHandler);
+export const GET = withWorkspaceRoute(GETHandler);

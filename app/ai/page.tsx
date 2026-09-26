@@ -39,6 +39,24 @@ const SUGGESTIONS = [
   { icon: CalendarClock, text: "Move overdue tasks", detail: "Find new slots for anything that slipped" },
 ] as const;
 
+/** Turns a fetch/route failure into something true and actionable. */
+function describeFailure(message: string): string {
+  const lower = message.toLowerCase();
+  if (lower.includes("timeout") || lower.includes("504") || lower.includes("aborted")) {
+    return "That took too long and was cut off. Calendar mode does several rounds of research before it answers — try a narrower request, or ask again.";
+  }
+  if (lower.includes("anthropic_api_key") || lower.includes("401")) {
+    return "The server has no Anthropic API key configured, so it can't reach Claude.";
+  }
+  if (lower.includes("429") || lower.includes("rate")) {
+    return "Claude is rate-limited right now. Wait a moment and try again.";
+  }
+  if (lower.includes("failed to fetch") || lower.includes("networkerror")) {
+    return "Couldn't reach the server. Check your connection and try again.";
+  }
+  return `Something went wrong: ${message}`;
+}
+
 /** Persists the active chat session id across navigation/refresh within the same
  *  browser (not the server — the in-memory store still resets on server restart,
  *  in which case the GET below 404s and we fall back to starting fresh). */
@@ -339,7 +357,8 @@ export default function AiPage() {
       await linkAction(sessionId, data.actionId);
       await refresh();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Error");
+      const message = e instanceof Error ? e.message : "Error";
+      setErr(message);
       setTurns((prev) => [
         ...prev,
         {
@@ -347,7 +366,9 @@ export default function AiPage() {
           request: userText,
           tools: [],
           sourcesChecked: [],
-          response: "Something went wrong. Check that ANTHROPIC_API_KEY is set in .env.local.",
+          // Say what actually failed. This used to blame a missing API key for
+          // every error, including the timeout that is the usual cause.
+          response: describeFailure(message),
         },
       ]);
     } finally {

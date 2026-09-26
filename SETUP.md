@@ -72,28 +72,62 @@ Ensure the Pi can reach `http://YOUR_LAPTOP_IP:3000` while `npm run dev` is runn
 - [ ] Pi `TANGENT_URL` uses the laptop **LAN** IP, not `localhost`
 - [ ] Pi Flask server restarted after edits
 
-## Data storage — read this before you rely on it
+## Data storage — set this up before anyone uses the app
 
-All app data (tasks, calendars, plans, chats, and everything on **Path**) lives
-in memory on the server, in `lib/store.ts`. `lib/persist.ts` snapshots it to
-JSON so a restart doesn't wipe your workspace.
+All app data (tasks, calendars, plans, chats, and everything on **Path**) is
+stored per workspace in a shared key-value store, through `lib/kv.ts` and
+`lib/workspace.ts`.
 
-Where the snapshot lands, in order:
+### Why this exists
 
-1. `TANGENT_DATA_DIR`, if you set it
-2. `./.tangent-data/store.json` when the working directory is writable — this is
-   the local dev case, and it's gitignored
-3. the OS temp directory, otherwise
+It used to live in memory on the server, hanging off Node's `global`. On Vercel
+that was two bugs at once:
 
-**This is not a database, and it is not durable in production.** On Vercel the
-only writable path is `/tmp`, which is per-instance and cleared regularly, so
-two requests can land on different instances and see different data. It gives
-you durability across local restarts and nothing more.
+- **Every instance had its own copy.** Twelve identical requests in one second
+  could return your tasks or an empty workspace depending on which instance
+  answered. Data appeared and disappeared as you clicked.
+- **There was only one of it, shared by everyone.** No cookie, no session, no
+  user id existed anywhere, so two people using the app edited the same tasks.
 
-Before real users touch this, the store needs a proper backend — Vercel
-Postgres or Vercel KV are the shortest paths, and `lib/persist.ts` is the only
-file that has to change: replace `loadSnapshot` and the writer in
-`startAutosave` with reads and writes against that store.
+### Setting up the store (required for production)
+
+1. In the Vercel dashboard for this project, open **Storage → Marketplace** and
+   add **Upstash Redis** (the free tier is plenty — this stores a few KB per
+   person).
+2. Connect it to the project. Vercel injects the credentials automatically.
+   `lib/kv.ts` accepts either naming:
+   - `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`
+   - `KV_REST_API_URL` + `KV_REST_API_TOKEN`
+3. Redeploy.
+4. Confirm it with `GET /api/health` — it must report `"storage":"redis"` and
+   `"shared":true`. Hit it a few times: every response should show the same
+   counts.
+
+**Until those variables are set, production falls back to a per-instance file in
+`/tmp` and the vanishing-data bug is back.** The server logs an error on boot
+when that happens, and `/api/health` reports `"storage":"file"`.
+
+Locally you need none of this: with no credentials set, the store is a JSON file
+at `./.tangent-data/kv.json` (gitignored), or `TANGENT_DATA_DIR` if you set it.
+That is single-process only — fine for `npm run dev`, never for production.
+
+### Workspaces
+
+`middleware.ts` gives each browser a random `tangent_ws` cookie, and that id is
+the key the workspace is stored under. A client with no cookie jar (the pen, a
+script) can name its workspace with an `x-tangent-workspace` header instead.
+
+This is a workspace, not an account: whoever holds the cookie is that workspace,
+and clearing cookies starts an empty one. It is the foundation for real accounts
+rather than a substitute — when you add login, map the user to a workspace id and
+everything downstream keeps working. Note that `/api/state` is still
+unauthenticated; it is now scoped to the caller's own workspace, so it can only
+read or replace their data, but a login is what makes that a real guarantee.
+
+Reads never write, so the app's polling can't race an edit. Two *mutations* to
+the same workspace at the same instant are last-write-wins on the whole
+workspace; with one person per workspace that has not been an issue, but it is
+the thing to fix first if workspaces ever become shared.
 
 ## Path and the Anthropic key
 

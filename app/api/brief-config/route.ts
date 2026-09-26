@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 import { getBriefConfig, saveBriefConfig } from "@/lib/store";
 import type { BriefConfig } from "@/lib/types";
+import { withWorkspaceRoute } from "@/lib/with-workspace";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+async function GETHandler() {
   return NextResponse.json({ ok: true, config: getBriefConfig() });
 }
 
-export async function POST(req: Request) {
+async function POSTHandler(req: Request) {
   try {
     const body = (await req.json()) as BriefConfig;
     if (!Array.isArray(body.sources) || !body.cadence || !body.deliveryTime) {
@@ -21,3 +22,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
+
+// Runs against the caller's own workspace, loaded and saved around the request.
+export const GET = withWorkspaceRoute(GETHandler);
+export const POST = withWorkspaceRoute(POSTHandler);

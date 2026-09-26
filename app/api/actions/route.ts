@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
 import { getAppState, getRecentActions, undoAction } from "@/lib/store";
+import { withWorkspaceRoute } from "@/lib/with-workspace";
 
 export const dynamic = "force-dynamic";
 
 /** GET recent action receipts (for a future "recent activity" list). */
-export async function GET() {
+async function GETHandler() {
   return NextResponse.json({ ok: true, actions: getRecentActions(20) });
 }
 
 /** POST { id } to undo a previously recorded action. */
-export async function POST(req: Request) {
+async function POSTHandler(req: Request) {
   try {
     const body = (await req.json()) as { id?: string };
     if (!body.id) {
@@ -25,3 +26,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, message }, { status: 500 });
   }
 }
+
+// Runs against the caller's own workspace, loaded and saved around the request.
+export const GET = withWorkspaceRoute(GETHandler);
+export const POST = withWorkspaceRoute(POSTHandler);

@@ -1,16 +1,17 @@
 import { NextResponse } from "next/server";
 import { getNotifications, markNotificationRead, dismissNotification, getUnreadNotificationCount } from "@/lib/store";
+import { withWorkspaceRoute } from "@/lib/with-workspace";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+async function GETHandler() {
   return NextResponse.json({
     notifications: getNotifications(),
     unreadCount: getUnreadNotificationCount(),
   });
 }
 
-export async function POST(request: Request) {
+async function POSTHandler(request: Request) {
   try {
     const body = await request.json();
 
@@ -36,3 +37,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
+
+// Runs against the caller's own workspace, loaded and saved around the request.
+export const GET = withWorkspaceRoute(GETHandler);
+export const POST = withWorkspaceRoute(POSTHandler);

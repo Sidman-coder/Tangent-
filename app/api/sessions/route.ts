@@ -9,10 +9,11 @@ import {
   linkChatSession,
   styleChatSession,
 } from "@/lib/store";
+import { withWorkspaceRoute } from "@/lib/with-workspace";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
+async function GETHandler(req: Request) {
   const { searchParams } = new URL(req.url);
   const sessionId = searchParams.get("sessionId");
   if (sessionId) {
@@ -23,7 +24,7 @@ export async function GET(req: Request) {
   return NextResponse.json({ ok: true, sessions: getAllChatSessions() });
 }
 
-export async function POST(req: Request) {
+async function POSTHandler(req: Request) {
   try {
     const body = (await req.json()) as {
       action?: string;
@@ -97,3 +98,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
+
+// Runs against the caller's own workspace, loaded and saved around the request.
+export const GET = withWorkspaceRoute(GETHandler);
+export const POST = withWorkspaceRoute(POSTHandler);

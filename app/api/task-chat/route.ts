@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { getTaskChat, addTaskChatMessage, getAllTasks } from "@/lib/store";
+import { withWorkspaceRoute } from "@/lib/with-workspace";
 
 export const dynamic = "force-dynamic";
+// One Claude call plus task context.
+export const maxDuration = 60;
 
-export async function GET(req: Request) {
+async function GETHandler(req: Request) {
   const { searchParams } = new URL(req.url);
   const taskId = searchParams.get("taskId");
   if (!taskId) {
@@ -14,7 +17,7 @@ export async function GET(req: Request) {
   return NextResponse.json({ ok: true, history });
 }
 
-export async function POST(req: Request) {
+async function POSTHandler(req: Request) {
   try {
     const body = (await req.json()) as { taskId?: string; message?: string };
     const { taskId, message } = body;
@@ -128,3 +131,7 @@ Do not output JSON. Respond only in plain conversational text.`;
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
+
+// Runs against the caller's own workspace, loaded and saved around the request.
+export const GET = withWorkspaceRoute(GETHandler);
+export const POST = withWorkspaceRoute(POSTHandler);

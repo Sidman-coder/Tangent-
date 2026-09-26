@@ -76,12 +76,22 @@ export type SyncResult = { total: number; added: number; skipped: number };
  * used to keep both the initial connect and later re-syncs from pulling in a student's entire semester
  * history, only what's still ahead as of when they connected.
  */
-export async function syncCanvasFeed(icsUrl: string, sinceDate?: string | Date): Promise<SyncResult> {
-  const res = await fetch(icsUrl);
-  if (!res.ok) {
-    throw new Error(`Canvas feed returned ${res.status}`);
+export async function syncCanvasFeed(
+  icsUrl: string,
+  sinceDate?: string | Date,
+  /** Already-downloaded feed text. Connecting validates the feed first, so
+   *  passing it here saves fetching the same file a second time — which on a big
+   *  feed was most of the time the request took. */
+  prefetchedIcsText?: string
+): Promise<SyncResult> {
+  let icsText = prefetchedIcsText;
+  if (icsText === undefined) {
+    const res = await fetch(icsUrl);
+    if (!res.ok) {
+      throw new Error(`Canvas feed returned ${res.status}`);
+    }
+    icsText = await res.text();
   }
-  const icsText = await res.text();
   const parsed = ical.sync.parseICS(icsText);
   const cutoff = sinceDate ? new Date(sinceDate) : null;
 

@@ -22,7 +22,8 @@ import type {
   TangentIdea,
   TangentStatus,
 } from "./types";
-import { loadSnapshot, startAutosave } from "./persist";
+import { currentWorkspace } from "./workspace";
+import type { StoreData, TangentSpace, WorkspaceData } from "./workspace";
 
 function uid(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
@@ -52,101 +53,33 @@ export type ChatSession = {
   pinned?: boolean;
 };
 
-interface StoreData {
-  tasks: Task[];
-  calendars: CalendarDef[];
-  events: CalendarEvent[];
-  user: UserProfile;
-  weeklyPlan: string[];
-  voiceLogs: VoiceLogEntry[];
-  lastVoiceCommand: string | null;
-  lastVoiceResponse: string | null;
-  plans: Plan[];
-  taskChats: Record<string, ChatMessage[]>;
-  chatSessions: ChatSession[];
-}
+// ─── Workspace-backed state ──────────────────────────────────────────────────
+// `g` and `store` used to hang off Node's `global`: one copy per serverless
+// instance, shared by every visitor. They are now proxies onto the workspace
+// belonging to the request being handled (see lib/workspace.ts), which is loaded
+// from and saved to the shared store around each request.
+//
+// Proxies rather than a rename: every read and write below — `store.tasks`,
+// `g.__tangentNotifications`, and the 60-odd others — keeps working unchanged,
+// and so does every file that imports these functions.
 
-// ─── Global store — survives HMR, resets only on process restart ─────────────
-const g = global as typeof global & {
-  __tangentStore?: StoreData;
-  __tangentUserContext?: UserContext;
-  __tangentNotifications?: Notification[];
-  __tangentActions?: ActionRecord[];
-  __tangentPending?: PendingConfirmation[];
-  __tangentBriefConfig?: BriefConfig | null;
-  __tangentCanvasFeed?: CanvasFeedConfig | null;
-  __tangentPendingBriefBatch?: PendingBriefBatch | null;
-};
-// Anything written by a previous process, if there is any.
-const restored = loadSnapshot();
+const g = new Proxy({} as WorkspaceData, {
+  get: (_t, prop: string) => (currentWorkspace() as unknown as Record<string, unknown>)[prop],
+  set: (_t, prop: string, value) => {
+    (currentWorkspace() as unknown as Record<string, unknown>)[prop] = value;
+    return true;
+  },
+  has: (_t, prop: string) => prop in currentWorkspace(),
+});
 
-if (!g.__tangentStore) {
-  g.__tangentStore = (restored?.store as StoreData | undefined) ?? {
-    tasks: [],
-    calendars: [
-      { id: "cal_all", name: "All Calendars", category: "ALL", color: "#c4b5fd" },
-      { id: "cal_personal", name: "Personal", category: "personal", color: "#a78bfa" },
-      { id: "cal_work", name: "Work", category: "work", color: "#34d399" },
-    ],
-    events: [],
-    user: {
-      displayName: "Tangent User",
-      email: "you@example.com",
-    },
-    weeklyPlan: [
-      "Mon: Deep work block AM",
-      "Wed: Mid-week review",
-      "Fri: Week wrap + next week sketch",
-    ],
-    voiceLogs: [],
-    lastVoiceCommand: null,
-    lastVoiceResponse: null,
-    plans: [],
-    taskChats: {},
-    chatSessions: [],
-  };
-  console.log(
-    restored?.store
-      ? "[store] Restored from disk. Tasks: " + (g.__tangentStore.tasks?.length ?? 0)
-      : "[store] Initialized fresh store (process start)."
-  );
-} else {
-  console.log("[store] HMR reload — reusing existing store. Tasks:", g.__tangentStore.tasks.length);
-}
-const store: StoreData = g.__tangentStore;
-
-if (!g.__tangentUserContext) {
-  g.__tangentUserContext = (restored?.userContext as UserContext | undefined) ?? {
-    entries: [],
-    compressedSummary: "",
-    lastUpdated: new Date().toISOString(),
-    totalInteractions: 0,
-  } as UserContext;
-}
-
-if (!g.__tangentNotifications) {
-  g.__tangentNotifications = (restored?.notifications as Notification[] | undefined) ?? ([] as Notification[]);
-}
-
-if (!g.__tangentActions) {
-  g.__tangentActions = (restored?.actions as ActionRecord[] | undefined) ?? ([] as ActionRecord[]);
-}
-
-if (!g.__tangentPending) {
-  g.__tangentPending = [] as PendingConfirmation[];
-}
-
-if (g.__tangentBriefConfig === undefined) {
-  g.__tangentBriefConfig = (restored?.briefConfig as BriefConfig | null | undefined) ?? null;
-}
-
-if (g.__tangentCanvasFeed === undefined) {
-  g.__tangentCanvasFeed = (restored?.canvasFeed as CanvasFeedConfig | null | undefined) ?? null;
-}
-
-if (g.__tangentPendingBriefBatch === undefined) {
-  g.__tangentPendingBriefBatch = null;
-}
+const store = new Proxy({} as StoreData, {
+  get: (_t, prop: string) => (currentWorkspace().__tangentStore as unknown as Record<string, unknown>)[prop],
+  set: (_t, prop: string, value) => {
+    (currentWorkspace().__tangentStore as unknown as Record<string, unknown>)[prop] = value;
+    return true;
+  },
+  has: (_t, prop: string) => prop in currentWorkspace().__tangentStore,
+});
 
 // ─── Task functions ───────────────────────────────────────────────────────────
 
@@ -948,19 +881,11 @@ export function recordCanvasSync(count: number): CanvasFeedConfig | null {
 
 // ─── Tangents ────────────────────────────────────────────────────────────────
 // Anchors (what you already have), tangent ideas (branches off them), and the
-// goal they point at. Same in-memory lifetime as the rest of this store.
-
-type TangentSpace = { goal: Goal | null; anchors: Anchor[]; tangents: TangentIdea[] };
-
-const gt = global as typeof global & { __tangentSpace?: TangentSpace };
-if (!gt.__tangentSpace) {
-  gt.__tangentSpace =
-    (restored?.tangentSpace as TangentSpace | undefined) ?? { goal: null, anchors: [], tangents: [] };
-}
+// goal they point at. Stored with the rest of the workspace, so a branch you
+// keep is still there next time.
 
 function space(): TangentSpace {
-  if (!gt.__tangentSpace) gt.__tangentSpace = { goal: null, anchors: [], tangents: [] };
-  return gt.__tangentSpace;
+  return currentWorkspace().__tangentSpace;
 }
 
 function rid(prefix: string): string {
@@ -1016,16 +941,7 @@ export function clearSuggestions(anchorId: string): void {
 }
 
 // ─── Durability ──────────────────────────────────────────────────────────────
-// Everything above lives on `global`. This snapshots it so a restart doesn't
-// wipe the workspace. Transient state — pending confirmations, an in-flight
-// brief batch — is deliberately left out; it should not survive a restart.
-
-startAutosave(() => ({
-  store: g.__tangentStore,
-  userContext: g.__tangentUserContext,
-  notifications: g.__tangentNotifications,
-  actions: g.__tangentActions,
-  briefConfig: g.__tangentBriefConfig,
-  canvasFeed: g.__tangentCanvasFeed,
-  tangentSpace: gt.__tangentSpace,
-}));
+// Handled in lib/workspace.ts: the workspace is loaded from the shared store
+// before a request runs and written back afterwards if it changed. Nothing here
+// touches `global` any more, so nothing is shared between visitors or lost when
+// a serverless instance goes away.

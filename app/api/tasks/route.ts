@@ -11,6 +11,7 @@ import {
   updateRecurringTask,
 } from "@/lib/store";
 import type { TaskKind } from "@/lib/types";
+import { withWorkspaceRoute } from "@/lib/with-workspace";
 
 const TASK_KINDS: TaskKind[] = ["school", "academic-ec", "side-ec", "personal", "commitment"];
 
@@ -18,14 +19,14 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 /** GET — returns full AppState for polling by the frontend */
-export async function GET() {
+async function GETHandler() {
   const taskCount = getAppState().tasks.length;
   console.log("[api/tasks] GET — returning state. Task count:", taskCount);
   return NextResponse.json(getAppState());
 }
 
 /** POST — executes a task action against the store */
-export async function POST(req: Request) {
+async function POSTHandler(req: Request) {
   try {
     const body = (await req.json()) as {
       action?: string;
@@ -174,3 +175,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
+
+// Runs against the caller's own workspace, loaded and saved around the request.
+export const GET = withWorkspaceRoute(GETHandler);
+export const POST = withWorkspaceRoute(POSTHandler);

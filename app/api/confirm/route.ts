@@ -12,13 +12,14 @@ import {
   addVoiceLog,
   deleteTask,
 } from "@/lib/store";
+import { withWorkspaceRoute } from "@/lib/with-workspace";
 
 export const dynamic = "force-dynamic";
 
 /** Resolves a confirm-tier gated action (see lib/voice-handler.ts) — either executes
  *  it now (confirm: true) or discards it (confirm: false). Used by CommandPalette's
  *  confirm/cancel prompt. */
-export async function POST(req: Request) {
+async function POSTHandler(req: Request) {
   try {
     const body = (await req.json()) as { id?: string; confirm?: boolean };
     const id = body.id;
@@ -103,3 +104,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
+
+// Runs against the caller's own workspace, loaded and saved around the request.
+export const POST = withWorkspaceRoute(POSTHandler);

@@ -2,8 +2,11 @@ import { NextResponse } from "next/server";
 import { getUserContext, addContextEntry, setCompressedSummary, getContextAsString } from "@/lib/store";
 import type { ContextEntry } from "@/lib/types";
 import { extractStructuredJson } from "@/lib/anthropic-json";
+import { withWorkspaceRoute } from "@/lib/with-workspace";
 
 export const dynamic = "force-dynamic";
+// Extracts and compresses remembered context.
+export const maxDuration = 60;
 
 const CONTEXT_EXTRACT_SCHEMA = {
   type: "object",
@@ -28,14 +31,14 @@ const CONTEXT_EXTRACT_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-export async function GET() {
+async function GETHandler() {
   return NextResponse.json({
     context: getUserContext(),
     contextString: getContextAsString(),
   });
 }
 
-export async function POST(request: Request) {
+async function POSTHandler(request: Request) {
   try {
     const body = await request.json();
 
@@ -122,3 +125,7 @@ If nothing durable is found return an empty facts array.`,
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
+
+// Runs against the caller's own workspace, loaded and saved around the request.
+export const GET = withWorkspaceRoute(GETHandler);
+export const POST = withWorkspaceRoute(POSTHandler);
