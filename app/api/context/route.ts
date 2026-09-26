@@ -32,8 +32,8 @@ const CONTEXT_EXTRACT_SCHEMA = {
 
 export const GET = withUser(async () => {
   return NextResponse.json({
-    context: getUserContext(),
-    contextString: getContextAsString(),
+    context: await getUserContext(),
+    contextString: await getContextAsString(),
   });
 });
 
@@ -80,7 +80,7 @@ If nothing durable is found return an empty facts array.`,
       const added: ContextEntry[] = [];
       for (const f of facts) {
         if (f.fact && f.category) {
-          const entry = addContextEntry({
+          const entry = await addContextEntry({
             category: f.category as ContextEntry["category"],
             fact: f.fact,
             source: body.source || "chat",
@@ -90,7 +90,7 @@ If nothing durable is found return an empty facts array.`,
       }
 
       // Check if compression needed — over 40 entries
-      const ctx = getUserContext();
+      const ctx = await getUserContext();
       if (ctx.entries.length > 40) {
         const allFacts = ctx.entries.map((e) => `[${e.category}] ${e.fact}`).join("\n");
 
@@ -111,7 +111,7 @@ If nothing durable is found return an empty facts array.`,
 
         const compressData = await compressResponse.json();
         const compressed = compressData.content?.[0]?.text || "";
-        if (compressed) setCompressedSummary(compressed);
+        if (compressed) await setCompressedSummary(compressed);
       }
 
       return NextResponse.json({ ok: true, added: added.length, entries: added });

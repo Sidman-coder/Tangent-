@@ -18,8 +18,8 @@ export const POST = withUser(async () => {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) return NextResponse.json({ ok: false, error: "No API key" });
 
-    const tasks = getAllTasks();
-    const userContext = getContextAsString();
+    const tasks = await getAllTasks();
+    const userContext = await getContextAsString();
     const now = new Date();
     const today = now.toISOString().split("T")[0];
     const tomorrow = new Date(now.getTime() + 86400000).toISOString().split("T")[0];
@@ -83,7 +83,7 @@ The greeting is one sentence referencing something specific about their day. The
       console.error("[api/daily-brief] Brief parsing failed:", e instanceof Error ? e.message : e);
     }
 
-    publishDailyBrief(brief);
+    await publishDailyBrief(brief);
 
     return NextResponse.json({ ok: true, brief });
   } catch (e) {

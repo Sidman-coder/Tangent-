@@ -281,9 +281,9 @@ function inferCalendarId(title: string, notes?: string): string {
   return "cal_all";
 }
 
-function resolveCalendarId(input: string | undefined): string {
+async function resolveCalendarId(input: string | undefined): Promise<string> {
   if (!input) return "cal_all";
-  const calendars = getCalendars();
+  const calendars = await getCalendars();
   const exactMatch = calendars.find((c) => c.id === input);
   if (exactMatch) return exactMatch.id;
   const nameMatch = calendars.find(
@@ -358,14 +358,14 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
 
   switch (name) {
     case "get_calendars": {
-      const calendars = getCalendars();
+      const calendars = await getCalendars();
       return { data: { calendars } };
     }
 
     case "move_tasks": {
       const targetCalendarId = typeof input.targetCalendarId === "string" ? input.targetCalendarId : "";
       if (!targetCalendarId) return { data: { error: "Missing targetCalendarId" } };
-      const calendars = getCalendars();
+      const calendars = await getCalendars();
       const targetCalendar = calendars.find(
         (c) => c.id === targetCalendarId || c.name.toLowerCase() === targetCalendarId.toLowerCase()
       );
@@ -381,7 +381,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         filter.dateRange = { start: rawDateRange.start, end: rawDateRange.end };
       }
 
-      const matching = getTasksMatchingFilter(filter);
+      const matching = await getTasksMatchingFilter(filter);
       if (matching.length === 0) {
         return { data: { ok: true, moved: 0, targetCalendar: targetCalendar.name } };
       }
@@ -389,7 +389,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
       // Moving tasks that already exist on the calendar is a change to existing content,
       // not new creation — always confirm before it happens, regardless of count. See the
       // matching gate in lib/voice-handler.ts's move_tasks handling for the same rule.
-      const pending = addPendingConfirmation(
+      const pending = await addPendingConfirmation(
         "move_tasks",
         `Move ${matching.length} task${matching.length !== 1 ? "s" : ""} to your ${targetCalendar.name} calendar?`,
         { filter, targetCalendarId: targetCalendar.id, targetCalendarName: targetCalendar.name }
@@ -433,7 +433,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
 
     case "get_my_tasks": {
       const date = typeof input.date === "string" ? input.date : undefined;
-      const tasks = date ? getTasksByDate(date) : getAllTasks();
+      const tasks = date ? await getTasksByDate(date) : await getAllTasks();
       return { data: { tasks } };
     }
 
@@ -473,12 +473,12 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           )
         : undefined;
       const resources = rawResources && rawResources.length > 0 ? rawResources : undefined;
-      const calendarId = resolveCalendarId(typeof input.calendarId === "string" ? input.calendarId : undefined);
-      const task = addTask({ title: displayTitle, date, time, completed: false, calendarId, notes, startAction, resources });
+      const calendarId = await resolveCalendarId(typeof input.calendarId === "string" ? input.calendarId : undefined);
+      const task = await addTask({ title: displayTitle, date, time, completed: false, calendarId, notes, startAction, resources });
       if (task.wasDuplicate) {
         return { data: { ok: true, task, skipped: true, message: `Skipped 1 duplicate (already have "${task.title}" around ${task.time}).` }, action: "add_task", task };
       }
-      const record = recordAction("add_task", `Added "${task.title}"`, { addedTaskIds: [task.id] });
+      const record = await recordAction("add_task", `Added "${task.title}"`, { addedTaskIds: [task.id] });
       return { data: { ok: true, task }, action: "add_task", task, actionId: record.id };
     }
 
@@ -501,8 +501,8 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
             )
           : undefined;
         const taskResources = rawTaskResources && rawTaskResources.length > 0 ? rawTaskResources : undefined;
-        const taskCalendarId = resolveCalendarId(typeof rt.calendarId === "string" ? rt.calendarId : undefined);
-        const task = addTask({
+        const taskCalendarId = await resolveCalendarId(typeof rt.calendarId === "string" ? rt.calendarId : undefined);
+        const task = await addTask({
           title: taskTitle,
           date: taskDate,
           time: taskTime,
@@ -521,9 +521,9 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         }
         taskIds.push(task.id);
       }
-      const plan = addPlan({ title: planTitle, description: "", taskIds, taskCount: taskIds.length });
-      for (const id of taskIds) updateTask(id, { planId: plan.id });
-      const record = recordAction("create_plan", `Created plan "${plan.title}" with ${taskIds.length} tasks`, {
+      const plan = await addPlan({ title: planTitle, description: "", taskIds, taskCount: taskIds.length });
+      for (const id of taskIds) await updateTask(id, { planId: plan.id });
+      const record = await recordAction("create_plan", `Created plan "${plan.title}" with ${taskIds.length} tasks`, {
         addedTaskIds: taskIds,
         addedPlanId: plan.id,
       });
@@ -541,8 +541,8 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
   }
 }
 
-function systemPrompt(today: string, userContext?: string): string {
-  const calendars = getCalendars();
+async function systemPrompt(today: string, userContext?: string): Promise<string> {
+  const calendars = await getCalendars();
   const calendarList = calendars.map((c) => `${c.id} (${c.name})`).join(", ");
 
   return `You are TANGENT's voice assistant. Today is ${today}.
@@ -649,7 +649,7 @@ export async function runVoiceAgentToolLoop(userText: string): Promise<ToolLoopR
   if (!apiKey) throw new Error("Missing ANTHROPIC_API_KEY");
 
   const today = new Date().toISOString().slice(0, 10);
-  const userContext = getContextAsString();
+  const userContext = await getContextAsString();
   const messages: AnthropicMessage[] = [{ role: "user", content: userText }];
 
   let finalText = "";
@@ -672,7 +672,7 @@ export async function runVoiceAgentToolLoop(userText: string): Promise<ToolLoopR
         model: MODEL,
         max_tokens: 2048,
         temperature: 0,
-        system: systemPrompt(today, userContext),
+        system: await systemPrompt(today, userContext),
         tools: TOOLS,
         messages,
       }),

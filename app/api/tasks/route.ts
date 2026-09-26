@@ -21,9 +21,8 @@ export const revalidate = 0;
 
 /** GET — returns full AppState for polling by the frontend */
 export const GET = withUser(async () => {
-  const taskCount = getAppState().tasks.length;
-  console.log("[api/tasks] GET — returning state. Task count:", taskCount);
-  return NextResponse.json(getAppState());
+  const state = await getAppState();
+  return NextResponse.json(state);
 });
 
 /** POST — executes a task action against the store */
@@ -57,7 +56,7 @@ export const POST = withUser(async (req: Request) => {
       if (!body.title?.trim()) {
         return NextResponse.json({ ok: false, error: "title is required" }, { status: 400 });
       }
-      const task = addTask({
+      const task = await addTask({
         title: body.title.trim(),
         date: body.date ?? new Date().toISOString().slice(0, 10),
         time: body.time ?? "09:00",
@@ -68,40 +67,40 @@ export const POST = withUser(async (req: Request) => {
       });
       if (task.wasDuplicate) {
         console.log("[api/tasks] add_task skipped duplicate:", task.id);
-        return NextResponse.json({ ok: true, task, wasDuplicate: true, state: getAppState() });
+        return NextResponse.json({ ok: true, task, wasDuplicate: true, state: await getAppState() });
       }
       console.log("[api/tasks] add_task success:", task.id);
-      return NextResponse.json({ ok: true, task, state: getAppState() });
+      return NextResponse.json({ ok: true, task, state: await getAppState() });
     }
 
     if (action === "complete_task") {
       if (!body.id) {
         return NextResponse.json({ ok: false, error: "id is required" }, { status: 400 });
       }
-      const task = completeTask(body.id);
+      const task = await completeTask(body.id);
       if (!task) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
       console.log("[api/tasks] complete_task success:", body.id);
-      return NextResponse.json({ ok: true, task, state: getAppState() });
+      return NextResponse.json({ ok: true, task, state: await getAppState() });
     }
 
     if (action === "delete_task") {
       if (!body.id) {
         return NextResponse.json({ ok: false, error: "id is required" }, { status: 400 });
       }
-      const removed = deleteTask(body.id);
+      const removed = await deleteTask(body.id);
       if (!removed) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
       console.log("[api/tasks] delete_task success:", body.id);
-      return NextResponse.json({ ok: true, state: getAppState() });
+      return NextResponse.json({ ok: true, state: await getAppState() });
     }
 
     if (action === "toggle_task") {
       if (!body.id) {
         return NextResponse.json({ ok: false, error: "id is required" }, { status: 400 });
       }
-      const task = toggleTask(body.id);
+      const task = await toggleTask(body.id);
       if (!task) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
       console.log("[api/tasks] toggle_task success:", body.id, "->", task.completed);
-      return NextResponse.json({ ok: true, task, state: getAppState() });
+      return NextResponse.json({ ok: true, task, state: await getAppState() });
     }
 
     if (action === "update_task") {
@@ -116,10 +115,10 @@ export const POST = withUser(async (req: Request) => {
         patch.kind = body.kind as TaskKind;
       }
       if (body.completed !== undefined) patch.completed = body.completed;
-      const task = updateTask(body.id, patch);
+      const task = await updateTask(body.id, patch);
       if (!task) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
       console.log("[api/tasks] update_task success:", body.id);
-      return NextResponse.json({ ok: true, task, state: getAppState() });
+      return NextResponse.json({ ok: true, task, state: await getAppState() });
     }
 
     if (action === "add_recurring_task") {
@@ -130,7 +129,7 @@ export const POST = withUser(async (req: Request) => {
       if (freq !== "daily" && freq !== "weekly" && freq !== "monthly" && freq !== "yearly") {
         return NextResponse.json({ ok: false, error: "frequency must be daily|weekly|monthly|yearly" }, { status: 400 });
       }
-      const tasks = addRecurringTask(
+      const tasks = await addRecurringTask(
         {
           title: body.title.trim(),
           date: body.date ?? new Date().toISOString().slice(0, 10),
@@ -148,25 +147,25 @@ export const POST = withUser(async (req: Request) => {
         }
       );
       console.log("[api/tasks] add_recurring_task created:", tasks.length, "instances");
-      return NextResponse.json({ ok: true, count: tasks.length, state: getAppState() });
+      return NextResponse.json({ ok: true, count: tasks.length, state: await getAppState() });
     }
 
     if (action === "delete_recurring") {
       if (!body.id) {
         return NextResponse.json({ ok: false, error: "id is required" }, { status: 400 });
       }
-      const removed = deleteRecurringTask(body.id, body.deleteAll ?? false);
+      const removed = await deleteRecurringTask(body.id, body.deleteAll ?? false);
       console.log("[api/tasks] delete_recurring — id:", body.id, "| deleteAll:", body.deleteAll, "| removed:", removed);
-      return NextResponse.json({ ok: true, removed, state: getAppState() });
+      return NextResponse.json({ ok: true, removed, state: await getAppState() });
     }
 
     if (action === "update_recurring") {
       if (!body.id) {
         return NextResponse.json({ ok: false, error: "id is required" }, { status: 400 });
       }
-      const updated = updateRecurringTask(body.id, body.patch ?? {}, body.updateAll ?? false);
+      const updated = await updateRecurringTask(body.id, body.patch ?? {}, body.updateAll ?? false);
       console.log("[api/tasks] update_recurring — id:", body.id, "| updateAll:", body.updateAll, "| updated:", updated);
-      return NextResponse.json({ ok: true, updated, state: getAppState() });
+      return NextResponse.json({ ok: true, updated, state: await getAppState() });
     }
 
     return NextResponse.json({ ok: false, error: `Unknown action: ${action}` }, { status: 400 });

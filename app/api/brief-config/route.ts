@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export const GET = withUser(async () => {
-  return NextResponse.json({ ok: true, config: getBriefConfig() });
+  return NextResponse.json({ ok: true, config: await getBriefConfig() });
 });
 
 export const POST = withUser(async (req: Request) => {
@@ -16,7 +16,7 @@ export const POST = withUser(async (req: Request) => {
     if (!Array.isArray(body.sources) || !body.cadence || !body.deliveryTime) {
       return NextResponse.json({ ok: false, error: "Invalid brief config" }, { status: 400 });
     }
-    const saved = saveBriefConfig(body);
+    const saved = await saveBriefConfig(body);
     return NextResponse.json({ ok: true, config: saved });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";

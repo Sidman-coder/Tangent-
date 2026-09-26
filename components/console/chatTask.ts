@@ -2,7 +2,7 @@
 // dates to show for it. The color comes from lib/task-colors, the same rule
 // the calendar uses, so a chat matches its task on the calendar.
 
-import type { ChatSession } from "@/lib/store";
+import type { ChatSession } from "@/lib/types";
 import type { AppState, Task } from "@/lib/types";
 import { KIND_LABEL, taskColor } from "@/lib/task-colors";
 

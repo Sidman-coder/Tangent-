@@ -8,7 +8,7 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Check, MoreHorizontal, PanelRightClose, Pencil, Pin, PinOff, Plus, Search, Trash2, X } from "lucide-react";
-import type { ChatSession } from "@/lib/store";
+import type { ChatSession } from "@/lib/types";
 import type { AppState } from "@/lib/types";
 import { resolveChatTask, type ChatTask } from "@/components/console/chatTask";
 import TaskColorPopover from "@/components/console/TaskColorPopover";

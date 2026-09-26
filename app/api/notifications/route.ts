@@ -7,8 +7,8 @@ export const dynamic = "force-dynamic";
 
 export const GET = withUser(async () => {
   return NextResponse.json({
-    notifications: getNotifications(),
-    unreadCount: getUnreadNotificationCount(),
+    notifications: await getNotifications(),
+    unreadCount: await getUnreadNotificationCount(),
   });
 });
 
@@ -17,17 +17,17 @@ export const POST = withUser(async (request: Request) => {
     const body = await request.json();
 
     if (body.action === "mark_read") {
-      markNotificationRead(body.id);
+      await markNotificationRead(body.id);
       return NextResponse.json({ ok: true });
     }
 
     if (body.action === "dismiss") {
-      dismissNotification(body.id);
+      await dismissNotification(body.id);
       return NextResponse.json({ ok: true });
     }
 
     if (body.action === "dismiss_all") {
-      getNotifications().forEach((n) => dismissNotification(n.id));
+      for (const n of await getNotifications()) await dismissNotification(n.id);
       return NextResponse.json({ ok: true });
     }
 

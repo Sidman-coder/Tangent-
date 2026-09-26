@@ -7,14 +7,14 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export const GET = withUser(async () => {
-  return NextResponse.json(getState());
+  return NextResponse.json(await getState());
 });
 
 export const PUT = withUser(async (req: Request) => {
   try {
     const body = (await req.json()) as AppState;
-    replaceState(body);
-    return NextResponse.json({ ok: true, state: getState() });
+    await replaceState(body);
+    return NextResponse.json({ ok: true, state: await getState() });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Invalid body";
     return NextResponse.json({ ok: false, error: message }, { status: 400 });

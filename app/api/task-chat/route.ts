@@ -11,7 +11,7 @@ export const GET = withUser(async (req: Request) => {
   if (!taskId) {
     return NextResponse.json({ ok: false, error: "Missing taskId" }, { status: 400 });
   }
-  const history = getTaskChat(taskId);
+  const history = await getTaskChat(taskId);
   console.log("[api/task-chat] GET taskId:", taskId, "| history length:", history.length);
   return NextResponse.json({ ok: true, history });
 });
@@ -28,7 +28,7 @@ export const POST = withUser(async (req: Request) => {
     console.log("[api/task-chat] POST taskId:", taskId, "| message:", message.trim().slice(0, 80));
 
     // Read task from the persistent global store — does NOT modify tasks array
-    const tasks = getAllTasks();
+    const tasks = await getAllTasks();
     console.log("[api/task-chat] Task store size at this call:", tasks.length);
     const task = tasks.find((t) => t.id === taskId);
     if (!task) {
@@ -45,11 +45,11 @@ export const POST = withUser(async (req: Request) => {
     }
 
     // Load chat history for this specific task — isolated from tasks array
-    const chatHistory = getTaskChat(taskId);
+    const chatHistory = await getTaskChat(taskId);
     console.log("[api/task-chat] Existing chat history length:", chatHistory.length);
 
     // Save user message to taskChats only — tasks array is NEVER touched
-    addTaskChatMessage(taskId, "user", message.trim());
+    await addTaskChatMessage(taskId, "user", message.trim());
     console.log("[api/task-chat] Saved user message. tasks array unchanged.");
 
     const systemPrompt = `You are a personal AI assistant helping with a specific task.
@@ -113,10 +113,10 @@ Do not output JSON. Respond only in plain conversational text.`;
     console.log("[api/task-chat] Anthropic text:", aiMessage.slice(0, 100));
 
     // Save AI reply to taskChats only — tasks array is NEVER touched
-    addTaskChatMessage(taskId, "assistant", aiMessage);
+    await addTaskChatMessage(taskId, "assistant", aiMessage);
     console.log("[api/task-chat] Saved assistant reply. tasks array unchanged.");
 
-    const updatedHistory = getTaskChat(taskId);
+    const updatedHistory = await getTaskChat(taskId);
 
     return NextResponse.json({
       ok: true,

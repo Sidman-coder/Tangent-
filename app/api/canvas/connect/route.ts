@@ -19,9 +19,9 @@ export const POST = withUser(async (req: Request) => {
       return NextResponse.json({ ok: false, error: validation.error }, { status: 400 });
     }
 
-    const feed = saveCanvasFeed(icsUrl);
+    const feed = await saveCanvasFeed(icsUrl);
     const result = await syncCanvasFeed(icsUrl, feed.connectedAt);
-    recordCanvasSync(result.total);
+    await recordCanvasSync(result.total);
 
     return NextResponse.json({ ok: true, ...result });
   } catch (e) {
@@ -34,13 +34,13 @@ export const POST = withUser(async (req: Request) => {
 /** Re-syncs the already-connected feed on demand. */
 export const GET = withUser(async () => {
   try {
-    const feed = getCanvasFeed();
+    const feed = await getCanvasFeed();
     if (!feed) {
       return NextResponse.json({ ok: false, error: "Canvas isn't connected yet." }, { status: 400 });
     }
 
     const result = await syncCanvasFeed(feed.icsUrl, feed.connectedAt);
-    recordCanvasSync(result.total);
+    await recordCanvasSync(result.total);
 
     return NextResponse.json({ ok: true, ...result });
   } catch (e) {

@@ -110,23 +110,23 @@ function claimedSessionCount(summary: unknown): number | null {
 /** Clearing the whole schedule always requires confirmation — it's total and irreversible
  *  from the user's perspective without the undo system. Shared by all three call sites
  *  below (instant-detect, LLM-returned action, and the JSON-parse-failed fallback). */
-function requestClearConfirmation(text: string): NextResponse {
-  const existing = getAllTasks();
+async function requestClearConfirmation(text: string): Promise<NextResponse> {
+  const existing = await getAllTasks();
   if (existing.length === 0) {
-    addVoiceLog({ text, response: "Nothing to clear — schedule is already empty", action: "delete_all_tasks", ok: true });
+    await addVoiceLog({ text, response: "Nothing to clear — schedule is already empty", action: "delete_all_tasks", ok: true });
     return NextResponse.json({
       ok: true,
       action: "delete_all_tasks",
       response: "Your schedule is already empty.",
-      state: getAppState(),
+      state: await getAppState(),
     });
   }
-  const pending = addPendingConfirmation(
+  const pending = await addPendingConfirmation(
     "delete_all_tasks",
     `Clear all ${existing.length} tasks from your schedule?`,
     {}
   );
-  addVoiceLog({ text, response: "Awaiting confirmation to clear schedule", action: "confirm_required", ok: true });
+  await addVoiceLog({ text, response: "Awaiting confirmation to clear schedule", action: "confirm_required", ok: true });
   return NextResponse.json({
     ok: true,
     action: "confirm_required",
@@ -149,9 +149,9 @@ function inferCalendarId(title: string, notes?: string): string {
   return "cal_all";
 }
 
-export function resolveCalendarId(input: string | undefined): string {
+export async function resolveCalendarId(input: string | undefined): Promise<string> {
   if (!input) return 'cal_all'
-  const calendars = getCalendars()
+  const calendars = await getCalendars()
   const exactMatch = calendars.find(c => c.id === input)
   if (exactMatch) return exactMatch.id
   const nameMatch = calendars.find(c =>
@@ -257,11 +257,11 @@ function inferPlanKind(topic: string): TaskKind {
   return SIDE_EC_KEYWORDS.test(topic) ? "side-ec" : "academic-ec";
 }
 
-function voiceSystemPrompt(userContext?: string): string {
+async function voiceSystemPrompt(userContext?: string): Promise<string> {
   const today = new Date().toISOString().slice(0, 10);
   const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
   const currentYear = new Date().getFullYear();
-  const calendars = getCalendars();
+  const calendars = await getCalendars();
   const calendarList = calendars.map((c) => `${c.id} (${c.name})`).join(", ");
 
   return `TONE AND VOICE RULES — follow these exactly:
@@ -387,8 +387,8 @@ Rules:
 - Use move_tasks when the user asks to move, reassign, or transfer tasks to a different calendar.`;
 }
 
-function findTaskByTitle(title: string) {
-  const tasks = getAllTasks();
+async function findTaskByTitle(title: string) {
+  const tasks = await getAllTasks();
   const n = title.trim().toLowerCase();
   if (!n) return undefined;
   return (
@@ -414,14 +414,14 @@ export async function handleVoiceText(
       ? `${t}\n\nEarlier in this conversation (use it for what "it", "that", or "this plan" refers to):\n${opts.context}`
       : t;
   try {
-    console.log("[api/voice] Handler called. Task count:", getAllTasks().length);
+    console.log("[api/voice] Handler called. Task count:", (await getAllTasks()).length);
     console.log("[api/voice] POST received text:", text);
 
     // Detect clear-schedule commands instantly — no API call needed
     const lowerText = text.toLowerCase().trim();
     if (/clear|clean|wipe|empty|delete all|remove all|reset|start fresh|start over/.test(lowerText)) {
       console.log("[api/voice] Clear schedule detected — requesting confirmation");
-      return requestClearConfirmation(text);
+      return await requestClearConfirmation(text);
     }
 
     // ── Deterministic intent classification — runs before any AI plan-generation path ──
@@ -435,7 +435,7 @@ export async function handleVoiceText(
       const time = extractTime(text) ?? "";
       const calendarId = inferCalendarId(activityName);
 
-      const recurringTasks = addRecurringTask(
+      const recurringTasks = await addRecurringTask(
         {
           title: activityName,
           date: new Date().toISOString().slice(0, 10),
@@ -448,12 +448,12 @@ export async function handleVoiceText(
         { frequency: "weekly", daysOfWeek }
       );
 
-      const record = recordAction("add_recurring_task", `Added ${recurringTasks.length} recurring "${activityName}" instances`, {
+      const record = await recordAction("add_recurring_task", `Added ${recurringTasks.length} recurring "${activityName}" instances`, {
         addedTaskIds: recurringTasks.map((t) => t.id),
       });
 
       const response = `Added "${activityName}" as a recurring commitment. Created ${recurringTasks.length} instances.`;
-      addVoiceLog({ text, response, action: "add_recurring_task", ok: true });
+      await addVoiceLog({ text, response, action: "add_recurring_task", ok: true });
       console.log("[api/voice] recurring_commitment handled deterministically — instances:", recurringTasks.length);
 
       return NextResponse.json({
@@ -462,7 +462,7 @@ export async function handleVoiceText(
         count: recurringTasks.length,
         response,
         actionId: record.id,
-        state: getAppState(),
+        state: await getAppState(),
       });
     }
 
@@ -472,7 +472,7 @@ export async function handleVoiceText(
       console.log("[api/voice] Detected Gmail/Canvas/Calendar command — running agent tool loop");
       try {
         const result = await runVoiceAgentToolLoop(withContext(text));
-        addVoiceLog({ text, response: result.response, action: result.action, ok: true });
+        await addVoiceLog({ text, response: result.response, action: result.action, ok: true });
         console.log("[api/voice] Agent tool loop finished — action:", result.action);
         if (result.action === "confirm_required" && result.pending) {
           return NextResponse.json({
@@ -491,12 +491,12 @@ export async function handleVoiceText(
           count: result.count,
           actionId: result.actionId,
           sourcesChecked: result.sourcesChecked,
-          state: getAppState(),
+          state: await getAppState(),
         });
       } catch (e) {
         const message = e instanceof Error ? e.message : "Agent tool loop failed";
         console.error("[api/voice] Agent tool loop error:", message);
-        addVoiceLog({ text, response: message, action: "error", ok: false });
+        await addVoiceLog({ text, response: message, action: "error", ok: false });
         return NextResponse.json({ ok: false, error: message }, { status: 502 });
       }
     }
@@ -504,7 +504,7 @@ export async function handleVoiceText(
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       console.error("[api/voice] Missing ANTHROPIC_API_KEY");
-      addVoiceLog({ text, response: "Missing ANTHROPIC_API_KEY", action: "error", ok: false });
+      await addVoiceLog({ text, response: "Missing ANTHROPIC_API_KEY", action: "error", ok: false });
       return NextResponse.json({ ok: false, error: "Missing ANTHROPIC_API_KEY" }, { status: 401 });
     }
 
@@ -754,8 +754,8 @@ Rules:
                       !!r && typeof r === "object" && typeof (r as Record<string, unknown>).label === "string" && typeof (r as Record<string, unknown>).url === "string"
                   )
                 : undefined;
-              const taskCalendarId = resolveCalendarId(typeof t.calendarId === "string" ? t.calendarId : undefined);
-              const task = addTask({
+              const taskCalendarId = await resolveCalendarId(typeof t.calendarId === "string" ? t.calendarId : undefined);
+              const task = await addTask({
                 title: taskTitle,
                 date: taskDate,
                 time: taskTime,
@@ -777,17 +777,17 @@ Rules:
             }
 
             const planTitle = typeof cmd.title === "string" ? cmd.title : "New Plan";
-            const plan = addPlan({ title: planTitle, description: "", taskIds, taskCount: taskIds.length });
+            const plan = await addPlan({ title: planTitle, description: "", taskIds, taskCount: taskIds.length });
             for (const id of taskIds) {
-              updateTask(id, { planId: plan.id });
+              await updateTask(id, { planId: plan.id });
             }
-            const record = recordAction("create_plan", `Created plan "${plan.title}" with ${taskIds.length} tasks`, {
+            const record = await recordAction("create_plan", `Created plan "${plan.title}" with ${taskIds.length} tasks`, {
               addedTaskIds: taskIds,
               addedPlanId: plan.id,
             });
 
             const dupSuffix = skippedDuplicates > 0 ? ` Skipped ${skippedDuplicates} duplicate${skippedDuplicates > 1 ? "s" : ""}.` : "";
-            addVoiceLog({ text, response: `Plan created with ${taskIds.length} tasks`, action: "create_plan", ok: true });
+            await addVoiceLog({ text, response: `Plan created with ${taskIds.length} tasks`, action: "create_plan", ok: true });
             return NextResponse.json({
               ok: true,
               action: "create_plan",
@@ -795,7 +795,7 @@ Rules:
               response: `Your plan has been created with ${taskIds.length} tasks added to your calendar!${dupSuffix}`,
               plan: { id: plan.id, title: plan.title, taskCount: taskIds.length, color: plan.color },
               actionId: record.id,
-              state: getAppState(),
+              state: await getAppState(),
             });
           }
         }
@@ -803,7 +803,7 @@ Rules:
 
       // Fallback: add as a single generic task if plan generation failed
       console.log("[api/voice] Plan generation failed — adding as single task");
-      const fallbackTask = addTask({
+      const fallbackTask = await addTask({
         title: text.substring(0, 50),
         date: today,
         time: "09:00",
@@ -814,24 +814,24 @@ Rules:
       });
       if (fallbackTask.wasDuplicate) {
         const dupResponse = "Skipped 1 duplicate (already have a similar task around that time).";
-        addVoiceLog({ text, response: dupResponse, action: "add_task", ok: true });
-        return NextResponse.json({ ok: true, action: "add_task", task: fallbackTask, response: dupResponse, state: getAppState() });
+        await addVoiceLog({ text, response: dupResponse, action: "add_task", ok: true });
+        return NextResponse.json({ ok: true, action: "add_task", task: fallbackTask, response: dupResponse, state: await getAppState() });
       }
-      const fallbackRecord = recordAction("add_task", `Added "${fallbackTask.title}"`, { addedTaskIds: [fallbackTask.id] });
-      addVoiceLog({ text, response: "Added as single task", action: "add_task", ok: true });
+      const fallbackRecord = await recordAction("add_task", `Added "${fallbackTask.title}"`, { addedTaskIds: [fallbackTask.id] });
+      await addVoiceLog({ text, response: "Added as single task", action: "add_task", ok: true });
       return NextResponse.json({
         ok: true,
         action: "add_task",
         actionId: fallbackRecord.id,
         task: fallbackTask,
         response: "I added this to your tasks. For detailed plans try being more specific.",
-        state: getAppState(),
+        state: await getAppState(),
       });
     }
 
     // ── Standard single-task / recurring path ─────────────────────────────────
     console.log("[api/voice] Calling Anthropic API...");
-    const userContext = getContextAsString();
+    const userContext = await getContextAsString();
     const anthropicResponse = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -843,7 +843,7 @@ Rules:
         model: "claude-sonnet-4-5",
         max_tokens: 4096,
         temperature: 0,
-        system: voiceSystemPrompt(userContext),
+        system: await voiceSystemPrompt(userContext),
         output_config: { format: { type: "json_schema", schema: VOICE_COMMAND_SCHEMA } },
         messages: [
           { role: "user", content: withContext(text) },
@@ -889,7 +889,7 @@ Rules:
             if (cmd.action === "add_task" && typeof cmd.title === "string" && cmd.title) {
               const retryDate = typeof cmd.date === "string" ? cmd.date : today;
               const retryTime = typeof cmd.time === "string" ? cmd.time : "09:00";
-              const task = addTask({
+              const task = await addTask({
                 title: cmd.title,
                 date: retryDate,
                 time: retryTime,
@@ -899,18 +899,18 @@ Rules:
               });
               if (task.wasDuplicate) {
                 const dupResponse = `Skipped 1 duplicate (already have "${task.title}" around ${task.time}).`;
-                addVoiceLog({ text, response: dupResponse, action: "add_task", ok: true });
-                return NextResponse.json({ ok: true, action: "add_task", task, response: dupResponse, state: getAppState() });
+                await addVoiceLog({ text, response: dupResponse, action: "add_task", ok: true });
+                return NextResponse.json({ ok: true, action: "add_task", task, response: dupResponse, state: await getAppState() });
               }
-              const retryRecord = recordAction("add_task", `Added "${task.title}"`, { addedTaskIds: [task.id] });
-              addVoiceLog({ text, response: "Task added after retry", action: "add_task", ok: true });
+              const retryRecord = await recordAction("add_task", `Added "${task.title}"`, { addedTaskIds: [task.id] });
+              await addVoiceLog({ text, response: "Task added after retry", action: "add_task", ok: true });
               return NextResponse.json({
                 ok: true,
                 action: "add_task",
                 task,
                 response: (cmd.response as string) || "Task added!",
                 actionId: retryRecord.id,
-                state: getAppState(),
+                state: await getAppState(),
               });
             }
           }
@@ -923,7 +923,7 @@ Rules:
         }, { status: 429 });
       }
 
-      addVoiceLog({ text, response: `Anthropic error ${anthropicResponse.status}`, action: "error", ok: false });
+      await addVoiceLog({ text, response: `Anthropic error ${anthropicResponse.status}`, action: "error", ok: false });
       return NextResponse.json({ ok: false, error: `Anthropic error: ${anthropicResponse.status} ${err}` }, { status: 502 });
     }
 
@@ -935,7 +935,7 @@ Rules:
     } catch (e) {
       const message = e instanceof Error ? e.message : "Could not understand that command.";
       console.error("[api/voice] Structured response parsing failed:", message);
-      addVoiceLog({ text, response: message, action: "error", ok: false });
+      await addVoiceLog({ text, response: message, action: "error", ok: false });
       return NextResponse.json({
         ok: false,
         error: message,
@@ -954,7 +954,7 @@ Rules:
     // ── Recurring task ─────────────────────────────────────────────────────────
     if (action === "add_recurring_task") {
       if (!title.trim()) {
-        addVoiceLog({ text, response: "No title provided", action, ok: false });
+        await addVoiceLog({ text, response: "No title provided", action, ok: false });
         return NextResponse.json({ ok: false, error: "No title in AI response" }, { status: 422 });
       }
 
@@ -969,7 +969,7 @@ Rules:
 
       console.log("[api/voice] add_recurring_task — freq:", freq, "| start:", startDate, "| end:", endDate, "| daysOfWeek:", daysOfWeek);
 
-      const recurringTasks = addRecurringTask(
+      const recurringTasks = await addRecurringTask(
         {
           title,
           date: startDate,
@@ -981,12 +981,12 @@ Rules:
         { frequency: freq, daysOfWeek, endDate }
       );
 
-      const record = recordAction("add_recurring_task", `Added ${recurringTasks.length} recurring "${title}" instances`, {
+      const record = await recordAction("add_recurring_task", `Added ${recurringTasks.length} recurring "${title}" instances`, {
         addedTaskIds: recurringTasks.map((t) => t.id),
       });
 
       const confirmMsg = `${response} (${recurringTasks.length} instances created)`;
-      addVoiceLog({ text, response: confirmMsg, action, ok: true });
+      await addVoiceLog({ text, response: confirmMsg, action, ok: true });
       console.log("[api/voice] add_recurring_task success — instances:", recurringTasks.length);
 
       return NextResponse.json({
@@ -995,7 +995,7 @@ Rules:
         count: recurringTasks.length,
         response: `${response} Created ${recurringTasks.length} instances.`,
         actionId: record.id,
-        state: getAppState(),
+        state: await getAppState(),
       });
     }
 
@@ -1011,21 +1011,21 @@ Rules:
     // ── Clear all tasks ────────────────────────────────────────────────────────
     if (action === "delete_all_tasks") {
       console.log("[api/voice] delete_all_tasks — requesting confirmation");
-      return requestClearConfirmation(text);
+      return await requestClearConfirmation(text);
     }
 
     // ── Get calendars ──────────────────────────────────────────────────────────
     if (action === "get_calendars") {
-      const calendars = getCalendars();
+      const calendars = await getCalendars();
       const msg = `You have ${calendars.length} calendars: ${calendars.map((c) => c.name).join(", ")}`;
-      addVoiceLog({ text, response: msg, action, ok: true });
+      await addVoiceLog({ text, response: msg, action, ok: true });
       console.log("[api/voice] get_calendars success — count:", calendars.length);
       return NextResponse.json({
         ok: true,
         action: "get_calendars",
         calendars,
         response: msg,
-        state: getAppState(),
+        state: await getAppState(),
       });
     }
 
@@ -1043,37 +1043,37 @@ Rules:
       if (filterDateStart && filterDateEnd) filter.dateRange = { start: filterDateStart, end: filterDateEnd };
 
       if (!targetCalendarId) {
-        addVoiceLog({ text, response: "No target calendar specified", action, ok: false });
+        await addVoiceLog({ text, response: "No target calendar specified", action, ok: false });
         return NextResponse.json({ ok: false, error: "No target calendar specified" }, { status: 422 });
       }
 
-      const calendars = getCalendars();
+      const calendars = await getCalendars();
       const targetCalendar = calendars.find(
         (c) => c.id === targetCalendarId || c.name.toLowerCase() === targetCalendarId.toLowerCase()
       );
 
       if (!targetCalendar) {
         const err = `Calendar "${targetCalendarId}" not found. Available: ${calendars.map((c) => c.name).join(", ")}`;
-        addVoiceLog({ text, response: err, action, ok: false });
+        await addVoiceLog({ text, response: err, action, ok: false });
         return NextResponse.json({ ok: false, error: err }, { status: 422 });
       }
 
-      const matching = getTasksMatchingFilter(filter);
+      const matching = await getTasksMatchingFilter(filter);
       if (matching.length === 0) {
         const msg = "No matching tasks to move.";
-        addVoiceLog({ text, response: msg, action, ok: true });
-        return NextResponse.json({ ok: true, action: "move_tasks", moved: 0, response: msg, state: getAppState() });
+        await addVoiceLog({ text, response: msg, action, ok: true });
+        return NextResponse.json({ ok: true, action: "move_tasks", moved: 0, response: msg, state: await getAppState() });
       }
 
       // Any move that changes existing tasks' calendars requires explicit confirmation,
       // regardless of how many tasks match — moving is a change to something that already
       // exists on the calendar, not new content, so it's held to the same bar as delete/reschedule.
-      const pending = addPendingConfirmation(
+      const pending = await addPendingConfirmation(
         "move_tasks",
         `Move ${matching.length} task${matching.length !== 1 ? "s" : ""} to your ${targetCalendar.name} calendar?`,
         { filter, targetCalendarId: targetCalendar.id, targetCalendarName: targetCalendar.name }
       );
-      addVoiceLog({ text, response: "Awaiting confirmation to move tasks", action: "confirm_required", ok: true });
+      await addVoiceLog({ text, response: "Awaiting confirmation to move tasks", action: "confirm_required", ok: true });
       return NextResponse.json({
         ok: true,
         action: "confirm_required",
@@ -1087,7 +1087,7 @@ Rules:
 
     if (action === "add_task") {
       if (!title.trim()) {
-        addVoiceLog({ text, response: "No title provided", action, ok: false });
+        await addVoiceLog({ text, response: "No title provided", action, ok: false });
         return NextResponse.json({ ok: false, error: "No title in AI response" }, { status: 422 });
       }
       const displayTitle = time && time !== "09:00" ? `${title} (${time})` : title;
@@ -1100,47 +1100,47 @@ Rules:
           )
         : undefined;
       const resources = rawResources && rawResources.length > 0 ? rawResources : undefined;
-      const calendarId = resolveCalendarId(typeof cmd.calendarId === "string" ? cmd.calendarId : undefined);
-      const task = addTask({ title: displayTitle, date, time, completed: false, calendarId, notes, startAction, resources });
+      const calendarId = await resolveCalendarId(typeof cmd.calendarId === "string" ? cmd.calendarId : undefined);
+      const task = await addTask({ title: displayTitle, date, time, completed: false, calendarId, notes, startAction, resources });
       if (task.wasDuplicate) {
         const dupResponse = `Skipped 1 duplicate (already have "${task.title}" around ${task.time}).`;
         console.log("[api/voice] add_task skipped duplicate:", task.id, task.title);
-        addVoiceLog({ text, response: dupResponse, action, ok: true });
-        return NextResponse.json({ ok: true, action, task, response: dupResponse, state: getAppState() });
+        await addVoiceLog({ text, response: dupResponse, action, ok: true });
+        return NextResponse.json({ ok: true, action, task, response: dupResponse, state: await getAppState() });
       }
-      const addRecord = recordAction("add_task", `Added "${task.title}"`, { addedTaskIds: [task.id] });
+      const addRecord = await recordAction("add_task", `Added "${task.title}"`, { addedTaskIds: [task.id] });
       console.log("[api/voice] add_task success:", task.id, task.title);
-      addVoiceLog({ text, response, action, ok: true });
-      return NextResponse.json({ ok: true, action, task, response, actionId: addRecord.id, state: getAppState() });
+      await addVoiceLog({ text, response, action, ok: true });
+      return NextResponse.json({ ok: true, action, task, response, actionId: addRecord.id, state: await getAppState() });
     }
 
     if (action === "complete_task") {
-      const found = findTaskByTitle(title);
+      const found = await findTaskByTitle(title);
       if (!found) {
-        addVoiceLog({ text, response: `Task not found: ${title}`, action, ok: false });
+        await addVoiceLog({ text, response: `Task not found: ${title}`, action, ok: false });
         return NextResponse.json({ ok: false, error: `Task not found: ${title}` }, { status: 404 });
       }
-      const task = completeTask(found.id);
-      const completeRecord = recordAction("complete_task", `Completed "${found.title}"`, { completedTaskId: found.id });
+      const task = await completeTask(found.id);
+      const completeRecord = await recordAction("complete_task", `Completed "${found.title}"`, { completedTaskId: found.id });
       console.log("[api/voice] complete_task success:", found.id);
-      addVoiceLog({ text, response, action, ok: true });
-      return NextResponse.json({ ok: true, action, task, response, actionId: completeRecord.id, state: getAppState() });
+      await addVoiceLog({ text, response, action, ok: true });
+      return NextResponse.json({ ok: true, action, task, response, actionId: completeRecord.id, state: await getAppState() });
     }
 
     if (action === "delete_task") {
-      const found = findTaskByTitle(title);
+      const found = await findTaskByTitle(title);
       if (!found) {
-        addVoiceLog({ text, response: `Task not found: ${title}`, action, ok: false });
+        await addVoiceLog({ text, response: `Task not found: ${title}`, action, ok: false });
         return NextResponse.json({ ok: false, error: `Task not found: ${title}` }, { status: 404 });
       }
       // Deleting a task that already exists on the calendar is a destructive change to
       // existing content, not new creation — always confirm before it happens.
-      const pending = addPendingConfirmation(
+      const pending = await addPendingConfirmation(
         "delete_task",
         `Delete "${found.title}" from your schedule?`,
         { taskId: found.id, title: found.title }
       );
-      addVoiceLog({ text, response: "Awaiting confirmation to delete task", action: "confirm_required", ok: true });
+      await addVoiceLog({ text, response: "Awaiting confirmation to delete task", action: "confirm_required", ok: true });
       return NextResponse.json({
         ok: true,
         action: "confirm_required",
@@ -1150,7 +1150,7 @@ Rules:
     }
 
     console.log("[api/voice] Unknown action from AI:", action);
-    addVoiceLog({ text, response: `Unknown action: ${action}`, action: action ?? "unknown", ok: false });
+    await addVoiceLog({ text, response: `Unknown action: ${action}`, action: action ?? "unknown", ok: false });
     return NextResponse.json({ ok: false, error: `Unknown action: ${action}` }, { status: 422 });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";

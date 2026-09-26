@@ -50,8 +50,8 @@ export const DEFAULT_DAILY_BRIEF: DailyBrief = {
   overdueAlert: null,
 };
 
-export function publishDailyBrief(brief: DailyBrief): Notification {
-  return addNotification({
+export async function publishDailyBrief(brief: DailyBrief): Promise<Notification> {
+  return await addNotification({
     type: "daily_brief",
     title: brief.greeting,
     body: `${brief.summary} Priority: ${brief.topPriority}`,
@@ -67,9 +67,9 @@ const DAILY_BRIEF_SYSTEM_PROMPT = `Generate a concise daily brief for the user. 
 The greeting is one sentence referencing something specific about their day. The summary is 2 to 3 sentences covering what matters most today, weaving in relevant source material if any was provided. topPriority is the single most important thing to focus on. suggestion is one specific time-based suggestion based on their schedule and preferences. overdueAlert mentions overdue items only if there are any, otherwise null.`;
 
 async function buildBriefContext(): Promise<string> {
-  const tasks = getAllTasks();
-  const userContext = getContextAsString();
-  const config = getBriefConfig();
+  const tasks = await getAllTasks();
+  const userContext = await getContextAsString();
+  const config = await getBriefConfig();
   const now = new Date();
   const today = now.toISOString().split("T")[0];
   const tomorrow = new Date(now.getTime() + 86400000).toISOString().split("T")[0];
@@ -139,7 +139,7 @@ export async function submitDailyBriefBatch(): Promise<{ batchId: string }> {
       },
     },
   ]);
-  setPendingBriefBatch({ batchId, submittedAt: new Date().toISOString() });
+  await setPendingBriefBatch({ batchId, submittedAt: new Date().toISOString() });
   return { batchId };
 }
 
@@ -159,7 +159,7 @@ export type PollBriefBatchResult = {
  * finished batch gets turned into a notification the same day it was submitted.
  */
 export async function pollPendingBriefBatch(): Promise<PollBriefBatchResult> {
-  const pending = getPendingBriefBatch();
+  const pending = await getPendingBriefBatch();
   if (!pending) return { checked: false, finalized: false };
 
   let status;
@@ -175,7 +175,7 @@ export async function pollPendingBriefBatch(): Promise<PollBriefBatchResult> {
     return { checked: true, finalized: false };
   }
 
-  setPendingBriefBatch(null);
+  await setPendingBriefBatch(null);
 
   if (!status.results_url) {
     return { checked: true, finalized: false, error: "Batch ended without a results_url" };
@@ -197,6 +197,6 @@ export async function pollPendingBriefBatch(): Promise<PollBriefBatchResult> {
     console.error("[daily-brief] Brief parsing failed:", e instanceof Error ? e.message : e);
   }
 
-  const notification = publishDailyBrief(brief);
+  const notification = await publishDailyBrief(brief);
   return { checked: true, finalized: true, notification };
 }

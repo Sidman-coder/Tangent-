@@ -18,11 +18,11 @@ export const GET = withUser(async (req: Request) => {
   const { searchParams } = new URL(req.url);
   const sessionId = searchParams.get("sessionId");
   if (sessionId) {
-    const session = getChatSession(sessionId);
+    const session = await getChatSession(sessionId);
     if (!session) return NextResponse.json({ ok: false, error: "Session not found" }, { status: 404 });
     return NextResponse.json({ ok: true, session });
   }
-  return NextResponse.json({ ok: true, sessions: getAllChatSessions() });
+  return NextResponse.json({ ok: true, sessions: await getAllChatSessions() });
 });
 
 export const POST = withUser(async (req: Request) => {
@@ -42,7 +42,7 @@ export const POST = withUser(async (req: Request) => {
     const { action } = body;
 
     if (action === "create") {
-      const session = createChatSession(body.title);
+      const session = await createChatSession(body.title);
       return NextResponse.json({ ok: true, session });
     }
 
@@ -51,7 +51,7 @@ export const POST = withUser(async (req: Request) => {
       if (!sessionId || !role || !content?.trim()) {
         return NextResponse.json({ ok: false, error: "Missing sessionId, role, or content" }, { status: 400 });
       }
-      const msg = addChatSessionMessage(sessionId, role as "user" | "assistant", content.trim());
+      const msg = await addChatSessionMessage(sessionId, role as "user" | "assistant", content.trim());
       if (!msg) return NextResponse.json({ ok: false, error: "Session not found" }, { status: 404 });
       return NextResponse.json({ ok: true, message: msg });
     }
@@ -61,7 +61,7 @@ export const POST = withUser(async (req: Request) => {
       if (!sessionId || !title?.trim()) {
         return NextResponse.json({ ok: false, error: "Missing sessionId or title" }, { status: 400 });
       }
-      renameChatSession(sessionId, title);
+      await renameChatSession(sessionId, title);
       return NextResponse.json({ ok: true });
     }
 
@@ -70,7 +70,7 @@ export const POST = withUser(async (req: Request) => {
       if (!sessionId || (!actionId && !taskIds?.length && !planId)) {
         return NextResponse.json({ ok: false, error: "Missing sessionId or link target" }, { status: 400 });
       }
-      const session = linkChatSession(sessionId, { actionId, taskIds, planId });
+      const session = await linkChatSession(sessionId, { actionId, taskIds, planId });
       if (!session) return NextResponse.json({ ok: false, error: "Session not found" }, { status: 404 });
       return NextResponse.json({ ok: true, session });
     }
@@ -81,7 +81,7 @@ export const POST = withUser(async (req: Request) => {
       if (color !== undefined && color !== null && !/^#[0-9a-f]{6}$/i.test(color)) {
         return NextResponse.json({ ok: false, error: "Color must be a #rrggbb hex" }, { status: 400 });
       }
-      const session = styleChatSession(sessionId, { color, pinned });
+      const session = await styleChatSession(sessionId, { color, pinned });
       if (!session) return NextResponse.json({ ok: false, error: "Session not found" }, { status: 404 });
       return NextResponse.json({ ok: true, session });
     }
@@ -89,7 +89,7 @@ export const POST = withUser(async (req: Request) => {
     if (action === "delete") {
       const { sessionId } = body;
       if (!sessionId) return NextResponse.json({ ok: false, error: "Missing sessionId" }, { status: 400 });
-      deleteChatSession(sessionId);
+      await deleteChatSession(sessionId);
       return NextResponse.json({ ok: true });
     }
 

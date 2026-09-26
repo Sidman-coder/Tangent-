@@ -16,5 +16,5 @@ export const POST = withUser(async (req: Request) => {
 });
 
 export const GET = withUser(async () => {
-  return NextResponse.json({ ok: true, state: getAppState() });
+  return NextResponse.json({ ok: true, state: await getAppState() });
 });

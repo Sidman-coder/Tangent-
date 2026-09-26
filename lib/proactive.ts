@@ -57,8 +57,8 @@ export async function runProactiveCheck(trigger: string): Promise<ProactiveCheck
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) return { ok: false, generated: 0, notifications: [], error: "No API key" };
 
-    const tasks = getAllTasks();
-    const userContext = getContextAsString();
+    const tasks = await getAllTasks();
+    const userContext = await getContextAsString();
     const now = new Date();
     const today = now.toISOString().split("T")[0];
     const todayTasks = tasks.filter((t) => t.date === today);
@@ -145,7 +145,7 @@ If nothing needs attention return an empty notifications array.`,
     const added: Notification[] = [];
     for (const s of suggestions) {
       if (s.title && s.body) {
-        const notif = addNotification({
+        const notif = await addNotification({
           type: s.type,
           title: s.title,
           body: s.body,

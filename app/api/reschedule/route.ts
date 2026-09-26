@@ -17,19 +17,19 @@ export const POST = withUser(async (request: Request) => {
     return NextResponse.json({ ok: false, error: "Missing taskId, suggestedDate, or suggestedTime" }, { status: 400 });
   }
 
-  const before = updateTask(taskId, {});
+  const before = await updateTask(taskId, {});
   if (!before) {
     return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
   }
   const fromDate = before.date;
   const fromTime = before.time;
 
-  const task = updateTask(taskId, { date: suggestedDate, time: suggestedTime });
+  const task = await updateTask(taskId, { date: suggestedDate, time: suggestedTime });
   if (!task) {
     return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
   }
 
-  const action = recordAction(
+  const action = await recordAction(
     "reschedule_task",
     `Moved "${task.title}" to ${suggestedDate} ${suggestedTime}`,
     { rescheduled: { taskId, fromDate, fromTime } }

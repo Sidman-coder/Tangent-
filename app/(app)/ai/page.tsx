@@ -19,7 +19,7 @@ import {
   type VoiceCaptureStatus,
   type VoiceTranscriptDetail,
 } from "@/hooks/useVoiceCapture";
-import type { ChatSession } from "@/lib/store";
+import type { ChatSession } from "@/lib/types";
 import { ArrowLeft, CalendarClock, CalendarRange, MessageSquare, Newspaper, PanelRightOpen, Sun, Timer } from "lucide-react";
 import PenMark from "@/components/console/PenMark";
 import BriefPanel, { CADENCE_LABEL, type BriefSummary } from "@/components/console/BriefPanel";

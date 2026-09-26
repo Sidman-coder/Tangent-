@@ -189,3 +189,23 @@ export interface PendingConfirmation {
   payload: Record<string, unknown>;
 }
 
+
+// ─── Chat sessions (console chats) ───────────────────────────────────────────
+
+export type ChatMessage = { role: "user" | "assistant"; content: string; timestamp: string };
+
+export type ChatSession = {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  createdAt: string;
+  updatedAt: string;
+  /** Tasks this chat created or changed — gives the chat its task color. */
+  taskIds?: string[];
+  /** Plan this chat created, when it made one. Takes precedence over taskIds. */
+  planId?: string | null;
+  /** User-chosen highlight color; overrides the task color in the chat list. */
+  color?: string | null;
+  /** Pinned chats sit in their own section at the top of the list. */
+  pinned?: boolean;
+};

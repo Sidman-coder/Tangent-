@@ -100,7 +100,7 @@ export async function syncCanvasFeed(icsUrl: string, sinceDate?: string | Date):
     const title = textValue(event.summary).trim() || "Canvas assignment";
     const description = textValue(event.description).trim();
 
-    const result = addTask({
+    const result = await addTask({
       title,
       date,
       time,
