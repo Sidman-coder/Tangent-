@@ -108,15 +108,6 @@
   transition: transform 0.25s var(--tg-spring), box-shadow 0.25s ease;
 }
 
-.tg-brief-pill::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.35) 50%, transparent 70%);
-  transform: translateX(-120%);
-  pointer-events: none;
-}
-
 .tg-brief-pill:hover {
   transform: translateY(-1px);
   box-shadow: 0 8px 22px rgb(from var(--accent) r g b / 0.36);
@@ -162,6 +153,11 @@
   max-width: calc(var(--tg-measure) + 48px);
   margin: 0 auto;
   padding: 24px 24px 10vh;
+}
+
+.tg-main {
+  position: relative;
+  isolation: isolate;
 }
 
 .tg-hero > * {
@@ -1436,39 +1432,6 @@
   box-shadow: 0 0 0 4px rgb(from var(--text) r g b / 0.05), 0 8px 28px rgba(20, 20, 24, 0.08);
 }
 
-@property --tg-angle {
-  syntax: "<angle>";
-  inherits: false;
-  initial-value: 0deg;
-}
-
-.tg-composer.is-calendar::before {
-  content: "";
-  position: absolute;
-  inset: -1px;
-  padding: 1.5px;
-  border-radius: inherit;
-  background: conic-gradient(
-    from var(--tg-angle),
-    transparent 0deg,
-    var(--accent) 60deg,
-    #c084fc 110deg,
-    transparent 170deg,
-    transparent 360deg
-  );
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.35s ease;
-  animation: tg-spin 3.2s linear infinite;
-}
-
-.tg-composer.is-calendar:focus-within::before,
-.tg-composer.is-calendar.has-text::before {
-  opacity: 1;
-}
 
 .tg-icon-btn {
   transition: background 0.15s ease, color 0.15s ease, transform 0.25s var(--tg-spring);
@@ -1567,49 +1530,6 @@
   animation-delay: 0.45s;
 }
 
-/* ── Fluid background: a quiet grid and drifting accent light behind the hero ─ */
-.tg-main {
-  position: relative;
-  isolation: isolate;
-}
-
-.tg-main:has(> .tg-hero)::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background-image:
-    linear-gradient(rgb(from var(--text) r g b / 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(from var(--text) r g b / 0.045) 1px, transparent 1px);
-  background-size: 36px 36px;
-  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 42%, #000 20%, transparent 75%);
-  mask-image: radial-gradient(ellipse 70% 60% at 50% 42%, #000 20%, transparent 75%);
-  pointer-events: none;
-  animation: tg-fade 1.2s ease both;
-}
-
-.tg-main:has(> .tg-hero)::after {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  left: 50%;
-  top: 38%;
-  width: min(620px, 80%);
-  aspect-ratio: 1.4;
-  border-radius: 42% 58% 63% 37% / 45% 40% 60% 55%;
-  background:
-    radial-gradient(circle at 30% 40%, rgb(from var(--accent) r g b / 0.2), transparent 60%),
-    radial-gradient(circle at 72% 60%, rgba(192, 132, 252, 0.16), transparent 58%);
-  filter: blur(48px);
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-  animation: tg-blob 18s ease-in-out infinite alternate;
-}
-
-.tg-console.is-plan .tg-main:has(> .tg-hero)::after {
-  opacity: 0.55;
-}
-
 /* ── Motion ─────────────────────────────────────────────────────────────────── */
 /* Hero: pieces rise into place one after another. */
 .tg-hero > * {
@@ -1675,18 +1595,10 @@
 .tg-turn.is-fresh:not(.is-pending) .tg-meta-chip:nth-child(2) { animation-delay: 60ms; }
 .tg-turn.is-fresh:not(.is-pending) .tg-meta-chip:nth-child(3) { animation-delay: 120ms; }
 
-/* The step being worked on shimmers. */
+/* The step being worked on is simply the one in the accent color. */
 .tg-steps li:last-child {
-  background: linear-gradient(90deg, var(--text-2) 0%, var(--text-2) 35%, var(--accent) 50%, var(--text-2) 65%, var(--text-2) 100%);
-  background-size: 250% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation-name: tg-step-in, tg-shimmer;
-  animation-duration: 0.35s, 1.8s;
-  animation-timing-function: ease, linear;
-  animation-iteration-count: 1, infinite;
-  animation-fill-mode: forwards, none;
+  color: var(--accent);
+  animation: tg-step-in 0.35s ease forwards;
 }
 
 .tg-msg-mark.is-working {
@@ -1758,10 +1670,6 @@
   to { opacity: 1; filter: none; }
 }
 
-@keyframes tg-shimmer {
-  from { background-position: 100% 0; }
-  to { background-position: -150% 0; }
-}
 
 @keyframes tg-side-in {
   from { opacity: 0; transform: translateX(14px); }
@@ -1794,9 +1702,6 @@
   70%, 100% { box-shadow: 0 0 0 6px rgb(from var(--accent) r g b / 0); }
 }
 
-@keyframes tg-spin {
-  to { --tg-angle: 360deg; }
-}
 
 @keyframes tg-spin-plain {
   to { transform: rotate(360deg); }
@@ -1807,11 +1712,6 @@
   50% { transform: translateY(-4px); }
 }
 
-@keyframes tg-blob {
-  0% { border-radius: 42% 58% 63% 37% / 45% 40% 60% 55%; transform: translate(-50%, -50%) rotate(0deg) scale(1); }
-  50% { border-radius: 60% 40% 38% 62% / 55% 62% 38% 45%; transform: translate(-46%, -54%) rotate(40deg) scale(1.08); }
-  100% { border-radius: 38% 62% 50% 50% / 62% 38% 55% 45%; transform: translate(-54%, -47%) rotate(-25deg) scale(0.96); }
-}
 
 @keyframes tg-check {
   0% { transform: scale(0); clip-path: inset(0 100% 0 0 round 50%); }
