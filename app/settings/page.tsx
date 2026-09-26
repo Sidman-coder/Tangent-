@@ -115,7 +115,7 @@ export default function SettingsPage() {
 
   return (
     <div className="settings-page">
-      <PageHeader eyebrow="Workspace" title="Settings" description="Manage your profile and how Tangent feels." />
+      <PageHeader title="Settings" description="Manage your profile and how Tangent feels." />
 
       <div className="settings-layout">
         <nav className="settings-nav" aria-label="Settings sections">

@@ -243,7 +243,6 @@ export default function DashboardPage() {
     <m.div className="today-page" variants={staggerChildren} initial="hidden" animate="show">
       <m.div variants={riseIn}>
         <PageHeader
-          eyebrow="Your day"
           title={greeting || "Today"}
           description={
             <span className="today-date-line">

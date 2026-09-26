@@ -302,7 +302,6 @@ export default function TasksPage() {
     <>
       <div className="tasks-page">
         <PageHeader
-          eyebrow="Daily plan"
           title="Tasks"
           description={`${dateLabel} · ${completeCount} of ${rawDailyTasks.length} complete`}
           actions={

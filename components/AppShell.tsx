@@ -5,11 +5,9 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   CalendarDays,
-  CalendarSync,
   CheckSquare2,
   Home,
   MessageSquareText,
-  Plus,
   Search,
   Settings,
   Sparkles,
@@ -17,7 +15,6 @@ import {
 import NotificationBell from "./NotificationBell";
 import CommandPalette from "./CommandPalette";
 import FirstRun from "./FirstRun";
-import CanvasConnectGuide from "./CanvasConnectGuide";
 import TangentLogo from "@/components/TangentLogo";
 import DesktopNotifPrompt from "./DesktopNotifPrompt";
 
@@ -53,12 +50,6 @@ const PAGE_TITLES: Record<string, string> = {
   "/settings": "Settings",
 };
 
-function pageTitleFor(pathname: string): string {
-  if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname];
-  const base = "/" + pathname.split("/")[1];
-  return PAGE_TITLES[base] ?? "TANGENT";
-}
-
 const EST_TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
   timeZone: "America/New_York",
   hour: "numeric",
@@ -76,8 +67,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [estTime, setEstTime] = useState<string | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [profileInitial, setProfileInitial] = useState("T");
-  const [canvasGuideOpen, setCanvasGuideOpen] = useState(false);
-  const title = pageTitleFor(pathname);
   const today = new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 
   useEffect(() => {
@@ -151,10 +140,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className="shell-main">
         <header className="topbar">
-          <div className="topbar-context">
-            <span className="topbar-eyebrow">Workspace</span>
-            <span className="topbar-title">{title}</span>
-          </div>
           <div className="topbar-right">
             <span className="topbar-datetime">
               <span className="topbar-date">{today}</span>
@@ -169,20 +154,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <Search size={16} strokeWidth={1.8} aria-hidden="true" />
               <span>Search</span>
               <kbd>⌘K</kbd>
-            </button>
-            <button type="button" className="topbar-new-task" onClick={openPalette}>
-              <Plus size={16} strokeWidth={2} aria-hidden="true" />
-              <span>New task</span>
-            </button>
-            <button
-              type="button"
-              className="topbar-canvas-connect"
-              onClick={() => setCanvasGuideOpen(true)}
-              aria-label="Connect Canvas calendar"
-              title="Connect Canvas calendar"
-            >
-              <CalendarSync size={16} strokeWidth={1.8} aria-hidden="true" />
-              <span>Connect Canvas</span>
             </button>
             <NotificationBell open={notifOpen} onOpenChange={setNotifOpen} />
             <Link href="/settings" className="topbar-avatar" aria-label="Open account settings">
@@ -214,7 +185,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </nav>
 
       <CommandPalette />
-      <CanvasConnectGuide open={canvasGuideOpen} onClose={() => setCanvasGuideOpen(false)} />
       {!showOnboarding && <DesktopNotifPrompt />}
 
       {showOnboarding && <FirstRun onComplete={() => setShowOnboarding(false)} />}
