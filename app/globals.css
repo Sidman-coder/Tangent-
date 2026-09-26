@@ -779,7 +779,7 @@ textarea:focus-visible {
   padding: 0.85rem 1rem;
   border-radius: 14px;
   border: 1px solid var(--line);
-  background: linear-gradient(160deg, var(--elev-1), var(--elev-2));
+  background: var(--surface);
   transform: rotateY(-12deg);
   transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
   cursor: pointer;
@@ -961,10 +961,7 @@ textarea:focus-visible {
   font-family: var(--font-display);
   font-size: 34px;
   font-weight: 800;
-  background: linear-gradient(135deg, var(--accent), #8b5cf6);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--accent);
 }
 
 .cal-month-grid {
@@ -1602,7 +1599,7 @@ textarea:focus-visible {
 
 /* ── Bar chart — today highlight & empty state ──────────────────────────────── */
 .bar.is-today {
-  background: linear-gradient(180deg, var(--accent-hover), var(--accent));
+  background: var(--accent);
 }
 .bar.bar-empty {
   background: transparent;
@@ -3050,7 +3047,7 @@ textarea:focus {
   justify-content: center;
   gap: 0.5rem;
   border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 70%, black), var(--accent));
+  background: var(--accent);
   color: var(--accent-ink);
   padding: 0.65rem 1.25rem;
   border-radius: 999px;
@@ -3083,7 +3080,7 @@ textarea:focus {
 }
 
 .voice-record-btn.recording {
-  background: linear-gradient(135deg, var(--red), color-mix(in srgb, var(--red) 65%, black));
+  background: var(--red);
   border-color: color-mix(in srgb, var(--red) 60%, transparent);
 }
 
@@ -3099,12 +3096,12 @@ textarea:focus {
 }
 
 .voice-record-btn.success {
-  background: linear-gradient(135deg, var(--green), color-mix(in srgb, var(--green) 65%, black));
+  background: var(--highlight);
   border-color: color-mix(in srgb, var(--green) 60%, transparent);
 }
 
 .voice-record-btn.error {
-  background: linear-gradient(135deg, var(--red), color-mix(in srgb, var(--red) 65%, black));
+  background: var(--red);
   border-color: color-mix(in srgb, var(--red) 60%, transparent);
 }
 
@@ -3126,74 +3123,14 @@ textarea:focus {
   to { transform: rotate(360deg); }
 }
 
-/* ── Global voice capture FAB (persistent, every page, via AppShell) ────────── */
 
-.voice-fab {
-  position: fixed;
-  right: 28px;
-  bottom: 28px;
-  z-index: 310;
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 70%, black), var(--accent));
-  color: var(--accent-ink);
-  cursor: pointer;
-  user-select: none;
-  -webkit-user-select: none;
-  touch-action: none;
-  box-shadow: 6px 6px 14px rgba(91,61,240,0.30), -4px -4px 12px rgba(255,255,255,0.65);
-  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.15s ease;
-}
 
-.voice-fab:hover {
-  transform: translateY(-1px);
-  box-shadow: 8px 8px 18px rgba(91,61,240,0.38), -5px -5px 14px rgba(255,255,255,0.7);
-}
 
-.voice-fab:disabled {
-  cursor: not-allowed;
-  opacity: 0.85;
-  transform: none;
-}
 
-.voice-fab.recording {
-  background: linear-gradient(135deg, var(--red), color-mix(in srgb, var(--red) 65%, black));
-  border-color: color-mix(in srgb, var(--red) 60%, transparent);
-}
 
-.voice-fab.uploading {
-  background: var(--bg-elevated);
-  border-color: var(--accent);
-  color: var(--accent);
-}
 
-.voice-fab-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--accent-ink);
-  animation: voice-pulse 1s ease-in-out infinite;
-}
-
-.voice-fab-spinner {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
-  border-top-color: var(--accent);
-  animation: voice-spin 0.7s linear infinite;
-}
 
 @media (max-width: 720px) {
-  .voice-fab {
-    right: 16px;
-    bottom: calc(66px + env(safe-area-inset-bottom) + 16px);
-  }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
@@ -3638,7 +3575,7 @@ textarea:focus {
 }
 .agent-msg-user {
   align-self: flex-end;
-  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 70%, black));
+  background: var(--accent);
   color: var(--accent-ink);
 }
 .agent-msg-assistant {
@@ -3955,12 +3892,12 @@ textarea:focus {
 }
 
 .notif-item--pinned-brief {
-  background: linear-gradient(135deg, rgb(from var(--accent) r g b / 0.16), rgb(from var(--accent) r g b / 0.05));
+  background: var(--accent-soft);
   border-bottom: 1px solid rgb(from var(--accent-hover) r g b / 0.35);
 }
 
 .notif-item--pinned-brief:hover {
-  background: linear-gradient(135deg, rgb(from var(--accent) r g b / 0.22), rgb(from var(--accent) r g b / 0.08));
+  background: var(--layer-3);
 }
 
 .notif-item--pinned-brief .notif-item-title {
@@ -6107,43 +6044,15 @@ textarea:focus {
   --urgency-pulse: 5s;
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(112px, 10vw, 144px);
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: 16px;
   margin-bottom: 20px;
   padding: 20px 24px 20px 30px;
   border-radius: 22px;
-  background:
-    radial-gradient(90% 130% at 100% 20%, rgb(var(--urgency-rgb) / calc(0.05 + var(--urgency) * 0.09)), transparent 62%),
-    var(--surface);
-  box-shadow:
-    0 0 0 1px rgb(var(--urgency-rgb) / calc(0.08 + var(--urgency) * 0.22)),
-    0 1px 2px rgba(26, 23, 32, 0.04),
-    0 26px 60px -30px rgb(var(--urgency-rgb) / calc(0.22 + var(--urgency) * 0.38));
-  transition: box-shadow 0.6s ease, background 0.6s ease;
-}
-
-/* The breathing ring: rate and strength both come from the urgency score. */
-.attention::after {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  box-shadow:
-    0 0 0 1px rgb(var(--urgency-rgb) / 0.35),
-    0 0 36px -6px rgb(var(--urgency-rgb) / calc(0.15 + var(--urgency) * 0.4));
-  opacity: 0;
-  pointer-events: none;
-  content: "";
-  animation: attention-breathe var(--urgency-pulse) ease-in-out infinite;
-}
-
-.attention--clear::after {
-  animation: none;
-}
-
-@keyframes attention-breathe {
-  0%, 100% { opacity: 0; }
-  50% { opacity: calc(0.35 + var(--urgency) * 0.65); }
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-sm);
 }
 
 .attention-body {
@@ -6394,63 +6303,16 @@ textarea:focus {
   color: var(--text);
 }
 
-/* ── Urgency orb (WebGL with a CSS fallback underneath) ──────────────────── */
 
-.urgency-orb {
-  position: relative;
-  justify-self: end;
-  width: 100%;
-  max-width: 144px;
-  aspect-ratio: 1;
-}
 
-.urgency-orb-glow {
-  position: absolute;
-  inset: 4%;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgb(var(--orb-rgb) / calc(0.16 + var(--orb-score) * 0.3)), transparent 66%);
-  filter: blur(14px);
-  transition: background 0.8s ease;
-}
-
-.urgency-orb-static {
-  position: absolute;
-  inset: 18%;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle at 34% 30%,
-    rgb(255 255 255 / 0.85),
-    rgb(var(--orb-rgb) / 0.95) 26%,
-    rgb(var(--orb-rgb) / 0.8) 55%,
-    color-mix(in srgb, rgb(var(--orb-rgb)) 50%, #0c0816) 100%
-  );
-  box-shadow:
-    inset -10px -16px 32px rgb(0 0 0 / 0.2),
-    0 22px 44px -20px rgb(var(--orb-rgb) / 0.7);
-  transition: opacity 0.6s ease, background 0.8s ease;
-  animation: orb-breathe var(--urgency-pulse, 5s) ease-in-out infinite;
-}
 
 @keyframes orb-breathe {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(calc(1.015 + var(--orb-score) * 0.03)); }
 }
 
-.urgency-orb-canvas {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  transition: opacity 0.7s ease;
-}
 
-.urgency-orb.is-3d .urgency-orb-canvas {
-  opacity: 1;
-}
 
-.urgency-orb.is-3d .urgency-orb-static {
-  opacity: 0;
-  animation: none;
-}
 
 /* ── The rest of today ───────────────────────────────────────────────────── */
 
@@ -6871,13 +6733,6 @@ textarea:focus {
     border-radius: 18px;
   }
 
-  /* The orb shrinks into the top-right corner so the list stays above the fold. */
-  .urgency-orb {
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    width: 92px;
-  }
 
   .attention-label,
   .attention-title {
@@ -6922,13 +6777,6 @@ textarea:focus {
     opacity: calc(0.25 + var(--urgency) * 0.5);
   }
 
-  .urgency-orb-static,
-  .today-loading-heading,
-  .today-loading-attention,
-  .today-loading-month,
-  .today-loading-rows span {
-    animation: none;
-  }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════

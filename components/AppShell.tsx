@@ -18,7 +18,6 @@ import NotificationBell from "./NotificationBell";
 import CommandPalette from "./CommandPalette";
 import FirstRun from "./FirstRun";
 import CanvasConnectGuide from "./CanvasConnectGuide";
-import VoiceCaptureFab from "./VoiceCaptureFab";
 import TangentLogo from "@/components/TangentLogo";
 import DesktopNotifPrompt from "./DesktopNotifPrompt";
 
@@ -216,8 +215,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       <CommandPalette />
       <CanvasConnectGuide open={canvasGuideOpen} onClose={() => setCanvasGuideOpen(false)} />
-      {/* The AI console has its own mic in the composer; the FAB would cover Send. */}
-      {pathname !== "/ai" && <VoiceCaptureFab />}
       {!showOnboarding && <DesktopNotifPrompt />}
 
       {showOnboarding && <FirstRun onComplete={() => setShowOnboarding(false)} />}

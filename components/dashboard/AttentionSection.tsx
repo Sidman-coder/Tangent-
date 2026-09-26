@@ -7,7 +7,6 @@ import type { Task } from "@/lib/types";
 import { formatTime12 } from "@/lib/dates";
 import { press, riseIn, rowPresence, spring } from "@/lib/motion";
 import { describeReason, type UrgencySummary } from "@/lib/urgency";
-import UrgencyHero from "./UrgencyHero";
 import { urgencyRgbVar } from "./urgency-palette";
 
 const VISIBLE_LIMIT = 5;
@@ -175,7 +174,6 @@ export default function AttentionSection({
         </div>
       </div>
 
-      <UrgencyHero score={urgency.score} />
     </m.section>
   );
 }
