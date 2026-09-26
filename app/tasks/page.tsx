@@ -311,32 +311,26 @@ export default function TasksPage() {
           }
         />
 
-        <div className="sticky-focus-bar">
-          {urgentTask ? (
-            <>
+        {urgentTask && (
+          <div className="sticky-focus-bar">
               <span className="sticky-focus-label">Current focus</span>
               <span className="sticky-focus-pill" style={{ background: getTaskAccentColor(urgentTask) }} />
               <span className="sticky-focus-title">{urgentTask.title}</span>
               <span className="sticky-focus-time">
                 {urgentTask.id === overdueTask?.id ? "Now" : `In ${formatDuration(timeToMinutes(urgentTask.time) - currentMinutes)}`}
               </span>
-              <Button variant="quiet" size="sm" onClick={() => handleCheckToggle(urgentTask)}>Done</Button>
-            </>
-          ) : (
-            <span className="sticky-focus-empty">All clear today. Add a task when you’re ready.</span>
-          )}
-        </div>
+            <Button variant="quiet" size="sm" onClick={() => handleCheckToggle(urgentTask)}>Done</Button>
+          </div>
+        )}
 
         {error && <p className="tasks-inline-error" role="status">Tasks could not refresh. Showing the latest available list.</p>}
 
         <div className="tasks-toolbar">
-          {dayBanner ? (
+          {dayBanner && (
             <div className={`tasks-status tasks-status--${dayBanner.type}`}>
               <dayBanner.icon size={15} strokeWidth={1.8} aria-hidden="true" />
               <span>{dayBanner.text}</span>
             </div>
-          ) : (
-            <span className="tasks-status tasks-status--quiet">Your day is ready.</span>
           )}
           {rawDailyTasks.length > 1 && (
             <div className="tasks-utilities">
@@ -355,7 +349,6 @@ export default function TasksPage() {
         <section className="tasks-group" aria-labelledby="tasks-incomplete-heading">
           <div className="tasks-group-heading">
             <h2 id="tasks-incomplete-heading">To do</h2>
-            <span>{incompleteTasks.length}</span>
           </div>
           <div className={`tasks-list${shuffleAnim ? " shuffle-anim" : ""}`}>
             {incompleteTasks.length > 0 ? incompleteTasks.map(renderTask) : (

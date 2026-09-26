@@ -45,7 +45,7 @@ export default function WeekAhead({ tasks, now, insight }: { tasks: Task[]; now:
           <span className="today-section-label">Next 7 days</span>
           <h2 id="week-ahead-title">Week ahead</h2>
         </div>
-        <span>{total} open task{total === 1 ? "" : "s"}</span>
+        {total > 0 && <span>{total} open task{total === 1 ? "" : "s"}</span>}
       </div>
 
       <div className="week-ahead-bars">

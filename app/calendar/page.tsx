@@ -31,7 +31,7 @@ const KIND_DISPLAY_NAME: Record<string, string> = {
   commitment: "Commitment",
   "academic-ec": "Academics",
   "side-ec": "Activities",
-  personal: "Personal",
+  personal: "Personal time",
 };
 const NO_KIND = "__none__";
 
@@ -307,6 +307,18 @@ export default function CalendarPage() {
             </button>
           </div>
 
+          <details className="cal-kind-legend">
+            <summary aria-label="Show task kind colors">Kinds</summary>
+            <div className="cal-kind-legend-panel">
+              {KIND_SORT_ORDER.map((kind) => (
+                <span key={kind} className="cal-kind-legend-item">
+                  <span className="cal-kind-legend-dot" style={{ background: getKindColor(kind) }} />
+                  {KIND_DISPLAY_NAME[kind]}
+                </span>
+              ))}
+            </div>
+          </details>
+
         {showAddCal && (
           <div className="cal-add-cal-row">
             <input
@@ -328,15 +340,6 @@ export default function CalendarPage() {
           <Button variant="quiet" size="sm" onClick={() => setPlanFilter(null)} icon={<X size={14} aria-hidden="true" />}>Clear filter</Button>
         </div>
       )}
-
-      <div className="cal-kind-legend" aria-label="Task kind color legend">
-        {KIND_SORT_ORDER.map((kind) => (
-          <span key={kind} className="cal-kind-legend-item">
-            <span className="cal-kind-legend-dot" style={{ background: getKindColor(kind) }} />
-            {KIND_DISPLAY_NAME[kind]}
-          </span>
-        ))}
-      </div>
 
       <section className="calendar-grid-shell">
         <div className="cal-month-grid">

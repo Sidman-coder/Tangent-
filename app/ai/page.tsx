@@ -489,9 +489,6 @@ export default function AiPage() {
           ) : (
             <div className="tg-head-title">
               <h1 className="tg-main-title">Tangent AI</h1>
-              <span key={chatMode} className={`tg-mode-badge is-${chatMode}`}>
-                {chatMode === "calendar" ? "Calendar mode" : "Plan mode"}
-              </span>
             </div>
           )}
           <div className="tg-head-actions">

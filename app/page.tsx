@@ -7,7 +7,6 @@ import * as m from "motion/react-m";
 import { Plus } from "lucide-react";
 import { useAppState } from "@/components/AppStateProvider";
 import ActionReceipt from "@/components/ActionReceipt";
-import MonthRhythm from "@/components/MonthRhythm";
 import AttentionSection, { type AttentionReceipt } from "@/components/dashboard/AttentionSection";
 import WeekAhead from "@/components/dashboard/WeekAhead";
 import Button from "@/components/ui/Button";
@@ -275,13 +274,11 @@ export default function DashboardPage() {
 
       <aside className="today-insights" aria-label="Schedule context">
         <WeekAhead tasks={tasks} now={now} insight={insight} />
-        <MonthRhythm tasks={tasks} year={now.getFullYear()} monthIndex={now.getMonth()} today={today} />
       </aside>
 
       <m.section variants={riseIn} className="today-dayline" aria-labelledby="today-dayline-title">
         <div className="today-section-heading">
           <div>
-            <span className="today-section-label">Today</span>
             <h2 id="today-dayline-title">{todayInAttention > 0 ? "The rest of today" : "Your day"}</h2>
           </div>
           <span>
@@ -307,7 +304,7 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="today-empty-line">
-            <p>{todayInAttention > 0 ? "Nothing else is scheduled today." : "Nothing is scheduled for today."}</p>
+            {todayInAttention > 0 && <p>Nothing else is scheduled today.</p>}
             <Button variant="secondary" size="sm" onClick={openCapture}>Add a task</Button>
           </div>
         )}
