@@ -218,6 +218,22 @@ export default function PathPage() {
             goalLabel={space.goal.college}
             onSelect={setSelectedId}
           />
+          {/* On a phone the labels on the circle are ~5px tall, so the circle
+              stays a clean shape and these become the selector instead. */}
+          <div className="path-chips" role="tablist" aria-label="Your anchors">
+            {space.anchors.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                role="tab"
+                aria-selected={a.id === selectedId}
+                className={`path-chip${a.id === selectedId ? " is-active" : ""}`}
+                onClick={() => setSelectedId(a.id)}
+              >
+                {a.title}
+              </button>
+            ))}
+          </div>
         </section>
       )}
 

@@ -71,3 +71,32 @@ Ensure the Pi can reach `http://YOUR_LAPTOP_IP:3000` while `npm run dev` is runn
 - [ ] `npm run dev` running on the laptop
 - [ ] Pi `TANGENT_URL` uses the laptop **LAN** IP, not `localhost`
 - [ ] Pi Flask server restarted after edits
+
+## Data storage — read this before you rely on it
+
+All app data (tasks, calendars, plans, chats, and everything on **Path**) lives
+in memory on the server, in `lib/store.ts`. `lib/persist.ts` snapshots it to
+JSON so a restart doesn't wipe your workspace.
+
+Where the snapshot lands, in order:
+
+1. `TANGENT_DATA_DIR`, if you set it
+2. `./.tangent-data/store.json` when the working directory is writable — this is
+   the local dev case, and it's gitignored
+3. the OS temp directory, otherwise
+
+**This is not a database, and it is not durable in production.** On Vercel the
+only writable path is `/tmp`, which is per-instance and cleared regularly, so
+two requests can land on different instances and see different data. It gives
+you durability across local restarts and nothing more.
+
+Before real users touch this, the store needs a proper backend — Vercel
+Postgres or Vercel KV are the shortest paths, and `lib/persist.ts` is the only
+file that has to change: replace `loadSnapshot` and the writer in
+`startAutosave` with reads and writes against that store.
+
+## Path and the Anthropic key
+
+`/path` drafts branches with `ANTHROPIC_API_KEY`. Without it, `/api/tangents`
+returns 503 with a readable message and the rest of the page still works — you
+can add anchors and write your own branches by hand.

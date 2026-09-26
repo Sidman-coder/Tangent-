@@ -4925,6 +4925,19 @@ textarea:focus {
     gap: 4px;
     padding-bottom: 4px;
     overflow-x: auto;
+    /* The last tab sits past the edge here; fade the right so it reads as
+       scrollable rather than cut off. */
+    scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to right, #000 88%, transparent 100%);
+    mask-image: linear-gradient(to right, #000 88%, transparent 100%);
+  }
+
+  .settings-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .settings-nav a {
+    white-space: nowrap;
   }
 }
 
@@ -8038,5 +8051,51 @@ textarea:focus {
 
   .path-detail-actions {
     width: 100%;
+  }
+}
+
+/* Phones: the circle keeps its geometry, the chips do the selecting. */
+.path-chips {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .path-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 8px 6px;
+  }
+
+  .path-chip {
+    padding: 8px 14px;
+    min-height: 38px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--bg);
+    color: var(--text-2);
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .path-chip.is-active {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
+
+  /* Unreadable at this scale — the chips carry the names instead. */
+  .td-anchor-label {
+    display: none;
+  }
+
+  .td-goal-label {
+    font-size: 30px;
+  }
+
+  .td-stop-num {
+    font-size: 22px;
   }
 }

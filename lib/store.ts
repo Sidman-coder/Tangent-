@@ -22,6 +22,7 @@ import type {
   TangentIdea,
   TangentStatus,
 } from "./types";
+import { loadSnapshot, startAutosave } from "./persist";
 
 function uid(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
@@ -76,8 +77,11 @@ const g = global as typeof global & {
   __tangentCanvasFeed?: CanvasFeedConfig | null;
   __tangentPendingBriefBatch?: PendingBriefBatch | null;
 };
+// Anything written by a previous process, if there is any.
+const restored = loadSnapshot();
+
 if (!g.__tangentStore) {
-  g.__tangentStore = {
+  g.__tangentStore = (restored?.store as StoreData | undefined) ?? {
     tasks: [],
     calendars: [
       { id: "cal_all", name: "All Calendars", category: "ALL", color: "#c4b5fd" },
@@ -101,14 +105,18 @@ if (!g.__tangentStore) {
     taskChats: {},
     chatSessions: [],
   };
-  console.log("[store] Initialized fresh store (process start).");
+  console.log(
+    restored?.store
+      ? "[store] Restored from disk. Tasks: " + (g.__tangentStore.tasks?.length ?? 0)
+      : "[store] Initialized fresh store (process start)."
+  );
 } else {
   console.log("[store] HMR reload — reusing existing store. Tasks:", g.__tangentStore.tasks.length);
 }
 const store: StoreData = g.__tangentStore;
 
 if (!g.__tangentUserContext) {
-  g.__tangentUserContext = {
+  g.__tangentUserContext = (restored?.userContext as UserContext | undefined) ?? {
     entries: [],
     compressedSummary: "",
     lastUpdated: new Date().toISOString(),
@@ -117,11 +125,11 @@ if (!g.__tangentUserContext) {
 }
 
 if (!g.__tangentNotifications) {
-  g.__tangentNotifications = [] as Notification[];
+  g.__tangentNotifications = (restored?.notifications as Notification[] | undefined) ?? ([] as Notification[]);
 }
 
 if (!g.__tangentActions) {
-  g.__tangentActions = [] as ActionRecord[];
+  g.__tangentActions = (restored?.actions as ActionRecord[] | undefined) ?? ([] as ActionRecord[]);
 }
 
 if (!g.__tangentPending) {
@@ -129,11 +137,11 @@ if (!g.__tangentPending) {
 }
 
 if (g.__tangentBriefConfig === undefined) {
-  g.__tangentBriefConfig = null;
+  g.__tangentBriefConfig = (restored?.briefConfig as BriefConfig | null | undefined) ?? null;
 }
 
 if (g.__tangentCanvasFeed === undefined) {
-  g.__tangentCanvasFeed = null;
+  g.__tangentCanvasFeed = (restored?.canvasFeed as CanvasFeedConfig | null | undefined) ?? null;
 }
 
 if (g.__tangentPendingBriefBatch === undefined) {
@@ -937,7 +945,8 @@ type TangentSpace = { goal: Goal | null; anchors: Anchor[]; tangents: TangentIde
 
 const gt = global as typeof global & { __tangentSpace?: TangentSpace };
 if (!gt.__tangentSpace) {
-  gt.__tangentSpace = { goal: null, anchors: [], tangents: [] };
+  gt.__tangentSpace =
+    (restored?.tangentSpace as TangentSpace | undefined) ?? { goal: null, anchors: [], tangents: [] };
 }
 
 function space(): TangentSpace {
@@ -996,3 +1005,18 @@ export function clearSuggestions(anchorId: string): void {
   const s = space();
   s.tangents = s.tangents.filter((t) => t.anchorId !== anchorId || t.status !== "suggested");
 }
+
+// ─── Durability ──────────────────────────────────────────────────────────────
+// Everything above lives on `global`. This snapshots it so a restart doesn't
+// wipe the workspace. Transient state — pending confirmations, an in-flight
+// brief batch — is deliberately left out; it should not survive a restart.
+
+startAutosave(() => ({
+  store: g.__tangentStore,
+  userContext: g.__tangentUserContext,
+  notifications: g.__tangentNotifications,
+  actions: g.__tangentActions,
+  briefConfig: g.__tangentBriefConfig,
+  canvasFeed: g.__tangentCanvasFeed,
+  tangentSpace: gt.__tangentSpace,
+}));
