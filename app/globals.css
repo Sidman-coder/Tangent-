@@ -1,24 +1,27 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;450;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700&family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
-  --bg:          #f7f7fa;
+  --bg:          #f5f3fa;
   --surface:     #ffffff;
-  --line:        #e6e6eb;
-  --line-strong: #d3d3da;
-  --text:        #18181b;
-  --text-2:      #6f707a;
-  --text-3:      #999aa3;
-  --accent:      #5b3df0;
-  --accent-hover:#4a2fd8;
-  --accent-soft: #efedff;
-  --accent-line: rgba(91,61,240,0.20);
+  --line:        #e2ddf0;
+  --line-strong: #d9d1ee;
+  --text:        #1c1830;
+  --text-2:      #575170;
+  --text-3:      #7d7797;
+  --accent:      #4b3a8c;
+  --accent-hover:#3d2e76;
+  --accent-soft: #ece8f6;
+  --accent-line: rgba(75,58,140,0.20);
+  --layer-3:     #d9d1ee;
+  --highlight:   #1f7a74;
+  --highlight-ink: #ffffff;
   --green:       #16a34a;
   --amber:       #d97706;
   --red:         #dc2626;
-  --font-display: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
-  --font-body:    'Inter', system-ui, sans-serif;
-  --font-mono:    'JetBrains Mono', ui-monospace, monospace;
-  --r-sm: 8px; --r-md: 12px; --r-lg: 14px;
+  --font-display: 'Bricolage Grotesque', 'Helvetica Neue', Arial, sans-serif;
+  --font-body:    'Onest', system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, Menlo, monospace;
+  --r-sm: 10px; --r-md: 15px; --r-lg: 18px;
   --shadow-sm: 0 1px 2px rgba(26,23,32,0.04);
   --shadow-md: 0 2px 8px rgba(26,23,32,0.05),
                0 1px 2px rgba(26,23,32,0.03);
@@ -27,14 +30,14 @@
 
   --bg-sunken:   var(--bg);
   --elev-1:      var(--surface);
-  --elev-2:      #fbfafc;
+  --elev-2:      #ece8f6;
   --accent-ink:  #ffffff;
   --cal-work:    #2563eb;
   --cal-personal:#e0a458;
   --cal-all:     var(--accent);
 
   --kind-school:      #2563eb;
-  --kind-academic-ec: #5b3df0;
+  --kind-academic-ec: var(--accent);
   --kind-side-ec:     #d97706;
   --kind-commitment:  #0d9488;
   --kind-personal:    #e0a458;
@@ -65,29 +68,32 @@
 
 /* ── Light appearance mode (settings toggle override) — Section 1 ────────── */
 [data-theme="light"] {
-  --bg:          #f7f7fa;
-  --bg-sunken:   #f7f7fa;
+  --bg:          #f5f3fa;
+  --bg-sunken:   #f5f3fa;
   --surface:     #ffffff;
-  --elev-2:      #fbfafc;
-  --line:        #e6e6eb;
-  --line-strong: #d3d3da;
-  --text:        #18181b;
-  --text-2:      #6f707a;
-  --text-3:      #999aa3;
-  --accent:      #5b3df0;
-  --accent-hover:#4a2fd8;
-  --accent-soft: #efedff;
-  --accent-line: rgba(91,61,240,0.20);
+  --elev-2:      #ece8f6;
+  --line:        #e2ddf0;
+  --line-strong: #d9d1ee;
+  --layer-3:     #d9d1ee;
+  --text:        #1c1830;
+  --text-2:      #575170;
+  --text-3:      #7d7797;
+  --accent:      #4b3a8c;
+  --accent-hover:#3d2e76;
+  --accent-soft: #ece8f6;
+  --accent-line: rgba(75,58,140,0.20);
   --accent-ink:  #ffffff;
+  --highlight:   #1f7a74;
+  --highlight-ink: #ffffff;
   --cal-work:    #2563eb;
   --cal-personal:#e0a458;
-  --cal-all:     #5b3df0;
+  --cal-all:     var(--accent);
   --green:       #16a34a;
   --amber:       #d97706;
   --red:         #dc2626;
 
   --kind-school:      #2563eb;
-  --kind-academic-ec: #5b3df0;
+  --kind-academic-ec: var(--accent);
   --kind-side-ec:     #d97706;
   --kind-commitment:  #0d9488;
   --kind-personal:    #e0a458;
@@ -95,29 +101,32 @@
 
 /* ── Dark appearance mode (settings toggle override) ─────────────────────── */
 [data-theme="dark"] {
-  --bg: #17141b;
-  --bg-sunken: #131019;
-  --surface: #1c1822;
-  --elev-2: #221d2c;
-  --line: #2c2638;
-  --line-strong: #3a3248;
-  --text: #f2eef7;
-  --text-2: #b8b0c4;
+  --bg: #13111d;
+  --bg-sunken: #13111d;
+  --surface: #1b1829;
+  --elev-2: #252136;
+  --line: #2c2740;
+  --line-strong: #332d4a;
+  --layer-3: #332d4a;
+  --text: #eeebf7;
+  --text-2: #a9a3c2;
   --text-3: #7d7488;
-  --accent: #7c5cff;
-  --accent-hover: #8f72ff;
-  --accent-soft: rgb(from var(--accent) r g b / 0.25);
-  --accent-line: rgba(124,92,255,0.28);
-  --accent-ink: #ffffff;
+  --accent: #b3a5f0;
+  --accent-hover: #c4b9f5;
+  --accent-soft: #252136;
+  --accent-line: rgba(179,165,240,0.28);
+  --accent-ink: #17132a;
+  --highlight: #5cc8bd;
+  --highlight-ink: #062623;
   --cal-work: #60a5fa;
   --cal-personal: #e0a458;
-  --cal-all: #7c5cff;
+  --cal-all: var(--accent);
   --amber: #f5a623;
   --green: #22c55e;
   --red: #ef4444;
 
   --kind-school:      #60a5fa;
-  --kind-academic-ec: #7c5cff;
+  --kind-academic-ec: var(--accent);
   --kind-side-ec:     #f5a623;
   --kind-commitment:  #2dd4bf;
   --kind-personal:    #e0a458;
@@ -250,8 +259,9 @@ h1, h2, h3, h4, h5, h6 {
 .t-h2      { font-family: var(--font-display); font-size: 15px; font-weight: 600; line-height: 1.3; }
 .t-body    { font-family: var(--font-body);    font-size: 14px; font-weight: 400; line-height: 1.5; }
 .t-sm      { font-family: var(--font-body);    font-size: 13px; font-weight: 400; line-height: 1.45; }
-.t-label   { font-family: var(--font-mono);    font-size: 10px; font-weight: 500; line-height: 1.3; letter-spacing: 0.08em; text-transform: uppercase; }
-.t-num     { font-family: var(--font-mono);    font-size: 13px; font-weight: 500; line-height: 1.3; }
+.t-label   { font-family: var(--font-body);    font-size: 12px; font-weight: 500; line-height: 1.3; letter-spacing: 0.01em; }
+.t-num     { font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;    font-size: 13px; font-weight: 500; line-height: 1.3; }
 
 a {
   color: inherit;
@@ -548,10 +558,9 @@ textarea:focus-visible {
 
 .topbar-eyebrow {
   color: var(--text-3);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
 }
 
 .topbar-title {
@@ -1063,7 +1072,8 @@ textarea:focus-visible {
   font-size: 0.8rem;
   color: var(--muted);
   white-space: nowrap;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── Add task button ─────────────────────────────────────────────────────────── */
@@ -1291,10 +1301,9 @@ textarea:focus-visible {
 }
 
 .cal-weekday-label {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-family: var(--font-body);
+  font-size: 12px;
+  letter-spacing: 0.01em;
   color: var(--text-3);
   text-align: center;
   padding-bottom: 0.25rem;
@@ -1374,8 +1383,7 @@ textarea:focus-visible {
 .week-day-label {
   font-size: 0.8rem;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.01em;
   margin: 0.85rem 0 0.25rem;
   padding-bottom: 0.25rem;
   border-bottom: 1px solid var(--line);
@@ -1427,8 +1435,7 @@ textarea:focus-visible {
   font-size: 0.78rem;
   font-weight: 600;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.01em;
   white-space: nowrap;
 }
 
@@ -2313,11 +2320,10 @@ textarea:focus {
 /* ── Settings section headers ────────────────────────────────────────────────── */
 
 .settings-section-head {
-  font-size: 0.75rem;
+  font-size: 0.78rem;
   font-weight: 700;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.01em;
   padding-left: 0.7rem;
   border-left: 2px solid var(--accent);
   margin-bottom: 0.85rem;
@@ -2423,11 +2429,10 @@ textarea:focus {
 }
 
 .dash-focus-label {
-  font-family: var(--font-mono);
-  font-size: 10px;
+  font-family: var(--font-body);
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
   color: var(--text-3);
 }
 
@@ -2452,7 +2457,8 @@ textarea:focus {
 }
 
 .dash-focus-time {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
   font-size: 13px;
   color: var(--text-2);
   flex-shrink: 0;
@@ -2507,15 +2513,15 @@ textarea:focus {
 }
 
 .dash-week-day-letter {
-  font-family: var(--font-mono);
-  font-size: 10px;
+  font-family: var(--font-body);
+  font-size: 12px;
   font-weight: 600;
-  text-transform: uppercase;
   color: var(--text-3);
 }
 
 .dash-week-day-num {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-2);
@@ -2727,9 +2733,8 @@ textarea:focus {
 .feature-tile-status {
   margin-top: auto;
   padding-top: 8px;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 0.78rem;
+  letter-spacing: 0.01em;
   font-weight: 600;
 }
 
@@ -2917,7 +2922,8 @@ textarea:focus {
   justify-content: center;
   padding: 0;
   cursor: pointer;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-2);
@@ -2984,7 +2990,8 @@ textarea:focus {
 }
 
 .firstrun-confirm-letter {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
   color: var(--text-3);
 }
@@ -3311,7 +3318,8 @@ textarea:focus {
   opacity: 0.55;
 }
 .calendar-modal-task-time {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
   font-size: 0.78rem;
   color: var(--muted);
   white-space: nowrap;
@@ -3451,7 +3459,8 @@ textarea:focus {
   color: var(--faint);
 }
 .task-card-time {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
   font-size: 0.78rem;
   color: var(--muted);
   background: var(--surface-2);
@@ -3778,7 +3787,8 @@ textarea:focus {
   font-size: 0.7rem;
   color: var(--faint);
   margin-top: 0.3rem;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
 }
 
 .task-activity {
@@ -4032,7 +4042,8 @@ textarea:focus {
   margin-top: 0.3rem;
   font-size: 0.7rem;
   color: var(--faint);
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
 }
 
 .notif-item-dismiss {
@@ -4571,10 +4582,9 @@ textarea:focus {
 }
 
 .console-tool-chip {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-family: var(--font-body);
+  font-size: 12px;
+  letter-spacing: 0.01em;
   padding: 3px 8px;
   border-radius: 999px;
   border: 1px solid rgb(from var(--accent-hover) r g b / 0.35);
@@ -5179,10 +5189,9 @@ textarea:focus {
   justify-content: space-between;
   color: var(--text-3);
   font-family: var(--font-body);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
 }
 
 .firstrun-brand-mark {
@@ -5359,10 +5368,9 @@ textarea:focus {
   flex-shrink: 0;
 }
 .day-panel-kind-label {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  font-family: var(--font-body);
+  font-size: 12px;
+  letter-spacing: 0.01em;
   color: var(--text-3);
 }
 
@@ -5406,7 +5414,8 @@ textarea:focus {
   max-width: 60%;
 }
 .sticky-focus-time {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   color: var(--text-3);
   margin-left: auto;
@@ -5445,14 +5454,14 @@ textarea:focus {
   border-radius: var(--r-sm);
 }
 .week-strip-day-letter {
-  font-family: var(--font-mono);
-  font-size: 10px;
+  font-family: var(--font-body);
+  font-size: 12px;
   color: var(--text-3);
-  text-transform: uppercase;
   text-align: center;
 }
 .week-strip-date-num {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
   font-size: 14px;
   font-weight: 600;
   color: var(--text-2);
@@ -5794,10 +5803,9 @@ textarea:focus {
   display: block;
   margin-bottom: 7px;
   color: var(--text-3);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
 }
 
 .page-header-title {
@@ -6999,10 +7007,9 @@ textarea:focus {
 .sticky-focus-label {
   flex: 0 0 auto;
   color: var(--text-3);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
 }
 
 .sticky-focus-pill {
@@ -7185,10 +7192,9 @@ textarea:focus {
 
 .modal-kicker {
   color: var(--text-3);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.045em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
 }
 
 .task-recur-modal h3 {
@@ -7298,10 +7304,9 @@ textarea:focus {
   display: block;
   margin-bottom: 3px;
   color: var(--text-3);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.045em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
 }
 
 .calendar-toolbar .cal-month-heading {
@@ -7492,10 +7497,9 @@ textarea:focus {
 
 .calendar-peek-kicker {
   color: var(--text-3);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.045em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
 }
 
 .calendar-peek-content .calendar-modal-header {
