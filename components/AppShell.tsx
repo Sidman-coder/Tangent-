@@ -7,6 +7,7 @@ import {
   CalendarDays,
   CheckSquare2,
   Home,
+  Spline,
   MessageSquareText,
   Search,
   Settings,
@@ -34,20 +35,17 @@ const NAV_LINKS = [
     icon: CalendarDays,
   },
   {
+    href: "/path",
+    label: "Path",
+    icon: Spline,
+  },
+  {
     href: "/ai",
     label: "Tangent AI",
     icon: MessageSquareText,
   },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
-
-const PAGE_TITLES: Record<string, string> = {
-  "/": "Today",
-  "/calendar": "Calendar",
-  "/tasks": "Tasks",
-  "/ai": "Tangent AI",
-  "/settings": "Settings",
-};
 
 const EST_TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
   timeZone: "America/New_York",

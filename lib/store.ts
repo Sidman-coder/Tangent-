@@ -17,6 +17,10 @@ import type {
   BriefConfig,
   CanvasFeedConfig,
   PendingBriefBatch,
+  Anchor,
+  Goal,
+  TangentIdea,
+  TangentStatus,
 } from "./types";
 
 function uid(prefix: string): string {
@@ -923,4 +927,72 @@ export function recordCanvasSync(count: number): CanvasFeedConfig | null {
   g.__tangentCanvasFeed.lastSyncCount = count;
   console.log("[store] recordCanvasSync — count:", count);
   return { ...g.__tangentCanvasFeed };
+}
+
+// ─── Tangents ────────────────────────────────────────────────────────────────
+// Anchors (what you already have), tangent ideas (branches off them), and the
+// goal they point at. Same in-memory lifetime as the rest of this store.
+
+type TangentSpace = { goal: Goal | null; anchors: Anchor[]; tangents: TangentIdea[] };
+
+const gt = global as typeof global & { __tangentSpace?: TangentSpace };
+if (!gt.__tangentSpace) {
+  gt.__tangentSpace = { goal: null, anchors: [], tangents: [] };
+}
+
+function space(): TangentSpace {
+  if (!gt.__tangentSpace) gt.__tangentSpace = { goal: null, anchors: [], tangents: [] };
+  return gt.__tangentSpace;
+}
+
+function rid(prefix: string): string {
+  return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export function getTangentSpace(): TangentSpace {
+  const s = space();
+  return { goal: s.goal ? { ...s.goal } : null, anchors: [...s.anchors], tangents: [...s.tangents] };
+}
+
+export function setGoal(college: string, focus?: string): Goal {
+  const goal: Goal = { college, focus, updatedAt: new Date().toISOString() };
+  space().goal = goal;
+  return { ...goal };
+}
+
+export function addAnchor(input: Omit<Anchor, "id" | "createdAt">): Anchor {
+  const anchor: Anchor = { ...input, id: rid("anc"), createdAt: new Date().toISOString() };
+  space().anchors.push(anchor);
+  return { ...anchor };
+}
+
+export function removeAnchor(id: string): void {
+  const s = space();
+  s.anchors = s.anchors.filter((a) => a.id !== id);
+  // A tangent with no anchor has nothing to leave from.
+  s.tangents = s.tangents.filter((t) => t.anchorId !== id);
+}
+
+export function addTangents(items: Array<Omit<TangentIdea, "id" | "createdAt">>): TangentIdea[] {
+  const created = items.map((t) => ({
+    ...t,
+    id: rid("tan"),
+    createdAt: new Date().toISOString(),
+  }));
+  space().tangents.push(...created);
+  return created.map((t) => ({ ...t }));
+}
+
+export function setTangentStatus(id: string, status: TangentStatus): TangentIdea | null {
+  const found = space().tangents.find((t) => t.id === id);
+  if (!found) return null;
+  found.status = status;
+  return { ...found };
+}
+
+/** Clears prior suggestions for an anchor so a regenerate doesn't pile up
+ *  duplicates. Anything you accepted or completed is kept. */
+export function clearSuggestions(anchorId: string): void {
+  const s = space();
+  s.tangents = s.tangents.filter((t) => t.anchorId !== anchorId || t.status !== "suggested");
 }

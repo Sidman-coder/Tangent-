@@ -189,3 +189,48 @@ export interface PendingConfirmation {
   payload: Record<string, unknown>;
 }
 
+
+// ─── Tangents: your current work, and the lines that branch off it ───────────
+// An Anchor is something you already have — a club, an award, a course, a
+// project. A TangentIdea is a branch off one anchor that moves it toward the
+// Goal. The geometry is the product: anchors sit on the circle, tangents leave
+// it at exactly one point and rise toward the goal.
+
+export type AnchorKind = "ec" | "award" | "course" | "project";
+
+export type Anchor = {
+  id: string;
+  title: string;
+  kind: AnchorKind;
+  /** Role, result, or one line of what it actually is. */
+  detail?: string;
+  hoursPerWeek?: number;
+  /** How many school years it has run. */
+  years?: number;
+  createdAt: string;
+};
+
+export type TangentStatus = "suggested" | "accepted" | "done" | "dismissed";
+
+export type TangentIdea = {
+  id: string;
+  anchorId: string;
+  /** The branch itself — one concrete move. */
+  title: string;
+  /** Why this angle moves the anchor toward the goal. */
+  rationale: string;
+  /** Rough shape of the commitment, e.g. "2 hrs/wk for 6 weeks". */
+  effort: string;
+  status: TangentStatus;
+  /** Where it came from: Tangent proposed it, or you wrote it. */
+  origin: "tangent" | "you";
+  createdAt: string;
+};
+
+export type Goal = {
+  /** The college you're aiming at. */
+  college: string;
+  /** Intended major or focus, when known. */
+  focus?: string;
+  updatedAt: string;
+};
