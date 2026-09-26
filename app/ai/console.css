@@ -165,19 +165,8 @@
 }
 
 /* Notion: a small line-art mark in an outlined circle above the heading. */
-.tg-hero-mark {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  margin-bottom: 18px;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  background: var(--surface);
-  color: var(--text);
-}
 
-/* Gemini: two-tone greeting — name line in ink, question in gray. No gradient. */
+/* The hero asks one question, in ink. The greeting lives on Today, once. */
 .tg-hero-title {
   display: flex;
   flex-direction: column;
@@ -189,12 +178,9 @@
   line-height: 1.12;
 }
 
-.tg-hero-hello {
-  color: var(--text);
-}
 
 .tg-hero-ask {
-  color: var(--text-3);
+  color: var(--text);
 }
 
 /* Linear: "Get started" label + outlined cards (icon, title, one-line detail). */
@@ -1442,7 +1428,6 @@
 }
 
 /* ── Accent marks, bubbles and plan call-to-action ──────────────────────────── */
-.tg-hero-mark,
 .tg-msg-mark {
   color: var(--accent);
 }
@@ -1542,9 +1527,6 @@
 .tg-hero > :nth-child(5) { animation-delay: 240ms; }
 .tg-hero > :nth-child(6) { animation-delay: 300ms; }
 
-.tg-hero-mark {
-  animation: tg-rise 0.7s var(--tg-ease-out) both, tg-float 5s ease-in-out 0.8s infinite;
-}
 
 .tg-hero-ask {
   animation: tg-swap 0.5s var(--tg-ease-out) both;
@@ -1705,11 +1687,6 @@
 
 @keyframes tg-spin-plain {
   to { transform: rotate(360deg); }
-}
-
-@keyframes tg-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
 }
 
 

@@ -21,7 +21,6 @@ import {
 } from "@/hooks/useVoiceCapture";
 import type { ChatSession } from "@/lib/store";
 import { ArrowLeft, CalendarClock, CalendarRange, MessageSquare, Newspaper, PanelRightOpen, Sun, Timer } from "lucide-react";
-import PenMark from "@/components/console/PenMark";
 import BriefPanel, { CADENCE_LABEL, type BriefSummary } from "@/components/console/BriefPanel";
 import { formatTime12, toYMD } from "@/lib/dates";
 import "./console.css";
@@ -39,11 +38,6 @@ const SUGGESTIONS = [
   { icon: Timer, text: "What fits in 30 minutes?", detail: "Quick tasks for a short gap" },
   { icon: CalendarClock, text: "Move overdue tasks", detail: "Find new slots for anything that slipped" },
 ] as const;
-
-function greetingFor(hour: number, name: string): string {
-  const part = hour >= 5 && hour < 12 ? "Morning" : hour >= 12 && hour < 17 ? "Afternoon" : "Evening";
-  return name ? `${part}, ${name}.` : `Good ${part.toLowerCase()}.`;
-}
 
 /** Persists the active chat session id across navigation/refresh within the same
  *  browser (not the server — the in-memory store still resets on server restart,
@@ -74,7 +68,6 @@ export default function AiPage() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [brief, setBrief] = useState<BriefSummary | null>(null);
-  const [greeting, setGreeting] = useState("");
   const [chatsOpen, setChatsOpen] = useState(false);
   const [chatsHidden, setChatsHidden] = useState(false);
   const [chatMode, setChatMode] = useState<ChatMode>("calendar");
@@ -108,10 +101,6 @@ export default function AiPage() {
     return next ? `${count} · next: ${next.title} at ${formatTime12(next.time)}` : count;
   }, [state]);
 
-  useEffect(() => {
-    const name = window.localStorage.getItem("tangent-user-name")?.trim().split(/\s+/)[0] ?? "";
-    setGreeting(greetingFor(new Date().getHours(), name));
-  }, []);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [pendingRequest, setPendingRequest] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -533,9 +522,7 @@ export default function AiPage() {
           </div>
         ) : turns.length === 0 && !busy ? (
           <div className="tg-hero">
-            <PenMark className="tg-hero-mark" size={26} />
             <h2 className="tg-hero-title">
-              <span className="tg-hero-hello">{greeting || " "}</span>
               <span key={chatMode} className="tg-hero-ask">
                 {chatMode === "calendar" ? "What should go on your calendar?" : "What would you like to plan?"}
               </span>

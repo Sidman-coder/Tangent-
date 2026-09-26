@@ -8,6 +8,7 @@ import { Plus } from "lucide-react";
 import { useAppState } from "@/components/AppStateProvider";
 import ActionReceipt from "@/components/ActionReceipt";
 import AttentionSection, { type AttentionReceipt } from "@/components/dashboard/AttentionSection";
+import MonthRhythm from "@/components/MonthRhythm";
 import WeekAhead from "@/components/dashboard/WeekAhead";
 import Button from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
@@ -274,6 +275,7 @@ export default function DashboardPage() {
 
       <aside className="today-insights" aria-label="Schedule context">
         <WeekAhead tasks={tasks} now={now} insight={insight} />
+        <MonthRhythm tasks={tasks} year={now.getFullYear()} monthIndex={now.getMonth()} today={today} />
       </aside>
 
       <m.section variants={riseIn} className="today-dayline" aria-labelledby="today-dayline-title">
@@ -304,7 +306,7 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="today-empty-line">
-            {todayInAttention > 0 && <p>Nothing else is scheduled today.</p>}
+            <p>{todayInAttention > 0 ? "Nothing else is scheduled today." : "Nothing scheduled yet."}</p>
             <Button variant="secondary" size="sm" onClick={openCapture}>Add a task</Button>
           </div>
         )}

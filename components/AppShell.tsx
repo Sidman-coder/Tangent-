@@ -10,7 +10,6 @@ import {
   MessageSquareText,
   Search,
   Settings,
-  Sparkles,
 } from "lucide-react";
 import NotificationBell from "./NotificationBell";
 import CommandPalette from "./CommandPalette";
@@ -66,7 +65,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [estTime, setEstTime] = useState<string | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [profileInitial, setProfileInitial] = useState("T");
+  const [profileName, setProfileName] = useState("");
   const today = new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 
   useEffect(() => {
@@ -81,8 +80,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       setShowOnboarding(true);
     }
     const savedName = localStorage.getItem("tangent-user-name")?.trim();
-    if (savedName) setProfileInitial(savedName.charAt(0).toUpperCase());
+    if (savedName) setProfileName(savedName);
   }, []);
+
+  const profileInitial = (profileName || "T").charAt(0).toUpperCase();
 
   const openPalette = () => window.dispatchEvent(new Event("tangent:open-palette"));
 
@@ -93,18 +94,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <TangentLogo />
           <span className="rail-logo-word">Tangent</span>
         </Link>
-
-        <button
-          type="button"
-          className="rail-capture-btn"
-          title="Ask TANGENT (⌘K)"
-          aria-label="Ask TANGENT"
-          onClick={openPalette}
-        >
-          <span className="rail-capture-icon"><Sparkles size={18} strokeWidth={1.75} /></span>
-          <span className="rail-capture-label">Capture</span>
-          <kbd className="rail-capture-key">⌘K</kbd>
-        </button>
 
         <nav className="rail-nav" aria-label="Primary">
           {NAV_LINKS.map(({ href, label, icon: Icon }) => {
@@ -131,8 +120,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <Link href="/settings" className="rail-profile" aria-label="Open account settings">
             <span className="rail-profile-avatar" aria-hidden="true">{profileInitial}</span>
             <span className="rail-profile-copy">
-              <strong>My workspace</strong>
-              <span>Student plan</span>
+              <strong>{profileName || "Your workspace"}</strong>
+              <span>Settings</span>
             </span>
           </Link>
         </div>

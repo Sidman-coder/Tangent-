@@ -79,10 +79,12 @@ export default function AttentionSection({
       aria-labelledby="attention-title"
     >
       <div className="attention-body">
-        <span className="today-section-label attention-label">
-          {clear ? "All clear" : "Needs attention"}
-          {!clear && <span className="attention-count">{urgency.items.length}</span>}
-        </span>
+        {!clear && (
+          <span className="today-section-label attention-label">
+            Needs attention
+            <span className="attention-count">{urgency.items.length}</span>
+          </span>
+        )}
 
         <AnimatePresence mode="wait" initial={false}>
           <m.div
