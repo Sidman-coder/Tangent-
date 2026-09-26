@@ -1090,7 +1090,6 @@ Rules:
         addVoiceLog({ text, response: "No title provided", action, ok: false });
         return NextResponse.json({ ok: false, error: "No title in AI response" }, { status: 422 });
       }
-      const displayTitle = time && time !== "09:00" ? `${title} (${time})` : title;
       const notes = (cmd.notes as string | undefined)?.trim() || undefined;
       const startAction = (cmd.startAction as string | undefined)?.trim() || undefined;
       const rawResources = Array.isArray(cmd.resources)
@@ -1101,7 +1100,10 @@ Rules:
         : undefined;
       const resources = rawResources && rawResources.length > 0 ? rawResources : undefined;
       const calendarId = resolveCalendarId(typeof cmd.calendarId === "string" ? cmd.calendarId : undefined);
-      const task = addTask({ title: displayTitle, date, time, completed: false, calendarId, notes, startAction, resources });
+      // The title is the title. Every surface renders task.time next to it
+      // (TaskRow, the Today hero, the calendar day panel), so folding the time
+      // into the title printed it twice: "Study math (15:00)  3:00 PM".
+      const task = addTask({ title, date, time, completed: false, calendarId, notes, startAction, resources });
       if (task.wasDuplicate) {
         const dupResponse = `Skipped 1 duplicate (already have "${task.title}" around ${task.time}).`;
         console.log("[api/voice] add_task skipped duplicate:", task.id, task.title);

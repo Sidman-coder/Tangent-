@@ -291,6 +291,15 @@ export function addRecurringTask(
   let count = 0;
   const maxOccurrences = recurring.occurrences ?? 365;
 
+  // "weekly" with no days chosen used to match nothing and create zero tasks
+  // while still reporting success — the voice/chat path can produce exactly
+  // that ("every week", or a frequency it had to fall back to). Weekly with no
+  // day means the day the series starts on.
+  const daysOfWeek =
+    recurring.frequency === "weekly" && !recurring.daysOfWeek?.length
+      ? [startDate.getDay()]
+      : recurring.daysOfWeek;
+
   console.log("[store] addRecurringTask start — parentId:", parentId, "| freq:", recurring.frequency, "| from:", task.date, "| to:", endDate.toISOString().slice(0, 10));
 
   while (currentDate <= endDate && count < maxOccurrences) {
@@ -299,7 +308,7 @@ export function addRecurringTask(
     if (recurring.frequency === "daily") {
       shouldAdd = true;
     } else if (recurring.frequency === "weekly") {
-      if (recurring.daysOfWeek && recurring.daysOfWeek.includes(currentDate.getDay())) {
+      if (daysOfWeek && daysOfWeek.includes(currentDate.getDay())) {
         shouldAdd = true;
       }
     } else if (recurring.frequency === "monthly") {
@@ -319,7 +328,7 @@ export function addRecurringTask(
       const rec: RecurringConfig = {
         enabled: true,
         frequency: recurring.frequency,
-        daysOfWeek: recurring.daysOfWeek,
+        daysOfWeek,
         endDate: recurring.endDate,
         parentId,
       };
