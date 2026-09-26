@@ -1,6 +1,6 @@
 # TANGENT Project
 
-Last reconciled: 2026-09-20
+Last reconciled: 2026-09-26
 
 ## Identity
 
@@ -33,8 +33,8 @@ The repository is a Next.js 14 and TypeScript application. Current code and user
 - A first-run onboarding flow collects the student's name, whether they are a high school student, and school days and hours. It generates recurring School Blocks.
 - The application includes task, calendar, AI-console, settings, daily-brief, notification, planning, rescheduling, and voice-command surfaces.
 - Gmail and Google Calendar modules are designed for read-only access. **Google Calendar requires three env vars — `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` (`.env.local`) — and as of this review all three are unset**, so `lib/calendar.ts` throws immediately on any call and the AI chat/voice pipeline cannot read Google Calendar events until a developer completes the OAuth setup and supplies them. This is unrelated to TANGENT's own internal task calendars (`cal_work`/`cal_personal`/`cal_study`/`cal_all`, managed by `lib/store.ts`), which always work regardless of this integration's state — the AI's `get_my_tasks` tool reads from that internal store and needs no external credentials.
-- Current work adds a per-user Canvas `.ics` calendar-feed connection for assignment and deadline events. A legacy read-only Canvas token client also remains in the repository; do not describe that older path as the intended student onboarding flow.
-- Application data is stored in process memory and survives development hot reloads, but resets when the server process restarts. There is no persistent production database yet.
+- Current work adds a per-user Canvas `.ics` calendar-feed connection for assignment and deadline events. A legacy read-only Canvas token client remains on `main` and is being removed (see [Persistence and accounts](#persistence-and-accounts)); do not describe it as the intended student onboarding flow.
+- On `main`, application data is still stored in process memory and resets when the server process restarts. The Supabase migration below is in progress on the `feat/supabase` branch and not yet merged.
 - The application assumes one student per account. A parent or family shared-login model is outside the current scope.
 - **A real cron trigger now exists** (`vercel.json`, Vercel Cron). This replaces any earlier assumption that nothing schedules background work. Two routes are wired: `app/api/cron/proactive` (every 3 hours) regenerates proactive/overdue notifications so they don't go stale between page loads, and `app/api/cron/daily-brief` (once daily) generates the scheduled Daily Brief from the student's saved `BriefConfig` sources (`lib/brief-sources.ts`: RSS feeds, manual URL summaries, stale-task checks), which previously had no invoker at all despite being fully implemented. The daily-brief cron submits generation through the Anthropic Batch API (`lib/anthropic-batch.ts`) rather than a synchronous call, since it's non-interactive overnight work; because a Vercel Function can't stay alive for Batch's turnaround, the design is submit-now/poll-later — `app/api/cron/proactive`'s more frequent ticks opportunistically finalize a pending brief batch (`lib/daily-brief.ts`). Both cron routes require a `CRON_SECRET` env var for auth (permissive fallback when unset, for local testing). Two caveats worth surfacing: (1) **Vercel's Hobby (free) tier only allows once-daily cron schedules** — the every-3-hours proactive cron will fail to deploy on Hobby and needs at least a Pro plan; (2) delivery time is currently a fixed hour in `vercel.json`, not per-user — true per-user delivery-time (from `BriefConfig`) would need a timezone field on that config plus dynamic scheduling, which Vercel cron doesn't support at the config level.
 - The on-demand "Daily Brief" button in the Bell panel was renamed **"Today's Summary"** to remove a naming collision with the actual scheduled, source-aggregating Daily Brief feature above — they are unrelated systems that happened to share a name. The on-demand button still calls the Messages API synchronously (a student clicking it wants an immediate result); only the new cron-triggered path uses Batch. Both paths publish through the same shared `publishDailyBrief()` in `lib/daily-brief.ts`, so there's one notification-creation path, not two.
@@ -49,6 +49,18 @@ The codebase is transitional rather than single-provider:
 - Deepgram transcription exists as an unconfigured browser-voice integration stub and requires configuration before it works.
 
 Do not claim that any one provider exclusively powers all TANGENT intelligence without rechecking the current code.
+
+### Persistence and accounts
+
+Status: in progress on `feat/supabase` (started 2026-09-26). Decisions below are confirmed by Sid; implementation state is tracked by the branch.
+
+- **Storage:** Supabase Postgres. The schema lives in `supabase/migrations/` and is the authority for tables and columns. Every student-owned table has `user_id` → `auth.users`, Row Level Security, and four own-rows-only policies (select/insert/update/delete). Cross-table references use composite `(id, user_id)` foreign keys so a row can never point at another student's data.
+- **Access model:** browser requests use the anon key plus the student's session, so RLS applies. Trusted server processes (cron jobs; later the pen upload server) use `SUPABASE_SERVICE_ROLE_KEY`, which bypasses RLS and therefore must always set and filter `user_id` explicitly. The service role key is server-only; importing it into client code is a critical bug. Store functions refuse to run without an explicit user context — they never fall back to the service role or a default user.
+- **Auth:** Supabase Auth with Google sign-in and magic-link email. **Invite-only:** only emails in `ALLOWED_EMAILS` may use the app, enforced server-side in the auth callback and middleware.
+- **Timezone:** each student's IANA timezone is stored on their profile (captured at onboarding, default `America/New_York`); cron jobs loop over students and use each one's timezone.
+- **Google (Gmail / Google Calendar) is owner-only for now:** those integrations read from env credentials tied to Sid's personal account, so they only run when the signed-in email matches `OWNER_EMAIL`; everyone else gets a "Google connection coming soon" response. **Future work:** per-student Google OAuth — a "Connect Google Calendar" button that stores each student's encrypted refresh token.
+- **Canvas:** the `.ics` Canvas Feed is the only Canvas integration. The legacy token-based Canvas API client is being removed; the agent answers Canvas/assignment questions from tasks imported by the feed (`source = 'canvas'`). The feed URL embeds a private token and is never returned to the browser unmasked.
+- **Pen → student linking (schema only, not wired):** `pen_devices` (`id`, `user_id`, `name`, `device_key_hash`, `created_at`, `last_seen_at`, `revoked_at`) maps a pen to its student. Intended flow: each pen holds a random device key; the pen upload server (planned for Railway) hashes the key it receives (SHA-256), looks up `device_key_hash` with the service role, and inserts tasks for that row's `user_id`. The raw key is never stored. Pairing UI and pen auth are out of scope for this migration; `/api/voice` requires a signed-in session like every other route, and `pi-poller.mjs` is deprecated.
 
 ## Current hardware state
 
@@ -68,7 +80,7 @@ This shift is a central product lesson: a narrow audience becomes defensible whe
 
 1. Finish and demonstrate the software.
 2. Deploy the web app to Vercel.
-3. Replace process-memory storage with persistent storage; Supabase is the current candidate, not a locked decision.
+3. Replace process-memory storage with persistent storage — Supabase (Postgres + Auth), confirmed by Sid on 2026-09-26; see [Persistence and accounts](#persistence-and-accounts).
 4. Complete an end-to-end ESP32 prototype.
 5. Design and validate the production-intent custom PCB.
 6. Expand the AI agent pipeline from capture through understanding to safe action.
