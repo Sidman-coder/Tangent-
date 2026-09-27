@@ -4,6 +4,7 @@ import { withUser } from "@/lib/request-context";
 import { extractContextFacts } from "@/lib/context-extract";
 import { getUserTimezone } from "@/lib/store";
 import { promptDateContext } from "@/lib/time";
+import { claudeFetch } from "@/lib/perf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,7 +29,7 @@ function conversationContext(messages: { role: string; content: string }[]): str
 }
 
 async function planReply(apiKey: string, messages: { role: "user" | "assistant"; content: string }[]): Promise<string> {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await claudeFetch("chat plan-mode reply", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
     body: JSON.stringify({

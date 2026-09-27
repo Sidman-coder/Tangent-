@@ -10,6 +10,7 @@ import { addDaysYMD, currentInstant, getUserToday } from "@/lib/time";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import { DAILY_BRIEF_SCHEMA, DEFAULT_DAILY_BRIEF, publishDailyBrief, type DailyBrief } from "@/lib/daily-brief";
 import { withUser } from "@/lib/request-context";
+import { claudeFetch } from "@/lib/perf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,7 +49,7 @@ About this user:
 ${userContext}
   `.trim();
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const response = await claudeFetch("daily brief", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

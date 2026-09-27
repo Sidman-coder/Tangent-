@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@supabase/supabase-js";
+import { perfFetch } from "@/lib/perf";
 
 /** Service-role client. Bypasses Row Level Security, so every query made with
  *  it MUST set/filter user_id explicitly. Server-only: the "server-only" import
@@ -12,5 +13,6 @@ export function createAdminClient() {
   if (!key) throw new Error("SUPABASE_SERVICE_ROLE_KEY is not set");
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, key, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    global: { fetch: perfFetch },
   });
 }

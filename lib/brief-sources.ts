@@ -1,4 +1,5 @@
 import type { Task } from "./types";
+import { claudeFetch } from "@/lib/perf";
 
 export function checkStaleItems(tasks: Task[], daysThreshold = 5): string[] {
   const now = Date.now();
@@ -38,7 +39,7 @@ async function callHaikuCached(systemPrompt: string, userContent: string, maxTok
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("No API key");
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await claudeFetch("brief sources", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

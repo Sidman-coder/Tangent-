@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getTaskChat, addTaskChatMessage, getAllTasks } from "@/lib/store";
 import { withUser } from "@/lib/request-context";
+import { claudeFetch } from "@/lib/perf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -74,7 +75,7 @@ Do not output JSON. Respond only in plain conversational text.`;
 
     console.log("[api/task-chat] Calling Anthropic with", conversationHistory.length + 1, "messages...");
 
-    const anthropicResponse = await fetch("https://api.anthropic.com/v1/messages", {
+    const anthropicResponse = await claudeFetch("task chat", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

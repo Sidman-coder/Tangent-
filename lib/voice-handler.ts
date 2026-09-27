@@ -21,6 +21,7 @@ import type { TaskKind } from "@/lib/types";
 import { needsAgentTools, runVoiceAgentToolLoop } from "@/lib/voice-agent-tools";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import { resolvePlanTitle } from "@/lib/plan-title";
+import { claudeFetch, perfCount, perfSpan, withPerfTrace } from "@/lib/perf";
 
 const RESOURCE_ITEM_SCHEMA = {
   type: "object",
@@ -410,6 +411,15 @@ export async function handleVoiceText(
   text: string,
   opts: { forcePlan?: boolean; context?: string } = {}
 ): Promise<NextResponse> {
+  // Dev-only timing (lib/perf.ts); the plan path re-enters here and joins the same trace.
+  if (opts.forcePlan) perfCount("pipeline re-entries");
+  return withPerfTrace(`voice pipeline "${text.slice(0, 40)}"`, () => handleVoiceTextInner(text, opts));
+}
+
+async function handleVoiceTextInner(
+  text: string,
+  opts: { forcePlan?: boolean; context?: string }
+): Promise<NextResponse> {
   const withContext = (t: string) =>
     opts.context
       ? `${t}\n\nEarlier in this conversation (use it for what "it", "that", or "this plan" refers to):\n${opts.context}`
@@ -693,10 +703,13 @@ Rules:
       // A response that is schema-valid but empty, or whose own summary promises a
       // different number of sessions than it returned, is treated as a failure and
       // retried once — never reported to the user as a successful plan.
-      let planJson: Record<string, unknown> | null = null;
+      // Assigned inside the perfSpan callback below, so widen explicitly (TS does not track callback assignments).
+      let planJson = null as Record<string, unknown> | null;
       let rawTasks: unknown[] = [];
+      await perfSpan("plan: generate", async () => {
       for (let attempt = 1; attempt <= 2 && rawTasks.length === 0; attempt++) {
-        const planResponse = await fetch("https://api.anthropic.com/v1/messages", {
+        if (attempt > 1) perfCount("planner retries");
+        const planResponse = await claudeFetch("plan generator", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -733,6 +746,7 @@ Rules:
         }
         rawTasks = candidate;
       }
+      });
 
       {
         if (planJson) {
@@ -741,6 +755,7 @@ Rules:
             const taskIds: string[] = [];
             let skippedDuplicates = 0;
             const planKind = inferPlanKind(text);
+            await perfSpan(`plan: insert ${rawTasks.length} tasks`, async () => {
             for (const rt of rawTasks) {
               if (!rt || typeof rt !== "object") continue;
               const t = rt as Record<string, unknown>;
@@ -777,19 +792,22 @@ Rules:
               taskIds.push(task.id);
               console.log("[api/voice] Plan task added:", task.title, "on", task.date);
             }
+            });
 
             const planTitle = resolvePlanTitle(cmd.title, text);
-            const plan = await addPlan({ title: planTitle, description: "", taskIds, taskCount: taskIds.length });
+            const plan = await perfSpan("plan: add plan row", () => addPlan({ title: planTitle, description: "", taskIds, taskCount: taskIds.length }));
+            await perfSpan(`plan: link ${taskIds.length} tasks`, async () => {
             for (const id of taskIds) {
               await updateTask(id, { planId: plan.id });
             }
-            const record = await recordAction("create_plan", `Created plan "${plan.title}" with ${taskIds.length} tasks`, {
+            });
+            const record = await perfSpan("plan: undo record", () => recordAction("create_plan", `Created plan "${plan.title}" with ${taskIds.length} tasks`, {
               addedTaskIds: taskIds,
               addedPlanId: plan.id,
-            });
+            }));
 
             const dupSuffix = skippedDuplicates > 0 ? ` Skipped ${skippedDuplicates} duplicate${skippedDuplicates > 1 ? "s" : ""}.` : "";
-            await addVoiceLog({ text, response: `Plan created with ${taskIds.length} tasks`, action: "create_plan", ok: true });
+            await perfSpan("plan: voice log", () => addVoiceLog({ text, response: `Plan created with ${taskIds.length} tasks`, action: "create_plan", ok: true }));
             return NextResponse.json({
               ok: true,
               action: "create_plan",
@@ -797,7 +815,7 @@ Rules:
               response: `Your plan has been created with ${taskIds.length} tasks added to your calendar!${dupSuffix}`,
               plan: { id: plan.id, title: plan.title, taskCount: taskIds.length, color: plan.color },
               actionId: record.id,
-              state: await getAppState(),
+              state: await perfSpan("plan: full app state", () => getAppState()),
             });
           }
         }
@@ -834,7 +852,7 @@ Rules:
     // ── Standard single-task / recurring path ─────────────────────────────────
     console.log("[api/voice] Calling Anthropic API...");
     const userContext = await getContextAsString();
-    const anthropicResponse = await fetch("https://api.anthropic.com/v1/messages", {
+    const anthropicResponse = await claudeFetch("voice command", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -861,7 +879,7 @@ Rules:
         console.log("[api/voice] Rate limited — waiting 2 seconds and retrying with simpler request");
         await new Promise((resolve) => setTimeout(resolve, 2000));
 
-        const retryResponse = await fetch("https://api.anthropic.com/v1/messages", {
+        const retryResponse = await claudeFetch("voice command retry", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

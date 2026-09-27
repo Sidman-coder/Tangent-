@@ -13,6 +13,7 @@ import { addDaysYMD, getUserToday, promptDateContext } from "@/lib/time";
 import { getUpcomingEvents, getEventsForDate } from "@/lib/calendar";
 import { currentUserIsOwner } from "@/lib/request-context";
 import { resolvePlanTitle } from "@/lib/plan-title";
+import { claudeFetch, perfCount, perfSpan } from "@/lib/perf";
 
 const MODEL = "claude-sonnet-4-5";
 const MAX_TOOL_TURNS = 8;
@@ -629,7 +630,8 @@ export async function runVoiceAgentToolLoop(userText: string, requestText = user
   const sourcesChecked = new Set<string>();
 
   for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    perfCount("tool-loop turns");
+    const res = await claudeFetch("agent tool loop", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -669,7 +671,7 @@ export async function runVoiceAgentToolLoop(userText: string, requestText = user
       if (sourceLabel) sourcesChecked.add(sourceLabel);
       let resultPayload: unknown;
       try {
-        const exec = await executeTool(block.name, block.input, requestText);
+        const exec = await perfSpan(`tool ${block.name}`, () => executeTool(block.name, block.input, requestText));
         resultPayload = exec.data;
         if (exec.action) lastAction = exec.action;
         if (exec.task) lastTask = exec.task;

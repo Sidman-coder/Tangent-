@@ -1,6 +1,7 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
+import { perfFetch } from "@/lib/perf";
 
 /** Supabase client for Server Components, Route Handlers and Server Actions.
  *  Uses the anon key + the student's session cookie, so Row Level Security
@@ -11,6 +12,7 @@ export function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      global: { fetch: perfFetch },
       cookies: {
         getAll() {
           return cookieStore.getAll();

@@ -2,6 +2,7 @@ import "server-only";
 import { getUserContext, addContextEntry, setCompressedSummary } from "@/lib/store";
 import type { ContextEntry } from "@/lib/types";
 import { extractStructuredJson } from "@/lib/anthropic-json";
+import { claudeFetch } from "@/lib/perf";
 
 const CONTEXT_EXTRACT_SCHEMA = {
   type: "object",
@@ -34,7 +35,7 @@ export async function extractContextFacts(conversation: string, source: ContextE
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return [];
 
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
+  const response = await claudeFetch("context extract", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -82,7 +83,7 @@ If nothing durable is found return an empty facts array.`,
   if (ctx.entries.length > 40) {
     const allFacts = ctx.entries.map((e) => `[${e.category}] ${e.fact}`).join("\n");
 
-    const compressResponse = await fetch("https://api.anthropic.com/v1/messages", {
+    const compressResponse = await claudeFetch("context compress", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

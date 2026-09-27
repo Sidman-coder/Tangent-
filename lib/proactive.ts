@@ -11,6 +11,7 @@ import { getAllTasks, getContextAsString, addNotification, getUserTimezone } fro
 import { addDaysYMD, currentInstant, getUserToday } from "@/lib/time";
 import type { Notification } from "@/lib/types";
 import { extractStructuredJson } from "@/lib/anthropic-json";
+import { claudeFetch } from "@/lib/perf";
 
 const PROACTIVE_NOTIFICATIONS_SCHEMA = {
   type: "object",
@@ -90,7 +91,7 @@ User context:
 ${userContext}
   `.trim();
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const response = await claudeFetch("proactive", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
