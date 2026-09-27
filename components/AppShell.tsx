@@ -1,5 +1,6 @@
 "use client";
 
+import StorageStatus from "@/components/StorageStatus";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -178,6 +179,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <div className="shell-main">
         <header className="topbar">
           <div className="topbar-right">
+            <StorageStatus />
             <span className="topbar-datetime">
               <span className="topbar-date">{today}</span>
               {estTime && (

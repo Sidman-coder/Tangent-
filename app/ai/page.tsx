@@ -20,7 +20,9 @@ import {
   type VoiceTranscriptDetail,
 } from "@/hooks/useVoiceCapture";
 import type { ChatSession } from "@/lib/store";
-import { ArrowLeft, CalendarClock, CalendarRange, MessageSquare, Newspaper, PanelRightOpen, Sun, Timer } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, CalendarClock, CalendarRange, History, MessageSquare, Newspaper, Sun, Timer } from "lucide-react";
+import Link from "next/link";
+import PenMark from "@/components/console/PenMark";
 import BriefPanel, { CADENCE_LABEL, type BriefSummary } from "@/components/console/BriefPanel";
 import { formatTime12, toYMD } from "@/lib/dates";
 import "./console.css";
@@ -38,6 +40,13 @@ const SUGGESTIONS = [
   { icon: Timer, text: "What fits in 30 minutes?", detail: "Quick tasks for a short gap" },
   { icon: CalendarClock, text: "Move overdue tasks", detail: "Find new slots for anything that slipped" },
 ] as const;
+
+function partOfDay(hour: number): string {
+  if (hour >= 5 && hour < 12) return "Good morning";
+  if (hour >= 12 && hour < 17) return "Good afternoon";
+  if (hour >= 17 && hour < 21) return "Good evening";
+  return "Still going";
+}
 
 /** Turns a fetch/route failure into something true and actionable. */
 function describeFailure(message: string): string {
@@ -105,19 +114,26 @@ export default function AiPage() {
     writeStored(CHATS_HIDDEN_KEY, hidden ? "1" : null);
   }, []);
 
-  // "3 tasks left today · next: Chem review at 3:00 PM" under the greeting.
-  const todayLine = useMemo(() => {
-    if (!state) return "";
-    const today = toYMD(new Date());
+  // What's next today, shown under the question so the assistant opens with
+  // the student's actual day rather than a blank box.
+  const today = useMemo(() => {
+    if (!state) return null;
+    const ymd = toYMD(new Date());
     const now = new Date().toTimeString().slice(0, 5);
     const open = state.tasks
-      .filter((t) => t.date === today && !t.completed)
+      .filter((t) => t.date === ymd && !t.completed)
       .sort((a, b) => (a.time || "99").localeCompare(b.time || "99"));
-    if (open.length === 0) return "Your calendar is clear today.";
-    const next = open.find((t) => t.time && t.time >= now);
-    const count = `${open.length} task${open.length === 1 ? "" : "s"} left today`;
-    return next ? `${count} · next: ${next.title} at ${formatTime12(next.time)}` : count;
+    const next = open.find((t) => t.time && t.time >= now) ?? null;
+    return { left: open.length, next };
   }, [state]);
+
+  const [greeting, setGreeting] = useState("");
+  useEffect(() => {
+    let name = "";
+    try { name = window.localStorage.getItem("tangent-user-name")?.trim() ?? ""; } catch {}
+    const first = name.split(/\s+/)[0];
+    setGreeting(`${partOfDay(new Date().getHours())}${first ? `, ${first}` : ""}`);
+  }, []);
 
   const [turns, setTurns] = useState<Turn[]>([]);
   const [pendingRequest, setPendingRequest] = useState<string | null>(null);
@@ -468,6 +484,10 @@ export default function AiPage() {
     }
   }, [activeSessionId, refresh, linkAction]);
 
+  // An empty history panel is a quarter of the screen saying "nothing here",
+  // so it only appears once there is a chat to go back to.
+  const sidebarHidden = chatsHidden || sessions.length === 0;
+
   const composer = (
     <Composer
       value={input}
@@ -485,7 +505,7 @@ export default function AiPage() {
   );
 
   return (
-    <div className={`tg-console is-${chatMode}${chatsHidden ? " chats-hidden" : ""}`}>
+    <div className={`tg-console is-${chatMode}${sidebarHidden ? " chats-hidden" : ""}`}>
       <section className="tg-main" aria-label="Tangent assistant">
         <header className="tg-main-head">
           {mode === "brief" ? (
@@ -514,7 +534,7 @@ export default function AiPage() {
                 <span className="tg-brief-pill-when">{brief ? briefWhen(brief) : "Set up"}</span>
               </button>
             )}
-            {chatsHidden && (
+            {sidebarHidden && sessions.length > 0 && (
               <button
                 type="button"
                 className="tg-icon-btn tg-chats-show"
@@ -522,7 +542,7 @@ export default function AiPage() {
                 title="Show chats"
                 onClick={() => setHidden(false)}
               >
-                <PanelRightOpen size={17} strokeWidth={1.8} />
+                <History size={17} strokeWidth={1.8} />
               </button>
             )}
             <button
@@ -543,32 +563,53 @@ export default function AiPage() {
           </div>
         ) : turns.length === 0 && !busy ? (
           <div className="tg-hero">
+            <div className="tg-orb" aria-hidden="true">
+              <PenMark size={26} />
+            </div>
+            {greeting && <p className="tg-hero-greeting">{greeting}</p>}
             <h2 className="tg-hero-title">
               <span key={chatMode} className="tg-hero-ask">
                 {chatMode === "calendar" ? "What should go on your calendar?" : "What would you like to plan?"}
               </span>
             </h2>
-            {todayLine && <p className="tg-hero-today">{todayLine}</p>}
+            {today && (
+              today.next ? (
+                <Link href={`/calendar?date=${today.next.date}`} className="tg-next">
+                  <span className="tg-next-dot" aria-hidden="true" />
+                  <span className="tg-next-label">Next up</span>
+                  <span className="tg-next-title">{today.next.title}</span>
+                  <span className="tg-next-time">{formatTime12(today.next.time)}</span>
+                  {today.left > 1 && <span className="tg-next-more">+{today.left - 1} today</span>}
+                  <ArrowUpRight size={14} strokeWidth={2} aria-hidden="true" className="tg-next-go" />
+                </Link>
+              ) : (
+                <p className="tg-next is-clear">
+                  <span className="tg-next-dot" aria-hidden="true" />
+                  {today.left > 0
+                    ? `${today.left} task${today.left === 1 ? "" : "s"} left today, nothing else timed`
+                    : "Your calendar is clear today"}
+                </p>
+              )
+            )}
             {err && <p className="tg-error" role="alert">{err}</p>}
-            {composer}
+            <div className="tg-composer-glow">{composer}</div>
             <p className="tg-composer-hint">
-              <kbd>Enter</kbd> to send, <kbd>Shift</kbd> + <kbd>Enter</kbd> for a new line
+              <kbd>Enter</kbd> to send · <kbd>Shift</kbd> + <kbd>Enter</kbd> for a new line
             </p>
-            <p className="tg-examples-label">Try asking</p>
-            <div className="tg-examples">
+            <div className="tg-examples" aria-label="Try asking">
               {SUGGESTIONS.map(({ icon: Icon, text, detail }) => (
                 <button
                   key={text}
                   type="button"
                   className="tg-example"
+                  title={detail}
                   onClick={() => {
                     setInput(text);
                     inputRef.current?.focus();
                   }}
                 >
-                  <Icon size={16} strokeWidth={1.7} aria-hidden="true" />
+                  <Icon size={15} strokeWidth={1.8} aria-hidden="true" />
                   <span className="tg-example-title">{text}</span>
-                  <span className="tg-example-detail">{detail}</span>
                 </button>
               ))}
             </div>
@@ -586,7 +627,7 @@ export default function AiPage() {
             />
             <div className="tg-dock">
               {err && <p className="tg-error" role="alert">{err}</p>}
-              {composer}
+              <div className="tg-composer-glow">{composer}</div>
               <p className="tg-dock-hint">
                 {chatMode === "calendar"
                   ? "Calendar mode adds and changes tasks. You’ll always see what changed."
@@ -596,7 +637,7 @@ export default function AiPage() {
           </>
         )}
       </section>
-      {(!chatsHidden || chatsOpen) && (
+      {(!sidebarHidden || chatsOpen) && (
         <ChatSidebar
           sessions={sessions}
           activeId={activeSessionId}

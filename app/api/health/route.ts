@@ -20,6 +20,9 @@ async function GETHandler() {
     ok: true,
     storage: backendName(),
     shared: isShared(),
+    // Local file storage is fine on one machine; on Vercel it is per-instance
+    // /tmp, so nothing written there reliably survives a return visit.
+    durable: isShared() || !process.env.VERCEL,
     workspace: currentWorkspaceId(),
     instance: process.env.VERCEL_DEPLOYMENT_ID ?? process.pid,
     counts: {

@@ -11,6 +11,25 @@ import { toYMD, formatTime12 } from "@/lib/dates";
 import { taskColor } from "@/lib/task-colors";
 import type { Plan, Task } from "@/lib/types";
 import { X, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil } from "lucide-react";
+import WeekView from "@/components/calendar/WeekView";
+import AgendaView from "@/components/calendar/AgendaView";
+
+type CalView = "week" | "month" | "agenda";
+const VIEWS: { id: CalView; label: string }[] = [
+  { id: "week", label: "Week" },
+  { id: "month", label: "Month" },
+  { id: "agenda", label: "Agenda" },
+];
+const VIEW_KEY = "tangent-cal-view";
+const AGENDA_DAYS = 21;
+
+function startOfWeek(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - d.getDay());
+}
+
+function addDays(d: Date, n: number): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+}
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -112,6 +131,9 @@ export default function CalendarPage() {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
   const [calIdx, setCalIdx] = useState(0);
+  const [view, setView] = useState<CalView>("month");
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(now));
+  const [agendaStart, setAgendaStart] = useState(() => new Date(now.getFullYear(), now.getMonth(), now.getDate()));
   const [newCalName, setNewCalName] = useState("");
   const [showAddCal, setShowAddCal] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
@@ -151,6 +173,20 @@ export default function CalendarPage() {
   const selectedDayTasks = selectedDay
     ? tasksForDay(selectedDay).slice().sort((a, b) => a.time.localeCompare(b.time))
     : [];
+
+  // Remember the chosen view; first visit gets the week grid on wide screens
+  // and the agenda list on phones, where seven columns can't breathe.
+  useEffect(() => {
+    let saved: string | null = null;
+    try { saved = window.localStorage.getItem(VIEW_KEY); } catch { /* storage blocked */ }
+    if (saved === "week" || saved === "month" || saved === "agenda") setView(saved);
+    else setView(window.matchMedia("(max-width: 720px)").matches ? "agenda" : "week");
+  }, []);
+
+  const chooseView = (next: CalView) => {
+    setView(next);
+    try { window.localStorage.setItem(VIEW_KEY, next); } catch { /* storage blocked */ }
+  };
 
   // Reset the day-chat thread whenever a different day is opened
   useEffect(() => {
@@ -197,6 +233,18 @@ export default function CalendarPage() {
   // the side you are travelling toward.
   const [monthDir, setMonthDir] = useState(0);
   const reduced = useReducedMotion() ?? false;
+  const goToday = () => {
+    const here = year * 12 + month; const there = now.getFullYear() * 12 + now.getMonth();
+    setMonthDir(Math.sign(there - here)); setYear(now.getFullYear()); setMonth(now.getMonth());
+    setWeekStart(startOfWeek(now));
+    setAgendaStart(new Date(now.getFullYear(), now.getMonth(), now.getDate()));
+  };
+  const step = (dir: -1 | 1) => {
+    if (view === "month") { if (dir < 0) prevMonth(); else nextMonth(); return; }
+    setMonthDir(dir);
+    if (view === "week") setWeekStart((w) => addDays(w, dir * 7));
+    else setAgendaStart((a) => addDays(a, dir * AGENDA_DAYS));
+  };
   const prevMonth = () => { setMonthDir(-1); if (month === 0) { setYear((y) => y - 1); setMonth(11); } else setMonth((mo) => mo - 1); };
   const nextMonth = () => { setMonthDir(1); if (month === 11) { setYear((y) => y + 1); setMonth(0); } else setMonth((mo) => mo + 1); };
 
@@ -264,6 +312,7 @@ export default function CalendarPage() {
     const d = new Date(`${ymd}T00:00:00`);
     setYear(d.getFullYear());
     setMonth(d.getMonth());
+    setWeekStart(startOfWeek(d));
     setSelectedDay(ymd);
   }, []);
 
@@ -285,7 +334,18 @@ export default function CalendarPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const monthLabel = new Date(year, month, 1).toLocaleString(undefined, { month: "long", year: "numeric" });
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const agendaDays = Array.from({ length: AGENDA_DAYS }, (_, i) => addDays(agendaStart, i));
+  // The heading follows the view: the month, or the span a week/agenda covers.
+  const headingDate = view === "month" ? new Date(year, month, 1) : view === "week" ? weekStart : agendaStart;
+  const headingMonth = headingDate.toLocaleString(undefined, { month: "long" });
+  const headingYear = String(headingDate.getFullYear());
+  const spanEnd = view === "week" ? weekDays[6] : agendaDays[agendaDays.length - 1];
+  const headingSpan = view === "month"
+    ? null
+    : `${headingDate.toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${spanEnd.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+  const unitLabel = view === "month" ? "month" : view === "week" ? "week" : "three weeks";
+  const openAddAt = (ymd: string, time?: string) => { setAddModalDate(ymd); setAddModalTime(time); setShowAddModal(true); };
   const activePlan = planFilter ? getPlan(planFilter) : null;
 
   return (
@@ -293,12 +353,38 @@ export default function CalendarPage() {
       <div className="calendar-page">
         <section className="calendar-toolbar" aria-label="Calendar controls">
           <div className="calendar-toolbar-primary">
-            <Button variant="secondary" size="sm" onClick={() => { const here = year * 12 + month; const there = now.getFullYear() * 12 + now.getMonth(); setMonthDir(Math.sign(there - here)); setYear(now.getFullYear()); setMonth(now.getMonth()); }}>Today</Button>
-            <div className="calendar-month-actions">
-              <Button variant="quiet" size="sm" onClick={prevMonth} aria-label="Previous month" icon={<ChevronLeft size={16} aria-hidden="true" />}>Previous</Button>
-              <Button variant="quiet" size="sm" onClick={nextMonth} aria-label="Next month" icon={<ChevronRight size={16} aria-hidden="true" />}>Next</Button>
+            <h1 className="cal-month-heading">
+              <span>{headingMonth}</span> <span className="cal-heading-year">{headingYear}</span>
+              {headingSpan && <span className="cal-heading-span">{headingSpan}</span>}
+            </h1>
+            <div className="cal-nav-group">
+              <div className="cal-view-switch" role="tablist" aria-label="Calendar view">
+                {VIEWS.map((v) => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={view === v.id}
+                    className={`cal-view-tab${view === v.id ? " is-active" : ""}`}
+                    onClick={() => chooseView(v.id)}
+                  >
+                    {view === v.id && (
+                      <m.span layoutId="cal-view-pill" className="cal-view-pill" transition={{ type: "spring", visualDuration: 0.3, bounce: 0.15 }} />
+                    )}
+                    <span className="cal-view-label">{v.label}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="cal-arrows">
+                <button type="button" className="cal-arrow" onClick={() => step(-1)} aria-label={`Previous ${unitLabel}`}>
+                  <ChevronLeft size={16} aria-hidden="true" />
+                </button>
+                <button type="button" className="cal-today" onClick={goToday}>Today</button>
+                <button type="button" className="cal-arrow" onClick={() => step(1)} aria-label={`Next ${unitLabel}`}>
+                  <ChevronRight size={16} aria-hidden="true" />
+                </button>
+              </div>
             </div>
-            <h1 className="cal-month-heading">{monthLabel}</h1>
           </div>
           <div className="cal-segment-bar" role="tablist" aria-label="Filter by calendar">
             {calendars.map((cal, idx) => (
@@ -355,82 +441,119 @@ export default function CalendarPage() {
         </div>
       )}
 
-      <section className="calendar-grid-shell">
-        <div className="cal-weekday-row" aria-hidden="true">
-          {WEEKDAY_LABELS.map((d) => (
-            <div key={d} className="cal-weekday-label">
-              {d}
-            </div>
-          ))}
-        </div>
-        <m.div
-          key={`${year}-${month}`}
-          className="cal-month-grid"
+      {view === "week" && (
+        <m.section
+          key={`wk-${toYMD(weekStart)}`}
+          className="calendar-week-shell"
           initial={reduced || monthDir === 0 ? false : { opacity: 0, x: monthDir * 28 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ type: "spring", visualDuration: 0.38, bounce: 0.08 }}
         >
-          {cells.map((d, idx) => {
-            const inMonth = d.getMonth() === month;
-            const ymd = toYMD(d);
-            const dayTasks = tasksForDay(ymd);
-            const isToday = ymd === todayYmd;
-            const isSelected = ymd === selectedDay;
-            // The day's own tasks, in time order, shown as chips: the grid
-            // answers "what's on" without opening every day.
-            const ordered = [...dayTasks].sort((a, b) => (a.time || "").localeCompare(b.time || ""));
-            const shown = ordered.slice(0, 3);
-            const more = ordered.length - shown.length;
-            let className = "cal-cell";
-            if (!inMonth) className += " is-outside";
-            if (isToday) className += " is-today";
-            if (isSelected) className += " is-selected";
-            return (
-              <div key={`${ymd}-${idx}`} className={className}>
-                <button
-                  type="button"
-                  className="cal-day"
-                  onClick={() => inMonth && setSelectedDay(ymd === selectedDay ? null : ymd)}
-                  aria-label={`${d.toDateString()}${dayTasks.length ? `, ${dayTasks.length} tasks` : ""}`}
-                  disabled={!inMonth}
-                >
-                  <span className="d">{d.getDate()}</span>
-                  {inMonth && shown.length > 0 && (
-                    <span className="cal-chips">
-                      {shown.map((t) => (
-                        <span
-                          key={t.id}
-                          className={`cal-chip${t.completed ? " is-done" : ""}`}
-                          style={{ "--chip": getKindColor(t.kind) } as React.CSSProperties}
-                        >
-                          {t.time && <span className="cal-chip-time">{shortTime(t.time)}</span>}
-                          <span className="cal-chip-title">{t.title}</span>
-                        </span>
-                      ))}
-                      {more > 0 && <span className="cal-chip-more">+{more} more</span>}
-                    </span>
-                  )}
-                </button>
-                {inMonth && (
+          <WeekView
+            days={weekDays}
+            todayYmd={todayYmd}
+            tasksForDay={tasksForDay}
+            colorFor={(t) => getKindColor(t.kind)}
+            onOpenDay={setSelectedDay}
+            onAddAt={(ymd, time) => openAddAt(ymd, time)}
+            toYMD={toYMD}
+          />
+        </m.section>
+      )}
+
+      {view === "agenda" && (
+        <section className="calendar-agenda-shell" key={`ag-${toYMD(agendaStart)}`}>
+          <AgendaView
+            days={agendaDays}
+            todayYmd={todayYmd}
+            tasksForDay={tasksForDay}
+            colorFor={(t) => getKindColor(t.kind)}
+            onOpenDay={setSelectedDay}
+            onToggle={(id) => void toggleTask(id)}
+            onAdd={(ymd) => openAddAt(ymd)}
+            toYMD={toYMD}
+          />
+        </section>
+      )}
+
+      {view === "month" && (
+      <section className="calendar-grid-shell">
+          <div className="cal-weekday-row" aria-hidden="true">
+            {WEEKDAY_LABELS.map((d) => (
+              <div key={d} className="cal-weekday-label">
+                {d}
+              </div>
+            ))}
+          </div>
+          <m.div
+            key={`${year}-${month}`}
+            className="cal-month-grid"
+            initial={reduced || monthDir === 0 ? false : { opacity: 0, x: monthDir * 28 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ type: "spring", visualDuration: 0.38, bounce: 0.08 }}
+          >
+            {cells.map((d, idx) => {
+              const inMonth = d.getMonth() === month;
+              const ymd = toYMD(d);
+              const dayTasks = tasksForDay(ymd);
+              const isToday = ymd === todayYmd;
+              const isSelected = ymd === selectedDay;
+              // The day's own tasks, in time order, shown as chips: the grid
+              // answers "what's on" without opening every day.
+              const ordered = [...dayTasks].sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+              const shown = ordered.slice(0, 3);
+              const more = ordered.length - shown.length;
+              let className = "cal-cell";
+              if (!inMonth) className += " is-outside";
+              if (isToday) className += " is-today";
+              if (isSelected) className += " is-selected";
+              return (
+                <div key={`${ymd}-${idx}`} className={className}>
                   <button
                     type="button"
-                    className="cal-day-add"
-                    aria-label={`Add a task on ${d.toDateString()}`}
-                    title="Add a task"
-                    onClick={() => {
-                      setAddModalDate(ymd);
-                      setAddModalTime(undefined);
-                      setShowAddModal(true);
-                    }}
+                    className="cal-day"
+                    onClick={() => inMonth && setSelectedDay(ymd === selectedDay ? null : ymd)}
+                    aria-label={`${d.toDateString()}${dayTasks.length ? `, ${dayTasks.length} tasks` : ""}`}
+                    disabled={!inMonth}
                   >
-                    <Plus size={14} strokeWidth={2} aria-hidden="true" />
+                    <span className="d">{d.getDate()}</span>
+                    {inMonth && shown.length > 0 && (
+                      <span className="cal-chips">
+                        {shown.map((t) => (
+                          <span
+                            key={t.id}
+                            className={`cal-chip${t.completed ? " is-done" : ""}`}
+                            style={{ "--chip": getKindColor(t.kind) } as React.CSSProperties}
+                          >
+                            {t.time && <span className="cal-chip-time">{shortTime(t.time)}</span>}
+                            <span className="cal-chip-title">{t.title}</span>
+                          </span>
+                        ))}
+                        {more > 0 && <span className="cal-chip-more">+{more} more</span>}
+                      </span>
+                    )}
                   </button>
-                )}
-              </div>
-            );
-          })}
-        </m.div>
-      </section>
+                  {inMonth && (
+                    <button
+                      type="button"
+                      className="cal-day-add"
+                      aria-label={`Add a task on ${d.toDateString()}`}
+                      title="Add a task"
+                      onClick={() => {
+                        setAddModalDate(ymd);
+                        setAddModalTime(undefined);
+                        setShowAddModal(true);
+                      }}
+                    >
+                      <Plus size={14} strokeWidth={2} aria-hidden="true" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </m.div>
+        </section>
+      )}
       </div>
 
       {selectedDay && (
