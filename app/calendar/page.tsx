@@ -564,9 +564,14 @@ export default function CalendarPage() {
               <h3 id="calendar-day-title" className="calendar-modal-date">
                 {new Date(selectedDay + "T12:00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
               </h3>
-              <p className="calendar-modal-subhead">
-                {selectedDayTasks.length === 0 ? "No tasks for this day." : `${selectedDayTasks.length} task${selectedDayTasks.length !== 1 ? "s" : ""}`}
-              </p>
+              {/* The count only. An empty day is announced once, by the
+                  empty state below — it used to say "No tasks for this day."
+                  here and "Nothing scheduled yet." directly underneath. */}
+              {selectedDayTasks.length > 0 && (
+                <p className="calendar-modal-subhead">
+                  {selectedDayTasks.length} task{selectedDayTasks.length !== 1 ? "s" : ""}
+                </p>
+              )}
             </div>
 
             {selectedDayTasks.length === 0 ? (

@@ -70,6 +70,12 @@
 }
 
 /* ── Light appearance mode (settings toggle override) — Section 1 ────────── */
+/* Tells the browser which way the page leans, so native scrollbars, form
+   controls and the canvas behind the page match the theme instead of staying
+   light under a dark app. */
+[data-theme="light"] { color-scheme: light; }
+[data-theme="dark"] { color-scheme: dark; }
+
 [data-theme="light"] {
   --bg:          #f5f3fa;
   --bg-sunken:   #f5f3fa;
@@ -313,6 +319,33 @@ textarea:focus-visible {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgb(from var(--accent-hover) r g b / 0.55);
+}
+
+/* Offscreen until tabbed, then the first stop on every page. */
+.skip-link {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 200;
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transform: translateY(calc(-100% - 20px));
+  transition: transform 0.16s ease;
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skip-link { transition: none; }
 }
 
 .shell {
@@ -6466,6 +6499,15 @@ textarea:focus {
   background: var(--accent);
 }
 
+/* A week with nothing in it has no bars to draw, and seven full-height empty
+   tracks read as loading skeletons rather than as an open week. Collapse them
+   to a baseline so the row says "flat" instead of "still loading". */
+.week-ahead-bars.is-empty .week-ahead-track {
+  align-self: end;
+  height: 4px;
+  min-height: 0;
+}
+
 .week-ahead-count {
   min-height: 14px;
   color: var(--text-2);
@@ -6608,11 +6650,13 @@ textarea:focus {
 
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 
-/* Laptop and up: the whole dashboard fits in one viewport. The page is capped
-   at the space under the top bar; hero and insight cards keep their natural
-   height and "Your day" takes what's left, scrolling inside itself on a busy
-   day instead of pushing the page into a scroll. Short windows (under 700px)
-   fall back to normal page flow. */
+/* Laptop and up: the dashboard reaches for one viewport. The page claims at
+   least the space under the top bar, so on a light day "Your day" stretches to
+   fill it and nothing scrolls. This used to be a max-height cap, which only
+   worked if the cards fit: at 1440x900 the hero and insight row alone overrun
+   it, and the overflow spilled into a second scrollbar with the last row cut
+   off under the viewport edge. A floor degrades instead — a busy day simply
+   pushes the page into one ordinary scroll. */
 @media (min-width: 901px) and (min-height: 700px) {
   .shell-content:has(> .content-inner > main > .today-page) {
     padding-bottom: 28px;
@@ -6621,7 +6665,7 @@ textarea:focus {
   .today-page {
     display: flex;
     flex-direction: column;
-    max-height: calc(100dvh - var(--topbar-h) - 32px - 28px);
+    min-height: calc(100dvh - var(--topbar-h) - 32px - 28px);
   }
 
   .today-page > * {
@@ -6630,7 +6674,7 @@ textarea:focus {
 
   .today-page > .today-dayline {
     display: flex;
-    flex: 0 1 auto;
+    flex: 1 1 auto;
     flex-direction: column;
   }
 
@@ -6646,9 +6690,6 @@ textarea:focus {
   .today-dayline-list {
     flex: 1 1 auto;
     min-height: 0;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    scrollbar-gutter: stable;
   }
 }
 
@@ -7857,7 +7898,7 @@ textarea:focus {
   color: var(--accent-ink);
   font-weight: 600;
 }
-.month-rhythm-day.is-past:not(.is-today) {
+.month-rhythm-day.is-past:not(.is-today):not(.is-outside) {
   opacity: 0.5;
 }
 .month-rhythm-day.is-today {

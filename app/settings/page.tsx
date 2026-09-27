@@ -9,6 +9,7 @@ import { CalendarSync } from "lucide-react";
 import type { AppState } from "@/lib/types";
 import {
   type AppearanceMode,
+  readTheme,
   setTheme,
 } from "@/lib/theme";
 import {
@@ -27,7 +28,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [canvasGuideOpen, setCanvasGuideOpen] = useState(false);
 
-  const [appearance, setAppearance] = useState<AppearanceMode>("dark");
+  const [appearance, setAppearance] = useState<AppearanceMode>("light");
   const [desktopNotifEnabled, setDesktopNotifEnabled] = useState(false);
   const [desktopNotifPermission, setDesktopNotifPermission] = useState<NotificationPermission | null>(null);
   const [desktopNotifSupported, setDesktopNotifSupported] = useState(true);
@@ -39,8 +40,7 @@ export default function SettingsPage() {
   }, [state]);
 
   useEffect(() => {
-    const storedTheme = (localStorage.getItem("tangent-theme") as AppearanceMode | null) ?? "light";
-    setAppearance(storedTheme);
+    setAppearance(readTheme());
     setDesktopNotifSupported(isDesktopNotifSupported());
     setDesktopNotifPermission(getDesktopNotifPermission());
     setDesktopNotifEnabled(getDesktopNotifSetting());

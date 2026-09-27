@@ -57,7 +57,11 @@ export default function MonthRhythm({
               onClick={() => router.push(`/calendar?date=${key}`)}
               aria-label={label}
               title={label}
-              tabIndex={outside ? -1 : undefined}
+              // Leading and trailing days belong to the neighbouring month. They
+              // were only taken out of the tab order, so a screen reader still
+              // read five days that aren't part of this grid.
+              disabled={outside}
+              aria-hidden={outside || undefined}
               {...press}
               whileHover={{ scale: 1.14 }}
             >

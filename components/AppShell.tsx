@@ -40,6 +40,13 @@ const EST_TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
   hour12: true,
 });
 
+const EST_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  weekday: "short",
+  month: "short",
+  day: "numeric",
+});
+
 function estTimeFor(d: Date): string {
   return `${EST_TIME_FORMATTER.format(d)} EST`;
 }
@@ -51,10 +58,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [estTime, setEstTime] = useState<string | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [profileName, setProfileName] = useState("");
-  const today = new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  const [today, setToday] = useState<string | null>(null);
 
   useEffect(() => {
-    const update = () => setEstTime(estTimeFor(new Date()));
+    const update = () => {
+      const now = new Date();
+      setEstTime(estTimeFor(now));
+      setToday(EST_DATE_FORMATTER.format(now));
+    };
     update();
     const id = setInterval(update, 60000);
     return () => clearInterval(id);
@@ -110,6 +121,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="shell">
+      <a href="#main-content" className="skip-link">Skip to main content</a>
       <aside className="rail" aria-label="Primary navigation">
         <Link href="/" className="rail-logo" aria-label="Tangent home">
           <TangentLogo />
@@ -181,7 +193,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <div className="topbar-right">
             <StorageStatus />
             <span className="topbar-datetime">
-              <span className="topbar-date">{today}</span>
+              {today && <span className="topbar-date">{today}</span>}
               {estTime && (
                 <>
                   <span className="topbar-date-sep" aria-hidden="true">·</span>
