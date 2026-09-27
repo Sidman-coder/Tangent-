@@ -43,11 +43,17 @@ async function POSTHandler(req: Request) {
 async function GETHandler(req: Request) {
   try {
     const feed = getCanvasFeed();
+    const ifStale = Number(new URL(req.url).searchParams.get("ifStale"));
     if (!feed) {
+      // The on-load nudge runs for everyone; most people never connect Canvas.
+      // For them there is nothing to do, which is not an error, and answering
+      // 400 put a red line in the console on every single page load.
+      if (Number.isFinite(ifStale) && ifStale > 0) {
+        return NextResponse.json({ ok: true, skipped: true, connected: false });
+      }
       return NextResponse.json({ ok: false, error: "Canvas isn't connected yet." }, { status: 400 });
     }
 
-    const ifStale = Number(new URL(req.url).searchParams.get("ifStale"));
     if (Number.isFinite(ifStale) && ifStale > 0 && feed.lastSyncedAt) {
       const age = Date.now() - new Date(feed.lastSyncedAt).getTime();
       if (age < ifStale * 3600_000) {

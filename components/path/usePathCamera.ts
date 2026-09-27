@@ -48,6 +48,8 @@ export type PathCamera = {
   flyTo: (point: Vec, zoom?: number) => void;
   fit: (bounds: { minX: number; minY: number; maxX: number; maxY: number }) => void;
   zoomBy: (factor: number) => void;
+  /** Called with the scale whenever the camera paints. Returns an unsubscribe. */
+  onZoom: (listener: (scale: number) => void) => () => void;
 };
 
 /** Room reserved around the geometry for labels, in SCREEN pixels per side.
@@ -56,6 +58,15 @@ export type PathCamera = {
  *  time the scale changed, and the fit would never settle. */
 const LABEL_MARGIN_X = 180;
 const LABEL_MARGIN_Y = 90;
+
+/** On a phone a fixed 180px a side leaves almost nothing to fit into, so the
+ *  margin is capped at a share of the stage instead. */
+function labelMargins(width: number, height: number): { x: number; y: number } {
+  return {
+    x: Math.min(LABEL_MARGIN_X, width * 0.2),
+    y: Math.min(LABEL_MARGIN_Y, height * 0.1),
+  };
+}
 
 export function usePathCamera(reduced: boolean): PathCamera {
   const stageRef = useRef<HTMLDivElement>(null);
@@ -68,6 +79,7 @@ export function usePathCamera(reduced: boolean): PathCamera {
   const velocity = useRef<Cam>({ x: 0, y: 0, scale: 0 });
   const frame = useRef<number | null>(null);
   const lastTime = useRef(0);
+  const zoomListeners = useRef(new Set<(scale: number) => void>());
 
   /** Writes the camera to the DOM. The only place that touches these styles. */
   const paint = useCallback(() => {
@@ -77,6 +89,7 @@ export function usePathCamera(reduced: boolean): PathCamera {
     const { x, y, scale } = cam.current;
     world.style.transform = `translate(${-x * scale}px, ${-y * scale}px) scale(${scale})`;
     stage.style.setProperty("--path-zoom", String(scale));
+    zoomListeners.current.forEach((listener) => listener(scale));
   }, []);
 
   const step = useCallback(
@@ -156,8 +169,9 @@ export function usePathCamera(reduced: boolean): PathCamera {
       if (!size.width || !size.height) return;
       const w = Math.max(bounds.maxX - bounds.minX, 1);
       const h = Math.max(bounds.maxY - bounds.minY, 1);
-      const usableW = Math.max(size.width - LABEL_MARGIN_X * 2, 120);
-      const usableH = Math.max(size.height - LABEL_MARGIN_Y * 2, 120);
+      const margin = labelMargins(size.width, size.height);
+      const usableW = Math.max(size.width - margin.x * 2, 120);
+      const usableH = Math.max(size.height - margin.y * 2, 120);
       startSpring({
         x: (bounds.minX + bounds.maxX) / 2,
         y: (bounds.minY + bounds.maxY) / 2,
@@ -175,6 +189,14 @@ export function usePathCamera(reduced: boolean): PathCamera {
   );
 
   const read = useCallback(() => cam.current, []);
+
+  const onZoom = useCallback((listener: (scale: number) => void) => {
+    zoomListeners.current.add(listener);
+    listener(cam.current.scale);
+    return () => {
+      zoomListeners.current.delete(listener);
+    };
+  }, []);
 
   // Paint once as soon as the layer exists, so nothing ever renders untransformed.
   useEffect(() => {
@@ -197,19 +219,28 @@ export function usePathCamera(reduced: boolean): PathCamera {
     const el = stageRef.current;
     if (!el) return;
 
-    let pointerId: number | null = null;
-    let last = { x: 0, y: 0 };
+    // Every finger or mouse button currently down on the stage. One pointer
+    // pans; two pinch, zooming about the point between them.
+    const pointers = new Map<number, Vec>();
+    let pinch: { distance: number; mid: Vec } | null = null;
 
     const stopSpring = () => {
       target.current = null;
       velocity.current = { x: 0, y: 0, scale: 0 };
     };
 
+    const pinchState = () => {
+      const [a, b] = Array.from(pointers.values());
+      return {
+        distance: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+        mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+      };
+    };
+
     const down = (e: PointerEvent) => {
       // Buttons and cards handle their own clicks.
       if ((e.target as HTMLElement).closest("[data-path-interactive]")) return;
-      pointerId = e.pointerId;
-      last = { x: e.clientX, y: e.clientY };
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       stopSpring();
       try {
         el.setPointerCapture(e.pointerId);
@@ -217,23 +248,45 @@ export function usePathCamera(reduced: boolean): PathCamera {
         // A synthetic or already-released pointer id: panning still works
         // without capture, so this must not abort the drag.
       }
+      if (pointers.size === 2) pinch = pinchState();
       setDragging(true);
     };
 
     const move = (e: PointerEvent) => {
-      if (pointerId !== e.pointerId) return;
+      const previous = pointers.get(e.pointerId);
+      if (!previous) return;
+      const current = { x: e.clientX, y: e.clientY };
+      pointers.set(e.pointerId, current);
+
+      if (pointers.size >= 2 && pinch) {
+        const rect = el.getBoundingClientRect();
+        const next = pinchState();
+        const s = cam.current.scale;
+        const scale = clampScale(s * (next.distance / pinch.distance));
+        // Keep the world point under the fingers' midpoint pinned to it.
+        const px = pinch.mid.x - rect.left - rect.width / 2;
+        const py = pinch.mid.y - rect.top - rect.height / 2;
+        const nx = next.mid.x - rect.left - rect.width / 2;
+        const ny = next.mid.y - rect.top - rect.height / 2;
+        cam.current.x += px / s - nx / scale;
+        cam.current.y += py / s - ny / scale;
+        cam.current.scale = scale;
+        pinch = next;
+        paint();
+        return;
+      }
+
       const s = cam.current.scale || 1;
-      cam.current.x -= (e.clientX - last.x) / s;
-      cam.current.y -= (e.clientY - last.y) / s;
-      last = { x: e.clientX, y: e.clientY };
+      cam.current.x -= (current.x - previous.x) / s;
+      cam.current.y -= (current.y - previous.y) / s;
       paint();
     };
 
     const up = (e: PointerEvent) => {
-      if (pointerId !== e.pointerId) return;
-      pointerId = null;
+      if (!pointers.delete(e.pointerId)) return;
       if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
-      setDragging(false);
+      pinch = pointers.size === 2 ? pinchState() : null;
+      if (pointers.size === 0) setDragging(false);
     };
 
     // Non-passive: zooming has to stop the page scrolling underneath.
@@ -276,7 +329,7 @@ export function usePathCamera(reduced: boolean): PathCamera {
   );
 
   return useMemo(
-    () => ({ stageRef, worldRef, size, isDragging, read, flyTo, fit, zoomBy }),
-    [size, isDragging, read, flyTo, fit, zoomBy]
+    () => ({ stageRef, worldRef, size, isDragging, read, flyTo, fit, zoomBy, onZoom }),
+    [size, isDragging, read, flyTo, fit, zoomBy, onZoom]
   );
 }

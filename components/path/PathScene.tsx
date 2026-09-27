@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
-import { Plus, Sparkles } from "lucide-react";
+import { Maximize2, Minus, Plus } from "lucide-react";
 import PathAmbient from "./PathAmbient";
 import { usePathCamera } from "./usePathCamera";
+import type { PathCamera } from "./usePathCamera";
 import { layoutPath, ROOT_RADIUS } from "@/lib/path-layout";
 import type { PathLayout } from "@/lib/path-layout";
 import type { Path, PathNode } from "@/lib/types";
@@ -37,13 +38,24 @@ type Props = {
   nodes: PathNode[];
   focusedId: string | null;
   expanded: Set<string>;
-  busyId: string | null;
   onFocus: (id: string | null) => void;
   onToggleExpand: (id: string) => void;
-  onGenerate: (id: string) => void;
   onAddWork: (parentId: string | null) => void;
   registerFit: (fit: () => void) => void;
 };
+
+/** The live zoom, as a percentage. Subscribes to the camera directly so a
+ *  pan or pinch repaints this one span, not the whole scene. */
+function ZoomReadout({ camera }: { camera: PathCamera }) {
+  const [scale, setScale] = useState(1);
+  const { onZoom } = camera;
+  useEffect(() => onZoom((next) => setScale(Math.round(next * 100) / 100)), [onZoom]);
+  return (
+    <span className="path-zoombar-value" aria-live="off">
+      {Math.round(scale * 100)}%
+    </span>
+  );
+}
 
 function clip(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
@@ -69,10 +81,8 @@ export default function PathScene({
   nodes,
   focusedId,
   expanded,
-  busyId,
   onFocus,
   onToggleExpand,
-  onGenerate,
   onAddWork,
   registerFit,
 }: Props) {
@@ -130,7 +140,7 @@ export default function PathScene({
       ref={camera.stageRef}
       className={`path-stage${camera.isDragging ? " is-dragging" : ""}`}
       role="application"
-      aria-label="Your path, as circles and tangents. Drag to move, scroll to zoom."
+      aria-label="Your path, as circles and tangents. Drag to move; scroll or pinch to zoom."
     >
       <PathAmbient read={camera.read} reduced={reduced} />
 
@@ -319,40 +329,52 @@ export default function PathScene({
         </div>
       </div>
 
-      <div className="path-stage-controls">
+      <div className="path-dock" role="toolbar" aria-label="Path actions">
         <button
           type="button"
           data-path-interactive
-          className="path-chip"
+          className="path-dock-btn"
           onClick={() => onAddWork(null)}
           title="Add something you already do"
         >
           <Plus size={15} aria-hidden="true" />
           Add work
         </button>
-        {focusedId && (
-          <button
-            type="button"
-            data-path-interactive
-            className="path-chip is-accent"
-            onClick={() => onGenerate(focusedId)}
-            disabled={busyId === focusedId}
-          >
-            <Sparkles size={15} aria-hidden="true" />
-            {busyId === focusedId ? "Thinking" : "Branch from here"}
-          </button>
-        )}
-        <span className="path-zoom" role="group" aria-label="Zoom">
-          <button type="button" data-path-interactive onClick={() => camera.zoomBy(1 / 1.35)} aria-label="Zoom out">
-            −
-          </button>
-          <button type="button" data-path-interactive onClick={() => camera.fit(layout.bounds)}>
-            Fit
-          </button>
-          <button type="button" data-path-interactive onClick={() => camera.zoomBy(1.35)} aria-label="Zoom in">
-            +
-          </button>
-        </span>
+      </div>
+
+      <div className="path-zoombar" role="toolbar" aria-label="Zoom">
+        <button
+          type="button"
+          data-path-interactive
+          className="path-zoombar-btn"
+          onClick={() => camera.zoomBy(1 / 1.35)}
+          aria-label="Zoom out"
+          title="Zoom out"
+        >
+          <Minus size={15} aria-hidden="true" />
+        </button>
+        <ZoomReadout camera={camera} />
+        <button
+          type="button"
+          data-path-interactive
+          className="path-zoombar-btn"
+          onClick={() => camera.zoomBy(1.35)}
+          aria-label="Zoom in"
+          title="Zoom in"
+        >
+          <Plus size={15} aria-hidden="true" />
+        </button>
+        <span className="path-dock-sep" aria-hidden="true" />
+        <button
+          type="button"
+          data-path-interactive
+          className="path-zoombar-btn"
+          onClick={() => camera.fit(layout.bounds)}
+          aria-label="Fit the whole path"
+          title="Fit the whole path"
+        >
+          <Maximize2 size={14} aria-hidden="true" />
+        </button>
       </div>
     </div>
   );

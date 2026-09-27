@@ -52,11 +52,11 @@ export default function TangentsPage() {
   };
 
   return (
-    <div className="tangents-root">
+    <div className="tangents-root is-gallery">
       <header className="tangents-bar">
-        <Link href="/" className="tangents-back">
+        <Link href="/" className="tangents-back" aria-label="Back to Tangent">
           <ArrowLeft size={16} aria-hidden="true" />
-          Back to Tangent
+          <span className="tangents-back-label">Back to Tangent</span>
         </Link>
         <h1>Tangents</h1>
         <button type="button" className="path-chip" onClick={() => setCreating(true)}>

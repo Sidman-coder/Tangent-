@@ -8,6 +8,7 @@ import PathScene from "@/components/path/PathScene";
 import PathInspector from "@/components/path/PathInspector";
 import PathWorkForm from "@/components/path/PathWorkForm";
 import type { Path, PathNode } from "@/lib/types";
+import { pathMeta } from "@/lib/path-format";
 import "../tangents.css";
 
 async function post(body: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -152,14 +153,16 @@ export default function PathDeepView() {
   return (
     <div className="tangents-root path-page">
       <header className="tangents-bar is-over">
-        <Link href="/tangents" className="tangents-back">
+        <Link href="/tangents" className="tangents-back" aria-label="All paths">
           <ArrowLeft size={16} aria-hidden="true" />
-          All paths
+          <span className="tangents-back-label">All paths</span>
         </Link>
-        <h1>{path.title}</h1>
-        <span className="tangents-bar-meta">
-          {path.deadline ? path.deadline : path.target}
-        </span>
+        {/* The deadline sits under the title: on the right it collided with
+            the inspector, and repeating the title there said nothing. */}
+        <div className="tangents-bar-title">
+          <h1>{path.title}</h1>
+          {pathMeta(path) && <span className="tangents-bar-meta">{pathMeta(path)}</span>}
+        </div>
       </header>
 
       <PathScene
@@ -167,10 +170,8 @@ export default function PathDeepView() {
         nodes={nodes}
         focusedId={focusedId}
         expanded={expanded}
-        busyId={busyId}
         onFocus={setFocusedId}
         onToggleExpand={toggleExpand}
-        onGenerate={(id) => void generate(id)}
         onAddWork={(parentId) => setFormParent({ parentId })}
         registerFit={registerFit}
       />

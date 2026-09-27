@@ -4169,7 +4169,22 @@ textarea:focus {
 }
 
 .desktop-notif-prompt {
-  max-width: 460px;
+  left: auto;
+  right: 24px;
+  bottom: 24px;
+  transform: none;
+  width: min(360px, calc(100vw - 32px));
+  max-width: none;
+}
+
+@media (max-width: 720px) {
+  .desktop-notif-prompt {
+    right: 16px;
+    left: 16px;
+    width: auto;
+    /* Clear the fixed bottom nav. */
+    bottom: calc(78px + env(safe-area-inset-bottom));
+  }
 }
 
 /* ── Console page (AI console) ────────────────────────────────────────────── */
@@ -4936,7 +4951,8 @@ textarea:focus {
 }
 
 .settings-panel p,
-.settings-option-row span,
+.settings-option-row > div > span:not([class]),
+.settings-integration-copy > div > span,
 .settings-option-block > div > span {
   display: block;
   margin: 5px 0 0;
@@ -5497,7 +5513,7 @@ textarea:focus {
     bottom: 0;
     left: 0;
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     height: 66px;
     padding: 6px 8px max(6px, env(safe-area-inset-bottom));
     border-top: 1px solid var(--line);

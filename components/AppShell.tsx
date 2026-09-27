@@ -166,7 +166,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <nav className="mobile-nav" aria-label="Primary mobile navigation">
-        {NAV_LINKS.map(({ href, label, icon: Icon }) => {
+        {[...NAV_LINKS.slice(0, 3), { href: "/tangents", label: "Tangents", icon: Spline }, NAV_LINKS[3]].map(({ href, label, icon: Icon }) => {
           const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
           return (
             <Link
