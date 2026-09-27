@@ -2,13 +2,13 @@
    they ship with the app instead of depending on a request to Google. */
 
 :root {
-  --bg:          #f5f3fa;
+  --bg:          #f4f3f7;
   --surface:     #ffffff;
-  --line:        #e2ddf0;
-  --line-strong: #d9d1ee;
-  --text:        #1c1830;
-  --text-2:      #575170;
-  --text-3:      #7d7797;
+  --line:        #dcd9e6;
+  --line-strong: #c2bed4;
+  --text:        #15131f;
+  --text-2:      #4f4b64;
+  --text-3:      #7b7690;
   --accent:      #4b3a8c;
   --accent-hover:#3d2e76;
   --accent-soft: #ece8f6;
@@ -24,12 +24,18 @@
   --font-display: 'Bricolage Grotesque Variable', 'Bricolage Grotesque', 'Helvetica Neue', Arial, sans-serif;
   --font-body:    'Figtree Variable', 'Figtree', system-ui, sans-serif;
   --font-mono:    'IBM Plex Mono', ui-monospace, Menlo, monospace;
-  --r-sm: 10px; --r-md: 15px; --r-lg: 18px;
-  --shadow-sm: 0 1px 2px rgba(26,23,32,0.04);
-  --shadow-md: 0 2px 8px rgba(26,23,32,0.05),
-               0 1px 2px rgba(26,23,32,0.03);
-  --shadow-lg: 0 4px 16px rgba(26,23,32,0.07),
-               0 2px 4px rgba(26,23,32,0.04);
+  /* One shape scale, deliberately tight. The old 10/15/18 read as soft; these
+     keep corners crisp without going fully square. Nothing should introduce a
+     fourth radius — see the note above .card-sm. */
+  --r-sm: 2px; --r-md: 4px; --r-lg: 6px;
+
+  /* Structure comes from hairlines, not elevation. These are near-flat on
+     purpose: a 1px line reads sharper than a 16px blur, and blurred shadows
+     are what made the old surface feel padded. `rgb(from ...)` keeps them
+     tied to the text colour so dark mode does not need its own set. */
+  --shadow-sm: 0 1px 0 rgb(from var(--text) r g b / 0.04);
+  --shadow-md: 0 1px 0 rgb(from var(--text) r g b / 0.06);
+  --shadow-lg: 0 2px 0 rgb(from var(--text) r g b / 0.08);
 
   --bg-sunken:   var(--bg);
   --elev-1:      var(--surface);
@@ -110,16 +116,16 @@
 
 /* ── Dark appearance mode (settings toggle override) ─────────────────────── */
 [data-theme="dark"] {
-  --bg: #13111d;
-  --bg-sunken: #13111d;
-  --surface: #1b1829;
-  --elev-2: #252136;
-  --line: #2c2740;
-  --line-strong: #332d4a;
-  --layer-3: #332d4a;
-  --text: #eeebf7;
-  --text-2: #a9a3c2;
-  --text-3: #7d7488;
+  --bg: #100e18;
+  --bg-sunken: #100e18;
+  --surface: #191622;
+  --elev-2: #221f2e;
+  --line: #2e2942;
+  --line-strong: #453e60;
+  --layer-3: #2e2942;
+  --text: #f2f0f8;
+  --text-2: #aaa4c4;
+  --text-3: #817a95;
   --accent: #b3a5f0;
   --accent-hover: #c4b9f5;
   --accent-soft: #252136;
@@ -142,32 +148,25 @@
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
-   NEUMORPHIC UTILITY CLASSES — exactly three, containers only
+   SURFACE UTILITIES — flat, edge-defined containers
    ══════════════════════════════════════════════════════════════════════════════ */
 
+/* These were neumorphic: soft inset light on a hardcoded #f0eef6, which read as
+   padded and went invisible in dark mode. Shape now comes from a hairline and
+   the token palette, so they work in both themes. */
 .neu-inset-input {
-  background: #f0eef6;
-  border-radius: 999px;
-  border: none;
-  box-shadow: inset 3px 3px 7px rgba(26,23,32,0.07), inset -3px -3px 7px rgba(255,255,255,0.56);
-}
-.neu-inset-groove {
-  background: #f0eef6;
-  border-radius: var(--r-lg);
-  border: none;
-  box-shadow: inset 4px 4px 10px rgba(26,23,32,0.06), inset -4px -4px 10px rgba(255,255,255,0.53);
-}
-.neu-checkbox-empty {
-  width: 18px; height: 18px; border-radius: 50%;
-  background: #f0eef6;
-  box-shadow: inset 2px 2px 5px rgba(26,23,32,0.08), inset -2px -2px 5px rgba(255,255,255,0.56);
-  border: none; flex-shrink: 0;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  box-shadow: none;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
    STANDARD SAAS CARD SYSTEM
    ══════════════════════════════════════════════════════════════════════════════ */
 
+/* Two radii only, both from the scale in :root. A card that wants its own
+   corner value is a card that breaks the shape system. */
 .card-sm {
   background: var(--surface);
   border-radius: var(--r-md);
@@ -177,32 +176,30 @@
 }
 .card-md {
   background: var(--surface);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-md);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-sm);
   border: 1px solid var(--line);
   padding: 1.25rem 1.5rem;
 }
 .card-md:hover {
-  box-shadow: var(--shadow-lg);
-  transform: translateY(-1px);
-  transition: all 0.18s ease;
+  border-color: var(--line-strong);
+  transition: border-color 0.14s ease;
 }
 
 .neu-btn-primary {
   background: var(--accent);
-  color: #ffffff;
-  border: none;
-  border-radius: var(--r-md);
-  box-shadow: 6px 6px 14px rgba(91,61,240,0.30), -4px -4px 12px rgba(255,255,255,0.65);
-  transition: box-shadow 0.18s ease, transform 0.18s ease;
+  color: var(--accent-ink);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm);
+  box-shadow: none;
+  transition: background 0.14s ease, border-color 0.14s ease;
 }
 .neu-btn-primary:hover {
-  box-shadow: 8px 8px 18px rgba(91,61,240,0.38), -5px -5px 14px rgba(255,255,255,0.7);
-  transform: translateY(-1px);
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 .neu-btn-primary:active {
-  box-shadow: inset 3px 3px 8px rgba(0,0,0,0.25);
-  transform: translateY(0);
+  transform: translateY(1px);
 }
 
 /* App-wide reduced-motion net. Motion components are handled by
@@ -259,7 +256,10 @@ h1, h2, h3, h4, h5, h6 {
   /* Bricolage has an optical-size axis: large titles get the tighter,
      more characterful cut automatically, small headings the sturdier one. */
   font-optical-sizing: auto;
-  letter-spacing: -0.02em;
+  /* Tighter than before (-0.02em). Set tight is what makes a grotesque read as
+     deliberate rather than default, and it is the cheapest part of this
+     direction: the shapes do the work, the spacing sets the tone. */
+  letter-spacing: -0.032em;
   text-wrap: balance;
 }
 
@@ -283,14 +283,15 @@ kbd {
 .font-mono { font-family: var(--font-mono); }
 
 /* ── Type scale — the only font sizes used anywhere in the app ───────────── */
-.t-display { font-family: var(--font-display); font-size: 28px; font-weight: 700; line-height: 1.15; }
+.t-display { font-family: var(--font-display); font-size: 28px; font-weight: 700; line-height: 1.08; letter-spacing: -0.04em; }
 .t-h1      { font-family: var(--font-display); font-size: 20px; font-weight: 700; line-height: 1.2; }
 .t-h2      { font-family: var(--font-display); font-size: 15px; font-weight: 600; line-height: 1.3; }
 .t-body    { font-family: var(--font-body);    font-size: 14px; font-weight: 400; line-height: 1.5; }
 .t-sm      { font-family: var(--font-body);    font-size: 13px; font-weight: 400; line-height: 1.45; }
-.t-label   { font-family: var(--font-body);    font-size: 12px; font-weight: 500; line-height: 1.3; letter-spacing: 0.01em; }
-.t-num     { font-family: var(--font-body);
-  font-variant-numeric: tabular-nums;    font-size: 13px; font-weight: 500; line-height: 1.3; }
+.t-label   { font-family: var(--font-body);    font-size: 12px; font-weight: 500; line-height: 1.3; letter-spacing: 0.02em; }
+.t-num     { font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;    font-size: 12.5px; font-weight: 500; line-height: 1.3;
+  letter-spacing: -0.01em; }
 
 a {
   color: inherit;
@@ -328,7 +329,7 @@ textarea:focus-visible {
   left: 12px;
   z-index: 200;
   padding: 10px 16px;
-  border-radius: 10px;
+  border-radius: var(--r-md);
   background: var(--accent);
   color: var(--accent-ink);
   font-size: 13px;
@@ -791,7 +792,7 @@ textarea:focus-visible {
   background: var(--accent);
   color: var(--accent-ink);
   padding: 0.55rem 1rem;
-  border-radius: 10px;
+  border-radius: var(--r-md);
   font-weight: 600;
   cursor: pointer;
   transition: transform 0.12s ease, background 0.12s ease;
@@ -821,7 +822,7 @@ textarea:focus-visible {
 .field input,
 .field textarea,
 .field select {
-  border-radius: 10px;
+  border-radius: var(--r-md);
   border: 1px solid var(--line);
   background: var(--bg-elevated);
   color: var(--text);
@@ -851,7 +852,7 @@ textarea:focus-visible {
   scroll-snap-align: center;
   min-width: 160px;
   padding: 0.85rem 1rem;
-  border-radius: 14px;
+  border-radius: var(--r-lg);
   border: 1px solid var(--line);
   background: var(--surface);
   transform: rotateY(-12deg);
@@ -884,7 +885,7 @@ textarea:focus-visible {
   background: var(--bg-elevated);
   color: var(--muted);
   padding: 0.45rem 0.9rem;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   cursor: pointer;
   font: inherit;
 }
@@ -927,7 +928,7 @@ textarea:focus-visible {
 .bubble {
   max-width: min(85%, 560px);
   padding: 0.65rem 0.85rem;
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   border: 1px solid var(--line);
   white-space: pre-line;
 }
@@ -984,7 +985,7 @@ textarea:focus-visible {
   font: inherit;
   font-size: 0.8rem;
   padding: 0.35rem 0.65rem;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   border: 1px solid var(--line-strong);
   background: var(--accent-soft);
   color: var(--accent);
@@ -1024,7 +1025,7 @@ textarea:focus-visible {
 
 .task-row {
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--r-md);
   padding: 0.65rem 0.75rem;
   margin-top: 0.5rem;
   background: var(--bg-elevated);
@@ -1063,7 +1064,7 @@ textarea:focus-visible {
   margin-top: 0.25rem;
   font-size: 0.68rem;
   padding: 0.15rem 0.35rem;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   background: var(--accent-soft);
   color: var(--accent);
   border: 1px solid var(--line-strong);
@@ -1084,7 +1085,7 @@ textarea:focus-visible {
   align-items: center;
   gap: 0.65rem;
   padding: 0.6rem 0.75rem;
-  border-radius: 10px;
+  border-radius: var(--r-md);
   border: 1px solid var(--line);
   background: var(--bg-elevated);
   margin-top: 0.5rem;
@@ -1171,7 +1172,7 @@ textarea:focus-visible {
 .modal .field input,
 .modal .field select {
   width: 100%;
-  border-radius: 10px;
+  border-radius: var(--r-md);
   border: 1px solid var(--line);
   background: var(--bg-elevated);
   color: var(--text);
@@ -1201,7 +1202,7 @@ textarea:focus-visible {
   margin-top: 1rem;
   padding: 0.625rem 0.75rem;
   border: 1px solid color-mix(in srgb, var(--red) 40%, transparent);
-  border-radius: 10px;
+  border-radius: var(--r-md);
   background: color-mix(in srgb, var(--red) 10%, transparent);
   color: var(--red);
   font-size: 0.875rem;
@@ -1212,7 +1213,7 @@ textarea:focus-visible {
   border: 1px solid var(--line);
   color: var(--muted);
   padding: 0.5rem 1rem;
-  border-radius: 10px;
+  border-radius: var(--r-md);
   font: inherit;
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s;
@@ -1299,7 +1300,7 @@ textarea:focus-visible {
 .cal-add-cal-row input {
   flex: 1;
   min-width: 150px;
-  border-radius: 10px;
+  border-radius: var(--r-md);
   border: 1px solid var(--line);
   background: var(--bg-elevated);
   color: var(--text);
@@ -1497,7 +1498,7 @@ textarea:focus-visible {
 .ai-session-new {
   width: 24px;
   height: 24px;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   border: 1px solid rgb(from var(--accent-hover) r g b / 0.4);
   background: rgb(from var(--accent) r g b / 0.15);
   color: var(--accent);
@@ -1517,7 +1518,7 @@ textarea:focus-visible {
 .ai-session-toggle {
   width: 24px;
   height: 24px;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   border: 1px solid var(--line);
   background: transparent;
   color: var(--muted);
@@ -1556,7 +1557,7 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   padding: 0.1rem 0.25rem 0.1rem 0.1rem;
   transition: background 0.12s;
 }
@@ -1580,7 +1581,7 @@ textarea:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
   padding: 0.35rem 0.4rem;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   min-width: 0;
 }
 .ai-session-item.is-active .ai-session-title {
@@ -1595,7 +1596,7 @@ textarea:focus-visible {
   font: inherit;
   font-size: 0.8rem;
   padding: 0.3rem 0.4rem;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   outline: none;
   min-width: 0;
 }
@@ -1617,7 +1618,7 @@ textarea:focus-visible {
   font-size: 0.72rem;
   width: 22px;
   height: 22px;
-  border-radius: 4px;
+  border-radius: var(--r-sm);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1666,7 +1667,7 @@ textarea:focus-visible {
   padding: 0.3rem 0.65rem;
   background: rgb(from var(--accent) r g b / 0.12);
   border: 1px solid rgb(from var(--accent-hover) r g b / 0.3);
-  border-radius: 8px;
+  border-radius: var(--r-md);
   margin-top: 0.35rem;
   animation: notif-fade 3s forwards;
 }
@@ -1719,7 +1720,7 @@ textarea:focus-visible {
   font: inherit;
   font-size: 0.72rem;
   padding: 0.15rem 0.5rem;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   border: 1px solid rgb(from var(--accent-hover) r g b / 0.4);
   background: rgb(from var(--accent) r g b / 0.15);
   color: var(--accent);
@@ -1775,7 +1776,7 @@ textarea:focus-visible {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
-  border-radius: 4px;
+  border-radius: var(--r-sm);
   transition: color 0.15s ease, background 0.15s ease;
 }
 .task-delete-btn:hover {
@@ -1821,7 +1822,7 @@ textarea:focus-visible {
   color: var(--muted);
   background: rgb(from var(--accent) r g b / 0.18);
   border: 1px solid rgb(from var(--accent-hover) r g b / 0.3);
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   padding: 0.15rem 0.55rem;
   flex-shrink: 0;
 }
@@ -1871,7 +1872,7 @@ textarea:focus-visible {
 input:not([type="checkbox"]):not([type="date"]):not([type="time"]),
 select,
 textarea {
-  border-radius: 10px;
+  border-radius: var(--r-md);
   border: 1px solid var(--line);
   background: var(--bg-elevated);
   color: var(--text);
@@ -1991,7 +1992,7 @@ select option {
   gap: 0.65rem;
   margin-top: 0.85rem;
   padding: 0.85rem;
-  border-radius: 10px;
+  border-radius: var(--r-md);
   background: rgb(from var(--accent) r g b / 0.06);
   border: 1px solid rgb(from var(--accent-hover) r g b / 0.2);
 }
@@ -2009,7 +2010,7 @@ select option {
   justify-content: center;
   width: 38px;
   height: 34px;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   border: 1px solid var(--line);
   background: var(--bg-elevated);
   color: var(--muted);
@@ -2036,7 +2037,7 @@ select option {
   font-size: 0.82rem;
   color: var(--accent);
   padding: 0.5rem 0.65rem;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   background: rgb(from var(--accent-hover) r g b / 0.08);
   border: 1px solid rgb(from var(--accent-hover) r g b / 0.2);
 }
@@ -2088,7 +2089,7 @@ select option {
   padding: 4px 10px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 20px;
+  border-radius: var(--r-lg);
   text-decoration: none;
   font-size: 11px;
   color: var(--muted);
@@ -2195,7 +2196,7 @@ select option {
   background: var(--accent);
   color: var(--accent-ink);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   letter-spacing: 0.01em;
 }
 
@@ -2313,7 +2314,7 @@ select option {
 .ai-chat-area .chat-form {
   background: var(--elev-1);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   padding: 0.4rem;
   gap: 0.35rem;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
@@ -3133,7 +3134,7 @@ textarea:focus {
   background: var(--accent);
   color: var(--accent-ink);
   padding: 0.65rem 1.25rem;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   font-weight: 600;
   font: inherit;
   cursor: pointer;
@@ -3281,7 +3282,7 @@ textarea:focus {
 .calendar-modal-task {
   border-left: 3px solid var(--accent);
   background: var(--elev-2);
-  border-radius: 8px;
+  border-radius: var(--r-md);
   padding: 0.65rem 0.85rem;
   margin-top: 0.6rem;
 }
@@ -3346,7 +3347,7 @@ textarea:focus {
   align-items: center;
   gap: 0.6rem;
   margin-bottom: 20px;
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   padding: 16px 20px;
   font-family: var(--font-body);
 }
@@ -3407,10 +3408,10 @@ textarea:focus {
 .task-card-check {
   width: 18px;
   height: 18px;
-  border-radius: 50%;
-  border: none;
-  background: #f0eef6;
-  box-shadow: inset 2px 2px 5px rgba(26,23,32,0.12), inset -2px -2px 5px rgba(255,255,255,0.80);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  box-shadow: none;
   cursor: pointer;
   flex-shrink: 0;
   display: flex;
@@ -3451,7 +3452,7 @@ textarea:focus {
   color: var(--muted);
   background: var(--surface-2);
   padding: 0.2rem 0.5rem;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -3488,7 +3489,7 @@ textarea:focus {
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.75rem 0.9rem;
-  border-radius: 10px;
+  border-radius: var(--r-md);
   border: 1px solid var(--line);
   background: var(--bg-elevated);
 }
@@ -3519,7 +3520,7 @@ textarea:focus {
   padding: 6px 12px;
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: 20px;
+  border-radius: var(--r-lg);
   color: var(--accent);
   font-size: 13px;
   font-family: var(--font-body);
@@ -3558,7 +3559,7 @@ textarea:focus {
   background: var(--surface);
   border: 1px solid var(--line);
   border-right: none;
-  border-radius: 10px 0 0 10px;
+  border-radius: var(--r-md) 0 0 var(--r-md);
   color: var(--text);
   font-size: 0.8rem;
   font-family: var(--font-body);
@@ -3619,7 +3620,7 @@ textarea:focus {
 }
 .agent-msg {
   padding: 0.55rem 0.75rem;
-  border-radius: 10px;
+  border-radius: var(--r-md);
   font-size: 0.85rem;
   line-height: 1.45;
   max-width: 92%;
@@ -3644,7 +3645,7 @@ textarea:focus {
 .agent-sidebar-input-row input {
   flex: 1;
   padding: 0.55rem 0.7rem;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   border: 1px solid var(--line);
   background: var(--bg-elevated);
   color: var(--text);
@@ -3694,7 +3695,7 @@ textarea:focus {
   resize: vertical;
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--r-md);
   padding: 0.6rem 0.75rem;
   color: var(--text);
   font-family: var(--font-body);
@@ -3723,7 +3724,7 @@ textarea:focus {
   padding: 0.6rem 0.7rem;
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--r-md);
 }
 .log-entry-icon {
   font-size: 1.05rem;
@@ -3790,7 +3791,7 @@ textarea:focus {
   justify-content: center;
   width: 40px;
   height: 40px;
-  border-radius: 10px;
+  border-radius: var(--r-md);
   border: none;
   background: transparent;
   color: var(--faint);
@@ -3813,7 +3814,7 @@ textarea:focus {
   min-width: 16px;
   height: 16px;
   padding: 0 3px;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   background: var(--accent);
   color: var(--accent-ink);
   font-size: 10px;
@@ -3878,7 +3879,7 @@ textarea:focus {
   font-weight: 600;
   white-space: nowrap;
   padding: 0.35rem 0.6rem;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   border: 1px solid var(--line);
   background: var(--surface-2);
   color: var(--text);
@@ -3986,7 +3987,7 @@ textarea:focus {
   font-size: 0.72rem;
   font-weight: 600;
   padding: 0.3rem 0.55rem;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   border: 1px solid var(--accent);
   background: none;
   color: var(--accent);
@@ -4126,7 +4127,7 @@ textarea:focus {
   align-items: center;
   gap: 8px;
   padding: 10px 18px;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   background: var(--elev-3);
   border: 1px solid var(--line-strong);
   color: var(--text);
@@ -4352,7 +4353,7 @@ textarea:focus {
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  border-radius: 20px;
+  border-radius: var(--r-lg);
   font-family: var(--font-body);
   font-size: 13px;
   color: var(--text-2);
@@ -4384,15 +4385,16 @@ textarea:focus {
   align-items: center;
   gap: 8px;
   padding: 6px;
-  border-radius: 999px;
-  background: #f0eef6;
-  border: none;
-  box-shadow: inset 3px 3px 7px rgba(26,23,32,0.10), inset -3px -3px 7px rgba(255,255,255,0.80);
-  transition: box-shadow 0.15s ease;
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  box-shadow: none;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease;
 }
 
 .console-input-row:focus-within {
-  box-shadow: inset 3px 3px 7px rgba(26,23,32,0.10), inset -3px -3px 7px rgba(255,255,255,0.80), 0 0 0 3px var(--accent-soft);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-line);
 }
 
 .console-pill-input {
@@ -4454,7 +4456,7 @@ textarea:focus {
   margin-left: 6px;
   padding: 4px;
   background: rgb(from var(--line) r g b / 0.4);
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   width: fit-content;
 }
 
@@ -4463,7 +4465,7 @@ textarea:focus {
   background: transparent;
   color: var(--text-3);
   padding: 4px 12px;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   font-family: var(--font-body);
   font-size: 12px;
   font-weight: 500;
@@ -4562,7 +4564,7 @@ textarea:focus {
   font-size: 12px;
   letter-spacing: 0.01em;
   padding: 3px 8px;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   border: 1px solid rgb(from var(--accent-hover) r g b / 0.35);
   background: rgb(from var(--accent) r g b / 0.14);
   color: var(--accent);
@@ -4577,7 +4579,7 @@ textarea:focus {
 .console-source-chip {
   font-size: 11px;
   padding: 3px 8px;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   border: 1px solid var(--line);
   background: var(--surface-2);
   color: var(--text-2);
@@ -4654,7 +4656,7 @@ textarea:focus {
   width: 42px;
   height: 42px;
   margin: 0 auto 16px;
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   background: var(--accent-soft);
   color: var(--accent);
   display: grid;
@@ -4685,7 +4687,7 @@ textarea:focus {
 .console-suggestion-chip {
   min-height: 38px;
   padding: 8px 12px;
-  border-radius: 9px;
+  border-radius: var(--r-md);
   color: var(--text-2);
   background: var(--surface);
   box-shadow: none;
@@ -4711,7 +4713,7 @@ textarea:focus {
   align-self: flex-end;
   max-width: min(620px, 88%);
   padding: 10px 14px;
-  border-radius: 14px 14px 4px 14px;
+  border-radius: var(--r-lg) var(--r-lg) var(--r-sm) var(--r-lg);
   background: var(--bg);
   color: var(--text);
   font-size: 14px;
@@ -4729,7 +4731,7 @@ textarea:focus {
   width: 28px;
   height: 28px;
   flex: 0 0 28px;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   display: grid;
   place-items: center;
   color: var(--accent);
@@ -4775,7 +4777,7 @@ textarea:focus {
   min-height: 52px;
   padding: 5px 5px 5px 16px;
   border: 1px solid var(--line-strong);
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   background: var(--surface);
   box-shadow: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
@@ -4795,7 +4797,7 @@ textarea:focus {
 .console-send-pill {
   width: 38px;
   height: 38px;
-  border-radius: 9px;
+  border-radius: var(--r-md);
   box-shadow: none;
 }
 
@@ -4816,7 +4818,7 @@ textarea:focus {
 .console-error {
   margin: 0 0 10px;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   color: var(--red);
   background: color-mix(in srgb, var(--red) 8%, transparent);
   font-size: 12px;
@@ -5029,7 +5031,7 @@ textarea:focus {
 
 .settings-nav a {
   padding: 8px 10px;
-  border-radius: 7px;
+  border-radius: var(--r-sm);
   color: var(--text-2);
   font-size: 13px;
   font-weight: 500;
@@ -5165,7 +5167,7 @@ textarea:focus {
   gap: 20px;
   padding: 30px;
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: var(--r-lg);
   background: var(--surface);
   box-shadow: 0 20px 60px rgba(24, 24, 27, 0.08);
 }
@@ -5207,7 +5209,7 @@ textarea:focus {
   min-height: 46px;
   padding: 11px 13px;
   border: 1px solid var(--line-strong);
-  border-radius: 9px;
+  border-radius: var(--r-md);
   background: var(--surface);
   box-shadow: none;
 }
@@ -5240,7 +5242,7 @@ textarea:focus {
   min-height: 44px;
   padding: 10px 16px;
   border: 1px solid var(--accent);
-  border-radius: 9px;
+  border-radius: var(--r-md);
   background: var(--accent);
   color: #fff;
   box-shadow: none;
@@ -5296,7 +5298,7 @@ textarea:focus {
 .cal-day-ribbon {
   width: calc(100% - 8px);
   margin: 0 4px;
-  border-radius: 2px;
+  border-radius: var(--r-sm);
   flex-shrink: 0;
 }
 
@@ -5377,7 +5379,7 @@ textarea:focus {
 .day-panel-kind-pill {
   width: 3px;
   height: 12px;
-  border-radius: 2px;
+  border-radius: var(--r-sm);
   flex-shrink: 0;
 }
 .day-panel-kind-label {
@@ -5413,7 +5415,7 @@ textarea:focus {
 .sticky-focus-pill {
   width: 4px;
   height: 20px;
-  border-radius: 2px;
+  border-radius: var(--r-sm);
   flex-shrink: 0;
 }
 .sticky-focus-title {
@@ -5494,13 +5496,13 @@ textarea:focus {
 }
 .week-strip-ribbon-seg {
   width: 100%;
-  border-radius: 2px;
+  border-radius: var(--r-sm);
   flex-shrink: 0;
 }
 .week-strip-ribbon-empty {
   width: 100%;
   height: 4px;
-  border-radius: 2px;
+  border-radius: var(--r-sm);
   background: var(--line);
 }
 
@@ -5848,7 +5850,7 @@ textarea:focus {
   flex: 0 0 20px;
   padding: 0;
   border: 1.5px solid var(--line-strong);
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   background: var(--surface);
   color: var(--accent-ink);
   cursor: pointer;
@@ -6036,7 +6038,7 @@ textarea:focus {
     width: 100%;
     border-top: 1px solid var(--line);
     border-left: 0;
-    border-radius: 14px 14px 0 0;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
   }
 }
 
@@ -6114,7 +6116,7 @@ textarea:focus {
   min-width: 0;
   padding: 20px;
   border: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
-  border-radius: 16px;
+  border-radius: var(--r-lg);
   background: var(--surface);
   box-shadow: 0 1px 2px rgba(26, 23, 32, 0.04), 0 10px 28px -16px rgba(26, 23, 32, 0.14);
 }
@@ -6137,7 +6139,7 @@ textarea:focus {
   gap: 16px;
   margin-bottom: 20px;
   padding: 20px 24px 20px 30px;
-  border-radius: 22px;
+  border-radius: var(--r-lg);
   background: var(--surface);
   border: 1px solid var(--line);
   box-shadow: var(--shadow-sm);
@@ -6162,7 +6164,7 @@ textarea:focus {
 .attention-count {
   min-width: 20px;
   padding: 1px 7px;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   background: rgb(var(--urgency-rgb) / 0.13);
   font-size: 11.5px;
   font-variant-numeric: tabular-nums;
@@ -6208,7 +6210,7 @@ textarea:focus {
   align-items: center;
   gap: 12px;
   padding: 9px 10px;
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   transition: background 0.15s ease;
 }
 
@@ -6225,7 +6227,7 @@ textarea:focus {
   height: 22px;
   padding: 0;
   border: 1.5px solid var(--line-strong);
-  border-radius: 50%;
+  border-radius: var(--r-sm);
   background: var(--surface);
   color: transparent;
   cursor: pointer;
@@ -6288,7 +6290,7 @@ textarea:focus {
   grid-area: chip;
   justify-self: end;
   padding: 3px 9px;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   font-size: 11.5px;
   font-weight: 600;
   white-space: nowrap;
@@ -6317,7 +6319,7 @@ textarea:focus {
   gap: 5px;
   padding: 6px 11px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--text-2);
   font: inherit;
@@ -6462,7 +6464,7 @@ textarea:focus {
   min-width: 0;
   padding: 6px 2px 4px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--r-md);
   background: none;
   font: inherit;
   cursor: pointer;
@@ -6482,7 +6484,7 @@ textarea:focus {
   height: 100%;
   min-height: 64px;
   overflow: hidden;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   background: color-mix(in srgb, var(--line) 55%, transparent);
 }
 
@@ -6490,7 +6492,7 @@ textarea:focus {
   display: block;
   width: 100%;
   height: 100%;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   background: color-mix(in srgb, var(--accent) 45%, var(--surface));
   transform-origin: bottom;
 }
@@ -6625,12 +6627,12 @@ textarea:focus {
 .today-loading-attention {
   min-height: 208px;
   margin-bottom: 20px;
-  border-radius: 22px;
+  border-radius: var(--r-lg);
 }
 
 .today-loading-month {
   min-height: 220px;
-  border-radius: 16px;
+  border-radius: var(--r-lg);
 }
 
 .today-loading-rows {
@@ -6719,7 +6721,7 @@ textarea:focus {
     grid-template-columns: 1fr;
     margin-bottom: 24px;
     padding: 20px 16px 16px 20px;
-    border-radius: 18px;
+    border-radius: var(--r-lg);
   }
 
 
@@ -6908,7 +6910,7 @@ textarea:focus {
   min-width: 20px;
   height: 20px;
   padding-inline: 6px;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   background: var(--bg);
   color: var(--text-3);
   font-size: 10px;
@@ -6931,7 +6933,7 @@ textarea:focus {
   height: 30px;
   padding: 0;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--text-3);
   cursor: pointer;
@@ -7126,7 +7128,7 @@ textarea:focus {
   padding: 3px;
   overflow-x: auto;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--r-md);
   background: var(--surface);
   box-shadow: none;
 }
@@ -7135,7 +7137,7 @@ textarea:focus {
   min-height: 30px;
   padding: 0 10px;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--text-2);
   font-size: 11px;
@@ -7249,7 +7251,7 @@ textarea:focus {
   justify-content: center;
   width: 24px;
   height: 24px;
-  border-radius: 7px;
+  border-radius: var(--r-sm);
   color: var(--text-2);
   font-size: 11px;
   font-weight: 600;
@@ -7508,13 +7510,13 @@ textarea:focus {
   margin-left: auto;
   padding: 2px;
   border-color: var(--line);
-  border-radius: 8px;
+  border-radius: var(--r-md);
   background: var(--bg);
 }
 
 .calendar-toolbar .cal-segment {
   min-height: 30px;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   font-size: 12px;
 }
 
@@ -7579,7 +7581,7 @@ textarea:focus {
 
 .calendar-grid-shell .cal-day-ribbon {
   min-height: 4px;
-  border-radius: 2px;
+  border-radius: var(--r-sm);
   opacity: 0.8;
 }
 
@@ -7602,7 +7604,7 @@ textarea:focus {
   flex: 0 0 auto;
   width: 36px;
   height: 36px;
-  border-radius: 9px;
+  border-radius: var(--r-md);
   background: var(--accent-soft);
   color: var(--accent);
 }
@@ -7625,7 +7627,7 @@ textarea:focus {
   flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: var(--r-lg);
   background: var(--surface);
   color: var(--text);
   box-shadow: 0 24px 70px rgba(20, 15, 30, 0.18);
@@ -7664,7 +7666,7 @@ textarea:focus {
   place-items: center;
   flex: 0 0 38px;
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: var(--r-md);
   background: transparent;
   color: var(--text-2);
   cursor: pointer;
@@ -7717,7 +7719,7 @@ textarea:focus {
   overflow: hidden;
   aspect-ratio: 16 / 7.5;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   background: var(--bg);
 }
 
@@ -7743,7 +7745,7 @@ textarea:focus {
   min-height: 46px;
   padding: 0 12px;
   border: 1px solid var(--line-strong);
-  border-radius: 9px;
+  border-radius: var(--r-md);
   color: var(--text-3);
   background: var(--surface);
 }
@@ -7835,7 +7837,7 @@ textarea:focus {
 .month-rhythm-legend i {
   width: 9px;
   height: 9px;
-  border-radius: 3px;
+  border-radius: var(--r-sm);
 }
 .month-rhythm-legend i:first-of-type {
   margin-left: 3px;
@@ -7866,7 +7868,7 @@ textarea:focus {
   aspect-ratio: 1;
   padding: 0;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--r-sm);
   color: var(--text-2);
   font: inherit;
   font-size: 10.5px;
@@ -8055,7 +8057,7 @@ textarea:focus {
   gap: 5px;
   min-width: 0;
   padding: 3px 6px 3px 7px;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   border-left: 2px solid var(--chip);
   background: color-mix(in srgb, var(--chip) 11%, transparent);
   color: var(--text);
@@ -8098,7 +8100,7 @@ textarea:focus {
   height: 24px;
   padding: 0;
   border: 1px solid var(--line-strong);
-  border-radius: 8px;
+  border-radius: var(--r-md);
   background: var(--surface);
   color: var(--accent);
   cursor: pointer;
@@ -8197,7 +8199,7 @@ textarea:focus {
   align-self: center;
   margin-left: 2px;
   padding: 3px 8px;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   background: var(--accent-soft);
   color: var(--accent);
   font-family: var(--font-body);
@@ -8217,7 +8219,7 @@ textarea:focus {
   align-items: center;
   padding: 3px;
   border: 1px solid var(--line);
-  border-radius: 11px;
+  border-radius: var(--r-md);
   background: var(--bg);
 }
 .cal-view-tab {
@@ -8225,7 +8227,7 @@ textarea:focus {
   min-height: 28px;
   padding: 0 12px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   background: transparent;
   color: var(--text-2);
   font: 600 12.5px/1 var(--font-body);
@@ -8243,7 +8245,7 @@ textarea:focus {
 .cal-view-pill {
   position: absolute;
   inset: 0;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   background: var(--surface);
   box-shadow: 0 1px 2px rgba(20, 15, 30, 0.08), 0 0 0 1px var(--line);
 }
@@ -8254,7 +8256,7 @@ textarea:focus {
   place-items: center;
   min-height: 28px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   background: transparent;
   color: var(--text-2);
   cursor: pointer;
@@ -8341,7 +8343,7 @@ textarea:focus {
   right: 6px;
   min-width: 16px;
   padding: 1px 5px;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   background: var(--accent-soft);
   color: var(--accent);
   font-size: 10px;
@@ -8401,7 +8403,7 @@ textarea:focus {
   overflow: hidden;
   border: 0;
   border-left: 3px solid var(--block);
-  border-radius: 8px;
+  border-radius: var(--r-md);
   background: color-mix(in srgb, var(--block) 14%, var(--surface));
   box-shadow: 0 1px 2px rgba(20, 15, 30, 0.06);
   color: var(--text);
@@ -8477,7 +8479,7 @@ textarea:focus {
   align-self: start;
   padding: 4px 8px 4px 4px;
   border: 0;
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   background: transparent;
   color: var(--text);
   text-align: left;
@@ -8491,7 +8493,7 @@ textarea:focus {
   flex: none;
   width: 40px;
   height: 40px;
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   background: var(--bg);
   font-family: var(--font-display);
   font-size: 19px;
@@ -8528,7 +8530,7 @@ textarea:focus {
   padding: 6px 12px 6px 10px;
   border: 1px solid var(--line);
   border-left: 3px solid var(--item);
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   background: var(--surface);
   transition: border-color 0.14s ease, box-shadow 0.16s ease, transform 0.16s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -8545,7 +8547,7 @@ textarea:focus {
   height: 20px;
   padding: 0;
   border: 1.5px solid color-mix(in srgb, var(--item) 70%, var(--line-strong));
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--accent-ink);
   cursor: pointer;
@@ -8606,7 +8608,7 @@ textarea:focus {
   width: 44px;
   height: 44px;
   margin-bottom: 4px;
-  border-radius: 14px;
+  border-radius: var(--r-lg);
   background: var(--accent-soft);
   color: var(--accent);
 }
@@ -8641,7 +8643,7 @@ textarea:focus {
   min-height: 30px;
   padding: 0 11px 0 9px;
   border: 1px solid color-mix(in srgb, var(--amber) 45%, transparent);
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   background: color-mix(in srgb, var(--amber) 12%, var(--surface));
   color: color-mix(in srgb, var(--amber) 75%, var(--text));
   font: 600 12px/1 var(--font-body);
