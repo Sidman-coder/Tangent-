@@ -36,6 +36,8 @@ export default function BriefPanel({ onSaved }: Props) {
   const [newSourceUrl, setNewSourceUrl] = useState("");
   const [savingBrief, setSavingBrief] = useState(false);
   const [briefSaved, setBriefSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const [findQuery, setFindQuery] = useState("");
   const [findLoading, setFindLoading] = useState(false);
   const [findError, setFindError] = useState<string | null>(null);
@@ -51,8 +53,36 @@ export default function BriefPanel({ onSaved }: Props) {
           setBriefTime(data.config.deliveryTime ?? "07:00");
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoaded(true));
   }, []);
+
+  /** Writes the whole brief config. Source edits call this right away so a
+   *  student never loses a source by leaving before pressing Save. */
+  const persist = useCallback(
+    async (sources: BriefSource[], cadence: BriefConfig["cadence"], deliveryTime: string) => {
+      if (!loaded) return;
+      setSavingBrief(true);
+      setBriefSaved(false);
+      setSaveError(null);
+      try {
+        const res = await fetch("/api/brief-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sources, cadence, deliveryTime }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || "save failed");
+        setBriefSaved(true);
+        onSaved({ cadence, deliveryTime });
+      } catch {
+        setSaveError("Couldn't save your brief settings. Try again.");
+      } finally {
+        setSavingBrief(false);
+      }
+    },
+    [loaded, onSaved]
+  );
 
   const addBriefSource = useCallback(() => {
     const label = newSourceLabel.trim();
@@ -63,18 +93,23 @@ export default function BriefPanel({ onSaved }: Props) {
       label,
       ...(newSourceType !== "stale_check" && newSourceUrl.trim() ? { url: newSourceUrl.trim() } : {}),
     };
-    setBriefSources((prev) => [...prev, source]);
+    const next = [...briefSources, source];
+    setBriefSources(next);
     setNewSourceLabel("");
     setNewSourceUrl("");
     setNewSourceType("rss");
     setShowAddSource(false);
-    setBriefSaved(false);
-  }, [newSourceLabel, newSourceType, newSourceUrl]);
+    void persist(next, briefCadence, briefTime);
+  }, [newSourceLabel, newSourceType, newSourceUrl, briefSources, briefCadence, briefTime, persist]);
 
-  const removeBriefSource = useCallback((id: string) => {
-    setBriefSources((prev) => prev.filter((s) => s.id !== id));
-    setBriefSaved(false);
-  }, []);
+  const removeBriefSource = useCallback(
+    (id: string) => {
+      const next = briefSources.filter((s) => s.id !== id);
+      setBriefSources(next);
+      void persist(next, briefCadence, briefTime);
+    },
+    [briefSources, briefCadence, briefTime, persist]
+  );
 
   const findSources = useCallback(async () => {
     const query = findQuery.trim();
@@ -108,35 +143,20 @@ export default function BriefPanel({ onSaved }: Props) {
       label: suggestion.label,
       url: suggestion.url,
     };
-    setBriefSources((prev) => [...prev, source]);
+    const next = [...briefSources, source];
+    setBriefSources(next);
     setSuggestions((prev) => prev.filter((s) => s.url !== suggestion.url));
-    setBriefSaved(false);
-  }, []);
+    void persist(next, briefCadence, briefTime);
+  }, [briefSources, briefCadence, briefTime, persist]);
 
   const dismissSuggestion = useCallback((suggestion: SuggestedBriefSource) => {
     setSuggestions((prev) => prev.filter((s) => s.url !== suggestion.url));
   }, []);
 
-  const saveBriefSettings = useCallback(async () => {
-    setSavingBrief(true);
-    setBriefSaved(false);
-    try {
-      const res = await fetch("/api/brief-config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sources: briefSources, cadence: briefCadence, deliveryTime: briefTime }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setBriefSaved(true);
-        onSaved({ cadence: briefCadence, deliveryTime: briefTime });
-      }
-    } catch {
-      // best-effort — settings stay in local state, user can retry Save
-    } finally {
-      setSavingBrief(false);
-    }
-  }, [briefSources, briefCadence, briefTime, onSaved]);
+  const saveBriefSettings = useCallback(
+    () => persist(briefSources, briefCadence, briefTime),
+    [persist, briefSources, briefCadence, briefTime]
+  );
 
   return (
     <div className="console-brief-setup">
@@ -302,10 +322,11 @@ export default function BriefPanel({ onSaved }: Props) {
         type="button"
         className="neu-btn-primary console-brief-save"
         onClick={() => void saveBriefSettings()}
-        disabled={savingBrief}
+        disabled={savingBrief || !loaded}
       >
         {savingBrief ? "Saving…" : briefSaved ? "Saved ✓" : "Save brief settings"}
       </button>
+      {saveError && <p className="tg-error" role="alert">{saveError}</p>}
     </div>
   );
 }
