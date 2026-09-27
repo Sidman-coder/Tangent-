@@ -17,13 +17,14 @@ import type {
   BriefConfig,
   CanvasFeedConfig,
   PendingBriefBatch,
-  Anchor,
   Goal,
-  TangentIdea,
+  PathNode,
   TangentStatus,
+  LegacyAnchor,
+  LegacyTangentIdea,
 } from "./types";
 import { currentWorkspace } from "./workspace";
-import type { StoreData, TangentSpace, WorkspaceData } from "./workspace";
+import type { PathSpace, StoreData, WorkspaceData } from "./workspace";
 
 function uid(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
@@ -879,22 +880,62 @@ export function recordCanvasSync(count: number): CanvasFeedConfig | null {
   return { ...g.__tangentCanvasFeed };
 }
 
-// ─── Tangents ────────────────────────────────────────────────────────────────
-// Anchors (what you already have), tangent ideas (branches off them), and the
-// goal they point at. Stored with the rest of the workspace, so a branch you
-// keep is still there next time.
+// ─── Path ────────────────────────────────────────────────────────────────────
+// The goal, plus one recursive tree of nodes. Depth alternates work / idea, and
+// lib/path-layout.ts turns that into circles and tangents. Stored with the rest
+// of the workspace, so a branch you keep is still there next time.
 
-function space(): TangentSpace {
-  return currentWorkspace().__tangentSpace;
+function space(): PathSpace {
+  const ws = currentWorkspace();
+  // A workspace written before the recursive model still holds flat anchors and
+  // tangents. Fold them in once, on read, rather than migrating on deploy.
+  const legacy = ws.__tangentSpace as PathSpace & {
+    anchors?: LegacyAnchor[];
+    tangents?: LegacyTangentIdea[];
+  };
+  if (legacy.anchors || legacy.tangents) {
+    const nodes: PathNode[] = [];
+    for (const a of legacy.anchors ?? []) {
+      nodes.push({
+        id: a.id,
+        parentId: null,
+        kind: "work",
+        title: a.title,
+        detail: a.detail,
+        category: a.kind,
+        hoursPerWeek: a.hoursPerWeek,
+        years: a.years,
+        status: "accepted",
+        origin: "you",
+        createdAt: a.createdAt,
+      });
+    }
+    for (const t of legacy.tangents ?? []) {
+      nodes.push({
+        id: t.id,
+        parentId: t.anchorId,
+        kind: "idea",
+        title: t.title,
+        rationale: t.rationale,
+        effort: t.effort,
+        status: t.status,
+        origin: t.origin,
+        createdAt: t.createdAt,
+      });
+    }
+    ws.__tangentSpace = { goal: legacy.goal ?? null, nodes: [...nodes, ...(legacy.nodes ?? [])] };
+    console.log("[store] migrated Path to the recursive model. Nodes:", nodes.length);
+  }
+  return ws.__tangentSpace;
 }
 
 function rid(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export function getTangentSpace(): TangentSpace {
+export function getPathSpace(): PathSpace {
   const s = space();
-  return { goal: s.goal ? { ...s.goal } : null, anchors: [...s.anchors], tangents: [...s.tangents] };
+  return { goal: s.goal ? { ...s.goal } : null, nodes: s.nodes.map((n) => ({ ...n })) };
 }
 
 export function setGoal(college: string, focus?: string): Goal {
@@ -903,41 +944,75 @@ export function setGoal(college: string, focus?: string): Goal {
   return { ...goal };
 }
 
-export function addAnchor(input: Omit<Anchor, "id" | "createdAt">): Anchor {
-  const anchor: Anchor = { ...input, id: rid("anc"), createdAt: new Date().toISOString() };
-  space().anchors.push(anchor);
-  return { ...anchor };
+export function getPathNode(id: string): PathNode | null {
+  const found = space().nodes.find((n) => n.id === id);
+  return found ? { ...found } : null;
 }
 
-export function removeAnchor(id: string): void {
+/** The chain from a node up to the goal. Gives Claude the context that a node
+ *  four levels deep is still, ultimately, about one college. */
+export function pathAncestry(id: string): PathNode[] {
   const s = space();
-  s.anchors = s.anchors.filter((a) => a.id !== id);
-  // A tangent with no anchor has nothing to leave from.
-  s.tangents = s.tangents.filter((t) => t.anchorId !== id);
+  const chain: PathNode[] = [];
+  let cursor = s.nodes.find((n) => n.id === id);
+  let guard = 0;
+  while (cursor && guard++ < 32) {
+    chain.unshift({ ...cursor });
+    cursor = cursor.parentId ? s.nodes.find((n) => n.id === cursor!.parentId) : undefined;
+  }
+  return chain;
 }
 
-export function addTangents(items: Array<Omit<TangentIdea, "id" | "createdAt">>): TangentIdea[] {
-  const created = items.map((t) => ({
-    ...t,
-    id: rid("tan"),
+export function addPathNode(
+  input: Omit<PathNode, "id" | "createdAt" | "status"> & { status?: TangentStatus }
+): PathNode {
+  const node: PathNode = {
+    ...input,
+    status: input.status ?? (input.kind === "idea" ? "suggested" : "accepted"),
+    id: rid(input.kind === "idea" ? "idea" : "work"),
     createdAt: new Date().toISOString(),
-  }));
-  space().tangents.push(...created);
-  return created.map((t) => ({ ...t }));
+  };
+  space().nodes.push(node);
+  return { ...node };
 }
 
-export function setTangentStatus(id: string, status: TangentStatus): TangentIdea | null {
-  const found = space().tangents.find((t) => t.id === id);
+export function addPathNodes(
+  items: Array<Omit<PathNode, "id" | "createdAt" | "status"> & { status?: TangentStatus }>
+): PathNode[] {
+  return items.map((item) => addPathNode(item));
+}
+
+export function updatePathNode(id: string, patch: Partial<Omit<PathNode, "id" | "createdAt">>): PathNode | null {
+  const found = space().nodes.find((n) => n.id === id);
   if (!found) return null;
-  found.status = status;
+  Object.assign(found, patch);
   return { ...found };
 }
 
-/** Clears prior suggestions for an anchor so a regenerate doesn't pile up
- *  duplicates. Anything you accepted or completed is kept. */
-export function clearSuggestions(anchorId: string): void {
+/** Removes a node and everything that grew from it. */
+export function removePathNode(id: string): number {
   const s = space();
-  s.tangents = s.tangents.filter((t) => t.anchorId !== anchorId || t.status !== "suggested");
+  const doomed = new Set<string>([id]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const n of s.nodes) {
+      if (n.parentId && doomed.has(n.parentId) && !doomed.has(n.id)) {
+        doomed.add(n.id);
+        grew = true;
+      }
+    }
+  }
+  const before = s.nodes.length;
+  s.nodes = s.nodes.filter((n) => !doomed.has(n.id));
+  return before - s.nodes.length;
+}
+
+/** Clears a node's un-acted-on suggestions so regenerating doesn't pile up
+ *  duplicates. Anything you kept is left alone. */
+export function clearSuggestions(parentId: string): void {
+  const s = space();
+  s.nodes = s.nodes.filter((n) => n.parentId !== parentId || n.status !== "suggested");
 }
 
 // ─── Durability ──────────────────────────────────────────────────────────────

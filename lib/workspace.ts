@@ -34,9 +34,8 @@ import type {
   BriefConfig,
   CanvasFeedConfig,
   PendingBriefBatch,
-  Anchor,
   Goal,
-  TangentIdea,
+  PathNode,
 } from "./types";
 import type { ChatMessage, ChatSession } from "./store";
 
@@ -54,7 +53,9 @@ export interface StoreData {
   chatSessions: ChatSession[];
 }
 
-export type TangentSpace = { goal: Goal | null; anchors: Anchor[]; tangents: TangentIdea[] };
+/** The Path tree: one goal at the centre, one flat list of nodes linked by
+ *  parentId. lib/path-layout.ts turns it into circles and tangents. */
+export type PathSpace = { goal: Goal | null; nodes: PathNode[] };
 
 /** Everything one workspace owns. Keys match the old `global.__tangent*` names
  *  so lib/store.ts needed no renaming. */
@@ -67,7 +68,7 @@ export type WorkspaceData = {
   __tangentBriefConfig: BriefConfig | null;
   __tangentCanvasFeed: CanvasFeedConfig | null;
   __tangentPendingBriefBatch: PendingBriefBatch | null;
-  __tangentSpace: TangentSpace;
+  __tangentSpace: PathSpace;
 };
 
 /** Not persisted: a pending confirmation or an in-flight brief batch belongs to
@@ -109,7 +110,7 @@ export function defaultWorkspaceData(): WorkspaceData {
     __tangentBriefConfig: null,
     __tangentCanvasFeed: null,
     __tangentPendingBriefBatch: null,
-    __tangentSpace: { goal: null, anchors: [], tangents: [] },
+    __tangentSpace: { goal: null, nodes: [] },
   };
 }
 

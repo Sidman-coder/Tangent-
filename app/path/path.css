@@ -1,0 +1,762 @@
+/* Path: the observatory.
+ *
+ * This is the one surface in Tangent that sets its own ground. Everywhere else
+ * is paper; here the tree has to sit in something, and glow needs dark to glow
+ * against. The tokens below are scoped to .path-page, so nothing leaks into the
+ * rest of the app, and they are identical in light and dark mode on purpose:
+ * the instrument looks the same whatever the room is doing.
+ *
+ * Green belongs to tangents and to nothing else on this page. It is semantic,
+ * not a second brand colour: if it is green, it is an idea branching off.
+ */
+
+.path-page {
+  --path-void: #0a0812;
+  --path-void-2: #151127;
+  --path-edge: rgba(190, 176, 245, 0.16);
+  --path-edge-strong: rgba(190, 176, 245, 0.34);
+  --path-ink: #efeafc;
+  --path-ink-2: rgba(226, 217, 252, 0.62);
+  --path-work: #b3a5f0;
+  --path-goal: #8f7ce8;
+  --path-idea: #3ed08a;
+  --path-idea-soft: rgba(62, 208, 138, 0.16);
+  --path-panel: rgba(21, 17, 37, 0.97);
+  --path-radius: 16px;
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  /* Fills what the shell gives it. dvh, never vh: the iOS address bar. */
+  min-height: calc(100dvh - var(--topbar-h, 64px));
+  background: radial-gradient(120% 100% at 50% 0%, var(--path-void-2) 0%, var(--path-void) 62%);
+  color: var(--path-ink);
+  /* clip, not hidden. The world layer is far larger than the viewport, which
+     makes an overflow:hidden box a scroll container: still scrollable
+     programmatically, and the browser does exactly that when a node button
+     takes focus. That silently shifted the whole stage out of alignment.
+     overflow:clip creates no scroll container at all. */
+  overflow: clip;
+}
+
+/* ─── Stage ─────────────────────────────────────────────────────────────── */
+
+.path-stage {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  cursor: grab;
+  touch-action: none;
+}
+.path-stage.is-dragging {
+  cursor: grabbing;
+}
+
+.path-ambient {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* A zero-size anchor pinned to the centre of the stage. Children are placed at
+   their world coordinates and the whole layer is moved and scaled about this
+   origin, so world (0,0) is the middle of the screen when the camera is home. */
+.path-world {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.path-geometry {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.path-labels {
+  position: absolute;
+  inset: 0;
+}
+
+/* ─── Geometry ──────────────────────────────────────────────────────────── */
+
+.path-ring {
+  fill: none;
+  stroke: var(--path-edge);
+  stroke-width: 1.25;
+  transition: stroke 0.4s ease, opacity 0.4s ease;
+}
+.path-ring.is-dim {
+  opacity: 0.3;
+}
+
+.path-spoke {
+  stroke: var(--path-edge);
+  stroke-width: 1;
+  stroke-dasharray: 2 7;
+  opacity: 0.5;
+  transition: opacity 0.4s ease;
+}
+.path-spoke.is-dim {
+  opacity: 0.12;
+}
+
+.path-tangent-line {
+  stroke: var(--path-idea);
+  stroke-width: 1.5;
+  opacity: 0.55;
+  transition: opacity 0.4s ease, stroke-width 0.3s ease;
+}
+/* A branch that is only a suggestion is drawn, not committed. */
+.path-tangent.is-suggested .path-tangent-line {
+  stroke-dasharray: 5 6;
+  opacity: 0.4;
+}
+.path-tangent.is-kept .path-tangent-line {
+  opacity: 0.8;
+  stroke-width: 2;
+}
+.path-tangent.is-focused .path-tangent-line {
+  opacity: 1;
+  stroke-width: 2.5;
+}
+.path-tangent.is-done .path-tangent-line {
+  stroke: var(--path-work);
+  opacity: 0.45;
+}
+.path-tangent.is-dim .path-tangent-line,
+.path-tangent.is-dim .path-touch {
+  opacity: 0.12;
+}
+
+/* The point of tangency. The whole drawing turns on it, so it is drawn. */
+.path-touch {
+  fill: var(--path-idea);
+  opacity: 0.9;
+  transition: opacity 0.4s ease;
+}
+
+.path-tangent-pulse {
+  stroke: #ffffff;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 10 260;
+  opacity: 0.75;
+  animation: path-pulse 2.6s linear infinite;
+}
+@keyframes path-pulse {
+  from { stroke-dashoffset: 270; }
+  to { stroke-dashoffset: 0; }
+}
+
+/* ─── Nodes ─────────────────────────────────────────────────────────────── */
+
+.path-point {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+/* Labels hold a constant size on screen by undoing the world's zoom. The camera
+   publishes --path-zoom on the stage, so one custom-property write rescales
+   every label at once, with no per-node subscription. */
+.path-point-inner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  transform: scale(calc(1 / var(--path-zoom, 1)));
+}
+
+.path-goal-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: max-content;
+  padding: 14px 22px;
+  border: 1px solid var(--path-edge-strong);
+  border-radius: var(--path-radius);
+  background: rgba(20, 16, 38, 0.72);
+  backdrop-filter: blur(10px);
+  color: var(--path-ink);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.3s ease, transform 0.3s ease;
+}
+.path-goal-node:hover,
+.path-goal-node.is-focused {
+  border-color: var(--path-goal);
+}
+.path-goal-name {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.path-goal-focus {
+  font-size: 12px;
+  color: var(--path-ink-2);
+}
+
+.path-work {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  padding: 7px 13px 7px 9px;
+  border: 1px solid var(--path-edge);
+  border-radius: 999px;
+  background: rgba(24, 20, 44, 0.82);
+  backdrop-filter: blur(8px);
+  color: var(--path-ink);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.25s ease, background 0.25s ease, opacity 0.4s ease;
+}
+.path-work:hover {
+  border-color: var(--path-work);
+  background: rgba(38, 31, 66, 0.92);
+}
+.path-work.is-focused {
+  border-color: var(--path-work);
+  box-shadow: 0 0 0 3px rgba(179, 165, 240, 0.16);
+}
+.path-work.is-dim {
+  opacity: 0.28;
+}
+.path-work-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--path-work);
+  flex: none;
+}
+
+.path-idea {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: stretch;
+  /* Absolutely positioned inside a zero-size anchor, so it needs an intrinsic
+     width: without this it shrink-wraps to the longest word and every card
+     becomes a column of single words. */
+  width: max-content;
+  max-width: 216px;
+  border: 1px solid rgba(62, 208, 138, 0.38);
+  border-radius: 12px;
+  background: rgba(14, 32, 26, 0.86);
+  backdrop-filter: blur(8px);
+  overflow: hidden;
+  transition: border-color 0.25s ease, opacity 0.4s ease, box-shadow 0.25s ease;
+}
+.path-idea:hover {
+  border-color: var(--path-idea);
+}
+.path-idea.is-focused {
+  border-color: var(--path-idea);
+  box-shadow: 0 0 0 3px var(--path-idea-soft);
+}
+.path-idea.is-suggested {
+  border-style: dashed;
+}
+.path-idea.is-done {
+  border-color: var(--path-edge);
+  background: rgba(24, 20, 44, 0.86);
+}
+.path-idea.is-dim {
+  opacity: 0.26;
+}
+.path-idea-body {
+  padding: 9px 12px;
+  border: 0;
+  background: none;
+  color: var(--path-ink);
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+.path-idea-grow {
+  flex: none;
+  width: 30px;
+  border: 0;
+  border-left: 1px solid rgba(62, 208, 138, 0.26);
+  background: rgba(62, 208, 138, 0.1);
+  color: var(--path-idea);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+.path-idea-grow:hover {
+  background: rgba(62, 208, 138, 0.22);
+}
+
+/* ─── Controls ──────────────────────────────────────────────────────────── */
+
+.path-stage-controls {
+  position: absolute;
+  left: 20px;
+  bottom: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  z-index: 2;
+}
+
+.path-chip,
+.path-zoom button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 13px;
+  border: 1px solid var(--path-edge-strong);
+  border-radius: 999px;
+  background: var(--path-panel);
+  backdrop-filter: blur(10px);
+  color: var(--path-ink);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.path-chip:hover,
+.path-zoom button:hover {
+  border-color: var(--path-goal);
+}
+.path-chip.is-accent {
+  border-color: rgba(62, 208, 138, 0.45);
+  color: var(--path-idea);
+}
+.path-chip:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.path-zoom {
+  display: inline-flex;
+  gap: 4px;
+}
+.path-zoom button {
+  min-width: 34px;
+  justify-content: center;
+  padding: 0 10px;
+}
+
+/* ─── Inspector ─────────────────────────────────────────────────────────── */
+
+.path-inspector {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  bottom: 18px;
+  width: min(360px, calc(100% - 36px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid var(--path-edge-strong);
+  border-radius: var(--path-radius);
+  background: var(--path-panel);
+  backdrop-filter: blur(18px);
+  box-shadow: -24px 0 60px rgba(6, 4, 14, 0.5);
+  overflow-y: auto;
+  z-index: 3;
+}
+
+.path-inspector-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.path-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.path-crumbs button {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--path-ink-2);
+  font-family: var(--font-body);
+  font-size: 12px;
+  cursor: pointer;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.path-crumbs button:hover {
+  color: var(--path-ink);
+}
+.path-crumbs button + button::before {
+  content: "/";
+  margin-right: 4px;
+  color: var(--path-edge-strong);
+}
+.path-inspector-close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--path-edge);
+  border-radius: 8px;
+  background: none;
+  color: var(--path-ink-2);
+  cursor: pointer;
+}
+.path-inspector-close:hover {
+  color: var(--path-ink);
+  border-color: var(--path-edge-strong);
+}
+
+.path-inspector-kind {
+  margin: 0;
+  color: var(--path-idea);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.path-inspector-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+}
+.path-inspector-body {
+  margin: 0;
+  color: var(--path-ink-2);
+  font-size: 13.5px;
+  line-height: 1.55;
+  max-width: 60ch;
+}
+
+.path-facts {
+  display: grid;
+  gap: 8px;
+  margin: 2px 0 0;
+  padding: 12px;
+  border: 1px solid var(--path-edge);
+  border-radius: 12px;
+}
+.path-facts div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.path-facts dt {
+  color: var(--path-ink-2);
+  font-size: 12px;
+}
+.path-facts dd {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.path-inspector-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 12px;
+}
+.path-inspector-note {
+  margin: 0;
+  color: var(--path-ink-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.path-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 13px;
+  border: 1px solid var(--path-edge-strong);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--path-ink);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.12s ease;
+}
+.path-btn:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+.path-btn:active {
+  transform: translateY(1px);
+}
+.path-btn.is-primary {
+  background: var(--path-idea);
+  border-color: var(--path-idea);
+  color: #06281b;
+  font-weight: 600;
+}
+.path-btn.is-primary:hover {
+  background: #52dd9a;
+}
+.path-btn.is-accent {
+  border-color: rgba(62, 208, 138, 0.45);
+  color: var(--path-idea);
+}
+.path-btn.is-quiet {
+  border-color: transparent;
+  color: var(--path-ink-2);
+}
+.path-btn.is-quiet:hover {
+  color: var(--path-ink);
+}
+.path-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* ─── Forms, empty and loading ──────────────────────────────────────────── */
+
+.path-form {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  width: min(560px, calc(100% - 36px));
+  padding: 20px;
+  border: 1px solid var(--path-edge-strong);
+  border-radius: var(--path-radius);
+  background: var(--path-panel);
+  backdrop-filter: blur(18px);
+  z-index: 4;
+}
+.path-form h2 {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+}
+.path-form-wide {
+  grid-column: 1 / -1;
+}
+.path-form label,
+.path-setup label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.path-form label span,
+.path-setup label span {
+  color: var(--path-ink-2);
+  font-size: 12px;
+}
+.path-form input,
+.path-form select,
+.path-setup input {
+  height: 38px;
+  padding: 0 11px;
+  border: 1px solid var(--path-edge-strong);
+  border-radius: 10px;
+  background: rgba(10, 8, 18, 0.6);
+  color: var(--path-ink);
+  font-family: var(--font-body);
+  font-size: 13.5px;
+}
+.path-form input::placeholder,
+.path-setup input::placeholder {
+  color: rgba(226, 217, 252, 0.45);
+}
+.path-form input:focus-visible,
+.path-form select:focus-visible,
+.path-setup input:focus-visible {
+  outline: 2px solid var(--path-goal);
+  outline-offset: 1px;
+}
+.path-form-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #ff8f8f;
+  font-size: 12.5px;
+}
+.path-form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.path-page.is-setup,
+.path-page.is-loading {
+  align-items: center;
+  justify-content: center;
+}
+.path-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(440px, calc(100% - 36px));
+  padding: 28px;
+  border: 1px solid var(--path-edge-strong);
+  border-radius: var(--path-radius);
+  background: var(--path-panel);
+  backdrop-filter: blur(18px);
+}
+.path-setup h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 25px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.path-setup p {
+  margin: 0;
+  color: var(--path-ink-2);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.path-empty {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  transform: translateX(-50%);
+  width: min(420px, calc(100% - 36px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 22px;
+  border: 1px solid var(--path-edge);
+  border-radius: var(--path-radius);
+  background: rgba(20, 16, 38, 0.8);
+  backdrop-filter: blur(14px);
+  text-align: center;
+  z-index: 2;
+}
+.path-empty h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+}
+.path-empty p {
+  margin: 0;
+  color: var(--path-ink-2);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* The loading state is the drawing's own shape, not a spinner. */
+.path-skeleton {
+  position: relative;
+  width: 180px;
+  height: 180px;
+}
+.path-skeleton-ring {
+  position: absolute;
+  inset: 22%;
+  border: 1px solid var(--path-edge);
+  border-radius: 50%;
+  animation: path-breathe 2.4s ease-in-out infinite;
+}
+.path-skeleton-ring.is-outer {
+  inset: 0;
+  border-color: var(--path-edge-strong);
+  animation-delay: 0.3s;
+}
+@keyframes path-breathe {
+  0%, 100% { opacity: 0.25; transform: scale(0.97); }
+  50% { opacity: 0.7; transform: scale(1); }
+}
+.path-loading-note {
+  margin-top: 16px;
+  color: var(--path-ink-2);
+  font-size: 13px;
+}
+
+.path-error {
+  margin: 0;
+  color: #ff8f8f;
+  font-size: 13px;
+}
+.path-error.is-floating {
+  position: absolute;
+  left: 50%;
+  top: 18px;
+  transform: translateX(-50%);
+  padding: 9px 14px;
+  border: 1px solid rgba(255, 143, 143, 0.4);
+  border-radius: 10px;
+  background: var(--path-panel);
+  backdrop-filter: blur(12px);
+  z-index: 5;
+}
+
+/* ─── Narrow screens ────────────────────────────────────────────────────── */
+
+@media (max-width: 860px) {
+  /* The fixed mobile nav sits over the bottom of the viewport. */
+  .path-page {
+    min-height: calc(100dvh - var(--topbar-h, 64px) - 66px);
+  }
+  .path-inspector {
+    top: auto;
+    right: 12px;
+    left: 12px;
+    bottom: 12px;
+    width: auto;
+    max-height: 56%;
+  }
+  .path-stage-controls {
+    left: 12px;
+    bottom: auto;
+    top: 12px;
+  }
+  .path-form {
+    grid-template-columns: 1fr 1fr;
+    bottom: 12px;
+  }
+}
+
+/* ─── Reduced motion ────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .path-tangent-pulse,
+  .path-skeleton-ring {
+    animation: none;
+  }
+  .path-ring,
+  .path-spoke,
+  .path-tangent-line,
+  .path-work,
+  .path-idea,
+  .path-btn {
+    transition: none;
+  }
+}

@@ -191,38 +191,73 @@ export interface PendingConfirmation {
 
 
 // ─── Tangents: your current work, and the lines that branch off it ───────────
-// An Anchor is something you already have — a club, an award, a course, a
-// project. A TangentIdea is a branch off one anchor that moves it toward the
-// Goal. The geometry is the product: anchors sit on the circle, tangents leave
-// it at exactly one point and rise toward the goal.
+// Path is a recursive tree rendered as circles and tangents. The goal sits at
+// the centre; what you already have sits on the circle around it; each idea
+// leaves the circle as a tangent at exactly one point; an idea you keep becomes
+// the centre of the next circle. See lib/path-layout.ts for the geometry.
 
 export type AnchorKind = "ec" | "award" | "course" | "project";
 
-export type Anchor = {
+/** A branch is suggested until you act on it. */
+export type TangentStatus = "suggested" | "accepted" | "done" | "dismissed";
+
+/**
+ * One node of the Path tree.
+ *
+ * The tree alternates by depth, which is what produces the drawing:
+ *
+ *   depth 0  the goal, at the centre of the first circle
+ *   depth 1  work you already have, sitting ON that circle
+ *   depth 2  ideas, each at the end of its own tangent off a piece of work
+ *   depth 3  work on the circle that grew from an idea you kept
+ *   ...and so on, forever.
+ *
+ * `kind` records which of those a node is so the API can validate a move
+ * without walking to the root every time.
+ */
+export type PathNodeKind = "work" | "idea";
+
+export type PathNode = {
+  id: string;
+  /** null means it hangs off the goal, at the centre of the root circle. */
+  parentId: string | null;
+  kind: PathNodeKind;
+  title: string;
+  /** Work: your role or the result. Idea: the concrete move. */
+  detail?: string;
+  /** Ideas only: why this angle is worth the hours. */
+  rationale?: string;
+  /** Ideas only: the shape of the commitment, e.g. "2 hrs/wk for 6 weeks". */
+  effort?: string;
+  /** Work only. */
+  category?: AnchorKind;
+  hoursPerWeek?: number;
+  years?: number;
+  status: TangentStatus;
+  /** Whether Tangent proposed it or you wrote it. */
+  origin: "tangent" | "you";
+  createdAt: string;
+};
+
+// Superseded by PathNode above. Retained so a workspace saved before the
+// recursive model can be read once and migrated; nothing writes these.
+export type LegacyAnchor = {
   id: string;
   title: string;
   kind: AnchorKind;
-  /** Role, result, or one line of what it actually is. */
   detail?: string;
   hoursPerWeek?: number;
-  /** How many school years it has run. */
   years?: number;
   createdAt: string;
 };
 
-export type TangentStatus = "suggested" | "accepted" | "done" | "dismissed";
-
-export type TangentIdea = {
+export type LegacyTangentIdea = {
   id: string;
   anchorId: string;
-  /** The branch itself — one concrete move. */
   title: string;
-  /** Why this angle moves the anchor toward the goal. */
   rationale: string;
-  /** Rough shape of the commitment, e.g. "2 hrs/wk for 6 weeks". */
   effort: string;
   status: TangentStatus;
-  /** Where it came from: Tangent proposed it, or you wrote it. */
   origin: "tangent" | "you";
   createdAt: string;
 };

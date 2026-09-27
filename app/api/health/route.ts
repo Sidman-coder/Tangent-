@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { backendName, isShared } from "@/lib/kv";
 import { currentWorkspaceId } from "@/lib/workspace";
-import { getAppState, getTangentSpace } from "@/lib/store";
+import { getAppState, getPathSpace } from "@/lib/store";
 import { withWorkspaceRoute } from "@/lib/with-workspace";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 // this a few times shows several instances agreeing on the same workspace.
 async function GETHandler() {
   const state = getAppState();
-  const space = getTangentSpace();
+  const space = getPathSpace();
   return NextResponse.json({
     ok: true,
     storage: backendName(),
@@ -25,8 +25,7 @@ async function GETHandler() {
     counts: {
       tasks: state.tasks.length,
       plans: state.plans.length,
-      anchors: space.anchors.length,
-      tangents: space.tangents.length,
+      pathNodes: space.nodes.length,
       goal: space.goal ? 1 : 0,
     },
     hasAnthropicKey: Boolean(process.env.ANTHROPIC_API_KEY),

@@ -149,7 +149,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <div className="shell-content">
+        {/* Path is a full-bleed instrument: it sets its own ground and needs the
+            whole area, so it opts out of the padded, max-width content column. */}
+        <div className={`shell-content${pathname === "/path" ? " is-bleed" : ""}`}>
           <div className="content-inner">{children}</div>
         </div>
       </div>
