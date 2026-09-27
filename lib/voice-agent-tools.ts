@@ -12,6 +12,7 @@ import { getRecentEmails, getEmailById } from "@/lib/gmail";
 import { addDaysYMD, getUserToday, promptDateContext } from "@/lib/time";
 import { getUpcomingEvents, getEventsForDate } from "@/lib/calendar";
 import { currentUserIsOwner } from "@/lib/request-context";
+import { resolvePlanTitle } from "@/lib/plan-title";
 
 const MODEL = "claude-sonnet-4-5";
 const MAX_TOOL_TURNS = 8;
@@ -186,7 +187,7 @@ const TOOLS = [
     input_schema: {
       type: "object",
       properties: {
-        title: { type: "string" },
+        title: { type: "string", description: "Short name for the whole plan, 2-6 words, specific to the goal" },
         tasks: {
           type: "array",
           items: {
@@ -319,7 +320,7 @@ type ToolExecResult = {
   pending?: { id: string; kind: string; message: string };
 };
 
-async function executeTool(name: string, input: Record<string, unknown>): Promise<ToolExecResult> {
+async function executeTool(name: string, input: Record<string, unknown>, requestText: string): Promise<ToolExecResult> {
   const today = getUserToday(await getUserTimezone());
 
   // Gmail / Google Calendar run on the owner's credentials, so only the owner
@@ -450,7 +451,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
     }
 
     case "create_plan": {
-      const planTitle = typeof input.title === "string" && input.title ? input.title : "New Plan";
+      const planTitle = resolvePlanTitle(input.title, requestText);
       const rawTasks = Array.isArray(input.tasks) ? (input.tasks as Record<string, unknown>[]) : [];
       const taskIds: string[] = [];
       let skippedDuplicates = 0;
@@ -609,7 +610,9 @@ function sourceLabelForTool(name: string): string | null {
 }
 
 /** Runs a genuine multi-turn Claude tool-use loop: fetch real data, then act on it. */
-export async function runVoiceAgentToolLoop(userText: string): Promise<ToolLoopResult> {
+/** `requestText` is the student's own words (without appended chat context),
+ *  used to name a plan when the model gives no usable title. */
+export async function runVoiceAgentToolLoop(userText: string, requestText = userText): Promise<ToolLoopResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("Missing ANTHROPIC_API_KEY");
 
@@ -666,7 +669,7 @@ export async function runVoiceAgentToolLoop(userText: string): Promise<ToolLoopR
       if (sourceLabel) sourcesChecked.add(sourceLabel);
       let resultPayload: unknown;
       try {
-        const exec = await executeTool(block.name, block.input);
+        const exec = await executeTool(block.name, block.input, requestText);
         resultPayload = exec.data;
         if (exec.action) lastAction = exec.action;
         if (exec.task) lastTask = exec.task;

@@ -20,6 +20,7 @@ import { addDaysYMD, daysBetweenYMD, localNow, promptDateContext, singleRelative
 import type { TaskKind } from "@/lib/types";
 import { needsAgentTools, runVoiceAgentToolLoop } from "@/lib/voice-agent-tools";
 import { extractStructuredJson } from "@/lib/anthropic-json";
+import { resolvePlanTitle } from "@/lib/plan-title";
 
 const RESOURCE_ITEM_SCHEMA = {
   type: "object",
@@ -87,17 +88,18 @@ const VOICE_COMMAND_SCHEMA = {
 // intent (action: create_plan); handleVoiceText then re-enters with forcePlan to
 // generate the tasks via the separate, simpler PLAN_SCHEMA below (confirmed
 // independently safe despite nesting PLAN_TASK_ITEM_SCHEMA/RESOURCE_ITEM_SCHEMA, since it only
-// has 3 top-level properties).
+// has 4 top-level properties).
 
 /** Shape returned by the dedicated two-step plan-generation call (planSystemPrompt). */
 const PLAN_SCHEMA = {
   type: "object",
   properties: {
     action: { const: "create_plan" },
+    title: { type: "string" },
     response: { type: "string" },
     tasks: { type: "array", items: PLAN_TASK_ITEM_SCHEMA },
   },
-  required: ["action", "response", "tasks"],
+  required: ["action", "title", "response", "tasks"],
   additionalProperties: false,
 } as const;
 
@@ -472,7 +474,7 @@ export async function handleVoiceText(
     if (needsAgentTools(text)) {
       console.log("[api/voice] Detected Gmail/Canvas/Calendar command — running agent tool loop");
       try {
-        const result = await runVoiceAgentToolLoop(withContext(text));
+        const result = await runVoiceAgentToolLoop(withContext(text), text);
         await addVoiceLog({ text, response: result.response, action: result.action, ok: true });
         console.log("[api/voice] Agent tool loop finished — action:", result.action);
         if (result.action === "confirm_required" && result.pending) {
@@ -645,7 +647,7 @@ Expected task count: ${expectedTaskCount}
 Generate exactly ${expectedTaskCount} tasks spaced ${taskInterval} day${taskInterval > 1 ? "s" : ""} apart starting from ${startDate}.
 
 Return exactly this JSON structure:
-{"action":"create_plan","response":"Plan created with ${expectedTaskCount} tasks","tasks":[{"title":"Task name","date":"YYYY-MM-DD","time":"HH:MM","calendarId":"cal_work|cal_personal|cal_study|cal_all","notes":"structured notes following the NOTES FORMAT below","startAction":"one specific concrete action under 20 words, starting with a verb","resources":[{"label":"Site — exact page title","url":"https://exact/url"}]}]}
+{"action":"create_plan","title":"Short plan name","response":"Plan created with ${expectedTaskCount} tasks","tasks":[{"title":"Task name","date":"YYYY-MM-DD","time":"HH:MM","calendarId":"cal_work|cal_personal|cal_study|cal_all","notes":"structured notes following the NOTES FORMAT below","startAction":"one specific concrete action under 20 words, starting with a verb","resources":[{"label":"Site — exact page title","url":"https://exact/url"}]}]}
 
 CALENDARID — include a "calendarId" on every task. Work related tasks (meetings, calls, projects, deadlines, client work) use cal_work. Personal tasks (gym, health, hobbies, family, errands) use cal_personal. Study/school tasks (assignments, studying, courses, homework) use cal_study. If completely unclear use cal_all.
 
@@ -677,6 +679,8 @@ It must reference something real — a specific resource linked in the resources
 It must be under 20 words.
 It must start with a verb — Watch, Read, Open, Write, Complete, Solve, Review, Draft.
 Never say "Start by" or "Begin with" — just give the direct action.
+
+TITLE — a short name for the whole plan, 2 to 6 words, specific to the goal (e.g. "Chess Tactics Fundamentals", "AP Chem Unit 4 Review"). Never "New Plan" or "Study Plan".
 
 Rules:
 - Generate exactly ${expectedTaskCount} tasks
@@ -774,7 +778,7 @@ Rules:
               console.log("[api/voice] Plan task added:", task.title, "on", task.date);
             }
 
-            const planTitle = typeof cmd.title === "string" ? cmd.title : "New Plan";
+            const planTitle = resolvePlanTitle(cmd.title, text);
             const plan = await addPlan({ title: planTitle, description: "", taskIds, taskCount: taskIds.length });
             for (const id of taskIds) {
               await updateTask(id, { planId: plan.id });
