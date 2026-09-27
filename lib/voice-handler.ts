@@ -15,11 +15,12 @@
 // Next.js route files may only export HTTP method handlers, so this can't
 // live in route.ts itself.
 import { NextResponse } from "next/server";
-import { addTask, addPlan, addRecurringTask, completeTask, deleteTask, addVoiceLog, updateTask, getAppState, getAllTasks, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, addPendingConfirmation, getUserTimezone } from "@/lib/store";
-import { addDaysYMD, daysBetweenYMD, localNow, promptDateContext, singleRelativeDay, ymdFromParts } from "@/lib/time";
+import { addTask, addPlanWithTasks, addRecurringTask, completeTask, deleteTask, addVoiceLog, getAppState, getAllTasks, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, addPendingConfirmation, getUserTimezone } from "@/lib/store";
+import { addDaysYMD, localNow, promptDateContext, singleRelativeDay, ymdFromParts } from "@/lib/time";
 import type { TaskKind } from "@/lib/types";
 import { needsAgentTools, runVoiceAgentToolLoop } from "@/lib/voice-agent-tools";
 import { extractStructuredJson } from "@/lib/anthropic-json";
+import { generatePlan, isClearPlanRequest, planDates } from "@/lib/ai/plan";
 import { resolvePlanTitle } from "@/lib/plan-title";
 import { perfCount, perfSpan, withPerfTrace } from "@/lib/perf";
 import { callClaude } from "@/lib/ai/call";
@@ -31,21 +32,6 @@ const RESOURCE_ITEM_SCHEMA = {
     url: { type: "string" },
   },
   required: ["label", "url"],
-  additionalProperties: false,
-} as const;
-
-const PLAN_TASK_ITEM_SCHEMA = {
-  type: "object",
-  properties: {
-    title: { type: "string" },
-    date: { type: "string" },
-    time: { type: "string" },
-    calendarId: { type: "string" },
-    notes: { type: "string" },
-    startAction: { type: "string" },
-    resources: { type: "array", items: RESOURCE_ITEM_SCHEMA },
-  },
-  required: ["title", "date"],
   additionalProperties: false,
 } as const;
 
@@ -88,29 +74,7 @@ const VOICE_COMMAND_SCHEMA = {
 // move_tasks handling in handleVoiceText and the MOVE TASKS prompt section
 // below. This schema also has no "tasks" field, so it can only signal plan
 // intent (action: create_plan); handleVoiceText then re-enters with forcePlan to
-// generate the tasks via the separate, simpler PLAN_SCHEMA below (confirmed
-// independently safe despite nesting PLAN_TASK_ITEM_SCHEMA/RESOURCE_ITEM_SCHEMA, since it only
-// has 4 top-level properties).
-
-/** Shape returned by the dedicated two-step plan-generation call (planSystemPrompt). */
-const PLAN_SCHEMA = {
-  type: "object",
-  properties: {
-    action: { const: "create_plan" },
-    title: { type: "string" },
-    response: { type: "string" },
-    tasks: { type: "array", items: PLAN_TASK_ITEM_SCHEMA },
-  },
-  required: ["action", "title", "response", "tasks"],
-  additionalProperties: false,
-} as const;
-
-/** Number of tasks/sessions a plan summary sentence promises (e.g. "18 focused sessions"), or null if it names none. */
-function claimedSessionCount(summary: unknown): number | null {
-  if (typeof summary !== "string") return null;
-  const m = summary.match(/(\d+)\s+(?:[a-z-]+\s+){0,2}(?:tasks?|sessions?)\b/i);
-  return m ? Number(m[1]) : null;
-}
+// generate the tasks with the two-stage generator in lib/ai/plan.ts.
 
 /** Clearing the whole schedule always requires confirmation — it's total and irreversible
  *  from the user's perspective without the undo system. Shared by all three call sites
@@ -403,6 +367,18 @@ async function findTaskByTitle(title: string) {
 /** Shared voice-command handler — used by both the pen/text pipeline (app/api/voice/route.ts)
  *  and the browser hold-to-record endpoint (app/api/voice-browser/route.ts), so the
  *  downstream Claude tool-use logic is only implemented once. */
+/** Progress while a plan is generated, for callers that stream it (/api/chat). */
+export type PlanProgress =
+  | { type: "plan_outline"; title: string; taskCount: number }
+  | { type: "plan_task"; index: number; task: { title: string; date: string; time: string } };
+
+export type VoiceOptions = {
+  forcePlan?: boolean;
+  context?: string;
+  /** Called as the plan outline and each task arrive. Nothing is saved until the end. */
+  onProgress?: (event: PlanProgress) => void;
+};
+
 /**
  * `opts.context` is earlier conversation (e.g. a plan drafted in Plan mode) that
  * the model may draw on. It only reaches the LLM prompts — never the keyword
@@ -410,7 +386,7 @@ async function findTaskByTitle(title: string) {
  */
 export async function handleVoiceText(
   text: string,
-  opts: { forcePlan?: boolean; context?: string } = {}
+  opts: VoiceOptions = {}
 ): Promise<NextResponse> {
   // Dev-only timing (lib/perf.ts); the plan path re-enters here and joins the same trace.
   if (opts.forcePlan) perfCount("pipeline re-entries");
@@ -419,14 +395,13 @@ export async function handleVoiceText(
 
 async function handleVoiceTextInner(
   text: string,
-  opts: { forcePlan?: boolean; context?: string }
+  opts: VoiceOptions
 ): Promise<NextResponse> {
   const withContext = (t: string) =>
     opts.context
       ? `${t}\n\nEarlier in this conversation (use it for what "it", "that", or "this plan" refers to):\n${opts.context}`
       : t;
   try {
-    console.log("[api/voice] Handler called. Task count:", (await getAllTasks()).length);
     const tz = await getUserTimezone();
     const local = localNow(tz);
     console.log("[api/voice] POST received text:", text);
@@ -525,7 +500,7 @@ async function handleVoiceTextInner(
     const today = local.date;
 
     // ── Two-step plan approach (FIX 1 + FIX 2) ───────────────────────────────
-    const isPlanRequest = opts.forcePlan || classifiedIntent === "goal_plan" || /plan|study|workout|routine|schedule|prepare|curriculum|course|week|month|learn|guide/i.test(text);
+    const isPlanRequest = opts.forcePlan || classifiedIntent === "goal_plan" || isClearPlanRequest(text) || /plan|study|workout|routine|schedule|prepare|curriculum|course|week|month|learn|guide/i.test(text);
 
     if (isPlanRequest) {
       console.log("[api/voice] Detected plan request — using two-step approach");
@@ -611,15 +586,17 @@ async function handleVoiceTextInner(
       }
 
       // Duration word detection — overrides date extraction when explicit duration is mentioned
+      // Singular and hyphenated forms count too: "2 week plan", "3-month plan".
       const durationPatterns: [RegExp, number][] = [
-        [/\b(one year|1 year|yearly|a year|365 days)\b/i, 365],
-        [/\b(half year|6 months|six months|180 days)\b/i, 180],
-        [/\b(3 months|three months|90 days|quarter)\b/i, 90],
-        [/\b(2 months|two months|60 days)\b/i, 60],
-        [/\b(one month|1 month|a month|monthly|30 days)\b/i, 30],
-        [/\b(3 weeks|three weeks|21 days)\b/i, 21],
-        [/\b(2 weeks|two weeks|fortnight|14 days)\b/i, 14],
-        [/\b(one week|1 week|a week|weekly|7 days)\b/i, 7],
+        [/\b((one|1|a)[- ]year|yearly|365 days)\b/i, 365],
+        [/\b(half[- ]year|(6|six)[- ]months?|180 days)\b/i, 180],
+        [/\b((3|three)[- ]months?|90 days|quarter)\b/i, 90],
+        [/\b((2|two)[- ]months?|60 days)\b/i, 60],
+        [/\b((one|1|a)[- ]month|monthly|30 days)\b/i, 30],
+        [/\b((4|four)[- ]weeks?|28 days)\b/i, 28],
+        [/\b((3|three)[- ]weeks?|21 days)\b/i, 21],
+        [/\b((2|two)[- ]weeks?|fortnight|14 days)\b/i, 14],
+        [/\b((one|1|a)[- ]week|weekly|7 days)\b/i, 7],
       ];
 
       for (const [pattern, days] of durationPatterns) {
@@ -632,191 +609,60 @@ async function handleVoiceTextInner(
       }
       console.log("[api/voice] Final date range:", startDate, "to", endDate);
 
-      // Compute exact day count
-      const dayCount = daysBetweenYMD(startDate, endDate) + 1;
-      console.log("[api/voice] Day count:", dayCount, "from", startDate, "to", endDate);
+      // Session dates are fixed here (lib/ai/plan.ts sessionInterval), not by the model.
+      const dates = planDates(startDate, endDate);
+      console.log("[api/voice] Plan sessions:", dates.length, "from", startDate, "to", endDate);
 
-      // Task interval scaling — prevents excessive tasks for long plans
-      let taskInterval = 1;
-      if (dayCount <= 14) taskInterval = 1;
-      else if (dayCount <= 30) taskInterval = 2;
-      else if (dayCount <= 90) taskInterval = 3;
-      else if (dayCount <= 180) taskInterval = 5;
-      else taskInterval = 7;
-      const expectedTaskCount = Math.ceil(dayCount / taskInterval);
-      console.log("[api/voice] taskInterval:", taskInterval, "| expectedTaskCount:", expectedTaskCount);
+      const generated = await perfSpan("plan: generate", () =>
+        generatePlan({
+          request: withContext(text),
+          dateContext: promptDateContext(tz),
+          dates,
+          onOutline: (o) => opts.onProgress?.({ type: "plan_outline", title: resolvePlanTitle(o.title, text), taskCount: o.taskCount }),
+          onTask: (index, t) => opts.onProgress?.({ type: "plan_task", index, task: { title: t.title, date: t.date, time: t.time } }),
+        })
+      );
+      const budgetMessage = !generated.ok && generated.budgetExceeded ? generated.error : null;
+      if (!generated.ok) console.error("[api/voice] Plan generation failed:", generated.error);
 
-      const planSystemPrompt = `You are a task generator.
-
-Today is ${today}. ${promptDateContext(tz)}
-Start date: ${startDate}
-End date: ${endDate}
-Total days: ${dayCount}
-Task interval: every ${taskInterval} day${taskInterval > 1 ? "s" : ""}
-Expected task count: ${expectedTaskCount}
-
-Generate exactly ${expectedTaskCount} tasks spaced ${taskInterval} day${taskInterval > 1 ? "s" : ""} apart starting from ${startDate}.
-
-Return exactly this JSON structure:
-{"action":"create_plan","title":"Short plan name","response":"Plan created with ${expectedTaskCount} tasks","tasks":[{"title":"Task name","date":"YYYY-MM-DD","time":"HH:MM","calendarId":"cal_work|cal_personal|cal_study|cal_all","notes":"structured notes following the NOTES FORMAT below","startAction":"one specific concrete action under 20 words, starting with a verb","resources":[{"label":"Site — exact page title","url":"https://exact/url"}]}]}
-
-CALENDARID — include a "calendarId" on every task. Work related tasks (meetings, calls, projects, deadlines, client work) use cal_work. Personal tasks (gym, health, hobbies, family, errands) use cal_personal. Study/school tasks (assignments, studying, courses, homework) use cal_study. If completely unclear use cal_all.
-
-NOTES FORMAT — every task's notes field must follow this exact structure:
-GOAL: One sentence — what you will have achieved by the end of this session.
-FOCUS: 2 to 3 sentences — exactly what to work on, in what order, and how to approach it. Be specific to the actual topic, not generic.
-TIME: One sentence — realistic time estimate and how to split it (example: 45 mins total — 20 mins reading, 25 mins practice problems).
-The notes field must contain only plain readable text with no links or URLs. Never include URLs inside the notes text itself.
-
-RESOURCES — find 2 to 3 specific pages from this approved list that best match this exact topic. Choose only the most relevant sources — do not include all of them. Use web search to find exact URLs, not homepage links:
-- Khan Academy: exact unit or exercise page
-- YouTube: exact video title and channel
-- Coursera: exact course page
-- MIT OpenCourseWare: exact lecture or problem set
-- Quizlet: exact study set if one exists for this topic
-- Crash Course: exact episode if one exists
-- Codecademy: exact lesson if topic is programming related
-- Google Scholar: exact paper if topic is research based
-- Desmos: only if topic involves math graphing
-Return task resources as a separate JSON array field called "resources" alongside the notes field.
-Each resource must be an object with these exact fields:
-{"label": "Khan Academy — Derivatives Introduction", "url": "https://www.khanacademy.org/exact/path/here"}
-Never include a site if you are not certain the specific page exists and is relevant.
-The resources array contains all links separately — never embed them in notes.
-
-STARTACTION — generate a "startAction" field for every task alongside title, date, time, notes, and resources.
-The startAction must be one specific concrete thing the user can do in the first 2 minutes to begin this task.
-It must reference something real — a specific resource linked in the resources array, a specific page number, a specific action, or a specific tool to open.
-It must be under 20 words.
-It must start with a verb — Watch, Read, Open, Write, Complete, Solve, Review, Draft.
-Never say "Start by" or "Begin with" — just give the direct action.
-
-TITLE — a short name for the whole plan, 2 to 6 words, specific to the goal (e.g. "Chess Tactics Fundamentals", "AP Chem Unit 4 Review"). Never "New Plan" or "Study Plan".
-
-Rules:
-- Generate exactly ${expectedTaskCount} tasks
-- First task on ${startDate}, last task on or before ${endDate}
-- Space tasks exactly ${taskInterval} day${taskInterval > 1 ? "s" : ""} apart
-- Make each task different and progressive — build skills/knowledge over time
-- Vary the times between 07:00 and 20:00
-- Keep each title under 7 words and make it specific`;
-
-      // A response that is schema-valid but empty, or whose own summary promises a
-      // different number of sessions than it returned, is treated as a failure and
-      // retried once — never reported to the user as a successful plan.
-      // Assigned inside the perfSpan callback below, so widen explicitly (TS does not track callback assignments).
-      let planJson = null as Record<string, unknown> | null;
-      let budgetMessage: string | null = null;
-      let rawTasks: unknown[] = [];
-      await perfSpan("plan: generate", async () => {
-      for (let attempt = 1; attempt <= 2 && rawTasks.length === 0; attempt++) {
-        if (attempt > 1) perfCount("planner retries");
-        const planResponse = await callClaude(
-          "plan",
-          {
-            system: planSystemPrompt,
-            messages: [{
-              role: "user",
-              content: `Create a plan from ${startDate} to ${endDate} (${dayCount} days, ${expectedTaskCount} tasks, one task every ${taskInterval} day${taskInterval > 1 ? "s" : ""}). Request: ${withContext(text)}`,
-            }],
-          },
-          { format: { type: "json_schema", schema: PLAN_SCHEMA } }
+      if (generated.ok && generated.tasks.length > 0) {
+        const planKind = inferPlanKind(text);
+        const calendarIds = new Map<string, string>();
+        for (const id of Array.from(new Set(generated.tasks.map((t) => t.calendarId)))) calendarIds.set(id, await resolveCalendarId(id));
+        // One insert for every task, with plan_id already set (store.addPlanWithTasks).
+        const { plan, tasks: created, skippedDuplicates } = await perfSpan(`plan: insert ${generated.tasks.length} tasks`, () =>
+          addPlanWithTasks(
+            { title: resolvePlanTitle(generated.title, text), description: "" },
+            generated.tasks.map((t) => ({
+              title: t.title,
+              date: t.date,
+              time: t.time,
+              kind: planKind,
+              completed: false,
+              calendarId: calendarIds.get(t.calendarId) ?? "cal_all",
+              notes: t.notes || undefined,
+              startAction: t.startAction || undefined,
+              resources: t.resources.length > 0 ? t.resources : undefined,
+            }))
+          )
         );
-        if (!planResponse.ok) {
-          console.error("[api/voice] Plan API call failed:", planResponse.status, "(attempt", attempt, ")");
-          if (planResponse.budgetExceeded) {
-            budgetMessage = planResponse.error;
-            break;
-          }
-          continue;
-        }
-        try {
-          planJson = extractStructuredJson<Record<string, unknown>>(planResponse.message);
-        } catch (e) {
-          console.error("[api/voice] Plan response parsing failed:", e instanceof Error ? e.message : e);
-          continue;
-        }
-        const candidate = Array.isArray(planJson.tasks) ? planJson.tasks : [];
-        const claimed = claimedSessionCount(planJson.response);
-        if (candidate.length === 0 || (claimed !== null && claimed !== candidate.length)) {
-          console.error("[api/voice] Plan response invalid — tasks:", candidate.length, "| claimed:", claimed, "| attempt", attempt);
-          continue;
-        }
-        rawTasks = candidate;
-      }
-      });
+        const taskIds = created.map((t) => t.id);
+        const record = await perfSpan("plan: undo record", () => recordAction("create_plan", `Created plan "${plan.title}" with ${taskIds.length} tasks`, {
+          addedTaskIds: taskIds,
+          addedPlanId: plan.id,
+        }));
 
-      {
-        if (planJson) {
-          const cmd = planJson;
-          if (rawTasks.length > 0) {
-            const taskIds: string[] = [];
-            let skippedDuplicates = 0;
-            const planKind = inferPlanKind(text);
-            await perfSpan(`plan: insert ${rawTasks.length} tasks`, async () => {
-            for (const rt of rawTasks) {
-              if (!rt || typeof rt !== "object") continue;
-              const t = rt as Record<string, unknown>;
-              const taskTitle = typeof t.title === "string" ? t.title.trim() : "";
-              if (!taskTitle) continue;
-              const taskDate = typeof t.date === "string" ? t.date : today;
-              const taskTime = typeof t.time === "string" ? t.time : "09:00";
-              const taskNotes = typeof t.notes === "string" ? t.notes.trim() : undefined;
-              const taskStartAction = typeof t.startAction === "string" ? t.startAction.trim() : undefined;
-              const taskResources = Array.isArray(t.resources)
-                ? (t.resources as unknown[]).filter(
-                    (r): r is { label: string; url: string } =>
-                      !!r && typeof r === "object" && typeof (r as Record<string, unknown>).label === "string" && typeof (r as Record<string, unknown>).url === "string"
-                  )
-                : undefined;
-              const taskCalendarId = await resolveCalendarId(typeof t.calendarId === "string" ? t.calendarId : undefined);
-              const task = await addTask({
-                title: taskTitle,
-                date: taskDate,
-                time: taskTime,
-                kind: planKind,
-                completed: false,
-                calendarId: taskCalendarId,
-                notes: taskNotes || undefined,
-                startAction: taskStartAction || undefined,
-                resources: taskResources && taskResources.length > 0 ? taskResources : undefined,
-              });
-              // Duplicates return a pre-existing task's id — excluded so undo never
-              // deletes a task the plan didn't actually create.
-              if (task.wasDuplicate) {
-                skippedDuplicates++;
-                continue;
-              }
-              taskIds.push(task.id);
-              console.log("[api/voice] Plan task added:", task.title, "on", task.date);
-            }
-            });
-
-            const planTitle = resolvePlanTitle(cmd.title, text);
-            const plan = await perfSpan("plan: add plan row", () => addPlan({ title: planTitle, description: "", taskIds, taskCount: taskIds.length }));
-            await perfSpan(`plan: link ${taskIds.length} tasks`, async () => {
-            for (const id of taskIds) {
-              await updateTask(id, { planId: plan.id });
-            }
-            });
-            const record = await perfSpan("plan: undo record", () => recordAction("create_plan", `Created plan "${plan.title}" with ${taskIds.length} tasks`, {
-              addedTaskIds: taskIds,
-              addedPlanId: plan.id,
-            }));
-
-            const dupSuffix = skippedDuplicates > 0 ? ` Skipped ${skippedDuplicates} duplicate${skippedDuplicates > 1 ? "s" : ""}.` : "";
-            await perfSpan("plan: voice log", () => addVoiceLog({ text, response: `Plan created with ${taskIds.length} tasks`, action: "create_plan", ok: true }));
-            return NextResponse.json({
-              ok: true,
-              action: "create_plan",
-              count: taskIds.length,
-              response: `Your plan has been created with ${taskIds.length} tasks added to your calendar!${dupSuffix}`,
-              plan: { id: plan.id, title: plan.title, taskCount: taskIds.length, color: plan.color },
-              actionId: record.id,
-              state: await perfSpan("plan: full app state", () => getAppState()),
-            });
-          }
-        }
+        const dupSuffix = skippedDuplicates > 0 ? ` Skipped ${skippedDuplicates} duplicate${skippedDuplicates > 1 ? "s" : ""}.` : "";
+        await perfSpan("plan: voice log", () => addVoiceLog({ text, response: `Plan created with ${taskIds.length} tasks`, action: "create_plan", ok: true }));
+        return NextResponse.json({
+          ok: true,
+          action: "create_plan",
+          count: taskIds.length,
+          response: `Your plan has been created with ${taskIds.length} tasks added to your calendar!${dupSuffix}`,
+          plan: { id: plan.id, title: plan.title, taskCount: taskIds.length, color: plan.color },
+          actionId: record.id,
+          state: await perfSpan("plan: full app state", () => getAppState()),
+        });
       }
 
       if (budgetMessage) {
@@ -1005,11 +851,11 @@ Rules:
 
     // ── Plan ──────────────────────────────────────────────────────────────────
     // VOICE_COMMAND_SCHEMA cannot carry a tasks array, so the model can only signal
-    // plan intent here. Hand off to the dedicated plan generator (PLAN_SCHEMA) instead
+    // plan intent here. Hand off to the plan generator (lib/ai/plan.ts) instead
     // of creating a plan with no tasks.
     if (action === "create_plan") {
       console.log("[api/voice] create_plan from standard path — delegating to plan generator");
-      return handleVoiceText(text, { forcePlan: true, context: opts.context });
+      return handleVoiceText(text, { ...opts, forcePlan: true });
     }
 
     // ── Clear all tasks ────────────────────────────────────────────────────────

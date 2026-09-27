@@ -15,6 +15,29 @@ export type Turn = {
   fresh?: boolean;
 };
 
+/** A plan being generated: its title as soon as the outline is back, then
+ *  each session as it's written (slots fill in any order). Not saved yet. */
+export type PlanProgressView = {
+  title: string;
+  taskCount: number;
+  tasks: ({ title: string; date: string; time: string } | null)[];
+};
+
+/** Applies one streamed /api/chat progress line to the live plan view. */
+export function applyPlanProgress(view: PlanProgressView | null, line: Record<string, unknown>): PlanProgressView | null {
+  if (line.type === "plan_outline" && typeof line.title === "string" && typeof line.taskCount === "number") {
+    const tasks = Array.from({ length: line.taskCount }, (_, i) => view?.tasks[i] ?? null);
+    return { title: line.title, taskCount: line.taskCount, tasks };
+  }
+  if (line.type === "plan_task" && typeof line.index === "number" && line.task && typeof line.task === "object") {
+    const base = view ?? { title: "", taskCount: 0, tasks: [] };
+    const tasks = base.tasks.slice();
+    tasks[line.index] = line.task as { title: string; date: string; time: string };
+    return { ...base, tasks };
+  }
+  return view;
+}
+
 /** "calendar" acts on the calendar; "plan" only talks a plan through. */
 export type ChatMode = "plan" | "calendar";
 
@@ -102,4 +125,45 @@ export function toolsForAction(action: string | null | undefined): string[] {
     default:
       return ["Assistant"];
   }
+}
+
+/** Reads an /api/chat reply. A streamed (NDJSON) reply passes each progress
+ *  line to onLine and resolves with its final {type:"result"} line; a plain
+ *  JSON reply (Plan mode, errors before the stream starts) resolves as is. */
+export async function readChatReply(res: Response, onLine: (line: Record<string, unknown>) => void): Promise<Record<string, unknown>> {
+  if (!(res.headers.get("content-type") ?? "").includes("ndjson") || !res.body) {
+    return (await res.json()) as Record<string, unknown>;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: Record<string, unknown> | null = null;
+  const handle = (raw: string) => {
+    if (!raw.trim()) return;
+    let line: Record<string, unknown>;
+    try {
+      line = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return;
+    }
+    if (line.type === "result") {
+      const { type: _type, ...rest } = line;
+      result = rest;
+    } else {
+      onLine(line);
+    }
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = buffer.indexOf("\n")) >= 0) {
+      handle(buffer.slice(0, nl));
+      buffer = buffer.slice(nl + 1);
+    }
+  }
+  handle(buffer + decoder.decode());
+  if (!result) throw new Error("The reply was cut off. Check your calendar before trying again.");
+  return result;
 }

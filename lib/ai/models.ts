@@ -54,8 +54,13 @@ export const AI_TASKS = {
   voiceCommand: { feature: "classify", tier: "FAST", maxTokens: 4096, temperature: 0, cacheTtl: "5m" },
   /** Same, with the shorter prompt after a 429. */
   voiceCommandRetry: { feature: "classify", tier: "FAST", maxTokens: 4096, temperature: 0 },
-  /** Multi-session plan (PLAN_SCHEMA). */
+  /** Multi-session plan in one call (PLAN_SCHEMA). Kept for the agent's create_plan tool. */
   plan: { feature: "plan", tier: "SMART", maxTokens: 4096, thinking: "disabled", cacheTtl: "5m" },
+  /** Plan stage 1: title + phase names/goals (lib/ai/plan.ts). Small and SMART: it sets the progression. */
+  planOutline: { feature: "plan", tier: "SMART", maxTokens: 300, thinking: "disabled" },
+  /** Plan stage 2: the sessions of one phase, run in parallel. FAST measured faster and
+   *  cheaper at equal quality (docs/tangent/perf-after.md); AI_PLAN_DETAIL_TIER=SMART overrides. */
+  planDetail: { feature: "plan", tier: "FAST", maxTokens: 2048, temperature: 0.7, thinking: "disabled" },
   /** Gmail/Canvas/calendar tool loop. */
   agent: { feature: "agent", tier: "SMART", maxTokens: 2048, thinking: "disabled", cacheTtl: "5m" },
   /** Plan-mode chat reply (talks a plan through, never acts). */

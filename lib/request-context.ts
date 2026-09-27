@@ -18,6 +18,8 @@ export type RequestContext = {
   email: string;
   /** Session client (RLS-enforced) for requests; service-role client for cron. */
   db: SupabaseClient;
+  /** Per-request read cache (see requestMemo). Dies with the request. */
+  memo?: Map<string, Promise<unknown>>;
 };
 
 const storage = new AsyncLocalStorage<RequestContext>();
@@ -30,6 +32,26 @@ export function getRequestContext(): RequestContext {
     );
   }
   return ctx;
+}
+
+/** Runs `load` once per request for `key` and shares the result, e.g. the
+ *  student's calendars, which one voice command used to read five times.
+ *  Scoped to the current student's context, so it can never leak across
+ *  students. A failed load is not cached. Writers call forgetMemo(key). */
+export function requestMemo<T>(key: string, load: () => Promise<T>): Promise<T> {
+  const ctx = getRequestContext();
+  ctx.memo ??= new Map();
+  const hit = ctx.memo.get(key);
+  if (hit) return hit as Promise<T>;
+  const p = load();
+  ctx.memo.set(key, p);
+  p.catch(() => ctx.memo?.delete(key));
+  return p;
+}
+
+/** Drops a cached read after a write that changes it. */
+export function forgetMemo(key: string): void {
+  getRequestContext().memo?.delete(key);
 }
 
 /** Whether the current student may use the owner's Google (Gmail / Calendar)

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { handleVoiceText } from "@/lib/voice-handler";
+import { handleVoiceText, type PlanProgress } from "@/lib/voice-handler";
 import { withUser } from "@/lib/request-context";
 import { extractContextFacts } from "@/lib/context-extract";
 import { getUserTimezone } from "@/lib/store";
@@ -57,10 +57,91 @@ Assistant: ${finalResponse}`, "chat").catch((e) => {
   });
 }
 
+/** Calendar mode: run the command through the voice pipeline and describe the result. */
+async function calendarReply(
+  messages: { role: "user" | "assistant"; content: string }[],
+  userText: string,
+  onProgress?: (event: PlanProgress) => void
+): Promise<Record<string, unknown>> {
+  // Step 1 — Execute command via voice pipeline. Called in-process: the old
+  // HTTP self-call to NEXT_PUBLIC_BASE_URL failed whenever the app wasn't on
+  // localhost:3000 (Vercel, another port), silently degrading to plain chat.
+  let voiceResponse = "";
+  let voiceAction = "";
+  let voiceOk = false;
+  let voiceError = "";
+  let voiceActionId: string | undefined;
+  let voicePending: { id: string; kind: string; message: string } | undefined;
+  let voiceSourcesChecked: string[] | undefined;
+  let voicePlan: { id: string; title: string; taskCount: number; color: string } | undefined;
+  let voiceCount: number | undefined;
+  try {
+    console.log("[api/chat] Calling voice pipeline:", userText);
+    const voiceRes = await handleVoiceText(userText, { context: conversationContext(messages), onProgress });
+    const voiceData = (await voiceRes.json()) as {
+      response?: string;
+      action?: string;
+      ok?: boolean;
+      error?: string;
+      actionId?: string;
+      pending?: { id: string; kind: string; message: string };
+      sourcesChecked?: string[];
+      plan?: { id: string; title: string; taskCount: number; color: string };
+      count?: number;
+    };
+    console.log("[api/chat] Voice pipeline result:", JSON.stringify(voiceData).slice(0, 300));
+    voiceResponse = voiceData.response ?? "";
+    voiceAction = voiceData.action ?? "";
+    voiceOk = voiceData.ok === true;
+    voiceError = voiceData.error ?? "";
+    voiceActionId = voiceData.actionId;
+    voicePending = voiceData.pending;
+    voicePlan = voiceData.plan;
+    voiceCount = voiceData.count;
+    voiceSourcesChecked = voiceData.sourcesChecked;
+  } catch (err) {
+    console.error("[api/chat] Voice pipeline error:", err);
+  }
+
+  if (voiceOk && voiceAction === "confirm_required" && voicePending) {
+    return {
+      message: voiceResponse.trim(),
+      action: voiceAction,
+      pending: voicePending,
+      ok: true,
+    };
+  }
+
+  if (voiceOk && voiceResponse.trim()) {
+    console.log("[api/chat] Voice pipeline succeeded, skipping Anthropic rephrase:", voiceResponse.slice(0, 100));
+    extractContextFireAndForget(userText, voiceResponse.trim());
+    return {
+      message: voiceResponse.trim(),
+      action: voiceAction,
+      actionId: voiceActionId,
+      sourcesChecked: voiceSourcesChecked,
+      plan: voicePlan,
+      recurringCount: voiceAction === "add_recurring_task" ? voiceCount : undefined,
+      ok: true,
+    };
+  }
+
+  // Step 2 — The pipeline did not act. Say so plainly: the previous fallback asked
+  // a plain chat model to "confirm it happened", which reported success for
+  // tasks that were never created.
+  const reason = voiceError || voiceResponse || "the task pipeline did not respond";
+  console.error("[api/chat] Voice pipeline did not act:", reason);
+  return {
+    message: `I couldn't add that to your calendar — ${reason}.`,
+    action: "error",
+    ok: true,
+  };
+}
+
 export const POST = withUser(async (req: Request) => {
   try {
     console.log("[api/chat] === CHAT REQUEST START ===");
-    const body = (await req.json()) as { messages?: unknown; mode?: unknown };
+    const body = (await req.json()) as { messages?: unknown; mode?: unknown; stream?: unknown };
     const mode: ChatMode = body.mode === "plan" ? "plan" : "calendar";
     const raw = body.messages;
     if (!Array.isArray(raw) || raw.length === 0) {
@@ -98,78 +179,28 @@ export const POST = withUser(async (req: Request) => {
       return NextResponse.json({ message: reply, action: "plan_reply", mode, ok: true });
     }
 
-    // Step 1 — Execute command via voice pipeline. Called in-process: the old
-    // HTTP self-call to NEXT_PUBLIC_BASE_URL failed whenever the app wasn't on
-    // localhost:3000 (Vercel, another port), silently degrading to plain chat.
-    let voiceResponse = "";
-    let voiceAction = "";
-    let voiceOk = false;
-    let voiceError = "";
-    let voiceActionId: string | undefined;
-    let voicePending: { id: string; kind: string; message: string } | undefined;
-    let voiceSourcesChecked: string[] | undefined;
-    let voicePlan: { id: string; title: string; taskCount: number; color: string } | undefined;
-    let voiceCount: number | undefined;
-    try {
-      console.log("[api/chat] Calling voice pipeline:", userText);
-      const voiceRes = await handleVoiceText(userText, { context: conversationContext(messages) });
-      const voiceData = (await voiceRes.json()) as {
-        response?: string;
-        action?: string;
-        ok?: boolean;
-        error?: string;
-        actionId?: string;
-        pending?: { id: string; kind: string; message: string };
-        sourcesChecked?: string[];
-        plan?: { id: string; title: string; taskCount: number; color: string };
-        count?: number;
-      };
-      console.log("[api/chat] Voice pipeline result:", JSON.stringify(voiceData).slice(0, 300));
-      voiceResponse = voiceData.response ?? "";
-      voiceAction = voiceData.action ?? "";
-      voiceOk = voiceData.ok === true;
-      voiceError = voiceData.error ?? "";
-      voiceActionId = voiceData.actionId;
-      voicePending = voiceData.pending;
-      voicePlan = voiceData.plan;
-      voiceCount = voiceData.count;
-      voiceSourcesChecked = voiceData.sourcesChecked;
-    } catch (err) {
-      console.error("[api/chat] Voice pipeline error:", err);
-    }
+    if (body.stream !== true) return NextResponse.json(await calendarReply(messages, userText));
 
-    if (voiceOk && voiceAction === "confirm_required" && voicePending) {
-      return NextResponse.json({
-        message: voiceResponse.trim(),
-        action: voiceAction,
-        pending: voicePending,
-        ok: true,
-      });
-    }
-
-    if (voiceOk && voiceResponse.trim()) {
-      console.log("[api/chat] Voice pipeline succeeded, skipping Anthropic rephrase:", voiceResponse.slice(0, 100));
-      extractContextFireAndForget(userText, voiceResponse.trim());
-      return NextResponse.json({
-        message: voiceResponse.trim(),
-        action: voiceAction,
-        actionId: voiceActionId,
-        sourcesChecked: voiceSourcesChecked,
-        plan: voicePlan,
-        recurringCount: voiceAction === "add_recurring_task" ? voiceCount : undefined,
-        ok: true,
-      });
-    }
-
-    // Step 2 — The pipeline did not act. Say so plainly: the previous fallback asked
-    // a plain chat model to "confirm it happened", which reported success for
-    // tasks that were never created.
-    const reason = voiceError || voiceResponse || "the task pipeline did not respond";
-    console.error("[api/chat] Voice pipeline did not act:", reason);
-    return NextResponse.json({
-      message: `I couldn't add that to your calendar — ${reason}.`,
-      action: "error",
-      ok: true,
+    // Streamed: one JSON object per line. Plan progress ({type:"plan_outline"},
+    // {type:"plan_task"}) as it's generated, then {type:"result", ...} with the
+    // same fields as the non-streamed reply. Tasks are only saved at the end.
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const send = (line: unknown) => controller.enqueue(encoder.encode(JSON.stringify(line) + "\n"));
+        try {
+          const result = await calendarReply(messages, userText, send);
+          send({ type: "result", ...result });
+        } catch (e) {
+          const message = e instanceof Error ? e.message : "Unknown error";
+          console.error("[api/chat] Unhandled error:", message);
+          send({ type: "result", ok: false, error: message });
+        }
+        controller.close();
+      },
+    });
+    return new Response(stream, {
+      headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" },
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";

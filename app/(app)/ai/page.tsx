@@ -8,10 +8,13 @@ import ChatThread from "@/components/console/ChatThread";
 import Composer from "@/components/console/Composer";
 import {
   actionLabel,
+  applyPlanProgress,
   cleanMessage,
+  readChatReply,
   toolsForAction,
   turnsFromMessages,
   type ChatMode,
+  type PlanProgressView,
   type Turn,
 } from "@/components/console/turns";
 import ModeSwitch from "@/components/console/ModeSwitch";
@@ -120,6 +123,7 @@ export default function AiPage() {
   const [pendingRequest, setPendingRequest] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [planProgress, setPlanProgress] = useState<PlanProgressView | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [voiceStatus, setVoiceStatus] = useState<VoiceCaptureStatus>("idle");
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -293,9 +297,10 @@ export default function AiPage() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history, mode: sendMode }),
+        body: JSON.stringify({ messages: history, mode: sendMode, stream: true }),
       });
-      const data = (await res.json()) as {
+      // Calendar mode streams NDJSON: plan progress lines, then {type:"result"}.
+      const data = (await readChatReply(res, (line) => setPlanProgress((v) => applyPlanProgress(v, line)))) as {
         ok?: boolean;
         message?: string;
         reply?: string;
@@ -384,6 +389,7 @@ export default function AiPage() {
     } finally {
       setBusy(false);
       setPendingRequest(null);
+      setPlanProgress(null);
       void loadSessions();
     }
   }, [input, busy, chatMode, activeSessionId, turns, refresh, linkAction, loadSessions, saveMessage]);
@@ -589,6 +595,7 @@ export default function AiPage() {
               turns={turns}
               busy={busy}
               pendingRequest={pendingRequest}
+              planProgress={planProgress}
               onConfirm={(turnId, pendingId, confirm) => void resolveConfirm(turnId, pendingId, confirm)}
               onUndone={() => void refresh()}
               mode={chatMode}

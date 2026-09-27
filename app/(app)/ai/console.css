@@ -448,6 +448,59 @@
   to { opacity: 1; transform: none; }
 }
 
+/* Plan being generated: title first, then sessions as they're written. */
+.tg-plan-live {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 3px;
+  min-width: 0;
+}
+
+.tg-plan-live-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0;
+  color: var(--text);
+  font: 400 14.5px/1.5 var(--font-body);
+}
+
+.tg-plan-live-status {
+  color: var(--text-2);
+}
+
+.tg-plan-live-count {
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tg-plan-live-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tg-plan-live-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  color: var(--text);
+  font: 400 13.5px/1.45 var(--font-body);
+  animation: tg-step-in 0.3s ease both;
+}
+
+.tg-plan-live-when {
+  min-width: 132px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
 .tg-msg-mark.is-working svg {
   animation: tg-write 1.4s ease-in-out infinite;
   transform-origin: 30% 80%;

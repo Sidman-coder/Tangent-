@@ -11,7 +11,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { ArrowDown, CalendarPlus } from "lucide-react";
 import ActionReceipt from "@/components/ActionReceipt";
 import PenMark from "@/components/console/PenMark";
-import type { ChatMode, Turn } from "@/components/console/turns";
+import type { ChatMode, PlanProgressView, Turn } from "@/components/console/turns";
+import { formatTime12 } from "@/lib/dates";
 
 /** Turns kept open by default; anything older folds behind the divider. */
 const VISIBLE_TURNS = 3;
@@ -49,9 +50,17 @@ type Props = {
   mode: ChatMode;
   /** Adds a Plan-mode draft to the calendar. */
   onAddPlan: (turnId: string) => void;
+  /** A plan being generated for the pending request, shown as it arrives. */
+  planProgress?: PlanProgressView | null;
 };
 
-export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onUndone, mode, onAddPlan }: Props) {
+function shortDate(ymd: string): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+}
+
+export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onUndone, mode, onAddPlan, planProgress }: Props) {
+  const planDone = planProgress ? planProgress.tasks.filter(Boolean).length : 0;
   const scrollerRef = useRef<HTMLDivElement>(null);
   const latestRef = useRef<HTMLElement>(null);
   const [expanded, setExpanded] = useState(false);
@@ -84,7 +93,7 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
       sc.scrollTop = sc.scrollHeight;
     }
     measure();
-  }, [turns.length, busy, last?.response, last?.pendingConfirm, measure]);
+  }, [turns.length, busy, last?.response, last?.pendingConfirm, planProgress?.title, planDone, measure]);
 
   useEffect(() => {
     const sc = scrollerRef.current;
@@ -174,11 +183,35 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
               <div className="tg-msg-user">{pendingRequest}</div>
               <div className="tg-msg-assistant">
                 <PenMark className="tg-msg-mark is-working" />
-                <ol className="tg-steps">
-                  {LIVE_STEPS[mode].map((step, i) => (
-                    <li key={step} style={{ animationDelay: `${i * 0.35}s` }}>{step}</li>
-                  ))}
-                </ol>
+                {planProgress?.title ? (
+                  <div className="tg-plan-live">
+                    <p className="tg-plan-live-head">
+                      <span className="tg-plan-live-status">Building your plan…</span>
+                      <strong>{planProgress.title}</strong>
+                      <span className="tg-plan-live-count">
+                        {planDone} of {planProgress.taskCount} sessions
+                      </span>
+                    </p>
+                    <ol className="tg-plan-live-list">
+                      {planProgress.tasks.map((task, i) =>
+                        task ? (
+                          <li key={i}>
+                            <span className="tg-plan-live-when">
+                              {shortDate(task.date)} · {formatTime12(task.time)}
+                            </span>
+                            <span>{task.title}</span>
+                          </li>
+                        ) : null
+                      )}
+                    </ol>
+                  </div>
+                ) : (
+                  <ol className="tg-steps">
+                    {LIVE_STEPS[mode].map((step, i) => (
+                      <li key={step} style={{ animationDelay: `${i * 0.35}s` }}>{step}</li>
+                    ))}
+                  </ol>
+                )}
               </div>
             </article>
           )}

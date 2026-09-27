@@ -1,5 +1,5 @@
 import "server-only";
-import { getRequestContext } from "./request-context";
+import { getRequestContext, requestMemo, forgetMemo } from "./request-context";
 import { DEFAULT_TIMEZONE, isValidTimezone } from "./dates";
 import { expandRecurrence, getUserToday, weekRange } from "./time";
 import { decryptFeedUrl, encryptFeedUrl, maskCanvasFeedUrl as maskFeedUrl } from "./canvas-feed-security";
@@ -461,6 +461,10 @@ export async function addVoiceLog(entry: Omit<VoiceLogEntry, "at">): Promise<voi
 const DEFAULT_CALENDAR_ORDER = ["cal_all", "cal_personal", "cal_work", "cal_study"];
 
 export async function getAllCalendars(): Promise<CalendarDef[]> {
+  return requestMemo("calendars", readCalendars);
+}
+
+async function readCalendars(): Promise<CalendarDef[]> {
   const { db, userId } = ctx();
   const { data, error } = await db
     .from("calendars")
@@ -497,6 +501,7 @@ export async function addCalendar(name: string, color?: string): Promise<Calenda
   };
   const { error } = await db.from("calendars").insert({ user_id: userId, ...cal });
   if (error) fail("addCalendar", error);
+  forgetMemo("calendars");
   console.log("[store] addCalendar:", cal.id, cal.name);
   return cal;
 }
@@ -587,6 +592,7 @@ async function updateProfile(where: string, row: Record<string, unknown>): Promi
   const { db, userId } = ctx();
   const { error } = await db.from("profiles").update(row).eq("user_id", userId);
   if (error) fail(where, error);
+  if ("timezone" in row) forgetMemo("timezone");
 }
 
 function userFromRow(r: ProfileRow): UserProfile {
@@ -690,6 +696,51 @@ export async function addPlan(plan: Omit<Plan, "id" | "createdAt" | "color">): P
   const newPlan = planFromRow(data as PlanRow);
   console.log("[store] addPlan:", newPlan.id, newPlan.title, "tasks:", newPlan.taskIds.length);
   return newPlan;
+}
+
+/** Creates a plan and its tasks together: one duplicate-check read over the
+ *  plan's date range, the plan row, ONE bulk insert of the tasks with plan_id
+ *  already set, then the plan's task list. Replaces addTask ×N + addPlan +
+ *  updateTask ×N. Tasks that duplicate an existing open task are skipped (the
+ *  same rule as addTask) and reported, so undo never deletes a pre-existing task. */
+export async function addPlanWithTasks(
+  plan: { title: string; description?: string },
+  tasks: Omit<Task, "id" | "planId">[]
+): Promise<{ plan: Plan; tasks: Task[]; skippedDuplicates: number }> {
+  const { db, userId } = ctx();
+  const dates = tasks.map((t) => t.date).sort();
+  const existing = dates.length
+    ? await selectTasks("addPlanWithTasks", (q) => q.gte("date", dates[0]).lte("date", dates[dates.length - 1]).eq("completed", false))
+    : [];
+  const fresh: Omit<Task, "id" | "planId">[] = [];
+  let skippedDuplicates = 0;
+  for (const t of tasks) {
+    // Also dedupe within the plan itself.
+    if (findDuplicateIn(existing, t) || findDuplicateIn(fresh as Task[], t)) skippedDuplicates++;
+    else fresh.push(t);
+  }
+
+  const created = await addPlan({ title: plan.title, description: plan.description ?? "", taskIds: [], taskCount: 0 });
+  const inserted: Task[] = [];
+  for (let i = 0; i < fresh.length; i += 500) {
+    const rows = fresh.slice(i, i + 500).map((t) => newTaskRow(userId, { ...t, planId: created.id }));
+    const { data, error } = await db.from("tasks").insert(rows).select(TASK_COLUMNS);
+    if (error) {
+      // A failed insert writes nothing; don't leave an empty plan behind.
+      await deletePlan(created.id).catch(() => {});
+      fail("addPlanWithTasks", error);
+    }
+    inserted.push(...(data as TaskRow[]).map(taskFromRow));
+  }
+  const taskIds = inserted.map((t) => t.id);
+  const { error: linkError } = await db
+    .from("plans")
+    .update({ task_ids: taskIds, task_count: taskIds.length })
+    .eq("user_id", userId)
+    .eq("id", created.id);
+  if (linkError) fail("addPlanWithTasks", linkError);
+  console.log("[store] addPlanWithTasks:", created.id, created.title, "tasks:", taskIds.length, "| duplicates skipped:", skippedDuplicates);
+  return { plan: { ...created, taskIds, taskCount: taskIds.length }, tasks: inserted, skippedDuplicates };
 }
 
 export async function deletePlan(planId: string): Promise<boolean> {
@@ -1090,6 +1141,10 @@ export async function setCompressedSummary(summary: string): Promise<void> {
 
 /** The student's IANA timezone (profiles.timezone), for "today" on the server. */
 export async function getUserTimezone(): Promise<string> {
+  return requestMemo("timezone", readTimezone);
+}
+
+async function readTimezone(): Promise<string> {
   const { db, userId } = ctx();
   const { data, error } = await db.from("profiles").select("timezone").eq("user_id", userId).maybeSingle();
   if (error) fail("getUserTimezone", error);
@@ -1673,6 +1728,8 @@ export async function resetUserData(): Promise<void> {
     .eq("user_id", userId)
     .not("id", "in", `(${DEFAULT_CALENDAR_ORDER.join(",")})`);
   if (calError) fail("resetUserData calendars", calError);
+  forgetMemo("calendars");
+  forgetMemo("timezone");
   await updateProfile("resetUserData", {
     onboarded_at: null,
     is_high_school: null,

@@ -154,9 +154,12 @@ function currentContext(): RequestContext | null {
 
 // ─── The call ────────────────────────────────────────────────────────────────
 
-/** Calls Claude for `task`. Never throws for API errors: returns ok:false with
- *  the HTTP status so callers keep their existing fallback paths. */
-export async function callClaude(task: AiTask, request: ClaudeRequest, opts: CallOptions = {}): Promise<ClaudeResult> {
+type Prepared =
+  | { blocked: ClaudeResult }
+  | { blocked?: undefined; cfg: TaskConfig; userId: string | null; route?: string; model: string; body: Anthropic.MessageCreateParamsNonStreaming };
+
+/** Budget check and request body shared by callClaude and streamClaude. */
+async function prepare(task: AiTask, request: ClaudeRequest, opts: CallOptions): Promise<Prepared> {
   const cfg: TaskConfig = AI_TASKS[task];
   const ctx = currentContext();
   const userId = ctx?.userId ?? null;
@@ -167,7 +170,7 @@ export async function callClaude(task: AiTask, request: ClaudeRequest, opts: Cal
   if (budget.action === "block") {
     console.warn(`[ai] daily budget reached; blocked ${cfg.feature}`);
     await recordUsage({ userId, feature: cfg.feature, model: "none", usage: {}, durationMs: 0, route: "budget:blocked" });
-    return { ok: false, status: 429, error: BUDGET_MESSAGE, budgetExceeded: true };
+    return { blocked: { ok: false, status: 429, error: BUDGET_MESSAGE, budgetExceeded: true } };
   }
   if (budget.action === "downgrade" && tier !== "FAST") {
     console.warn(`[ai] daily budget reached; ${cfg.feature} downgraded to FAST`);
@@ -178,18 +181,10 @@ export async function callClaude(task: AiTask, request: ClaudeRequest, opts: Cal
   const params = modelParams(task, { tier, format: opts.format as Record<string, unknown> | undefined });
   const { max_tokens, ...rest } = request;
   const body = { ...rest, ...params, max_tokens: max_tokens ?? params.max_tokens } as Anthropic.MessageCreateParamsNonStreaming;
+  return { cfg, userId, route, model: params.model, body };
+}
 
-  const start = Date.now();
-  let message: Anthropic.Message;
-  try {
-    message = await anthropic().messages.create(body);
-  } catch (e) {
-    const status = e instanceof Anthropic.APIError ? (e.status ?? 0) : 0;
-    const error = e instanceof Error ? e.message : String(e);
-    perfClaude(opts.label ?? task, params.model, 0, 0, Date.now() - start, status);
-    return { ok: false, status, error };
-  }
-  const durationMs = Date.now() - start;
+async function finish(task: AiTask, p: Exclude<Prepared, { blocked: ClaudeResult }>, opts: CallOptions, message: Anthropic.Message, durationMs: number): Promise<ClaudeResult> {
   perfClaude(
     opts.label ?? task,
     message.model,
@@ -199,8 +194,61 @@ export async function callClaude(task: AiTask, request: ClaudeRequest, opts: Cal
     200,
     message.usage.cache_read_input_tokens ?? 0,
   );
-  await recordUsage({ userId, feature: cfg.feature, model: params.model, usage: message.usage, durationMs, cacheTtl: cfg.cacheTtl, route });
-  return { ok: true, message, model: params.model, degraded: route === "budget:fast" };
+  await recordUsage({ userId: p.userId, feature: p.cfg.feature, model: p.model, usage: message.usage, durationMs, cacheTtl: p.cfg.cacheTtl, route: p.route });
+  return { ok: true, message, model: p.model, degraded: p.route === "budget:fast" };
+}
+
+function failure(task: AiTask, model: string, opts: CallOptions, e: unknown, start: number): ClaudeResult {
+  const status = e instanceof Anthropic.APIError ? (e.status ?? 0) : 0;
+  const error = e instanceof Error ? e.message : String(e);
+  perfClaude(opts.label ?? task, model, 0, 0, Date.now() - start, status);
+  return { ok: false, status, error };
+}
+
+/** Calls Claude for `task`. Never throws for API errors: returns ok:false with
+ *  the HTTP status so callers keep their existing fallback paths. */
+export async function callClaude(task: AiTask, request: ClaudeRequest, opts: CallOptions = {}): Promise<ClaudeResult> {
+  const p = await prepare(task, request, opts);
+  if (p.blocked) return p.blocked;
+  const start = Date.now();
+  let message: Anthropic.Message;
+  try {
+    message = await anthropic().messages.create(p.body);
+  } catch (e) {
+    return failure(task, p.model, opts, e, start);
+  }
+  return finish(task, p, opts, message, Date.now() - start);
+}
+
+/** callClaude, streamed: onText receives the accumulated text after every
+ *  delta, so callers can show partial structured output as it arrives. The
+ *  result, budget and telemetry are identical to callClaude. */
+export async function streamClaude(
+  task: AiTask,
+  request: ClaudeRequest,
+  opts: CallOptions & { onText: (textSoFar: string) => void }
+): Promise<ClaudeResult> {
+  const p = await prepare(task, request, opts);
+  if (p.blocked) return p.blocked;
+  const start = Date.now();
+  let message: Anthropic.Message;
+  try {
+    const stream = anthropic().messages.stream(p.body);
+    let text = "";
+    stream.on("text", (delta) => {
+      text += delta;
+      try {
+        opts.onText(text);
+      } catch (e) {
+        // A progress callback must never break generation.
+        console.warn("[ai] onText callback failed:", e instanceof Error ? e.message : e);
+      }
+    });
+    message = await stream.finalMessage();
+  } catch (e) {
+    return failure(task, p.model, opts, e, start);
+  }
+  return finish(task, p, opts, message, Date.now() - start);
 }
 
 /** Joined text blocks of a response. */
