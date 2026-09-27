@@ -1,6 +1,5 @@
 import type { Task } from "./types";
-import { claudeFetch } from "@/lib/perf";
-import { modelParams } from "@/lib/ai/models";
+import { callClaude, messageText } from "@/lib/ai/call";
 
 export function checkStaleItems(tasks: Task[], daysThreshold = 5): string[] {
   const now = Date.now();
@@ -40,29 +39,16 @@ async function callHaikuCached(systemPrompt: string, userContent: string, maxTok
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("No API key");
 
-  const res = await claudeFetch("brief sources", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      ...modelParams("briefSources"),
-      max_tokens: maxTokens,
-      // Static system prompt in its own cached block — only per-user variable
-      // data goes in the user message, so this block actually hits cache.
-      system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
-      messages: [{ role: "user", content: userContent }],
-    }),
+  const res = await callClaude("briefSources", {
+    max_tokens: maxTokens,
+    // Static system prompt in its own cached block — only per-user variable
+    // data goes in the user message, so this block actually hits cache.
+    system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
+    messages: [{ role: "user", content: userContent }],
   });
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Anthropic error ${res.status}: ${err}`);
-  }
-  const data = await res.json();
-  return data.content?.[0]?.text ?? "";
+  if (!res.ok) throw new Error(`Anthropic error ${res.status}: ${res.error}`);
+  return messageText(res.message);
 }
 
 const MANUAL_URL_SUMMARY_SYSTEM_PROMPT = `You summarize a single web page for a user's daily brief. You will receive raw page text. Write 2-3 sentences capturing what's new or noteworthy on the page. No filler like "this page discusses" — just the substance. Return plain text only, no markdown, no JSON.`;

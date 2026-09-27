@@ -4,8 +4,7 @@ import { withUser } from "@/lib/request-context";
 import { extractContextFacts } from "@/lib/context-extract";
 import { getUserTimezone } from "@/lib/store";
 import { promptDateContext } from "@/lib/time";
-import { claudeFetch } from "@/lib/perf";
-import { modelParams } from "@/lib/ai/models";
+import { callClaude, messageText } from "@/lib/ai/call";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,19 +28,13 @@ function conversationContext(messages: { role: string; content: string }[]): str
   return text.length > 2400 ? text.slice(-2400) : text;
 }
 
-async function planReply(apiKey: string, messages: { role: "user" | "assistant"; content: string }[]): Promise<string> {
-  const res = await claudeFetch("chat plan-mode reply", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
-    body: JSON.stringify({
-      ...modelParams("chatPlan"),
-      system: PLAN_SYSTEM(promptDateContext(await getUserTimezone())),
-      messages: messages.slice(-12),
-    }),
+async function planReply(messages: { role: "user" | "assistant"; content: string }[]): Promise<string> {
+  const res = await callClaude("chatPlan", {
+    system: PLAN_SYSTEM(promptDateContext(await getUserTimezone())),
+    messages: messages.slice(-12),
   });
-  if (!res.ok) throw new Error(`Anthropic error ${res.status}`);
-  const data = (await res.json()) as { content?: { type: string; text?: string }[] };
-  const text = (data.content ?? []).filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n").trim();
+  if (!res.ok) throw new Error(res.budgetExceeded ? res.error : `Anthropic error ${res.status}`);
+  const text = messageText(res.message);
   if (!text) throw new Error("Empty plan reply");
   return text.replace(/```[\s\S]*?```/g, "").replace(/\*\*(.+?)\*\*/g, "$1").trim();
 }
@@ -101,7 +94,7 @@ export const POST = withUser(async (req: Request) => {
     console.log("[api/chat] User message:", userText);
 
     if (mode === "plan") {
-      const reply = await planReply(apiKey, messages);
+      const reply = await planReply(messages);
       return NextResponse.json({ message: reply, action: "plan_reply", mode, ok: true });
     }
 

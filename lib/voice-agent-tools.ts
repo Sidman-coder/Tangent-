@@ -13,8 +13,9 @@ import { addDaysYMD, getUserToday, promptDateContext } from "@/lib/time";
 import { getUpcomingEvents, getEventsForDate } from "@/lib/calendar";
 import { currentUserIsOwner } from "@/lib/request-context";
 import { resolvePlanTitle } from "@/lib/plan-title";
-import { claudeFetch, perfCount, perfSpan } from "@/lib/perf";
-import { modelParams } from "@/lib/ai/models";
+import { perfCount, perfSpan } from "@/lib/perf";
+import { callClaude } from "@/lib/ai/call";
+import type Anthropic from "@anthropic-ai/sdk";
 
 const MAX_TOOL_TURNS = 8;
 
@@ -631,27 +632,15 @@ export async function runVoiceAgentToolLoop(userText: string, requestText = user
 
   for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
     perfCount("tool-loop turns");
-    const res = await claudeFetch("agent tool loop", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        ...modelParams("agent"),
-        system: await systemPrompt(tz, userContext),
-        tools: TOOLS,
-        messages,
-      }),
+    const res = await callClaude("agent", {
+      system: await systemPrompt(tz, userContext),
+      tools: TOOLS as unknown as Anthropic.Tool[],
+      messages: messages as unknown as Anthropic.MessageParam[],
     });
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Anthropic error ${res.status}: ${err}`);
-    }
+    if (!res.ok) throw new Error(`Anthropic error ${res.status}: ${res.error}`);
 
-    const data = (await res.json()) as { content: AnthropicContentBlock[]; stop_reason: string };
+    const data = res.message as unknown as { content: AnthropicContentBlock[]; stop_reason: string };
     messages.push({ role: "assistant", content: data.content });
 
     const toolUseBlocks = data.content.filter((b): b is Extract<AnthropicContentBlock, { type: "tool_use" }> => b.type === "tool_use");

@@ -21,8 +21,8 @@ import type { TaskKind } from "@/lib/types";
 import { needsAgentTools, runVoiceAgentToolLoop } from "@/lib/voice-agent-tools";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import { resolvePlanTitle } from "@/lib/plan-title";
-import { claudeFetch, perfCount, perfSpan, withPerfTrace } from "@/lib/perf";
-import { modelParams } from "@/lib/ai/models";
+import { perfCount, perfSpan, withPerfTrace } from "@/lib/perf";
+import { callClaude } from "@/lib/ai/call";
 
 const RESOURCE_ITEM_SCHEMA = {
   type: "object",
@@ -706,32 +706,32 @@ Rules:
       // retried once — never reported to the user as a successful plan.
       // Assigned inside the perfSpan callback below, so widen explicitly (TS does not track callback assignments).
       let planJson = null as Record<string, unknown> | null;
+      let budgetMessage: string | null = null;
       let rawTasks: unknown[] = [];
       await perfSpan("plan: generate", async () => {
       for (let attempt = 1; attempt <= 2 && rawTasks.length === 0; attempt++) {
         if (attempt > 1) perfCount("planner retries");
-        const planResponse = await claudeFetch("plan generator", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": apiKey,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify({
-            ...modelParams("plan", { format: { type: "json_schema", schema: PLAN_SCHEMA } }),
+        const planResponse = await callClaude(
+          "plan",
+          {
             system: planSystemPrompt,
             messages: [{
               role: "user",
               content: `Create a plan from ${startDate} to ${endDate} (${dayCount} days, ${expectedTaskCount} tasks, one task every ${taskInterval} day${taskInterval > 1 ? "s" : ""}). Request: ${withContext(text)}`,
             }],
-          }),
-        });
+          },
+          { format: { type: "json_schema", schema: PLAN_SCHEMA } }
+        );
         if (!planResponse.ok) {
           console.error("[api/voice] Plan API call failed:", planResponse.status, "(attempt", attempt, ")");
+          if (planResponse.budgetExceeded) {
+            budgetMessage = planResponse.error;
+            break;
+          }
           continue;
         }
         try {
-          planJson = extractStructuredJson<Record<string, unknown>>(await planResponse.json());
+          planJson = extractStructuredJson<Record<string, unknown>>(planResponse.message);
         } catch (e) {
           console.error("[api/voice] Plan response parsing failed:", e instanceof Error ? e.message : e);
           continue;
@@ -819,6 +819,11 @@ Rules:
         }
       }
 
+      if (budgetMessage) {
+        await addVoiceLog({ text, response: budgetMessage, action: "error", ok: false });
+        return NextResponse.json({ ok: false, error: budgetMessage, response: budgetMessage }, { status: 429 });
+      }
+
       // Fallback: add as a single generic task if plan generation failed
       console.log("[api/voice] Plan generation failed — adding as single task");
       const fallbackTask = await addTask({
@@ -850,49 +855,37 @@ Rules:
     // ── Standard single-task / recurring path ─────────────────────────────────
     console.log("[api/voice] Calling Anthropic API...");
     const userContext = await getContextAsString();
-    const anthropicResponse = await claudeFetch("voice command", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        ...modelParams("voiceCommand", { format: { type: "json_schema", schema: VOICE_COMMAND_SCHEMA } }),
+    const anthropicResponse = await callClaude(
+      "voiceCommand",
+      {
         system: await voiceSystemPrompt(tz, userContext),
         messages: [
           { role: "user", content: withContext(text) },
         ],
-      }),
-    });
+      },
+      { format: { type: "json_schema", schema: VOICE_COMMAND_SCHEMA } }
+    );
 
     if (!anthropicResponse.ok) {
-      const err = await anthropicResponse.text();
-      console.error("[api/voice] Anthropic error:", anthropicResponse.status, err);
+      console.error("[api/voice] Anthropic error:", anthropicResponse.status, anthropicResponse.error);
 
       if (anthropicResponse.status === 429) {
         console.log("[api/voice] Rate limited — waiting 2 seconds and retrying with simpler request");
         await new Promise((resolve) => setTimeout(resolve, 2000));
 
-        const retryResponse = await claudeFetch("voice command retry", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": apiKey,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify({
-            ...modelParams("voiceCommandRetry", { format: { type: "json_schema", schema: VOICE_COMMAND_SCHEMA } }),
+        const retryResponse = await callClaude(
+          "voiceCommandRetry",
+          {
             system: `Extract a short task title from the user's message and respond with an add_task command. ${promptDateContext(tz)}`,
             messages: [{ role: "user", content: text.substring(0, 100) }],
-          }),
-        });
+          },
+          { format: { type: "json_schema", schema: VOICE_COMMAND_SCHEMA } }
+        );
 
         if (retryResponse.ok) {
-          const retryData = await retryResponse.json();
           let retryJson: Record<string, unknown> | null = null;
           try {
-            retryJson = extractStructuredJson<Record<string, unknown>>(retryData);
+            retryJson = extractStructuredJson<Record<string, unknown>>(retryResponse.message);
           } catch (e) {
             console.error("[api/voice] Retry response parsing failed:", e instanceof Error ? e.message : e);
           }
@@ -936,14 +929,13 @@ Rules:
       }
 
       await addVoiceLog({ text, response: `Anthropic error ${anthropicResponse.status}`, action: "error", ok: false });
-      return NextResponse.json({ ok: false, error: `Anthropic error: ${anthropicResponse.status} ${err}` }, { status: 502 });
+      return NextResponse.json({ ok: false, error: `Anthropic error: ${anthropicResponse.status} ${anthropicResponse.error}` }, { status: 502 });
     }
 
-    const anthropicData = await anthropicResponse.json();
 
     let parsed: Record<string, unknown>;
     try {
-      parsed = extractStructuredJson<Record<string, unknown>>(anthropicData);
+      parsed = extractStructuredJson<Record<string, unknown>>(anthropicResponse.message);
     } catch (e) {
       const message = e instanceof Error ? e.message : "Could not understand that command.";
       console.error("[api/voice] Structured response parsing failed:", message);

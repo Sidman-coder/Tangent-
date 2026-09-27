@@ -6,7 +6,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 // production (NODE_ENV=production) nothing is recorded or logged.
 //
 // One trace per request (withPerfTrace). Inside it:
-//   - claudeFetch logs each Claude call: label, model, input/output tokens, ms
+//   - perfClaude logs each Claude call: label, model, input/output tokens, ms
 //   - perfFetch (installed on the Supabase clients) counts DB reads/writes
 //   - perfSpan times a named phase and the DB calls inside it
 //   - perfCount tallies things like tool-loop turns
@@ -60,27 +60,12 @@ export function perfCount(name: string, by = 1): void {
   if (trace) trace.counts[name] = (trace.counts[name] ?? 0) + by;
 }
 
-/** fetch() to the Anthropic Messages API, logging model, tokens and duration. */
-export async function claudeFetch(label: string, init: RequestInit): Promise<Response> {
-  if (!perfEnabled()) return fetch("https://api.anthropic.com/v1/messages", init);
-  const start = Date.now();
-  const res = await fetch("https://api.anthropic.com/v1/messages", init);
-  let model = "?";
-  try {
-    model = (JSON.parse(String(init.body)) as { model?: string }).model ?? "?";
-  } catch {}
-  let inTok = 0;
-  let outTok = 0;
-  try {
-    // A copy of the body; the caller reads the original untouched.
-    const usage = ((await res.clone().json()) as { usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } }).usage;
-    inTok = (usage?.input_tokens ?? 0) + (usage?.cache_read_input_tokens ?? 0);
-    outTok = usage?.output_tokens ?? 0;
-  } catch {}
-  const ms = Date.now() - start;
-  console.log(`[perf] claude ${label}: ${model} | in ${inTok} tok, out ${outTok} tok | ${ms} ms | HTTP ${res.status}`);
-  traces.getStore()?.claude.push({ label, model, inTok, outTok, ms, status: res.status });
-  return res;
+/** Records one Claude call (lib/ai/call.ts calls this): model, tokens, duration. */
+export function perfClaude(label: string, model: string, inTok: number, outTok: number, ms: number, status: number, cacheRead = 0): void {
+  if (!perfEnabled()) return;
+  const cached = cacheRead > 0 ? ` (${cacheRead} cached)` : "";
+  console.log(`[perf] claude ${label}: ${model} | in ${inTok} tok${cached}, out ${outTok} tok | ${ms} ms | HTTP ${status}`);
+  traces.getStore()?.claude.push({ label, model, inTok, outTok, ms, status });
 }
 
 /** fetch for the Supabase clients: counts DB reads (GET/HEAD) and writes. */

@@ -11,8 +11,7 @@ import { getAllTasks, getContextAsString, addNotification, getUserTimezone } fro
 import { addDaysYMD, currentInstant, getUserToday } from "@/lib/time";
 import type { Notification } from "@/lib/types";
 import { extractStructuredJson } from "@/lib/anthropic-json";
-import { claudeFetch } from "@/lib/perf";
-import { modelParams } from "@/lib/ai/models";
+import { callClaude } from "@/lib/ai/call";
 
 const PROACTIVE_NOTIFICATIONS_SCHEMA = {
   type: "object",
@@ -92,15 +91,9 @@ User context:
 ${userContext}
   `.trim();
 
-    const response = await claudeFetch("proactive", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        ...modelParams("proactive", { format: { type: "json_schema", schema: PROACTIVE_NOTIFICATIONS_SCHEMA } }),
+    const response = await callClaude(
+      "proactive",
+      {
         system: `You are a proactive productivity assistant. Analyze the user's schedule and context, then generate 0 to 3 actionable notifications only if something genuinely needs attention.
 
 Do not generate notifications for:
@@ -126,10 +119,9 @@ Each notification's title should be short, under 8 words. Each body should be a 
 
 If nothing needs attention return an empty notifications array.`,
         messages: [{ role: "user", content: agentContext }],
-      }),
-    });
-
-    const data = await response.json();
+      },
+      { format: { type: "json_schema", schema: PROACTIVE_NOTIFICATIONS_SCHEMA } }
+    );
 
     let suggestions: Array<{
       type: Notification["type"];
@@ -140,7 +132,8 @@ If nothing needs attention return an empty notifications array.`,
     }> = [];
 
     try {
-      suggestions = extractStructuredJson<{ notifications: typeof suggestions }>(data).notifications;
+      if (!response.ok) throw new Error(`Anthropic error ${response.status}`);
+      suggestions = extractStructuredJson<{ notifications: typeof suggestions }>(response.message).notifications;
     } catch (e) {
       console.error("[proactive] Notification parsing failed:", e instanceof Error ? e.message : e);
     }

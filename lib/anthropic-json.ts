@@ -5,7 +5,7 @@
 // needed once responses are schema-constrained.
 type AnthropicStructuredResponse = {
   content?: { type: string; text?: string }[];
-  stop_reason?: string;
+  stop_reason?: string | null;
   stop_details?: { type: string; reason?: string } | null;
 };
 

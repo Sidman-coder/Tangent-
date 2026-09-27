@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { getTaskChat, addTaskChatMessage, getAllTasks } from "@/lib/store";
 import { withUser } from "@/lib/request-context";
-import { claudeFetch } from "@/lib/perf";
-import { modelParams } from "@/lib/ai/models";
+import { callClaude, messageText } from "@/lib/ai/call";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -76,40 +75,24 @@ Do not output JSON. Respond only in plain conversational text.`;
 
     console.log("[api/task-chat] Calling Anthropic with", conversationHistory.length + 1, "messages...");
 
-    const anthropicResponse = await claudeFetch("task chat", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        ...modelParams("taskChat"),
-        system: systemPrompt,
-        messages: [
-          ...conversationHistory,
-          { role: "user", content: message.trim() },
-        ],
-      }),
+    const anthropicResponse = await callClaude("taskChat", {
+      system: systemPrompt,
+      messages: [
+        ...conversationHistory,
+        { role: "user", content: message.trim() },
+      ],
     });
 
     if (!anthropicResponse.ok) {
-      const err = await anthropicResponse.text();
-      console.error("[api/task-chat] Anthropic error:", anthropicResponse.status, err);
+      console.error("[api/task-chat] Anthropic error:", anthropicResponse.status, anthropicResponse.error);
       return NextResponse.json({ ok: false, error: `Anthropic error: ${anthropicResponse.status}` }, { status: 502 });
     }
 
-    const anthropicData = (await anthropicResponse.json()) as {
-      content?: { type: string; text: string }[];
-    };
-    console.log("[api/task-chat] Anthropic response:", JSON.stringify(anthropicData).slice(0, 200));
-
-    if (!anthropicData.content || !anthropicData.content[0]) {
-      console.error("[api/task-chat] Empty Anthropic response:", JSON.stringify(anthropicData));
+    const aiMessage = messageText(anthropicResponse.message);
+    if (!aiMessage) {
+      console.error("[api/task-chat] Empty Anthropic response");
       return NextResponse.json({ ok: false, error: "Empty Anthropic response" }, { status: 502 });
     }
-
-    const aiMessage = anthropicData.content[0].text;
     console.log("[api/task-chat] Anthropic text:", aiMessage.slice(0, 100));
 
     // Save AI reply to taskChats only — tasks array is NEVER touched

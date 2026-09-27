@@ -10,8 +10,7 @@ import { addDaysYMD, currentInstant, getUserToday } from "@/lib/time";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import { DAILY_BRIEF_SCHEMA, DEFAULT_DAILY_BRIEF, publishDailyBrief, type DailyBrief } from "@/lib/daily-brief";
 import { withUser } from "@/lib/request-context";
-import { claudeFetch } from "@/lib/perf";
-import { modelParams } from "@/lib/ai/models";
+import { callClaude } from "@/lib/ai/call";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,15 +49,9 @@ About this user:
 ${userContext}
   `.trim();
 
-    const response = await claudeFetch("daily brief", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        ...modelParams("dailyBrief", { format: { type: "json_schema", schema: DAILY_BRIEF_SCHEMA } }),
+    const response = await callClaude(
+      "dailyBrief",
+      {
         // Static system prompt in its own cached block — only per-user variable
         // data (briefContext) goes in the user message, so this block hits cache
         // on every subsequent brief generation.
@@ -72,15 +65,15 @@ The greeting is one sentence referencing something specific about their day. The
           },
         ],
         messages: [{ role: "user", content: briefContext }],
-      }),
-    });
-
-    const data = await response.json();
+      },
+      { format: { type: "json_schema", schema: DAILY_BRIEF_SCHEMA } }
+    );
 
     let brief: DailyBrief = DEFAULT_DAILY_BRIEF;
 
     try {
-      brief = extractStructuredJson<DailyBrief>(data);
+      if (!response.ok) throw new Error(`Anthropic error ${response.status}`);
+      brief = extractStructuredJson<DailyBrief>(response.message);
     } catch (e) {
       console.error("[api/daily-brief] Brief parsing failed:", e instanceof Error ? e.message : e);
     }
