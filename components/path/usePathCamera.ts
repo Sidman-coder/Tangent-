@@ -172,10 +172,20 @@ export function usePathCamera(reduced: boolean): PathCamera {
       const margin = labelMargins(size.width, size.height);
       const usableW = Math.max(size.width - margin.x * 2, 120);
       const usableH = Math.max(size.height - margin.y * 2, 120);
+      const wanted = Math.min(usableW / w, usableH / h);
+      // Labels hold their size while the drawing scales, so past a point
+      // "fit everything" turns a big tree into a pile of overlapping cards.
+      // Below that floor, frame the goal at a readable zoom instead and let
+      // the person pinch or drag out to the rest.
+      const floor = size.width < 640 ? 0.6 : 0.32;
+      if (wanted < floor) {
+        startSpring({ x: 0, y: 0, scale: clampScale(floor) });
+        return;
+      }
       startSpring({
         x: (bounds.minX + bounds.maxX) / 2,
         y: (bounds.minY + bounds.maxY) / 2,
-        scale: clampScale(Math.min(usableW / w, usableH / h)),
+        scale: clampScale(wanted),
       });
     },
     [size.height, size.width, startSpring]

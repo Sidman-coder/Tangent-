@@ -1,4 +1,8 @@
 import type { Metadata } from "next";
+import "@fontsource-variable/bricolage-grotesque/opsz.css";
+import "@fontsource-variable/figtree";
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/500.css";
 import "./globals.css";
 import AppShell from "@/components/AppShell";
 import { AppStateProvider } from "@/components/AppStateProvider";

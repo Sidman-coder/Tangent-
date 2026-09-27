@@ -162,14 +162,19 @@ export default function NewPathDialog({ onCancel, onCreate }: Props) {
           ))}
         </div>
 
-        <AnimatePresence mode="wait" initial={false}>
+        {/* popLayout, not wait: the next question mounts and takes focus at
+            once, while the last one slides out underneath. With "wait" the
+            old field kept focus through its exit, and anything typed in that
+            moment went into a field that was about to disappear. */}
+        <AnimatePresence mode="popLayout" initial={false}>
           <m.div
             key={stage}
             className="tangents-intake-body"
             initial={{ opacity: 0, x: 18 }}
             animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -18 }}
-            transition={{ type: "spring", visualDuration: 0.26, bounce: 0 }}
+            // A quick fade out, so the outgoing question barely overlaps the new one.
+            exit={{ opacity: 0, x: -12, transition: { duration: 0.12, ease: "easeOut" } }}
+            transition={{ type: "spring", visualDuration: 0.3, bounce: 0 }}
           >
             {stage === -1 ? (
               <>

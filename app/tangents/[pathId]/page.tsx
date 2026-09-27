@@ -104,6 +104,22 @@ export default function PathDeepView() {
 
   const focused = useMemo(() => nodes.find((n) => n.id === focusedId) ?? null, [focusedId, nodes]);
 
+  // Tidy: keep open only the circles on the way to what you are looking at,
+  // then frame what is left. The clutter control for a tree that has grown.
+  const tidy = useCallback(() => {
+    const keep = new Set<string>();
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    let cursor = focusedId ? byId.get(focusedId) : undefined;
+    let guard = 0;
+    while (cursor && guard++ < 32) {
+      keep.add(cursor.id);
+      cursor = cursor.parentId ? byId.get(cursor.parentId) : undefined;
+    }
+    setExpanded((prev) => new Set(Array.from(prev).filter((id) => keep.has(id))));
+    // After the collapse has laid out.
+    setTimeout(() => fitRef.current?.(), 60);
+  }, [focusedId, nodes]);
+
   const ancestry = useMemo(() => {
     if (!focused) return [];
     const byId = new Map(nodes.map((n) => [n.id, n]));
@@ -173,6 +189,7 @@ export default function PathDeepView() {
         onFocus={setFocusedId}
         onToggleExpand={toggleExpand}
         onAddWork={(parentId) => setFormParent({ parentId })}
+        onTidy={tidy}
         registerFit={registerFit}
       />
 

@@ -218,7 +218,7 @@
   padding: 7px 13px 7px 9px;
   border: 1px solid var(--path-edge);
   border-radius: 999px;
-  background: rgba(24, 20, 44, 0.82);
+  background: #1a1630;
   backdrop-filter: blur(8px);
   color: var(--path-ink);
   font-family: var(--font-body);
@@ -259,7 +259,9 @@
   max-width: 216px;
   border: 1px solid rgba(62, 208, 138, 0.38);
   border-radius: 12px;
-  background: rgba(14, 32, 26, 0.86);
+  /* Opaque: when two branches end close together the cards stack cleanly
+     instead of their words bleeding through each other. */
+  background: #0f1f1a;
   backdrop-filter: blur(8px);
   overflow: hidden;
   transition: border-color 0.25s ease, opacity 0.4s ease, box-shadow 0.25s ease;
@@ -788,11 +790,18 @@
     left: 12px;
     bottom: calc(12px + env(safe-area-inset-bottom));
   }
+  /* On a phone the dock gets its own full-width row above the zoom bar, and
+     scrolls sideways rather than wrapping. */
   .path-dock {
-    left: auto;
+    left: 12px;
     right: 12px;
     transform: none;
-    bottom: calc(12px + env(safe-area-inset-bottom));
+    bottom: calc(64px + env(safe-area-inset-bottom));
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .path-dock::-webkit-scrollbar {
+    display: none;
   }
   .path-form {
     grid-template-columns: 1fr 1fr;
@@ -943,9 +952,20 @@
 }
 .tangents-orbit-line circle {
   fill: none;
-  stroke: var(--path-edge);
   stroke-width: 1;
-  stroke-dasharray: 2 6;
+}
+/* Drawn in as a solid line, then handed over to a dashed orbit that drifts
+   round very slowly: alive, never busy. */
+.tangents-orbit-draw {
+  stroke: rgba(190, 176, 245, 0.5);
+}
+.tangents-orbit-dash {
+  stroke: var(--path-edge-strong);
+  stroke-dasharray: 2 7;
+  animation: tangents-drift 60s linear infinite;
+}
+@keyframes tangents-drift {
+  to { stroke-dashoffset: -540; }
 }
 .tangents-hub {
   position: absolute;
@@ -958,8 +978,15 @@
   font-size: 12px;
   pointer-events: none;
 }
-.tangents-hub svg {
-  opacity: 0.9;
+.tangents-hub-mark {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border: 1px solid var(--path-edge);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(154, 136, 239, 0.16), rgba(10, 8, 18, 0.2) 70%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .tangents-orbit {
@@ -989,7 +1016,8 @@
   overflow: visible;
 }
 .tangents-sphere-ring {
-  fill: none;
+  /* Filled with the ground, so the orbit passes behind the disc, not through it. */
+  fill: rgba(12, 10, 22, 0.92);
   stroke: var(--path-edge-strong);
   stroke-width: 1.25;
   transition: stroke 0.22s ease;
@@ -1008,15 +1036,36 @@
   opacity: 0.85;
   transition: opacity 0.22s ease, r 0.22s ease;
 }
-.tangents-sphere:hover {
-  transform: translateY(-4px);
+.tangents-disc-wrap {
+  display: block;
+  will-change: transform;
+}
+/* A soft ring of light that only exists while the disc is the one you are on. */
+.tangents-sphere-halo {
+  fill: none;
+  stroke: var(--path-goal);
+  stroke-width: 8;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.tangents-sphere:hover .tangents-sphere-halo,
+.tangents-sphere:focus-visible .tangents-sphere-halo {
+  opacity: 0.12;
 }
 /* Looking at one path quiets the rest, as focusing a node does inside one. */
 .tangents-field:has(.tangents-sphere:hover) .tangents-sphere:not(:hover) {
   opacity: 0.5;
 }
 .tangents-sphere {
-  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+  transition: opacity 0.25s ease;
+}
+.tangents-sphere-label {
+  will-change: transform;
+  /* A quiet plate under the words, so the orbit runs behind them. */
+  padding: 6px 12px 7px;
+  border-radius: 12px;
+  background: rgba(12, 10, 22, 0.72);
+  backdrop-filter: blur(6px);
 }
 .tangents-sphere:hover .tangents-sphere-ring {
   stroke: var(--path-goal);
@@ -1342,4 +1391,110 @@
 .tangents-root select option {
   background: #151127;
   color: var(--path-ink);
+}
+
+/* ─── Stage layers ─────────────────────────────────────────────────────────── */
+/* The dust covers the whole window, not just the padded stage, so the field
+   has no visible box around it. */
+.tangents-stage > .path-ambient {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
+.tangents-stage > .tangents-fit,
+.tangents-stage > .tangents-list {
+  position: relative;
+  z-index: 1;
+}
+
+/* The way into a path: its dark widens out of the disc you pressed. */
+.tangents-portal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background:
+    radial-gradient(60vmax 60vmax at var(--px) var(--py), var(--path-void-2), var(--path-void) 70%);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tangents-orbit-dash {
+    animation: none;
+  }
+}
+
+/* ─── Branch filter ──────────────────────────────────────────────────────────
+   A segmented control with one pill that slides between options. */
+.path-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.path-filter-btn {
+  position: relative;
+  height: 30px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--path-ink-2);
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  isolation: isolate;
+  transition: color 0.16s ease;
+}
+.path-filter-btn:hover,
+.path-filter-btn.is-on {
+  color: var(--path-ink);
+}
+.path-filter-btn:focus-visible {
+  outline: 2px solid var(--path-goal);
+  outline-offset: 1px;
+}
+.path-filter-pill {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: rgba(190, 176, 245, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(190, 176, 245, 0.24);
+}
+.path-filter-label {
+  position: relative;
+}
+
+/* Branches the filter is not showing: still there, so the tree does not jump,
+   but faint and out of the way of the pointer. */
+.path-tangent.is-filtered .path-tangent-line,
+.path-tangent.is-filtered .path-touch {
+  opacity: 0.08;
+}
+.path-idea.is-filtered {
+  opacity: 0.16;
+  pointer-events: none;
+}
+
+/* Whatever you are on, or pointing at, comes to the front of any overlap. */
+.path-point:has(.is-focused),
+.path-point:hover,
+.path-point:focus-within {
+  z-index: 3;
+}
+.path-point:has(.is-dim) {
+  z-index: 0;
+}
+
+/* The empty field sits in the same dust as a full one. */
+.tangents-empty > .path-ambient {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+.tangents-empty {
+  position: relative;
+  z-index: 0;
 }

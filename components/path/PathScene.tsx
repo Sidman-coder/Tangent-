@@ -2,13 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
-import { Maximize2, Minus, Plus } from "lucide-react";
+import { Maximize2, Minus, Plus, Shrink } from "lucide-react";
 import PathAmbient from "./PathAmbient";
 import { usePathCamera } from "./usePathCamera";
 import type { PathCamera } from "./usePathCamera";
 import { layoutPath, ROOT_RADIUS } from "@/lib/path-layout";
 import type { PathLayout } from "@/lib/path-layout";
-import type { Path, PathNode } from "@/lib/types";
+import type { Path, PathNode, TangentStatus } from "@/lib/types";
 
 // The drawing.
 //
@@ -41,8 +41,20 @@ type Props = {
   onFocus: (id: string | null) => void;
   onToggleExpand: (id: string) => void;
   onAddWork: (parentId: string | null) => void;
+  /** Collapse every open circle that is not on the way to the focused node. */
+  onTidy: () => void;
   registerFit: (fit: () => void) => void;
 };
+
+/** Which branches stay lit. Work on the circle is always shown; the filter is
+ *  about ideas, which is where a tree gets crowded. */
+type Filter = "all" | "suggested" | "accepted" | "done";
+const FILTERS: { id: Filter; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "suggested", label: "Suggested" },
+  { id: "accepted", label: "Kept" },
+  { id: "done", label: "Done" },
+];
 
 /** The live zoom, as a percentage. Subscribes to the camera directly so a
  *  pan or pinch repaints this one span, not the whole scene. */
@@ -84,8 +96,22 @@ export default function PathScene({
   onFocus,
   onToggleExpand,
   onAddWork,
+  onTidy,
   registerFit,
 }: Props) {
+  const [filter, setFilter] = useState<Filter>("all");
+
+  // Entrances are choreographed only on first paint: the rings ripple out from
+  // the goal, then the work, then the ideas. Anything added later just appears
+  // with its own short spring, rather than waiting out a staged delay.
+  const firstPaint = useRef(true);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      firstPaint.current = false;
+    }, 1600);
+    return () => clearTimeout(t);
+  }, []);
+  const stage = (base: number, i: number) => (firstPaint.current ? base + Math.min(i * 0.07, 0.6) : 0);
   const reduced = useReducedMotion() ?? false;
   const camera = usePathCamera(reduced);
 
@@ -125,8 +151,11 @@ export default function PathScene({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusedId]);
 
+  const matches = (status: TangentStatus) => filter === "all" || status === filter;
+
   const nodeState = (node: PathNode) =>
     [
+      node.kind === "idea" && !matches(node.status) ? "is-filtered" : "",
       node.status === "accepted" || node.status === "done" ? "is-kept" : "is-suggested",
       node.status === "done" ? "is-done" : "",
       focusedId === node.id ? "is-focused" : "",
@@ -165,17 +194,26 @@ export default function PathScene({
 
           {/* Circles, deepest first so a child never paints over its parent. */}
           {layout.circles.map((circle) => (
-            <circle
+            <m.circle
               key={`c-${circle.id}`}
               className={`path-ring${dimming && circle.id !== "goal" && !live.has(circle.id) ? " is-dim" : ""}`}
               cx={circle.center.x}
               cy={circle.center.y}
-              r={circle.radius}
+              // Rings ripple out to their radius, deepest last.
+              initial={reduced ? false : { r: 0 }}
+              animate={{ r: circle.radius }}
+              transition={{ type: "spring", visualDuration: 0.9, bounce: 0.12, delay: stage(0.1, circle.depth) }}
               vectorEffect="non-scaling-stroke"
             />
           ))}
 
           {/* Radius from centre to member: what the tangent is perpendicular to. */}
+          {/* Faded in as one group: the spokes' own opacity carries dimming. */}
+          <m.g
+            initial={reduced ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.6, delay: 0.35 }}
+          >
           {layout.members.map((member) => {
             const circle = layout.circles.find((c) => c.id === member.circleId);
             if (!circle) return null;
@@ -191,13 +229,21 @@ export default function PathScene({
               />
             );
           })}
+          </m.g>
 
           {/* The tangents. Green is reserved for these and nothing else. */}
-          {layout.tangents.map((tangent) => {
+          {layout.tangents.map((tangent, i) => {
             const isLive = !dimming || live.has(tangent.node.id);
             const kept = tangent.node.status === "accepted" || tangent.node.status === "done";
             return (
-              <g key={`t-${tangent.node.id}`} className={`path-tangent ${nodeState(tangent.node)}`}>
+              <m.g
+                key={`t-${tangent.node.id}`}
+                className={`path-tangent ${nodeState(tangent.node)}`}
+                // Each branch arrives with its idea, not ahead of it.
+                initial={reduced ? false : { opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.5, delay: firstPaint.current ? stage(0.7, i) : 0 }}
+              >
                 <line
                   className="path-tangent-line"
                   x1={tangent.touch.x}
@@ -220,7 +266,7 @@ export default function PathScene({
                   />
                 )}
                 <circle className="path-touch" cx={tangent.touch.x} cy={tangent.touch.y} r={3.5} />
-              </g>
+              </m.g>
             );
           })}
 
@@ -230,7 +276,13 @@ export default function PathScene({
 
         <div className="path-labels">
           {/* The goal. */}
-          <div className="path-point path-point-goal" style={{ left: 0, top: 0 }}>
+          <m.div
+            className="path-point path-point-goal"
+            style={{ left: 0, top: 0 }}
+            initial={reduced ? false : { opacity: 0, scale: 0.8, filter: "blur(8px)" }}
+            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+            transition={{ type: "spring", visualDuration: 0.7, bounce: 0.2 }}
+          >
             <div className="path-point-inner">
               <button
                 type="button"
@@ -244,19 +296,19 @@ export default function PathScene({
                 )}
               </button>
             </div>
-          </div>
+          </m.div>
 
           {/* Work, on its circle. */}
-          <AnimatePresence initial={false}>
-            {layout.members.map((member) => (
+          <AnimatePresence>
+            {layout.members.map((member, i) => (
               <m.div
                 key={member.node.id}
                 className="path-point"
                 style={{ left: member.point.x, top: member.point.y }}
-                initial={reduced ? false : { opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ type: "spring", visualDuration: 0.4, bounce: 0.1 }}
+                initial={reduced ? false : { opacity: 0, scale: 0.6 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ type: "spring", visualDuration: 0.5, bounce: 0.25, delay: stage(0.35, i) }}
               >
                 <div className="path-point-inner">
                   <button
@@ -276,7 +328,7 @@ export default function PathScene({
           </AnimatePresence>
 
           {/* Ideas, at the far end of their tangents. */}
-          <AnimatePresence initial={false}>
+          <AnimatePresence>
             {layout.tangents.map((tangent, i) => {
               const node = tangent.node;
               const children = nodes.filter((n) => n.parentId === node.id && n.status !== "dismissed");
@@ -293,7 +345,7 @@ export default function PathScene({
                     type: "spring",
                     visualDuration: 0.5,
                     bounce: 0.26,
-                    delay: reduced ? 0 : Math.min(i * 0.035, 0.3),
+                    delay: reduced ? 0 : firstPaint.current ? stage(0.7, i) : Math.min(i * 0.035, 0.3),
                   }}
                 >
                   <div className="path-point-inner">
@@ -340,6 +392,44 @@ export default function PathScene({
           <Plus size={15} aria-hidden="true" />
           Add work
         </button>
+        <span className="path-dock-sep" aria-hidden="true" />
+        <button
+          type="button"
+          data-path-interactive
+          className="path-dock-btn"
+          onClick={() => {
+            onTidy();
+            setFilter("all");
+          }}
+          title="Close every circle that is not on the way to what you picked"
+        >
+          <Shrink size={14} aria-hidden="true" />
+          Tidy
+        </button>
+        <span className="path-dock-sep" aria-hidden="true" />
+        <div className="path-filter" role="radiogroup" aria-label="Show branches">
+          {FILTERS.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              role="radio"
+              aria-checked={filter === f.id}
+              data-path-interactive
+              className={`path-filter-btn${filter === f.id ? " is-on" : ""}`}
+              onClick={() => setFilter(f.id)}
+            >
+              {filter === f.id && (
+                <m.span
+                  layoutId="path-filter-pill"
+                  className="path-filter-pill"
+                  transition={{ type: "spring", visualDuration: 0.35, bounce: 0.2 }}
+                  aria-hidden="true"
+                />
+              )}
+              <span className="path-filter-label">{f.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="path-zoombar" role="toolbar" aria-label="Zoom">

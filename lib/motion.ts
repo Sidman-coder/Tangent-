@@ -17,15 +17,37 @@ export const spring = {
 /** Parent container that staggers its sections in on first paint. */
 export const staggerChildren: Variants = {
   hidden: {},
-  show: { transition: { staggerChildren: 0.06, delayChildren: 0.02 } },
+  show: { transition: { staggerChildren: 0.07, delayChildren: 0.04 } },
 };
 
 /** A section rising into place. Under reducedMotion="user" the y offset is
  *  dropped by MotionConfig and only the opacity fade remains. */
 export const riseIn: Variants = {
-  hidden: { opacity: 0, y: 10 },
-  show: { opacity: 1, y: 0, transition: spring.soft },
+  hidden: { opacity: 0, y: 16, filter: "blur(6px)" },
+  show: {
+    opacity: 1,
+    y: 0,
+    filter: "blur(0px)",
+    transition: { ...spring.soft, visualDuration: 0.6, bounce: 0, filter: { duration: 0.45, ease: [0.16, 1, 0.3, 1] } },
+    // A lingering filter or transform makes the element the containing block
+    // for position:fixed children, which would pin modals to the section
+    // instead of the viewport. Clear both once the entrance is over.
+    transitionEnd: { filter: "none", transform: "none" },
+  },
 };
+
+/** A whole page arriving after navigation: a short lift and focus-pull, so a
+ *  route change reads as one continuous surface rather than a hard cut. */
+export const pageEnter = {
+  initial: { opacity: 0, y: 10, filter: "blur(4px)" },
+  animate: {
+    opacity: 1,
+    y: 0,
+    filter: "blur(0px)",
+    transition: { duration: 0.42, ease: [0.16, 1, 0.3, 1] },
+    transitionEnd: { filter: "none", transform: "none" },
+  },
+} as const;
 
 /** A list row entering or leaving (used with AnimatePresence + layout). */
 export const rowPresence = {

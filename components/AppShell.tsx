@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { m } from "motion/react";
+import { pageEnter, spring } from "@/lib/motion";
 import {
   CalendarDays,
   Home,
@@ -79,7 +81,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // the chrome with CSS keeps the rail and topbar out of the tree entirely, so
   // nothing in them can catch a pointer or a tab stop over the canvas.
   if (pathname.startsWith("/tangents")) {
-    return <>{children}</>;
+    return (
+      <m.div key={pathname} className="tangents-route" {...pageEnter}>
+        {children}
+      </m.div>
+    );
   }
 
   return (
@@ -101,6 +107,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 aria-current={active ? "page" : undefined}
                 aria-label={label}
               >
+                {/* One pill, shared across every row: it glides to the page you
+                    open instead of blinking off here and on there. */}
+                {active && (
+                  <m.span
+                    layoutId="rail-active"
+                    className="rail-active-pill"
+                    transition={{ ...spring.layout, visualDuration: 0.4, bounce: 0.18 }}
+                    aria-hidden="true"
+                  />
+                )}
                 <Icon size={19} strokeWidth={1.8} aria-hidden="true" />
                 <span className="rail-btn-label">{label}</span>
                 <span className="rail-tooltip">{label}</span>
@@ -115,7 +131,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             a nav row: its own block, its own surface, and it leaves the app
             behind when you take it. */}
         <Link href="/tangents" className="rail-tangents" aria-label="Work on your tangents">
-          <Spline size={17} aria-hidden="true" />
+          <svg className="rail-orbit" viewBox="0 0 34 34" aria-hidden="true">
+            <circle className="rail-orbit-ring" cx="17" cy="17" r="13" />
+            <circle className="rail-orbit-core" cx="17" cy="17" r="3.5" />
+            <g className="rail-orbit-spin">
+              <circle className="rail-orbit-dot" cx="17" cy="4" r="2.6" />
+            </g>
+          </svg>
           <span className="rail-tangents-copy">
             <strong>Work on your</strong>
             <span>tangents</span>
@@ -161,7 +183,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {/* Path is a full-bleed instrument: it sets its own ground and needs the
             whole area, so it opts out of the padded, max-width content column. */}
         <div className={`shell-content${pathname === "/path" ? " is-bleed" : ""}`}>
-          <div className="content-inner">{children}</div>
+          <m.div key={pathname} className="content-inner" {...pageEnter}>
+            {children}
+          </m.div>
         </div>
       </div>
 
