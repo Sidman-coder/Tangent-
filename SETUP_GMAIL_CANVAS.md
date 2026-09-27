@@ -28,20 +28,16 @@ calls read endpoints. It cannot send or modify email.
    GOOGLE_REFRESH_TOKEN=...
    ```
 
-## 2. Canvas LMS (GET-only)
+## 2. Canvas LMS (calendar feed)
 
-`lib/canvas.ts` only ever issues GET requests using a personal access token.
+Canvas needs no server credentials. Each student connects their own Canvas
+Calendar Feed (`.ics`) link in **Settings → Integrations → Connect Canvas**;
+TANGENT reads it and imports assignments as tasks. The feed link is stored per
+student and never sent back to the browser unmasked.
 
-1. Log into your Canvas instance in the browser.
-2. Go to **Account → Settings**.
-3. Under **Approved Integrations**, click **+ New Access Token**, give it a purpose (e.g. "TANGENT"), and generate it.
-4. Copy the token immediately — Canvas only shows it once.
-5. In `.env.local`, set:
-   ```env
-   CANVAS_API_TOKEN=...
-   CANVAS_BASE_URL=https://YOUR_SCHOOL.instructure.com
-   ```
-   `CANVAS_BASE_URL` is the root URL of your school's Canvas site (no trailing slash, no `/api/v1`).
+The old token-based client (`lib/canvas.ts`) has been removed, so
+`CANVAS_API_TOKEN` and `CANVAS_BASE_URL` are no longer used and can be deleted
+from `.env.local`.
 
 ## 3. Browser voice button transcription (Deepgram placeholder)
 
@@ -75,6 +71,5 @@ in `app/api/voice-browser/route.ts` would need to change.
 ## Quick checklist
 
 - [ ] `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` set in `.env.local` (Gmail, read-only)
-- [ ] `CANVAS_API_TOKEN`, `CANVAS_BASE_URL` set in `.env.local` (Canvas, GET-only)
 - [ ] `DEEPGRAM_API_KEY` set in `.env.local` (or swap the provider in `lib/deepgram.ts` — see above)
 - [ ] `npm run dev` restarted after editing `.env.local`

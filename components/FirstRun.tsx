@@ -45,19 +45,35 @@ export default function FirstRun({ onComplete }: { onComplete: () => Promise<voi
     greetingRef.current = getGreeting(name.trim());
   }
 
+  // Saves the answers to the student's profile while the splash plays, with
+  // the browser's timezone so "today" on the server matches theirs.
+  const saveRef = useRef<Promise<unknown> | null>(null);
+  useEffect(() => {
+    if (step !== "splash" || saveRef.current) return;
+    let timezone: string | undefined;
+    try {
+      timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    } catch {
+      timezone = undefined;
+    }
+    saveRef.current = fetch("/api/onboarding", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ displayName: name.trim(), isHighSchool: isHS, timezone }),
+    }).catch(() => null);
+  }, [step, name, isHS]);
+
   useEffect(() => {
     if (step !== "splash") return;
-    const t = setTimeout(() => {
-      localStorage.setItem("tangent-onboarded", "true");
-      setLeaving(true);
-    }, SPLASH_DURATION_MS);
+    const t = setTimeout(() => setLeaving(true), SPLASH_DURATION_MS);
     return () => clearTimeout(t);
   }, [step]);
 
   useEffect(() => {
     if (!leaving) return;
-    const t = setTimeout(() => {
-      void onComplete();
+    const t = setTimeout(async () => {
+      await saveRef.current;
+      await onComplete();
     }, OVERLAY_LEAVE_MS);
     return () => clearTimeout(t);
   }, [leaving, onComplete]);
@@ -70,9 +86,6 @@ export default function FirstRun({ onComplete }: { onComplete: () => Promise<voi
 
   const handleLoginContinue = () => {
     if (!canContinueLogin) return;
-    const trimmed = name.trim();
-    localStorage.setItem("tangent-user-name", trimmed);
-    localStorage.setItem("tangent-is-hs", String(isHS));
     setStep(isHS ? "schedule" : "splash");
   };
 

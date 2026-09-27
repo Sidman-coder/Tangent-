@@ -69,6 +69,11 @@ export type CalendarEvent = {
 export type UserProfile = {
   displayName: string;
   email: string;
+  isHighSchool?: boolean | null;
+  /** ISO time the first-run flow finished; null shows onboarding. */
+  onboardedAt?: string | null;
+  /** IANA timezone captured from the browser at onboarding. */
+  timezone?: string;
 };
 
 export type VoiceLogEntry = {
@@ -121,6 +126,15 @@ export interface BriefConfig {
 
 export interface CanvasFeedConfig {
   icsUrl: string;
+  connectedAt: string;
+  lastSyncedAt: string | null;
+  lastSyncCount: number;
+}
+
+/** What the browser may see about a Canvas feed: the URL is masked because the
+ *  .ics link itself grants read access to the student's calendar. */
+export interface CanvasFeedStatus {
+  maskedUrl: string;
   connectedAt: string;
   lastSyncedAt: string | null;
   lastSyncCount: number;

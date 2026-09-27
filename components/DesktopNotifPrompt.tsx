@@ -23,7 +23,7 @@ export default function DesktopNotifPrompt() {
     if (visible) return;
     if (!state || state.tasks.length === 0) return;
     if (typeof window === "undefined") return;
-    if (localStorage.getItem("tangent-onboarded") !== "true") return;
+    if (!state.user.onboardedAt) return;
     if (!isDesktopNotifSupported()) return;
     if (getDesktopNotifPermission() !== "default") return;
     if (hasPromptedForDesktopNotifs()) return;

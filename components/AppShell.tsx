@@ -21,6 +21,7 @@ import FirstRun from "./FirstRun";
 import CanvasConnectGuide from "./CanvasConnectGuide";
 import VoiceCaptureFab from "./VoiceCaptureFab";
 import DesktopNotifPrompt from "./DesktopNotifPrompt";
+import { useAppState } from "./AppStateProvider";
 
 const NAV_LINKS = [
   {
@@ -75,8 +76,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [notifOpen, setNotifOpen] = useState(false);
   const [estTime, setEstTime] = useState<string | null>(null);
+  const { state, refresh } = useAppState();
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [profileInitial, setProfileInitial] = useState("T");
   const [canvasGuideOpen, setCanvasGuideOpen] = useState(false);
   const title = pageTitleFor(pathname);
   const today = new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
@@ -88,13 +89,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => clearInterval(id);
   }, []);
 
+  // Onboarding state lives on the student's profile (profiles.onboarded_at).
+  // Only opens the flow; FirstRun closes it once its answers are saved.
+  const loaded = state !== null;
+  const onboardedAt = state?.user.onboardedAt;
   useEffect(() => {
-    if (localStorage.getItem("tangent-onboarded") !== "true") {
-      setShowOnboarding(true);
-    }
-    const savedName = localStorage.getItem("tangent-user-name")?.trim();
-    if (savedName) setProfileInitial(savedName.charAt(0).toUpperCase());
-  }, []);
+    if (loaded && !onboardedAt) setShowOnboarding(true);
+  }, [loaded, onboardedAt]);
+  const profileInitial = state?.user.displayName?.trim().charAt(0).toUpperCase() || "T";
 
   const openPalette = () => window.dispatchEvent(new Event("tangent:open-palette"));
 
@@ -226,7 +228,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       {pathname !== "/ai" && <VoiceCaptureFab />}
       {!showOnboarding && <DesktopNotifPrompt />}
 
-      {showOnboarding && <FirstRun onComplete={() => setShowOnboarding(false)} />}
+      {showOnboarding && <FirstRun
+          onComplete={async () => {
+            await refresh();
+            setShowOnboarding(false);
+          }}
+        />}
     </div>
   );
 }

@@ -19,6 +19,7 @@ import type {
   PendingConfirmation,
   BriefConfig,
   CanvasFeedConfig,
+  CanvasFeedStatus,
   PendingBriefBatch,
   ChatMessage,
   ChatSession,
@@ -71,43 +72,6 @@ async function selectAll<T>(
     if (!data || data.length < PAGE) return rows;
   }
 }
-
-// ─── In-memory state for areas not yet moved to Supabase ─────────────────────
-// Being replaced area by area. Shared across students until then.
-
-type LegacyData = {
-  user: UserProfile;
-  weeklyPlan: string[];
-  voiceLogs: VoiceLogEntry[];
-  lastVoiceCommand: string | null;
-  lastVoiceResponse: string | null;
-};
-
-const g = global as typeof global & {
-  __tangentLegacy?: LegacyData;
-  __tangentUserContext?: UserContext;
-  __tangentActions?: ActionRecord[];
-  __tangentPending?: PendingConfirmation[];
-  __tangentBriefConfig?: BriefConfig | null;
-  __tangentCanvasFeed?: CanvasFeedConfig | null;
-};
-if (!g.__tangentLegacy) {
-  g.__tangentLegacy = {
-    user: { displayName: "Tangent User", email: "you@example.com" },
-    weeklyPlan: [],
-    voiceLogs: [],
-    lastVoiceCommand: null,
-    lastVoiceResponse: null,
-  };
-}
-const store: LegacyData = g.__tangentLegacy;
-if (!g.__tangentUserContext) {
-  g.__tangentUserContext = { entries: [], compressedSummary: "", lastUpdated: new Date().toISOString(), totalInteractions: 0 };
-}
-if (!g.__tangentActions) g.__tangentActions = [];
-if (!g.__tangentPending) g.__tangentPending = [];
-if (g.__tangentBriefConfig === undefined) g.__tangentBriefConfig = null;
-if (g.__tangentCanvasFeed === undefined) g.__tangentCanvasFeed = null;
 
 // ─── Task rows ────────────────────────────────────────────────────────────────
 
@@ -487,16 +451,40 @@ export async function getRecurringTasks(): Promise<Record<string, Task[]>> {
 
 // ─── Voice log functions ──────────────────────────────────────────────────────
 
+const MAX_VOICE_LOGS = 100;
+
 export async function getAllVoiceLogs(): Promise<VoiceLogEntry[]> {
-  return [...store.voiceLogs];
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("voice_logs")
+    .select("at, text, response, action, ok")
+    .eq("user_id", userId)
+    .order("id", { ascending: false })
+    .limit(MAX_VOICE_LOGS);
+  if (error) fail("getAllVoiceLogs", error);
+  return (data ?? []).map((r: VoiceLogEntry) => ({ ...r, at: iso(r.at) }));
 }
 
 export async function addVoiceLog(entry: Omit<VoiceLogEntry, "at">): Promise<void> {
-  const log: VoiceLogEntry = { at: new Date().toISOString(), ...entry };
-  store.voiceLogs.unshift(log);
-  if (store.voiceLogs.length > 100) store.voiceLogs.length = 100;
-  store.lastVoiceCommand = entry.text;
-  store.lastVoiceResponse = entry.response;
+  const { db, userId } = ctx();
+  const { error } = await db
+    .from("voice_logs")
+    .insert({ user_id: userId, text: entry.text, response: entry.response, action: entry.action, ok: entry.ok });
+  if (error) fail("addVoiceLog", error);
+  await updateProfile("addVoiceLog", { last_voice_command: entry.text, last_voice_response: entry.response });
+
+  const { data: old, error: oldError } = await db
+    .from("voice_logs")
+    .select("id")
+    .eq("user_id", userId)
+    .order("id", { ascending: false })
+    .range(MAX_VOICE_LOGS, MAX_VOICE_LOGS + PAGE - 1);
+  if (oldError) fail("addVoiceLog", oldError);
+  const oldIds = (old ?? []).map((r: { id: number }) => r.id);
+  if (oldIds.length) {
+    const { error: delError } = await db.from("voice_logs").delete().eq("user_id", userId).in("id", oldIds);
+    if (delError) fail("addVoiceLog", delError);
+  }
   console.log("[store] addVoiceLog action:", entry.action, "| ok:", entry.ok, "| text:", entry.text);
 }
 
@@ -600,15 +588,81 @@ export async function addEvent(event: Omit<CalendarEvent, "id">): Promise<Calend
   return { id: uid("ev"), ...event };
 }
 
-// ─── User / plan functions ────────────────────────────────────────────────────
+// ─── Profile (user, weekly plan, onboarding, timezone) ────────────────────────
 
+type ProfileRow = {
+  display_name: string;
+  email: string;
+  is_high_school: boolean | null;
+  onboarded_at: string | null;
+  timezone: string;
+  weekly_plan: string[];
+  last_voice_command: string | null;
+  last_voice_response: string | null;
+  context_summary: string;
+  context_interactions: number;
+  context_updated_at: string;
+};
+
+const PROFILE_COLUMNS =
+  "display_name, email, is_high_school, onboarded_at, timezone, weekly_plan, last_voice_command, last_voice_response, context_summary, context_interactions, context_updated_at";
+
+async function getProfileRow(where: string): Promise<ProfileRow> {
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("profiles").select(PROFILE_COLUMNS).eq("user_id", userId).maybeSingle();
+  if (error) fail(where, error);
+  if (!data) throw new Error(`[store] ${where}: no profile for this student`);
+  return data as ProfileRow;
+}
+
+async function updateProfile(where: string, row: Record<string, unknown>): Promise<void> {
+  const { db, userId } = ctx();
+  const { error } = await db.from("profiles").update(row).eq("user_id", userId);
+  if (error) fail(where, error);
+}
+
+function userFromRow(r: ProfileRow): UserProfile {
+  return {
+    displayName: r.display_name,
+    email: r.email,
+    isHighSchool: r.is_high_school,
+    onboardedAt: r.onboarded_at ? iso(r.onboarded_at) : null,
+    timezone: isValidTimezone(r.timezone) ? r.timezone : DEFAULT_TIMEZONE,
+  };
+}
+
+/** Saves the editable profile fields. The email comes from the sign-in account
+ *  and is not editable here (cron jobs check it against the allowlist). */
 export async function updateUser(patch: Partial<UserProfile>): Promise<void> {
-  if (patch.displayName !== undefined) store.user.displayName = patch.displayName;
-  if (patch.email !== undefined) store.user.email = patch.email;
+  const row: Record<string, unknown> = {};
+  if (typeof patch.displayName === "string") row.display_name = patch.displayName.trim().slice(0, 100);
+  if (patch.timezone !== undefined && isValidTimezone(patch.timezone)) row.timezone = patch.timezone;
+  if (Object.keys(row).length) await updateProfile("updateUser", row);
 }
 
 export async function setWeeklyPlan(items: string[]): Promise<void> {
-  store.weeklyPlan = [...items];
+  await updateProfile("setWeeklyPlan", { weekly_plan: items.filter((i) => typeof i === "string") });
+}
+
+/** Marks onboarding done and records the answers from the first-run flow. */
+export async function completeOnboarding(answers: {
+  displayName?: string;
+  isHighSchool?: boolean | null;
+  timezone?: string;
+}): Promise<UserProfile> {
+  const row: Record<string, unknown> = { onboarded_at: new Date().toISOString() };
+  if (typeof answers.displayName === "string" && answers.displayName.trim()) row.display_name = answers.displayName.trim().slice(0, 100);
+  if (typeof answers.isHighSchool === "boolean") row.is_high_school = answers.isHighSchool;
+  row.timezone = isValidTimezone(answers.timezone) ? answers.timezone : DEFAULT_TIMEZONE;
+  await updateProfile("completeOnboarding", row);
+  console.log("[store] completeOnboarding — timezone:", row.timezone);
+  return userFromRow(await getProfileRow("completeOnboarding"));
+}
+
+/** "Restart onboarding": the first-run flow shows again on next load. */
+export async function restartOnboarding(): Promise<void> {
+  await updateProfile("restartOnboarding", { onboarded_at: null });
+  console.log("[store] restartOnboarding");
 }
 
 // ─── Plan functions ───────────────────────────────────────────────────────────
@@ -947,15 +1001,20 @@ export async function deleteChatSession(sessionId: string): Promise<boolean> {
 // ─── Full state helpers ───────────────────────────────────────────────────────
 
 export async function getAppState(): Promise<AppState> {
-  const [tasks, calendars, plans] = await Promise.all([getAllTasks(), getAllCalendars(), getAllPlans()]);
+  const [tasks, calendars, plans, profile] = await Promise.all([
+    getAllTasks(),
+    getAllCalendars(),
+    getAllPlans(),
+    getProfileRow("getAppState"),
+  ]);
   return {
     tasks,
     calendars,
     events: [],
-    user: { ...store.user },
-    weeklyPlan: [...store.weeklyPlan],
-    lastVoiceCommand: store.lastVoiceCommand,
-    lastVoiceResponse: store.lastVoiceResponse,
+    user: userFromRow(profile),
+    weeklyPlan: [...(profile.weekly_plan ?? [])],
+    lastVoiceCommand: profile.last_voice_command,
+    lastVoiceResponse: profile.last_voice_response,
     plans,
   };
 }
@@ -966,33 +1025,68 @@ export async function getState(): Promise<AppState> {
 
 /** Saves the profile parts of a client-sent state. Tasks, plans and calendars
  *  are only changed through their own endpoints, so a stale client can't
- *  overwrite them. */
+ *  overwrite them. Onboarding has its own endpoint (/api/onboarding). */
 export async function replaceState(next: Partial<AppState>): Promise<void> {
-  if (next.user) await updateUser(next.user);
+  if (next.user) await updateUser({ displayName: next.user.displayName });
   if (Array.isArray(next.weeklyPlan)) await setWeeklyPlan(next.weeklyPlan);
 }
 
 // ─── User context functions ───────────────────────────────────────────────────
 
+type ContextRow = {
+  id: string;
+  category: ContextEntry["category"];
+  fact: string;
+  source: ContextEntry["source"];
+  created_at: string;
+};
+
+function contextFromRow(r: ContextRow): ContextEntry {
+  return { id: r.id, timestamp: iso(r.created_at), category: r.category, fact: r.fact, source: r.source };
+}
+
 export async function getUserContext(): Promise<UserContext> {
-  return g.__tangentUserContext!;
+  const { db, userId } = ctx();
+  const [rows, profile] = await Promise.all([
+    selectAll<ContextRow>("getUserContext", (from, to) =>
+      db
+        .from("context_entries")
+        .select("id, category, fact, source, created_at")
+        .eq("user_id", userId)
+        .order("created_at")
+        .order("id")
+        .range(from, to)
+    ),
+    getProfileRow("getUserContext"),
+  ]);
+  return {
+    entries: rows.map(contextFromRow),
+    compressedSummary: profile.context_summary ?? "",
+    lastUpdated: iso(profile.context_updated_at),
+    totalInteractions: profile.context_interactions ?? 0,
+  };
 }
 
 export async function addContextEntry(entry: Omit<ContextEntry, "id" | "timestamp">): Promise<ContextEntry> {
-  const full: ContextEntry = {
-    ...entry,
-    id: `ctx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-    timestamp: new Date().toISOString(),
-  };
-  g.__tangentUserContext!.entries.push(full);
-  g.__tangentUserContext!.lastUpdated = new Date().toISOString();
-  g.__tangentUserContext!.totalInteractions++;
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("context_entries")
+    .insert({ user_id: userId, category: entry.category, fact: entry.fact, source: entry.source })
+    .select("id, category, fact, source, created_at")
+    .single();
+  if (error) fail("addContextEntry", error);
+  const profile = await getProfileRow("addContextEntry");
+  await updateProfile("addContextEntry", {
+    context_interactions: (profile.context_interactions ?? 0) + 1,
+    context_updated_at: new Date().toISOString(),
+  });
+  const full = contextFromRow(data as ContextRow);
   console.log("[store] Context entry added:", full.category, full.fact.slice(0, 60));
   return full;
 }
 
 export async function getContextAsString(): Promise<string> {
-  const c = g.__tangentUserContext!;
+  const c = await getUserContext();
   const entries = c.entries
     .slice(-50) // last 50 entries max
     .map((e) => `[${e.category}] ${e.fact}`)
@@ -1005,9 +1099,22 @@ export async function getContextAsString(): Promise<string> {
 }
 
 export async function setCompressedSummary(summary: string): Promise<void> {
-  g.__tangentUserContext!.compressedSummary = summary;
-  // Keep only last 10 entries after compression
-  g.__tangentUserContext!.entries = g.__tangentUserContext!.entries.slice(-10);
+  await updateProfile("setCompressedSummary", { context_summary: summary, context_updated_at: new Date().toISOString() });
+  // Keep only the newest 10 entries after compression.
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("context_entries")
+    .select("id")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .range(10, 10 + PAGE - 1);
+  if (error) fail("setCompressedSummary", error);
+  const ids = (data ?? []).map((r: { id: string }) => r.id);
+  if (ids.length) {
+    const { error: delError } = await db.from("context_entries").delete().eq("user_id", userId).in("id", ids);
+    if (delError) fail("setCompressedSummary", delError);
+  }
   console.log("[store] Context compressed. Summary length:", summary.length);
 }
 
@@ -1176,46 +1283,119 @@ export async function getUnreadNotificationCount(): Promise<number> {
 
 // ─── Action Receipts + Undo ────────────────────────────────────────────────
 
+const MAX_ACTIONS = 50;
+const MAX_PENDING = 20;
+const ACTION_COLUMNS = "id, kind, summary, undoable, undone, snapshot, created_at";
+
+type ActionRow = {
+  id: string;
+  kind: ActionKind;
+  summary: string;
+  undoable: boolean;
+  undone: boolean;
+  snapshot: ActionSnapshot | null;
+  created_at: string;
+};
+
+function actionFromRow(r: ActionRow): ActionRecord {
+  return {
+    id: r.id,
+    kind: r.kind,
+    summary: r.summary,
+    createdAt: iso(r.created_at),
+    undoable: r.undoable,
+    undone: r.undone,
+    snapshot: r.snapshot ?? {},
+  };
+}
+
+/** Deletes a student's rows in `table` beyond the newest `keep`. */
+async function trimNewest(table: "action_records" | "pending_confirmations", keep: number) {
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from(table)
+    .select("id")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .range(keep, keep + PAGE - 1);
+  if (error) fail(`trim ${table}`, error);
+  const ids = (data ?? []).map((r: { id: string }) => r.id);
+  if (ids.length === 0) return;
+  const { error: delError } = await db.from(table).delete().eq("user_id", userId).in("id", ids);
+  if (delError) fail(`trim ${table}`, delError);
+}
+
 export async function recordAction(
   kind: ActionKind,
   summary: string,
   snapshot: ActionSnapshot,
   undoable = true
 ): Promise<ActionRecord> {
-  const record: ActionRecord = {
-    id: uid("act"),
-    kind,
-    summary,
-    createdAt: new Date().toISOString(),
-    undoable,
-    undone: false,
-    snapshot,
-  };
-  g.__tangentActions!.unshift(record);
-  if (g.__tangentActions!.length > 50) {
-    g.__tangentActions = g.__tangentActions!.slice(0, 50);
-  }
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("action_records")
+    .insert({ user_id: userId, kind, summary, snapshot, undoable })
+    .select(ACTION_COLUMNS)
+    .single();
+  if (error) fail("recordAction", error);
+  await trimNewest("action_records", MAX_ACTIONS);
+  const record = actionFromRow(data as ActionRow);
   console.log("[store] recordAction:", record.id, kind, "-", summary);
-  return { ...record };
+  return record;
 }
 
 async function findActionRecord(id: string): Promise<ActionRecord | null> {
-  return g.__tangentActions!.find((a) => a.id === id) ?? null;
+  if (!isUuid(id)) return null;
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("action_records")
+    .select(ACTION_COLUMNS)
+    .eq("user_id", userId)
+    .eq("id", id)
+    .maybeSingle();
+  if (error) fail("findActionRecord", error);
+  return data ? actionFromRow(data as ActionRow) : null;
 }
 
 export async function getRecentActions(limit = 20): Promise<ActionRecord[]> {
-  return g.__tangentActions!.slice(0, limit).map((a) => ({ ...a, snapshot: { ...a.snapshot } }));
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("action_records")
+    .select(ACTION_COLUMNS)
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(Math.max(1, Math.min(limit, MAX_ACTIONS)));
+  if (error) fail("getRecentActions", error);
+  return ((data ?? []) as ActionRow[]).map(actionFromRow);
 }
 
 export async function undoAction(id: string): Promise<{ ok: boolean; message: string }> {
-  const record = g.__tangentActions!.find((a) => a.id === id);
+  const record = await findActionRecord(id);
   if (!record) return { ok: false, message: "That action could not be found." };
   if (record.undone) return { ok: false, message: "Already undone." };
   if (!record.undoable) return { ok: false, message: "This action can't be undone." };
 
-  await applyUndo(record);
+  // Claim the undo atomically so a double click can't apply it twice.
+  const { db, userId } = ctx();
+  const { data: claimed, error } = await db
+    .from("action_records")
+    .update({ undone: true })
+    .eq("user_id", userId)
+    .eq("id", id)
+    .eq("undone", false)
+    .eq("undoable", true)
+    .select("id");
+  if (error) fail("undoAction", error);
+  if (!claimed?.length) return { ok: false, message: "Already undone." };
 
-  record.undone = true;
+  try {
+    await applyUndo(record);
+  } catch (e) {
+    await db.from("action_records").update({ undone: false }).eq("user_id", userId).eq("id", id);
+    throw e;
+  }
   console.log("[store] undoAction:", id, record.kind);
   return { ok: true, message: "Undone." };
 }
@@ -1255,43 +1435,91 @@ async function applyUndo(record: ActionRecord): Promise<void> {
 
 // ─── Confirm-tier gating (delete_all_tasks, large move_tasks) ────────────────
 
+type PendingRow = {
+  id: string;
+  kind: ActionKind;
+  message: string;
+  payload: Record<string, unknown> | null;
+  created_at: string;
+};
+
+const PENDING_COLUMNS = "id, kind, message, payload, created_at";
+
+function pendingFromRow(r: PendingRow): PendingConfirmation {
+  return { id: r.id, kind: r.kind, message: r.message, createdAt: iso(r.created_at), payload: r.payload ?? {} };
+}
+
 export async function addPendingConfirmation(
   kind: ActionKind,
   message: string,
   payload: Record<string, unknown>
 ): Promise<PendingConfirmation> {
-  const pending: PendingConfirmation = {
-    id: uid("pend"),
-    kind,
-    message,
-    createdAt: new Date().toISOString(),
-    payload,
-  };
-  g.__tangentPending!.push(pending);
-  if (g.__tangentPending!.length > 20) {
-    g.__tangentPending = g.__tangentPending!.slice(-20);
-  }
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("pending_confirmations")
+    .insert({ user_id: userId, kind, message, payload })
+    .select(PENDING_COLUMNS)
+    .single();
+  if (error) fail("addPendingConfirmation", error);
+  await trimNewest("pending_confirmations", MAX_PENDING);
+  const pending = pendingFromRow(data as PendingRow);
   console.log("[store] addPendingConfirmation:", pending.id, kind, "-", message);
   return pending;
 }
 
 export async function getPendingConfirmation(id: string): Promise<PendingConfirmation | null> {
-  return g.__tangentPending!.find((p) => p.id === id) ?? null;
+  if (!isUuid(id)) return null;
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("pending_confirmations")
+    .select(PENDING_COLUMNS)
+    .eq("user_id", userId)
+    .eq("id", id)
+    .maybeSingle();
+  if (error) fail("getPendingConfirmation", error);
+  return data ? pendingFromRow(data as PendingRow) : null;
 }
 
-export async function resolvePendingConfirmation(id: string): Promise<void> {
-  g.__tangentPending = g.__tangentPending!.filter((p) => p.id !== id);
+/** Removes a pending confirmation. Returns true only for the caller that
+ *  actually removed it, so a double-clicked confirm runs the action once. */
+export async function resolvePendingConfirmation(id: string): Promise<boolean> {
+  if (!isUuid(id)) return false;
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("pending_confirmations").delete().eq("user_id", userId).eq("id", id).select("id");
+  if (error) fail("resolvePendingConfirmation", error);
+  return (data?.length ?? 0) > 0;
 }
 
 // ─── Daily Brief config ───────────────────────────────────────────────────────
 
 export async function getBriefConfig(): Promise<BriefConfig | null> {
-  const cfg = g.__tangentBriefConfig;
-  return cfg ? { ...cfg, sources: cfg.sources.map((s) => ({ ...s })) } : null;
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("brief_configs")
+    .select("sources, cadence, delivery_time")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) fail("getBriefConfig", error);
+  if (!data) return null;
+  return {
+    sources: Array.isArray(data.sources) ? data.sources : [],
+    cadence: data.cadence,
+    deliveryTime: data.delivery_time,
+  };
 }
 
 export async function saveBriefConfig(config: BriefConfig): Promise<BriefConfig> {
-  g.__tangentBriefConfig = { ...config, sources: config.sources.map((s) => ({ ...s })) };
+  const { db, userId } = ctx();
+  const { error } = await db.from("brief_configs").upsert(
+    {
+      user_id: userId,
+      sources: config.sources.map((src) => ({ ...src })),
+      cadence: config.cadence,
+      delivery_time: config.deliveryTime,
+    },
+    { onConflict: "user_id" }
+  );
+  if (error) fail("saveBriefConfig", error);
   console.log("[store] saveBriefConfig — sources:", config.sources.length, "| cadence:", config.cadence, "| time:", config.deliveryTime);
   return (await getBriefConfig())!;
 }
@@ -1329,27 +1557,121 @@ export async function setPendingBriefBatch(batch: PendingBriefBatch | null): Pro
 }
 
 // ─── Canvas .ics feed connection ──────────────────────────────────────────────
+// The feed URL contains a private token that grants read access to the
+// student's Canvas calendar, so it stays on the server: the browser only ever
+// gets getCanvasFeedStatus(), which masks it.
 
+type CanvasFeedRow = { ics_url: string; connected_at: string; last_synced_at: string | null; last_sync_count: number };
+
+function canvasFeedFromRow(r: CanvasFeedRow): CanvasFeedConfig {
+  return {
+    icsUrl: r.ics_url,
+    connectedAt: iso(r.connected_at),
+    lastSyncedAt: r.last_synced_at ? iso(r.last_synced_at) : null,
+    lastSyncCount: r.last_sync_count,
+  };
+}
+
+/** "https://school.instructure.com/…/••••••.ics" — host only, no path token or query. */
+export function maskCanvasFeedUrl(icsUrl: string): string {
+  try {
+    return `${new URL(icsUrl).origin}/…/••••••.ics`;
+  } catch {
+    return "••••••.ics";
+  }
+}
+
+/** Full feed config including the secret URL. Server-only callers. */
 export async function getCanvasFeed(): Promise<CanvasFeedConfig | null> {
-  return g.__tangentCanvasFeed ? { ...g.__tangentCanvasFeed } : null;
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("canvas_feeds")
+    .select("ics_url, connected_at, last_synced_at, last_sync_count")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) fail("getCanvasFeed", error);
+  return data ? canvasFeedFromRow(data as CanvasFeedRow) : null;
+}
+
+/** Safe to send to the browser. */
+export async function getCanvasFeedStatus(): Promise<CanvasFeedStatus | null> {
+  const feed = await getCanvasFeed();
+  if (!feed) return null;
+  return {
+    maskedUrl: maskCanvasFeedUrl(feed.icsUrl),
+    connectedAt: feed.connectedAt,
+    lastSyncedAt: feed.lastSyncedAt,
+    lastSyncCount: feed.lastSyncCount,
+  };
 }
 
 export async function saveCanvasFeed(icsUrl: string): Promise<CanvasFeedConfig> {
-  const config: CanvasFeedConfig = {
-    icsUrl,
-    connectedAt: new Date().toISOString(),
-    lastSyncedAt: null,
-    lastSyncCount: 0,
-  };
-  g.__tangentCanvasFeed = config;
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("canvas_feeds")
+    .upsert(
+      { user_id: userId, ics_url: icsUrl, connected_at: new Date().toISOString(), last_synced_at: null, last_sync_count: 0 },
+      { onConflict: "user_id" }
+    )
+    .select("ics_url, connected_at, last_synced_at, last_sync_count")
+    .single();
+  if (error) fail("saveCanvasFeed", error);
   console.log("[store] saveCanvasFeed: connected");
-  return { ...config };
+  return canvasFeedFromRow(data as CanvasFeedRow);
 }
 
 export async function recordCanvasSync(count: number): Promise<CanvasFeedConfig | null> {
-  if (!g.__tangentCanvasFeed) return null;
-  g.__tangentCanvasFeed.lastSyncedAt = new Date().toISOString();
-  g.__tangentCanvasFeed.lastSyncCount = count;
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("canvas_feeds")
+    .update({ last_synced_at: new Date().toISOString(), last_sync_count: count })
+    .eq("user_id", userId)
+    .select("ics_url, connected_at, last_synced_at, last_sync_count")
+    .maybeSingle();
+  if (error) fail("recordCanvasSync", error);
   console.log("[store] recordCanvasSync — count:", count);
-  return { ...g.__tangentCanvasFeed };
+  return data ? canvasFeedFromRow(data as CanvasFeedRow) : null;
+}
+
+// ─── Reset ────────────────────────────────────────────────────────────────────
+
+/** Deletes everything the current student has made and sends them back to
+ *  onboarding. Keeps the account, name, email, timezone, the four default
+ *  calendars and any registered pen. Only this student's rows are touched. */
+export async function resetUserData(): Promise<void> {
+  const { db, userId } = ctx();
+  // Tasks first (task chats cascade), then everything that may point at them.
+  const tables = [
+    "tasks",
+    "plans",
+    "chat_sessions",
+    "notifications",
+    "action_records",
+    "pending_confirmations",
+    "voice_logs",
+    "context_entries",
+    "brief_configs",
+    "canvas_feeds",
+  ];
+  for (const table of tables) {
+    const { error } = await db.from(table).delete().eq("user_id", userId);
+    if (error) fail(`resetUserData ${table}`, error);
+  }
+  const { error: calError } = await db
+    .from("calendars")
+    .delete()
+    .eq("user_id", userId)
+    .not("id", "in", `(${DEFAULT_CALENDAR_ORDER.join(",")})`);
+  if (calError) fail("resetUserData calendars", calError);
+  await updateProfile("resetUserData", {
+    onboarded_at: null,
+    is_high_school: null,
+    weekly_plan: [],
+    last_voice_command: null,
+    last_voice_response: null,
+    context_summary: "",
+    context_interactions: 0,
+    context_updated_at: new Date().toISOString(),
+  });
+  console.log("[store] resetUserData: done");
 }

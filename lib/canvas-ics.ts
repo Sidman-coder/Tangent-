@@ -1,13 +1,12 @@
 // lib/canvas-ics.ts
 //
-// New Canvas integration path: a per-student Canvas Calendar Feed (.ics) URL,
-// polled read-only and turned into TANGENT tasks. This is separate from the
-// legacy token-based client in lib/canvas.ts (still used by the agent tool
-// loop) — do not merge the two paths.
+// Canvas integration: a per-student Canvas Calendar Feed (.ics) URL, polled
+// read-only and turned into TANGENT tasks with source "canvas". The agent
+// answers Canvas questions from those tasks (get_canvas_deadlines).
 
 import ical from "node-ical";
 import type { CalendarResponse, ParameterValue, VEvent } from "node-ical";
-import { addTask } from "./store";
+import { addTask, getUserTimezone } from "./store";
 
 function textValue(value: ParameterValue<string> | undefined): string {
   if (!value) return "";
@@ -60,12 +59,27 @@ export async function fetchAndValidateIcs(rawUrl: string): Promise<IcsValidation
   return { ok: true, icsText, eventCount };
 }
 
-function toTaskDateTime(date: Date): { date: string; time: string } {
+/** Wall-clock date/time of an event in the student's timezone. All-day events
+ *  (node-ical marks them dateOnly, at server-local midnight) keep their date. */
+function toTaskDateTime(date: Date & { dateOnly?: boolean }, timeZone: string): { date: string; time: string } {
   const pad = (n: number) => String(n).padStart(2, "0");
-  return {
-    date: `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
-    time: `${pad(date.getHours())}:${pad(date.getMinutes())}`,
-  };
+  if (date.dateOnly) {
+    return { date: `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`, time: "00:00" };
+  }
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(date)
+      .map((p) => [p.type, p.value])
+  );
+  return { date: `${parts.year}-${parts.month}-${parts.day}`, time: `${parts.hour}:${parts.minute}` };
 }
 
 export type SyncResult = { total: number; added: number; skipped: number };
@@ -84,6 +98,7 @@ export async function syncCanvasFeed(icsUrl: string, sinceDate?: string | Date):
   const icsText = await res.text();
   const parsed = ical.sync.parseICS(icsText);
   const cutoff = sinceDate ? new Date(sinceDate) : null;
+  const timeZone = await getUserTimezone();
 
   let total = 0;
   let added = 0;
@@ -96,7 +111,7 @@ export async function syncCanvasFeed(icsUrl: string, sinceDate?: string | Date):
     if (cutoff && event.start < cutoff) continue;
     total++;
 
-    const { date, time } = toTaskDateTime(event.start);
+    const { date, time } = toTaskDateTime(event.start, timeZone);
     const title = textValue(event.summary).trim() || "Canvas assignment";
     const description = textValue(event.description).trim();
 

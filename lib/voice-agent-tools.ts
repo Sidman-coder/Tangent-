@@ -2,18 +2,14 @@
 //
 // A genuine multi-turn Anthropic tool-use loop, additive to the existing
 // single-shot JSON voice pipeline in app/api/voice/route.ts. It is only
-// invoked for commands that look like they need Gmail or Canvas data
+// invoked for commands that look like they need Gmail, Canvas or calendar data
 // (see needsAgentTools below). It reuses the existing store functions
 // (addTask / addPlan / updateTask) for the "act" side so behavior matches
 // the create_plan / add_task cases already in app/api/voice/route.ts.
-import { addTask, addPlan, updateTask, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, getAllTasks, getTasksByDate, addPendingConfirmation } from "@/lib/store";
+import { addTask, addPlan, updateTask, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, getAllTasks, getTasksByDate, addPendingConfirmation, getUserTimezone } from "@/lib/store";
 import type { Task, TaskKind } from "@/lib/types";
 import { getRecentEmails, getEmailById } from "@/lib/gmail";
-import {
-  getUpcomingAssignments,
-  getCourseFiles,
-  getFileTextContent,
-} from "@/lib/canvas";
+import { ymdInTimezone } from "@/lib/dates";
 import { getUpcomingEvents, getEventsForDate } from "@/lib/calendar";
 import { currentUserIsOwner } from "@/lib/request-context";
 
@@ -61,39 +57,15 @@ const TOOLS = [
     },
   },
   {
-    name: "get_canvas_assignments",
-    description: "Read upcoming Canvas assignments with due dates across all courses",
+    name: "get_canvas_deadlines",
+    description:
+      "Read the student's Canvas assignments and due dates, synced from their Canvas calendar feed into TANGENT tasks. Includes overdue unfinished ones.",
     strict: true,
     input_schema: {
       type: "object",
       properties: {
         days_ahead: { type: "number", description: "How many days ahead to look, default 14" },
       },
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "get_canvas_course_files",
-    description: "List files available in a specific Canvas course",
-    strict: true,
-    input_schema: {
-      type: "object",
-      properties: { course_id: { type: "string" } },
-      required: ["course_id"],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "read_canvas_file",
-    description: "Download and read the text content of a specific Canvas file such as a PDF or Word document",
-    strict: true,
-    input_schema: {
-      type: "object",
-      properties: {
-        file_url: { type: "string" },
-        file_name: { type: "string" },
-      },
-      required: ["file_url", "file_name"],
       additionalProperties: false,
     },
   },
@@ -409,26 +381,23 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
       return { data: { emails: trimmed } };
     }
 
-    case "get_canvas_assignments": {
-      const daysAhead = typeof input.days_ahead === "number" ? input.days_ahead : 14;
-      const assignments = await getUpcomingAssignments(daysAhead);
-      return { data: { assignments } };
-    }
-
-    case "get_canvas_course_files": {
-      const courseId = String(input.course_id ?? "");
-      if (!courseId) return { data: { error: "Missing course_id" } };
-      const files = await getCourseFiles(courseId);
-      return { data: { files } };
-    }
-
-    case "read_canvas_file": {
-      const fileUrl = String(input.file_url ?? "");
-      const fileName = String(input.file_name ?? "");
-      if (!fileUrl || !fileName) return { data: { error: "Missing file_url or file_name" } };
-      const text = await getFileTextContent(fileUrl, fileName);
-      if (text === null) return { data: { supported: false, text: null } };
-      return { data: { supported: true, text: text.slice(0, 8000) } };
+    case "get_canvas_deadlines": {
+      // Canvas data comes only from the student's .ics feed (tasks with source "canvas").
+      const daysAhead = typeof input.days_ahead === "number" ? Math.max(0, Math.min(input.days_ahead, 120)) : 14;
+      const timeZone = await getUserTimezone();
+      const today = ymdInTimezone(timeZone);
+      const end = ymdInTimezone(timeZone, daysAhead);
+      const canvasTasks = (await getAllTasks()).filter((t) => t.source === "canvas");
+      if (canvasTasks.length === 0) {
+        return { data: { connected: false, note: "No Canvas items yet. The student can connect their Canvas calendar feed in Settings → Integrations." } };
+      }
+      const pick = (t: Task) => ({ id: t.id, title: t.title, due: t.date, time: t.time, completed: t.completed, notes: t.notes });
+      return {
+        data: {
+          upcoming: canvasTasks.filter((t) => t.date >= today && t.date <= end).sort((x, y) => (x.date + x.time).localeCompare(y.date + y.time)).map(pick),
+          overdue: canvasTasks.filter((t) => !t.completed && t.date < today).map(pick),
+        },
+      };
     }
 
     case "get_my_tasks": {
@@ -547,7 +516,7 @@ async function systemPrompt(today: string, userContext?: string): Promise<string
 
   return `You are TANGENT's voice assistant. Today is ${today}.
 
-The user gave a voice command that may require reading their Gmail or Canvas data before you can respond or act.
+The user gave a voice command that may require reading their Gmail, Canvas or calendar data before you can respond or act.
 ${userContext ? `
 USER CONTEXT (what you know about this user from past interactions):
 ${userContext}
@@ -571,7 +540,7 @@ For move_tasks operations match tasks by title keywords or date range.
 Call get_calendars if you need to confirm what calendars exist before assigning a task.
 
 Rules:
-- Use get_recent_emails / get_canvas_assignments / get_canvas_course_files / read_canvas_file to gather whatever real data you need BEFORE answering. Never guess or invent emails, assignments, or due dates.
+- Use get_recent_emails / get_canvas_deadlines to gather whatever real data you need BEFORE answering. Never guess or invent emails, assignments, or due dates. Canvas questions (assignments, due dates, homework) are answered from get_canvas_deadlines, which reads the student's synced Canvas feed; TANGENT cannot open Canvas course files.
 - TANGENT has TWO separate, unrelated notions of "calendar": (1) the user's own TANGENT tasks — always available, read with get_my_tasks — and (2) an optional read-only Google Calendar integration — read with get_upcoming_events / get_events_for_date. For "what's on my schedule", "what do I have today/this week", or similar questions about the user's own plate, call get_my_tasks. Only call get_upcoming_events / get_events_for_date when the user specifically asks about their Google Calendar, or after get_my_tasks turns up nothing relevant and you want to check if it's on Google Calendar instead.
 - If get_upcoming_events or get_events_for_date returns {"error":"google_calendar_not_connected", ...}, do NOT say something vague like "I can't connect to your calendar right now" or imply it's a temporary glitch. Say plainly that Google Calendar isn't connected/set up yet, and offer to check their TANGENT tasks instead (via get_my_tasks) if relevant.
 - If the user wants something added to their calendar (a single task, or a multi-day plan built around real due dates), call add_task or create_plan with the real data you gathered.
@@ -629,9 +598,7 @@ function sourceLabelForTool(name: string): string | null {
   switch (name) {
     case "get_recent_emails":
       return "Gmail";
-    case "get_canvas_assignments":
-    case "get_canvas_course_files":
-    case "read_canvas_file":
+    case "get_canvas_deadlines":
       return "Canvas";
     case "get_my_tasks":
       return "your tasks";

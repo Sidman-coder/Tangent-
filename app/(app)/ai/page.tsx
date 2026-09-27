@@ -108,10 +108,10 @@ export default function AiPage() {
     return next ? `${count} · next: ${next.title} at ${formatTime12(next.time)}` : count;
   }, [state]);
 
+  const firstName = state?.user.displayName?.trim().split(/\s+/)[0] ?? "";
   useEffect(() => {
-    const name = window.localStorage.getItem("tangent-user-name")?.trim().split(/\s+/)[0] ?? "";
-    setGreeting(greetingFor(new Date().getHours(), name));
-  }, []);
+    setGreeting(greetingFor(new Date().getHours(), firstName));
+  }, [firstName]);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [pendingRequest, setPendingRequest] = useState<string | null>(null);
   const [input, setInput] = useState("");

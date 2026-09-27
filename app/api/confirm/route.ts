@@ -35,7 +35,10 @@ export const POST = withUser(async (req: Request) => {
       return NextResponse.json({ ok: false, error: "That confirmation has expired." }, { status: 404 });
     }
 
-    await resolvePendingConfirmation(id);
+    // Removing the row is the claim: only one of two racing requests gets true.
+    if (!(await resolvePendingConfirmation(id))) {
+      return NextResponse.json({ ok: false, error: "That confirmation has expired." }, { status: 404 });
+    }
 
     if (!confirm) {
       return NextResponse.json({ ok: true, cancelled: true, response: "Cancelled." });

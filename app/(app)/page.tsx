@@ -64,10 +64,10 @@ export default function DashboardPage() {
     return () => window.clearInterval(id);
   }, []);
 
+  const displayName = state?.user.displayName?.trim() ?? "";
   useEffect(() => {
-    const name = localStorage.getItem("tangent-user-name")?.trim();
-    setGreeting(name ? getGreeting(name) : greetingFor(new Date().getHours()));
-  }, []);
+    setGreeting(displayName ? getGreeting(displayName) : greetingFor(new Date().getHours()));
+  }, [displayName]);
 
   useEffect(() => {
     if (!receipt) return;

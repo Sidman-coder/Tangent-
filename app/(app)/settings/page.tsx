@@ -6,7 +6,7 @@ import Button from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
 import CanvasConnectGuide from "@/components/CanvasConnectGuide";
 import { CalendarSync } from "lucide-react";
-import type { AppState } from "@/lib/types";
+import type { AppState, CanvasFeedStatus } from "@/lib/types";
 import {
   type AppearanceMode,
   type FontMode,
@@ -30,6 +30,8 @@ export default function SettingsPage() {
   const { state, saveState, refresh } = useAppState();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [canvasFeed, setCanvasFeed] = useState<CanvasFeedStatus | null>(null);
+  const [resetting, setResetting] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [canvasGuideOpen, setCanvasGuideOpen] = useState(false);
@@ -45,6 +47,15 @@ export default function SettingsPage() {
     setName(state.user.displayName);
     setEmail(state.user.email);
   }, [state]);
+
+  // Masked feed status only; the real .ics URL never leaves the server.
+  useEffect(() => {
+    if (canvasGuideOpen) return;
+    fetch("/api/canvas/status", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data: { ok?: boolean; feed?: CanvasFeedStatus | null }) => setCanvasFeed(data.ok ? data.feed ?? null : null))
+      .catch(() => setCanvasFeed(null));
+  }, [canvasGuideOpen]);
 
   useEffect(() => {
     const storedTheme = (localStorage.getItem("tangent-theme") as AppearanceMode | null) ?? "light";
@@ -90,11 +101,35 @@ export default function SettingsPage() {
       ? "Blocked in your browser. Allow notifications for this site to turn it back on."
       : "Reuses the alerts already shown in the bell — no extra data is fetched. Only fires while a Tangent tab is open.";
 
-  const onRestartOnboarding = () => {
-    localStorage.removeItem("tangent-onboarded");
-    localStorage.removeItem("tangent-user-name");
-    localStorage.removeItem("tangent-is-hs");
+  const onRestartOnboarding = async () => {
+    const res = await fetch("/api/onboarding", { method: "DELETE" }).catch(() => null);
+    if (!res?.ok) {
+      setMsg("Could not restart setup.");
+      return;
+    }
     window.location.reload();
+  };
+
+  const onResetData = async () => {
+    const ok = window.confirm(
+      "Delete all your Tangent data?\n\nThis permanently removes your tasks, plans, chats, notifications, history and Canvas connection, and restarts setup. Your account stays. This can't be undone."
+    );
+    if (!ok) return;
+    setResetting(true);
+    try {
+      const res = await fetch("/api/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "RESET" }),
+      });
+      if (!res.ok) {
+        setMsg("Could not delete your data.");
+        return;
+      }
+      window.location.assign("/");
+    } finally {
+      setResetting(false);
+    }
   };
 
   const onSave = async () => {
@@ -102,7 +137,7 @@ export default function SettingsPage() {
     setSaving(true);
     const next: AppState = {
       ...state,
-      user: { displayName: name.trim() || state.user.displayName, email: email.trim() || state.user.email },
+      user: { ...state.user, displayName: name.trim() || state.user.displayName },
     };
     try {
       const ok = await saveState(next);
@@ -139,7 +174,8 @@ export default function SettingsPage() {
               </div>
               <div className="field">
                 <label htmlFor="em">Email</label>
-                <input id="em" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+                <input id="em" type="email" value={email} readOnly aria-describedby="em-hint" />
+                <span id="em-hint" className="settings-field-hint">From your sign-in account.</span>
               </div>
             </div>
             <div className="settings-panel-actions">
@@ -191,17 +227,21 @@ export default function SettingsPage() {
                 <span className="settings-integration-icon" aria-hidden="true"><CalendarSync size={19} /></span>
                 <div>
                   <strong>Canvas calendar</strong>
-                  <span>Bring assignments and due dates into your Tangent calendar.</span>
+                  <span>
+                    {canvasFeed
+                      ? `Connected · ${canvasFeed.maskedUrl}${canvasFeed.lastSyncedAt ? ` · ${canvasFeed.lastSyncCount} items last sync` : ""}`
+                      : "Bring assignments and due dates into your Tangent calendar."}
+                  </span>
                 </div>
               </div>
-              <Button variant="primary" onClick={() => setCanvasGuideOpen(true)}>Connect Canvas</Button>
+              <Button variant="primary" onClick={() => setCanvasGuideOpen(true)}>{canvasFeed ? "Reconnect Canvas" : "Connect Canvas"}</Button>
             </div>
           </section>
 
           <section id="onboarding" className="settings-panel">
             <div className="settings-option-row">
-              <div><strong>Restart onboarding</strong><span>Revisit the setup questions for this browser.</span></div>
-              <Button variant="secondary" onClick={onRestartOnboarding}>Restart setup</Button>
+              <div><strong>Restart onboarding</strong><span>Revisit the setup questions.</span></div>
+              <Button variant="secondary" onClick={() => void onRestartOnboarding()}>Restart setup</Button>
             </div>
           </section>
 
@@ -211,6 +251,10 @@ export default function SettingsPage() {
               <form action="/auth/signout" method="post">
                 <Button type="submit" variant="secondary">Sign out</Button>
               </form>
+            </div>
+            <div className="settings-option-row">
+              <div><strong>Delete all my data</strong><span>Removes your tasks, plans, chats and history. Your account stays.</span></div>
+              <Button variant="danger" loading={resetting} loadingLabel="Deleting…" onClick={() => void onResetData()}>Delete data</Button>
             </div>
           </section>
         </div>
