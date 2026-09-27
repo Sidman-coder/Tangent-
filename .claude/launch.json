@@ -5,6 +5,7 @@
       "name": "tangent-dev",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
+      "env": { "NODE_OPTIONS": "--use-system-ca" },
       "port": 3000
     }
   ]

@@ -29,7 +29,8 @@ export async function GET(request: Request) {
   }
 
   if (error) {
-    console.warn("[auth/callback] sign-in failed:", error instanceof Error ? error.message : error);
+    const cause = error instanceof Error ? (error.cause as { code?: string } | undefined)?.code : undefined;
+    console.warn("[auth/callback] sign-in failed:", error instanceof Error ? error.message : error, cause ? `(${cause})` : "");
     return NextResponse.redirect(new URL("/signin?error=link", url.origin));
   }
 
