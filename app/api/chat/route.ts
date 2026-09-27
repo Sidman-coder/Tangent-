@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { handleVoiceText } from "@/lib/voice-handler";
 import { withUser } from "@/lib/request-context";
+import { extractContextFacts } from "@/lib/context-extract";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,19 +52,14 @@ function lastUserMessage(messages: { role: string; content: string }[]): string 
 }
 
 // Fire-and-forget: extract durable facts about the user from this exchange and
-// store them in the rolling context file. Never awaited — must not block the response.
-function extractContextFireAndForget(baseUrl: string, userMessage: string, finalResponse: string): void {
-  const contextPromise = fetch(`${baseUrl}/api/context`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      action: "extract",
-      conversation: `User: ${userMessage}\nAssistant: ${finalResponse}`,
-      source: "chat",
-    }),
-  }).catch(() => {});
-
-  void contextPromise;
+// store them in the rolling context file. Never awaited — must not block the
+// response. Runs in-process so it keeps this request's signed-in student (an
+// HTTP call to /api/context carried no session cookie and was rejected).
+function extractContextFireAndForget(userMessage: string, finalResponse: string): void {
+  void extractContextFacts(`User: ${userMessage}
+Assistant: ${finalResponse}`, "chat").catch((e) => {
+    console.error("[api/chat] context extraction failed:", e instanceof Error ? e.message : e);
+  });
 }
 
 export const POST = withUser(async (req: Request) => {
@@ -106,10 +102,6 @@ export const POST = withUser(async (req: Request) => {
       const reply = await planReply(apiKey, messages);
       return NextResponse.json({ message: reply, action: "plan_reply", mode, ok: true });
     }
-
-    // Same-origin base for fire-and-forget helpers — derived from the request so it
-    // works on any port and on Vercel, never a hardcoded localhost.
-    const baseUrl = new URL(req.url).origin;
 
     // Step 1 — Execute command via voice pipeline. Called in-process: the old
     // HTTP self-call to NEXT_PUBLIC_BASE_URL failed whenever the app wasn't on
@@ -162,7 +154,7 @@ export const POST = withUser(async (req: Request) => {
 
     if (voiceOk && voiceResponse.trim()) {
       console.log("[api/chat] Voice pipeline succeeded, skipping Anthropic rephrase:", voiceResponse.slice(0, 100));
-      extractContextFireAndForget(baseUrl, userText, voiceResponse.trim());
+      extractContextFireAndForget(userText, voiceResponse.trim());
       return NextResponse.json({
         message: voiceResponse.trim(),
         action: voiceAction,
