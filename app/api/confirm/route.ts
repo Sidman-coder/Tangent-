@@ -7,6 +7,7 @@ import {
   getTasksMatchingFilter,
   moveTasksToCalendar,
   getPendingConfirmation,
+  getOpenPendingConfirmations,
   resolvePendingConfirmation,
   recordAction,
   addVoiceLog,
@@ -16,6 +17,18 @@ import { withUser } from "@/lib/request-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/** Open confirmations (id + message only) so the AI console can restore
+ *  Confirm/Cancel on a reloaded chat. Payloads stay server-side. */
+export const GET = withUser(async () => {
+  try {
+    const pending = await getOpenPendingConfirmations();
+    return NextResponse.json({ ok: true, pending: pending.map((p) => ({ id: p.id, message: p.message })) });
+  } catch (e) {
+    console.error("[api/confirm] GET error:", e instanceof Error ? e.message : e);
+    return NextResponse.json({ ok: false, error: "Couldn't load confirmations." }, { status: 500 });
+  }
+});
 
 /** Resolves a confirm-tier gated action (see lib/voice-handler.ts) — either executes
  *  it now (confirm: true) or discards it (confirm: false). Used by CommandPalette's

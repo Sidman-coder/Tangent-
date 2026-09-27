@@ -73,6 +73,9 @@ export default function AiPage() {
   const [mode, setMode] = useState<ConsoleMode>("chat");
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [sessionsLoaded, setSessionsLoaded] = useState(false);
+  const [saveWarning, setSaveWarning] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState(false);
   const [brief, setBrief] = useState<BriefSummary | null>(null);
   const [greeting, setGreeting] = useState("");
   const [chatsOpen, setChatsOpen] = useState(false);
@@ -162,16 +165,25 @@ export default function AiPage() {
       const res = await fetch("/api/sessions");
       const data = (await res.json()) as { ok?: boolean; sessions?: ChatSession[] };
       if (data.ok) setSessions(data.sessions ?? []);
-    } catch {}
+    } catch {
+    } finally {
+      setSessionsLoaded(true);
+    }
   }, []);
 
   const openSession = useCallback(async (sessionId: string) => {
     try {
-      const res = await fetch(`/api/sessions?sessionId=${encodeURIComponent(sessionId)}`);
+      const [res, confirms] = await Promise.all([
+        fetch(`/api/sessions?sessionId=${encodeURIComponent(sessionId)}`),
+        fetch("/api/confirm")
+          .then((r) => r.json() as Promise<{ ok?: boolean; pending?: { id: string; message: string }[] }>)
+          .then((d) => (d.ok ? d.pending ?? [] : []))
+          .catch(() => []),
+      ]);
       const data = (await res.json()) as { ok?: boolean; session?: ChatSession };
       if (data.ok && data.session) {
         setActiveSessionId(data.session.id);
-        setTurns(turnsFromMessages(data.session.messages));
+        setTurns(turnsFromMessages(data.session.messages, confirms));
         setMode("chat");
         setErr(null);
         window.localStorage.setItem(SESSION_STORAGE_KEY, data.session.id);
@@ -184,6 +196,7 @@ export default function AiPage() {
   const newChat = useCallback(() => {
     if (busy) return;
     setActiveSessionId(null);
+    setSaveWarning(null);
     setTurns([]);
     setInput("");
     setErr(null);
@@ -191,6 +204,22 @@ export default function AiPage() {
     window.localStorage.removeItem(SESSION_STORAGE_KEY);
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }, [busy]);
+
+  /** Appends a message to the saved chat. Awaited so messages land in order;
+   *  a failure is shown instead of silently leaving the chat unsaved. */
+  const saveMessage = useCallback(async (sessionId: string | null, role: "user" | "assistant", content: string) => {
+    if (!sessionId) return;
+    try {
+      const res = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "add_message", sessionId, role, content }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+    } catch {
+      setSaveWarning("This chat couldn't be saved. Your calendar changes still went through.");
+    }
+  }, []);
 
   /** Tags the chat with the tasks/plan an action touched (its task color). */
   const linkAction = useCallback(
@@ -211,7 +240,10 @@ export default function AiPage() {
   useEffect(() => {
     void loadSessions();
     const storedId = window.localStorage.getItem(SESSION_STORAGE_KEY);
-    if (storedId) void openSession(storedId);
+    if (storedId) {
+      setRestoring(true);
+      void openSession(storedId).finally(() => setRestoring(false));
+    }
   }, [loadSessions, openSession]);
 
 
@@ -239,17 +271,16 @@ export default function AiPage() {
           setActiveSessionId(sessionId);
           window.localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
           isNewSession = true;
+          void loadSessions();
+        } else {
+          throw new Error("create failed");
         }
-      } catch {}
+      } catch {
+        setSaveWarning("This chat couldn't be saved. Your calendar changes still went through.");
+      }
     }
 
-    if (sessionId) {
-      void fetch("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "add_message", sessionId, role: "user", content: userText }),
-      });
-    }
+    await saveMessage(sessionId, "user", userText);
 
     const history = turns.flatMap((t) => [
       { role: "user", content: t.request },
@@ -295,13 +326,7 @@ export default function AiPage() {
             pendingConfirm: { id: pendingId, message: pendingMessage },
           },
         ]);
-        if (sessionId) {
-          void fetch("/api/sessions", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "add_message", sessionId, role: "assistant", content: pendingMessage }),
-          });
-        }
+        await saveMessage(sessionId, "assistant", pendingMessage);
         return;
       }
 
@@ -332,19 +357,13 @@ export default function AiPage() {
         },
       ]);
 
-      if (sessionId) {
+      await saveMessage(sessionId, "assistant", reply);
+      if (sessionId && isNewSession) {
         void fetch("/api/sessions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "add_message", sessionId, role: "assistant", content: reply }),
+          body: JSON.stringify({ action: "rename", sessionId, title: userText.slice(0, 45) }),
         });
-        if (isNewSession) {
-          void fetch("/api/sessions", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "rename", sessionId, title: userText.slice(0, 45) }),
-          });
-        }
       }
 
       await linkAction(sessionId, data.actionId);
@@ -366,7 +385,7 @@ export default function AiPage() {
       setPendingRequest(null);
       void loadSessions();
     }
-  }, [input, busy, chatMode, activeSessionId, turns, refresh, linkAction, loadSessions]);
+  }, [input, busy, chatMode, activeSessionId, turns, refresh, linkAction, loadSessions, saveMessage]);
 
   /** Plan-mode draft → Calendar: flip the mode and ask for it to be added. */
   const addPlanToCalendar = useCallback(
@@ -442,13 +461,7 @@ export default function AiPage() {
         )
       );
 
-      if (activeSessionId) {
-        void fetch("/api/sessions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "add_message", sessionId: activeSessionId, role: "assistant", content: reply }),
-        });
-      }
+      await saveMessage(activeSessionId, "assistant", reply);
 
       if (confirm && data.ok) await linkAction(activeSessionId, data.actionId);
       await refresh();
@@ -456,7 +469,7 @@ export default function AiPage() {
       const message = e instanceof Error ? e.message : "Something went wrong.";
       setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, response: message } : t)));
     }
-  }, [activeSessionId, refresh, linkAction]);
+  }, [activeSessionId, refresh, linkAction, saveMessage]);
 
   const composer = (
     <Composer
@@ -534,6 +547,10 @@ export default function AiPage() {
           <div className="tg-brief-scroll">
             <BriefPanel onSaved={setBrief} />
           </div>
+        ) : restoring && turns.length === 0 ? (
+          <div className="tg-hero">
+            <p className="tg-hero-today" role="status">Loading your chat…</p>
+          </div>
         ) : turns.length === 0 && !busy ? (
           <div className="tg-hero">
             <PenMark className="tg-hero-mark" size={26} />
@@ -578,6 +595,7 @@ export default function AiPage() {
             />
             <div className="tg-dock">
               {err && <p className="tg-error" role="alert">{err}</p>}
+              {saveWarning && <p className="tg-error" role="alert">{saveWarning}</p>}
               {composer}
               <p className="tg-dock-hint">
                 {chatMode === "calendar"
@@ -591,6 +609,7 @@ export default function AiPage() {
       {(!chatsHidden || chatsOpen) && (
         <ChatSidebar
           sessions={sessions}
+          loading={!sessionsLoaded}
           activeId={activeSessionId}
           state={state}
           open={chatsOpen}

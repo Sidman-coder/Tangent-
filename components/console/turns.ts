@@ -18,21 +18,29 @@ export type Turn = {
 /** "calendar" acts on the calendar; "plan" only talks a plan through. */
 export type ChatMode = "plan" | "calendar";
 
-/** Rebuilds chronological turns from a session's [user, assistant, …] messages. */
-export function turnsFromMessages(messages: { role: "user" | "assistant"; content: string }[]): Turn[] {
+/** Rebuilds chronological turns from a session's [user, assistant, …] messages.
+ *  A confirm prompt followed by its outcome saves two assistant messages in a
+ *  row; the later one wins, matching what the live console showed. A turn whose
+ *  reply is still an open confirmation's prompt gets its Confirm/Cancel back. */
+export function turnsFromMessages(
+  messages: { role: "user" | "assistant"; content: string }[],
+  openConfirms: { id: string; message: string }[] = []
+): Turn[] {
   const result: Turn[] = [];
   for (let i = 0; i < messages.length; i++) {
     if (messages[i].role !== "user") continue;
-    const next = messages[i + 1];
-    const response = next && next.role === "assistant" ? next.content : "";
-    result.push({
-      id: crypto.randomUUID(),
-      request: messages[i].content,
-      tools: [],
-      sourcesChecked: [],
-      response,
-    });
-    if (next && next.role === "assistant") i++;
+    const request = messages[i].content;
+    let response = "";
+    while (messages[i + 1]?.role === "assistant") response = messages[++i].content;
+    result.push({ id: crypto.randomUUID(), request, tools: [], sourcesChecked: [], response });
+  }
+  // Newest turns claim the newest matching confirmation; each is used once.
+  const unclaimed = [...openConfirms];
+  for (let t = result.length - 1; t >= 0 && unclaimed.length > 0; t--) {
+    const k = unclaimed.findIndex((c) => c.message === result[t].response);
+    if (k === -1) continue;
+    result[t].pendingConfirm = unclaimed[k];
+    unclaimed.splice(k, 1);
   }
   return result;
 }

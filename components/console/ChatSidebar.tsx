@@ -27,6 +27,8 @@ export const CHAT_COLORS = [
 
 type Props = {
   sessions: ChatSession[];
+  /** True until the first chat list arrives — avoids a false "no chats yet". */
+  loading?: boolean;
   activeId: string | null;
   state: AppState | null;
   onSelect: (id: string) => void;
@@ -60,6 +62,7 @@ const MENU_W = 216;
 
 export default function ChatSidebar({
   sessions,
+  loading = false,
   activeId,
   state,
   onSelect,
@@ -276,7 +279,9 @@ export default function ChatSidebar({
           </label>
         )}
 
-        {sessions.length === 0 ? (
+        {loading && sessions.length === 0 ? (
+          <div className="tg-side-empty" role="status">Loading chats…</div>
+        ) : sessions.length === 0 ? (
           <div className="tg-side-empty">You haven’t started any chats yet.</div>
         ) : empty ? (
           <div className="tg-side-empty">No chats match “{query.trim()}”.</div>

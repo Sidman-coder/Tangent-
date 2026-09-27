@@ -1480,6 +1480,20 @@ export async function getPendingConfirmation(id: string): Promise<PendingConfirm
   return data ? pendingFromRow(data as PendingRow) : null;
 }
 
+/** Confirmations still waiting on the student, newest first — lets a reloaded
+ *  chat bring back its Confirm/Cancel buttons. */
+export async function getOpenPendingConfirmations(): Promise<PendingConfirmation[]> {
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("pending_confirmations")
+    .select(PENDING_COLUMNS)
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(MAX_PENDING);
+  if (error) fail("getOpenPendingConfirmations", error);
+  return ((data ?? []) as PendingRow[]).map(pendingFromRow);
+}
+
 /** Removes a pending confirmation. Returns true only for the caller that
  *  actually removed it, so a double-clicked confirm runs the action once. */
 export async function resolvePendingConfirmation(id: string): Promise<boolean> {
