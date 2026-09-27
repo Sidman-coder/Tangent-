@@ -7,6 +7,7 @@
 import ical from "node-ical";
 import type { CalendarResponse, ParameterValue, VEvent } from "node-ical";
 import { addTask, getUserTimezone } from "./store";
+import { getUserToday } from "./time";
 
 function textValue(value: ParameterValue<string> | undefined): string {
   if (!value) return "";
@@ -86,19 +87,18 @@ export type SyncResult = { total: number; added: number; skipped: number };
 
 /**
  * Re-fetches the feed and ingests VEVENT entries as Canvas-sourced tasks via the normal addTask path.
- * When `sinceDate` is given, events starting before it are left out entirely (not counted in `total`) —
- * used to keep both the initial connect and later re-syncs from pulling in a student's entire semester
- * history, only what's still ahead as of when they connected.
+ * Only events on or after the student's local today are imported (earlier ones are not counted in
+ * `total`), so neither the first connect nor a re-sync pulls in a semester of history.
  */
-export async function syncCanvasFeed(icsUrl: string, sinceDate?: string | Date): Promise<SyncResult> {
+export async function syncCanvasFeed(icsUrl: string): Promise<SyncResult> {
   const res = await fetch(icsUrl);
   if (!res.ok) {
     throw new Error(`Canvas feed returned ${res.status}`);
   }
   const icsText = await res.text();
   const parsed = ical.sync.parseICS(icsText);
-  const cutoff = sinceDate ? new Date(sinceDate) : null;
   const timeZone = await getUserTimezone();
+  const today = getUserToday(timeZone);
 
   let total = 0;
   let added = 0;
@@ -108,10 +108,10 @@ export async function syncCanvasFeed(icsUrl: string, sinceDate?: string | Date):
     if (!item || item.type !== "VEVENT") continue;
     const event = item as VEvent;
     if (!event.start) continue;
-    if (cutoff && event.start < cutoff) continue;
+    const { date, time } = toTaskDateTime(event.start, timeZone);
+    if (date < today) continue;
     total++;
 
-    const { date, time } = toTaskDateTime(event.start, timeZone);
     const title = textValue(event.summary).trim() || "Canvas assignment";
     const description = textValue(event.description).trim();
 

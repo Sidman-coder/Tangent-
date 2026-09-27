@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import type { AppState } from "@/lib/types";
+import { browserTimezone } from "@/lib/time";
 
 type Ctx = {
   state: AppState | null;
@@ -75,4 +76,11 @@ export function useAppState() {
   const ctx = useContext(AppStateContext);
   if (!ctx) throw new Error("useAppState must be used within AppStateProvider");
   return ctx;
+}
+
+/** The student's IANA timezone (profiles.timezone); the browser's until the
+ *  profile loads. Calendar-day decisions on the client go through this. */
+export function useUserTimezone(): string {
+  const { state } = useAppState();
+  return state?.user.timezone ?? browserTimezone();
 }

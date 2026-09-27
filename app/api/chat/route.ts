@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { handleVoiceText } from "@/lib/voice-handler";
 import { withUser } from "@/lib/request-context";
 import { extractContextFacts } from "@/lib/context-extract";
+import { getUserTimezone } from "@/lib/store";
+import { promptDateContext } from "@/lib/time";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,8 +11,8 @@ export const dynamic = "force-dynamic";
 /** "calendar" acts on the calendar; "plan" only talks a plan through. */
 type ChatMode = "plan" | "calendar";
 
-const PLAN_SYSTEM = (today: string) => `You are TANGENT AI in Plan mode — a thinking partner for planning time.
-Today is ${today}.
+const PLAN_SYSTEM = (dateContext: string) => `You are TANGENT AI in Plan mode — a thinking partner for planning time.
+${dateContext}
 In Plan mode you never add, move, or delete anything; you help the user work out what to do and when.
 - Ask at most one short clarifying question when something essential (dates, hours per week, deadline) is missing.
 - When you propose a schedule, list each session on its own line as "Day, date — time — what", 3 to 10 lines.
@@ -33,7 +35,7 @@ async function planReply(apiKey: string, messages: { role: "user" | "assistant";
       model: "claude-sonnet-4-5",
       max_tokens: 700,
       temperature: 0.4,
-      system: PLAN_SYSTEM(new Date().toISOString().slice(0, 10)),
+      system: PLAN_SYSTEM(promptDateContext(await getUserTimezone())),
       messages: messages.slice(-12),
     }),
   });

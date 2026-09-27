@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAppState } from "@/components/AppStateProvider";
+import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
+import { localNow } from "@/lib/time";
 import ChatSidebar from "@/components/console/ChatSidebar";
 import ChatThread from "@/components/console/ChatThread";
 import Composer from "@/components/console/Composer";
@@ -23,7 +24,7 @@ import type { ChatSession } from "@/lib/types";
 import { ArrowLeft, CalendarClock, CalendarRange, MessageSquare, Newspaper, PanelRightOpen, Sun, Timer } from "lucide-react";
 import PenMark from "@/components/console/PenMark";
 import BriefPanel, { CADENCE_LABEL, type BriefSummary } from "@/components/console/BriefPanel";
-import { formatTime12, toYMD } from "@/lib/dates";
+import { formatTime12 } from "@/lib/dates";
 import "./console.css";
 
 type ConsoleMode = "chat" | "brief";
@@ -69,6 +70,7 @@ function writeStored(key: string, value: string | null) {
 
 export default function AiPage() {
   const { state, refresh } = useAppState();
+  const tz = useUserTimezone();
 
   const [mode, setMode] = useState<ConsoleMode>("chat");
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -100,8 +102,7 @@ export default function AiPage() {
   // "3 tasks left today · next: Chem review at 3:00 PM" under the greeting.
   const todayLine = useMemo(() => {
     if (!state) return "";
-    const today = toYMD(new Date());
-    const now = new Date().toTimeString().slice(0, 5);
+    const { date: today, time: now } = localNow(tz);
     const open = state.tasks
       .filter((t) => t.date === today && !t.completed)
       .sort((a, b) => (a.time || "99").localeCompare(b.time || "99"));
@@ -109,12 +110,12 @@ export default function AiPage() {
     const next = open.find((t) => t.time && t.time >= now);
     const count = `${open.length} task${open.length === 1 ? "" : "s"} left today`;
     return next ? `${count} · next: ${next.title} at ${formatTime12(next.time)}` : count;
-  }, [state]);
+  }, [state, tz]);
 
   const firstName = state?.user.displayName?.trim().split(/\s+/)[0] ?? "";
   useEffect(() => {
-    setGreeting(greetingFor(new Date().getHours(), firstName));
-  }, [firstName]);
+    setGreeting(greetingFor(localNow(tz).hour, firstName));
+  }, [firstName, tz]);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [pendingRequest, setPendingRequest] = useState<string | null>(null);
   const [input, setInput] = useState("");

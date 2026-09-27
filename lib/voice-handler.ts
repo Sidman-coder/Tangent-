@@ -15,7 +15,8 @@
 // Next.js route files may only export HTTP method handlers, so this can't
 // live in route.ts itself.
 import { NextResponse } from "next/server";
-import { addTask, addPlan, addRecurringTask, completeTask, deleteTask, addVoiceLog, updateTask, getAppState, getAllTasks, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, addPendingConfirmation } from "@/lib/store";
+import { addTask, addPlan, addRecurringTask, completeTask, deleteTask, addVoiceLog, updateTask, getAppState, getAllTasks, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, addPendingConfirmation, getUserTimezone } from "@/lib/store";
+import { addDaysYMD, daysBetweenYMD, localNow, promptDateContext, singleRelativeDay, ymdFromParts } from "@/lib/time";
 import type { TaskKind } from "@/lib/types";
 import { needsAgentTools, runVoiceAgentToolLoop } from "@/lib/voice-agent-tools";
 import { extractStructuredJson } from "@/lib/anthropic-json";
@@ -257,10 +258,8 @@ function inferPlanKind(topic: string): TaskKind {
   return SIDE_EC_KEYWORDS.test(topic) ? "side-ec" : "academic-ec";
 }
 
-async function voiceSystemPrompt(userContext?: string): Promise<string> {
-  const today = new Date().toISOString().slice(0, 10);
-  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-  const currentYear = new Date().getFullYear();
+async function voiceSystemPrompt(tz: string, userContext?: string): Promise<string> {
+  const { date: today, year: currentYear } = localNow(tz);
   const calendars = await getCalendars();
   const calendarList = calendars.map((c) => `${c.id} (${c.name})`).join(", ");
 
@@ -299,7 +298,7 @@ When the user says "move tasks to X calendar" use the move_tasks action.
 When the user says "add this to my work calendar" or any named calendar use that calendar's id.
 When the user asks what calendars they have, use the get_calendars action.
 
-Today is ${today}. Tomorrow is ${tomorrow}. Current year is ${currentYear}.
+${promptDateContext(tz)}
 
 --- RECURRING COMMAND (use this when user says "every", "each", "weekly", "daily", "monthly", "every Saturday", "every Monday", "every weekday", "every day", "every week", etc.) ---
 Return this exact JSON:
@@ -415,6 +414,8 @@ export async function handleVoiceText(
       : t;
   try {
     console.log("[api/voice] Handler called. Task count:", (await getAllTasks()).length);
+    const tz = await getUserTimezone();
+    const local = localNow(tz);
     console.log("[api/voice] POST received text:", text);
 
     // Detect clear-schedule commands instantly — no API call needed
@@ -438,7 +439,7 @@ export async function handleVoiceText(
       const recurringTasks = await addRecurringTask(
         {
           title: activityName,
-          date: new Date().toISOString().slice(0, 10),
+          date: local.date,
           time,
           kind: "commitment",
           completed: false,
@@ -508,7 +509,7 @@ export async function handleVoiceText(
       return NextResponse.json({ ok: false, error: "Missing ANTHROPIC_API_KEY" }, { status: 401 });
     }
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = local.date;
 
     // ── Two-step plan approach (FIX 1 + FIX 2) ───────────────────────────────
     const isPlanRequest = opts.forcePlan || classifiedIntent === "goal_plan" || /plan|study|workout|routine|schedule|prepare|curriculum|course|week|month|learn|guide/i.test(text);
@@ -517,9 +518,8 @@ export async function handleVoiceText(
       console.log("[api/voice] Detected plan request — using two-step approach");
 
       // FIX 2 — Extract date range from user text
-      const todayDate = new Date();
-      let startDate = todayDate.toISOString().split("T")[0];
-      let endDate = new Date(todayDate.getTime() + 7 * 86400000).toISOString().split("T")[0];
+      let startDate = today;
+      let endDate = addDaysYMD(today, 7);
 
       const monthMap: Record<string, number> = {
         january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
@@ -588,14 +588,12 @@ export async function handleVoiceText(
       foundDates.sort((a, b) => a.position - b.position);
 
       if (foundDates.length >= 2) {
-        const year = todayDate.getFullYear();
-        startDate = new Date(year, foundDates[0].month, foundDates[0].day).toISOString().split("T")[0];
-        endDate = new Date(year, foundDates[1].month, foundDates[1].day).toISOString().split("T")[0];
+        startDate = ymdFromParts(local.year, foundDates[0].month, foundDates[0].day);
+        endDate = ymdFromParts(local.year, foundDates[1].month, foundDates[1].day);
         console.log("[api/voice] Extracted date range from text:", startDate, "to", endDate);
       } else if (foundDates.length === 1) {
-        const year = todayDate.getFullYear();
-        startDate = todayDate.toISOString().split("T")[0];
-        endDate = new Date(year, foundDates[0].month, foundDates[0].day).toISOString().split("T")[0];
+        startDate = today;
+        endDate = ymdFromParts(local.year, foundDates[0].month, foundDates[0].day);
         console.log("[api/voice] Extracted end date only:", endDate);
       }
 
@@ -613,8 +611,8 @@ export async function handleVoiceText(
 
       for (const [pattern, days] of durationPatterns) {
         if (pattern.test(lowerForDate)) {
-          endDate = new Date(todayDate.getTime() + (days - 1) * 86400000).toISOString().split("T")[0];
-          startDate = todayDate.toISOString().split("T")[0];
+          endDate = addDaysYMD(today, days - 1);
+          startDate = today;
           console.log("[api/voice] Duration word matched — days:", days, "| endDate:", endDate);
           break;
         }
@@ -622,7 +620,7 @@ export async function handleVoiceText(
       console.log("[api/voice] Final date range:", startDate, "to", endDate);
 
       // Compute exact day count
-      const dayCount = Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000) + 1;
+      const dayCount = daysBetweenYMD(startDate, endDate) + 1;
       console.log("[api/voice] Day count:", dayCount, "from", startDate, "to", endDate);
 
       // Task interval scaling — prevents excessive tasks for long plans
@@ -637,7 +635,7 @@ export async function handleVoiceText(
 
       const planSystemPrompt = `You are a task generator.
 
-Today is ${today}.
+Today is ${today}. ${promptDateContext(tz)}
 Start date: ${startDate}
 End date: ${endDate}
 Total days: ${dayCount}
@@ -843,7 +841,7 @@ Rules:
         model: "claude-sonnet-4-5",
         max_tokens: 4096,
         temperature: 0,
-        system: await voiceSystemPrompt(userContext),
+        system: await voiceSystemPrompt(tz, userContext),
         output_config: { format: { type: "json_schema", schema: VOICE_COMMAND_SCHEMA } },
         messages: [
           { role: "user", content: withContext(text) },
@@ -870,7 +868,7 @@ Rules:
             model: "claude-sonnet-4-5",
             max_tokens: 4096,
             temperature: 0,
-            system: `Extract a short task title from the user's message and respond with an add_task command. Today is ${today}.`,
+            system: `Extract a short task title from the user's message and respond with an add_task command. ${promptDateContext(tz)}`,
             output_config: { format: { type: "json_schema", schema: VOICE_COMMAND_SCHEMA } },
             messages: [{ role: "user", content: text.substring(0, 100) }],
           }),
@@ -887,7 +885,7 @@ Rules:
           if (retryJson) {
             const cmd = retryJson;
             if (cmd.action === "add_task" && typeof cmd.title === "string" && cmd.title) {
-              const retryDate = typeof cmd.date === "string" ? cmd.date : today;
+              const retryDate = singleRelativeDay(text, tz) ?? (typeof cmd.date === "string" ? cmd.date : today);
               const retryTime = typeof cmd.time === "string" ? cmd.time : "09:00";
               const task = await addTask({
                 title: cmd.title,
@@ -961,7 +959,7 @@ Rules:
       const rawFreq = cmd.frequency as string | undefined;
       const freq = rawFreq === "daily" || rawFreq === "weekly" || rawFreq === "monthly" || rawFreq === "yearly"
         ? rawFreq : "weekly";
-      const startDate = (cmd.startDate as string | undefined) ?? new Date().toISOString().slice(0, 10);
+      const startDate = (cmd.startDate as string | undefined) ?? today;
       const rawEndDate = cmd.endDate as string | null | undefined;
       const endDate = typeof rawEndDate === "string" ? rawEndDate : undefined;
       const rawDow = cmd.daysOfWeek;
@@ -1083,7 +1081,14 @@ Rules:
     }
 
     // ── Single task ────────────────────────────────────────────────────────────
-    const date = (cmd.date as string | undefined) ?? new Date().toISOString().slice(0, 10);
+    // A capture naming one relative day ("tomorrow", "tonight", "friday") is
+    // pinned to the student's local calendar, whatever date the model returned.
+    const aiDate = typeof cmd.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(cmd.date) ? cmd.date : undefined;
+    const hintedDate = singleRelativeDay(text, tz);
+    const date = hintedDate ?? aiDate ?? today;
+    if (hintedDate && aiDate && aiDate !== hintedDate) {
+      console.log("[api/voice] model date", aiDate, "corrected to local", hintedDate, "(" + tz + ")");
+    }
 
     if (action === "add_task") {
       if (!title.trim()) {

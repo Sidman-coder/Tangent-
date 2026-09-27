@@ -3,6 +3,8 @@ import { useState, useEffect, useCallback } from "react"
 import { Sun, Lightbulb, AlertTriangle, Clock, Calendar, Bell, X, type LucideIcon } from "lucide-react"
 import { Notification } from "@/lib/types"
 import { notifyNewDesktopNotifications } from "@/lib/desktop-notifications"
+import { useUserTimezone } from "@/components/AppStateProvider"
+import { getUserToday } from "@/lib/time"
 
 type NotificationBellProps = {
   open?: boolean
@@ -10,6 +12,7 @@ type NotificationBellProps = {
 }
 
 export default function NotificationBell({ open: openProp, onOpenChange }: NotificationBellProps = {}) {
+  const tz = useUserTimezone()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
@@ -106,8 +109,8 @@ export default function NotificationBell({ open: openProp, onOpenChange }: Notif
     }
   }
 
-  const today = new Date().toISOString().slice(0, 10)
-  const pinnedBrief = notifications.find(n => n.type === 'daily_brief' && n.timestamp.slice(0, 10) === today)
+  const today = getUserToday(tz)
+  const pinnedBrief = notifications.find(n => n.type === 'daily_brief' && getUserToday(tz, new Date(n.timestamp)) === today)
   const restNotifications = notifications.filter(n => n !== pinnedBrief)
 
   const renderNotif = (n: Notification, pinned = false) => {

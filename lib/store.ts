@@ -1,6 +1,7 @@
 import "server-only";
 import { getRequestContext } from "./request-context";
 import { DEFAULT_TIMEZONE, isValidTimezone } from "./dates";
+import { expandRecurrence, getUserToday, weekRange } from "./time";
 import type {
   Task,
   Plan,
@@ -204,15 +205,8 @@ export async function getTasksByDate(date: string): Promise<Task[]> {
 }
 
 export async function getTasksByWeek(refDate?: string): Promise<Task[]> {
-  const ref = refDate ? new Date(refDate + "T12:00:00") : new Date();
-  const day = ref.getDay(); // 0=Sun
-  const diffToMonday = day === 0 ? -6 : 1 - day;
-  const monday = new Date(ref);
-  monday.setDate(ref.getDate() + diffToMonday);
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  const start = monday.toISOString().slice(0, 10);
-  const end = sunday.toISOString().slice(0, 10);
+  const ref = refDate && /^\d{4}-\d{2}-\d{2}$/.test(refDate) ? refDate : getUserToday(await getUserTimezone());
+  const { start, end } = weekRange(ref);
   return selectTasks("getTasksByWeek", (q) => q.gte("date", start).lte("date", end));
 }
 
@@ -323,35 +317,8 @@ export async function addRecurringTask(
 ): Promise<Task[]> {
   const { db, userId } = ctx();
   const parentId = `rec_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  const startDate = new Date(task.date + "T12:00:00");
-  const endDate = recurring.endDate
-    ? new Date(recurring.endDate + "T12:00:00")
-    : new Date(startDate.getFullYear(), 11, 31, 12, 0, 0);
-
-  const currentDate = new Date(startDate);
-  let count = 0;
-  const maxOccurrences = recurring.occurrences ?? 365;
-  const dates: string[] = [];
-
-  console.log("[store] addRecurringTask start — parentId:", parentId, "| freq:", recurring.frequency, "| from:", task.date, "| to:", endDate.toISOString().slice(0, 10));
-
-  while (currentDate <= endDate && count < maxOccurrences) {
-    let shouldAdd = false;
-    if (recurring.frequency === "daily") {
-      shouldAdd = true;
-    } else if (recurring.frequency === "weekly") {
-      shouldAdd = !!recurring.daysOfWeek?.includes(currentDate.getDay());
-    } else if (recurring.frequency === "monthly") {
-      shouldAdd = currentDate.getDate() === startDate.getDate();
-    } else if (recurring.frequency === "yearly") {
-      shouldAdd = currentDate.getMonth() === startDate.getMonth() && currentDate.getDate() === startDate.getDate();
-    }
-    if (shouldAdd) {
-      dates.push(currentDate.toISOString().slice(0, 10));
-      count++;
-    }
-    currentDate.setDate(currentDate.getDate() + 1);
-  }
+  const dates = expandRecurrence(task.date, recurring);
+  console.log("[store] addRecurringTask start — parentId:", parentId, "| freq:", recurring.frequency, "| from:", task.date, "| instances:", dates.length);
   if (dates.length === 0) return [];
 
   // One read for duplicate checks across the whole series, then a bulk insert.

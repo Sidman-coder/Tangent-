@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { Plus } from "lucide-react";
-import { useAppState } from "@/components/AppStateProvider";
+import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
+import { localNow, wallClockNow } from "@/lib/time";
 import ActionReceipt from "@/components/ActionReceipt";
 import MonthRhythm from "@/components/MonthRhythm";
 import AttentionSection, { type AttentionReceipt } from "@/components/dashboard/AttentionSection";
@@ -50,9 +51,12 @@ async function postJson(url: string, body: unknown): Promise<Record<string, unkn
 export default function DashboardPage() {
   const router = useRouter();
   const { state, loading, error, refresh } = useAppState();
+  const tz = useUserTimezone();
   const [recentActions, setRecentActions] = useState<ActionRecord[]>([]);
   const [greeting, setGreeting] = useState("");
-  const [now, setNow] = useState(() => new Date());
+  // Wall clock in the student's own timezone (profiles.timezone), so "today",
+  // week-ahead and the monthly heatmap follow it rather than the browser's.
+  const [now, setNow] = useState(() => wallClockNow(tz));
   const [overrides, setOverrides] = useState<Record<string, Override>>({});
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<AttentionReceipt | null>(null);
@@ -60,14 +64,15 @@ export default function DashboardPage() {
 
   // "Starts in 40 min" and "missed earlier today" drift, so keep the clock live.
   useEffect(() => {
-    const id = window.setInterval(() => setNow(new Date()), 30_000);
+    setNow(wallClockNow(tz));
+    const id = window.setInterval(() => setNow(wallClockNow(tz)), 30_000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [tz]);
 
   const displayName = state?.user.displayName?.trim() ?? "";
   useEffect(() => {
-    setGreeting(displayName ? getGreeting(displayName) : greetingFor(new Date().getHours()));
-  }, [displayName]);
+    setGreeting(displayName ? getGreeting(displayName, localNow(tz).hour) : greetingFor(localNow(tz).hour));
+  }, [displayName, tz]);
 
   useEffect(() => {
     if (!receipt) return;

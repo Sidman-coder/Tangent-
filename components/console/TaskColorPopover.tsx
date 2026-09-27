@@ -4,6 +4,8 @@
 // legend naming the task, then a small month calendar with the task's session
 // dates filled in its color. No gradients, glow or spinners.
 
+import { useUserTimezone } from "@/components/AppStateProvider";
+import { getUserToday } from "@/lib/time";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -26,11 +28,12 @@ function parseYMD(ymd: string): Date {
 
 export default function TaskColorPopover({ task, anchor, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null);
-  const today = toYMD(new Date());
+  const tz = useUserTimezone();
+  const today = getUserToday(tz);
 
   const upcoming = task.sessions.find((s) => s.date >= today && !s.completed) ?? null;
   const focus = upcoming ?? task.sessions[task.sessions.length - 1];
-  const start = focus ? parseYMD(focus.date) : new Date();
+  const start = parseYMD(focus ? focus.date : today);
   const [month, setMonth] = useState({ y: start.getFullYear(), m: start.getMonth() });
 
   const sessionDates = useMemo(() => {

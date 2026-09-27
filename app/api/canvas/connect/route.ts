@@ -20,7 +20,7 @@ export const POST = withUser(async (req: Request) => {
     }
 
     const feed = await saveCanvasFeed(icsUrl);
-    const result = await syncCanvasFeed(icsUrl, feed.connectedAt);
+    const result = await syncCanvasFeed(icsUrl);
     await recordCanvasSync(result.total);
 
     // The feed URL is a secret; only the masked status goes back to the browser.
@@ -40,7 +40,7 @@ export const GET = withUser(async () => {
       return NextResponse.json({ ok: false, error: "Canvas isn't connected yet." }, { status: 400 });
     }
 
-    const result = await syncCanvasFeed(feed.icsUrl, feed.connectedAt);
+    const result = await syncCanvasFeed(feed.icsUrl);
     await recordCanvasSync(result.total);
 
     // The feed URL is a secret; only the masked status goes back to the browser.

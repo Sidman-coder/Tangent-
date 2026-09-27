@@ -9,7 +9,7 @@
 import { addTask, addPlan, updateTask, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, getAllTasks, getTasksByDate, addPendingConfirmation, getUserTimezone } from "@/lib/store";
 import type { Task, TaskKind } from "@/lib/types";
 import { getRecentEmails, getEmailById } from "@/lib/gmail";
-import { ymdInTimezone } from "@/lib/dates";
+import { addDaysYMD, getUserToday, promptDateContext } from "@/lib/time";
 import { getUpcomingEvents, getEventsForDate } from "@/lib/calendar";
 import { currentUserIsOwner } from "@/lib/request-context";
 
@@ -320,7 +320,7 @@ type ToolExecResult = {
 };
 
 async function executeTool(name: string, input: Record<string, unknown>): Promise<ToolExecResult> {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getUserToday(await getUserTimezone());
 
   // Gmail / Google Calendar run on the owner's credentials, so only the owner
   // may use them until each student can connect their own Google account.
@@ -384,9 +384,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
     case "get_canvas_deadlines": {
       // Canvas data comes only from the student's .ics feed (tasks with source "canvas").
       const daysAhead = typeof input.days_ahead === "number" ? Math.max(0, Math.min(input.days_ahead, 120)) : 14;
-      const timeZone = await getUserTimezone();
-      const today = ymdInTimezone(timeZone);
-      const end = ymdInTimezone(timeZone, daysAhead);
+      const end = addDaysYMD(today, daysAhead);
       const canvasTasks = (await getAllTasks()).filter((t) => t.source === "canvas");
       if (canvasTasks.length === 0) {
         return { data: { connected: false, note: "No Canvas items yet. The student can connect their Canvas calendar feed in Settings → Integrations." } };
@@ -510,11 +508,11 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
   }
 }
 
-async function systemPrompt(today: string, userContext?: string): Promise<string> {
+async function systemPrompt(tz: string, userContext?: string): Promise<string> {
   const calendars = await getCalendars();
   const calendarList = calendars.map((c) => `${c.id} (${c.name})`).join(", ");
 
-  return `You are TANGENT's voice assistant. Today is ${today}.
+  return `You are TANGENT's voice assistant. ${promptDateContext(tz)}
 
 The user gave a voice command that may require reading their Gmail, Canvas or calendar data before you can respond or act.
 ${userContext ? `
@@ -615,7 +613,7 @@ export async function runVoiceAgentToolLoop(userText: string): Promise<ToolLoopR
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("Missing ANTHROPIC_API_KEY");
 
-  const today = new Date().toISOString().slice(0, 10);
+  const tz = await getUserTimezone();
   const userContext = await getContextAsString();
   const messages: AnthropicMessage[] = [{ role: "user", content: userText }];
 
@@ -639,7 +637,7 @@ export async function runVoiceAgentToolLoop(userText: string): Promise<ToolLoopR
         model: MODEL,
         max_tokens: 2048,
         temperature: 0,
-        system: await systemPrompt(today, userContext),
+        system: await systemPrompt(tz, userContext),
         tools: TOOLS,
         messages,
       }),

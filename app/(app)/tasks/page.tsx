@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { useAppState } from "@/components/AppStateProvider";
+import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
+import { localNow } from "@/lib/time";
 import AddTaskModal from "@/components/AddTaskModal";
 import TaskChatModal from "@/components/TaskChatModal";
 import Button from "@/components/ui/Button";
@@ -33,9 +34,6 @@ const KIND_COLOR = {
 };
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -79,6 +77,7 @@ type RecurDeleteTarget = { taskId: string; parentId: string; title: string };
 
 export default function TasksPage() {
   const { state, loading, error, refresh } = useAppState();
+  const tz = useUserTimezone();
   const [showModal, setShowModal] = useState(false);
   const [shuffledIds, setShuffledIds] = useState<string[] | null>(null);
   const [shuffleAnim, setShuffleAnim] = useState(false);
@@ -99,7 +98,8 @@ export default function TasksPage() {
     typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
   ), []);
 
-  const today = todayStr();
+  const local = localNow(tz);
+  const today = local.date;
 
   const rawDailyTasks = (state?.tasks ?? [])
     .filter((t) => t.date === today)
@@ -111,7 +111,7 @@ export default function TasksPage() {
   const incompleteTasks = displayTasks.filter((t) => !t.completed || completingIds.has(t.id));
   const completedTasks = displayTasks.filter((t) => t.completed && !completingIds.has(t.id));
 
-  const currentMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+  const currentMinutes = local.minutes;
   const overdueTask = rawDailyTasks.find((t) => !t.completed && timeToMinutes(t.time) <= currentMinutes);
   const nextTask = rawDailyTasks.find((t) => !t.completed && timeToMinutes(t.time) > currentMinutes);
   const minutesUntilNext = nextTask ? timeToMinutes(nextTask.time) - currentMinutes : null;
@@ -296,7 +296,7 @@ export default function TasksPage() {
   }
 
   const completeCount = rawDailyTasks.filter((task) => task.completed).length;
-  const dateLabel = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  const dateLabel = new Date(`${today}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 
   return (
     <>

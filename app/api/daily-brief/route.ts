@@ -6,7 +6,7 @@
 // same publishDailyBrief() so the Bell only ever shows one pinned brief per day.
 import { NextResponse } from "next/server";
 import { getAllTasks, getContextAsString, getUserTimezone } from "@/lib/store";
-import { ymdInTimezone } from "@/lib/dates";
+import { addDaysYMD, currentInstant, getUserToday } from "@/lib/time";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import { DAILY_BRIEF_SCHEMA, DEFAULT_DAILY_BRIEF, publishDailyBrief, type DailyBrief } from "@/lib/daily-brief";
 import { withUser } from "@/lib/request-context";
@@ -22,9 +22,9 @@ export const POST = withUser(async () => {
     const tasks = await getAllTasks();
     const userContext = await getContextAsString();
     const timeZone = await getUserTimezone();
-    const now = new Date();
-    const today = ymdInTimezone(timeZone, 0, now);
-    const tomorrow = ymdInTimezone(timeZone, 1, now);
+    const now = currentInstant();
+    const today = getUserToday(timeZone, now);
+    const tomorrow = addDaysYMD(getUserToday(timeZone, now), 1);
 
     const todayTasks = tasks.filter((t) => t.date === today);
     const tomorrowTasks = tasks.filter((t) => t.date === tomorrow);

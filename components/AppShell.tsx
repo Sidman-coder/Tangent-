@@ -1,5 +1,6 @@
 "use client";
 
+import { browserTimezone, zoneAbbreviation } from "@/lib/time";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -61,33 +62,29 @@ function pageTitleFor(pathname: string): string {
   return PAGE_TITLES[base] ?? "TANGENT";
 }
 
-const EST_TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/New_York",
-  hour: "numeric",
-  minute: "2-digit",
-  hour12: true,
-});
-
-function estTimeFor(d: Date): string {
-  return `${EST_TIME_FORMATTER.format(d)} EST`;
+/** "9:30 PM EDT" in the student's own timezone (profiles.timezone). */
+function clockFor(d: Date, timeZone: string): string {
+  const time = new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit", hour12: true }).format(d);
+  return `${time} ${zoneAbbreviation(timeZone, d)}`;
 }
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [notifOpen, setNotifOpen] = useState(false);
-  const [estTime, setEstTime] = useState<string | null>(null);
+  const [clock, setClock] = useState<string | null>(null);
   const { state, refresh } = useAppState();
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [canvasGuideOpen, setCanvasGuideOpen] = useState(false);
   const title = pageTitleFor(pathname);
-  const today = new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  const tz = state?.user.timezone ?? browserTimezone();
+  const today = new Date().toLocaleDateString(undefined, { timeZone: tz, weekday: "short", month: "short", day: "numeric" });
 
   useEffect(() => {
-    const update = () => setEstTime(estTimeFor(new Date()));
+    const update = () => setClock(clockFor(new Date(), tz));
     update();
     const id = setInterval(update, 60000);
     return () => clearInterval(id);
-  }, []);
+  }, [tz]);
 
   // Onboarding state lives on the student's profile (profiles.onboarded_at).
   // Only opens the flow; FirstRun closes it once its answers are saved.
@@ -167,10 +164,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <div className="topbar-right">
             <span className="topbar-datetime">
               <span className="topbar-date">{today}</span>
-              {estTime && (
+              {clock && (
                 <>
                   <span className="topbar-date-sep" aria-hidden="true">·</span>
-                  <span className="topbar-time">{estTime}</span>
+                  <span className="topbar-time">{clock}</span>
                 </>
               )}
             </span>

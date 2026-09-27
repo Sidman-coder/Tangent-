@@ -1,5 +1,5 @@
-export function getGreeting(name: string): string {
-  const hour = new Date().getHours();
+/** `hour` is the student's local hour (see localNow in lib/time). */
+export function getGreeting(name: string, hour: number = new Date().getHours()): string {
   const bucket = hour >= 5 && hour < 12 ? 'morning'
     : hour >= 12 && hour < 17 ? 'afternoon'
     : hour >= 17 && hour < 21 ? 'evening'

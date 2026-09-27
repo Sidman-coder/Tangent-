@@ -1,5 +1,7 @@
 "use client";
 
+import { useUserTimezone } from "@/components/AppStateProvider";
+import { getUserToday } from "@/lib/time";
 import { useEffect, useMemo, useState } from "react";
 import { Repeat } from "lucide-react";
 
@@ -16,13 +18,6 @@ interface Props {
 
 const DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-function todayStr() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function endOfYearStr() {
-  return `${new Date().getFullYear()}-12-31`;
-}
 
 function countOccurrences(
   startDate: string,
@@ -53,8 +48,9 @@ function countOccurrences(
 }
 
 export default function AddTaskModal({ initialDate, initialTime, initialCalendarId = null, onClose, onSuccess, onDuplicate }: Props) {
+  const tz = useUserTimezone();
   const [title, setTitle] = useState("");
-  const [date, setDate] = useState(initialDate ?? todayStr());
+  const [date, setDate] = useState(() => initialDate ?? getUserToday(tz));
   const [time, setTime] = useState(initialTime ?? "09:00");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -63,7 +59,7 @@ export default function AddTaskModal({ initialDate, initialTime, initialCalendar
   const [recurringEnabled, setRecurringEnabled] = useState(false);
   const [frequency, setFrequency] = useState<Frequency>("weekly");
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>([]);
-  const [endDate, setEndDate] = useState(endOfYearStr());
+  const [endDate, setEndDate] = useState(() => `${getUserToday(tz).slice(0, 4)}-12-31`);
 
   // Close on Escape
   useEffect(() => {

@@ -17,7 +17,7 @@ import {
   getUserTimezone,
   setPendingBriefBatch,
 } from "@/lib/store";
-import { ymdInTimezone } from "@/lib/dates";
+import { addDaysYMD, currentInstant, getUserToday } from "@/lib/time";
 import type { Notification } from "@/lib/types";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import { submitMessageBatch, getBatchStatus, fetchBatchResults } from "@/lib/anthropic-batch";
@@ -73,9 +73,9 @@ async function buildBriefContext(): Promise<string> {
   const userContext = await getContextAsString();
   const config = await getBriefConfig();
   const timeZone = await getUserTimezone();
-  const now = new Date();
-  const today = ymdInTimezone(timeZone, 0, now);
-  const tomorrow = ymdInTimezone(timeZone, 1, now);
+  const now = currentInstant();
+  const today = getUserToday(timeZone, now);
+  const tomorrow = addDaysYMD(getUserToday(timeZone, now), 1);
 
   const todayTasks = tasks.filter((t) => t.date === today);
   const tomorrowTasks = tasks.filter((t) => t.date === tomorrow);

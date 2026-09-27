@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { useAppState } from "@/components/AppStateProvider";
+import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
+import { wallClockNow } from "@/lib/time";
 import AddTaskModal from "@/components/AddTaskModal";
 import Button from "@/components/ui/Button";
 import SidePeek from "@/components/ui/SidePeek";
@@ -96,7 +97,7 @@ type RecurEditTarget = { taskId: string; parentId: string; task: Task };
 
 export default function CalendarPage() {
   const { state, refresh } = useAppState();
-  const now = new Date();
+  const now = wallClockNow(useUserTimezone());
   const todayYmd = toYMD(now);
 
   const [year, setYear] = useState(now.getFullYear());

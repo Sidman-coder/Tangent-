@@ -40,19 +40,6 @@ export function formatTime12(t: string): string {
 
 export const DEFAULT_TIMEZONE = "America/New_York";
 
-/** YYYY-MM-DD for `at` (default now) as seen in an IANA timezone, shifted by
- *  whole days. Unknown timezones fall back to DEFAULT_TIMEZONE. */
-export function ymdInTimezone(timeZone: string, addDays = 0, at: Date = new Date()): string {
-  let fmt: Intl.DateTimeFormat;
-  try {
-    fmt = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
-  } catch {
-    fmt = new Intl.DateTimeFormat("en-CA", { timeZone: DEFAULT_TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" });
-  }
-  const [y, m, d] = fmt.format(at).split("-").map(Number);
-  return toYMD(new Date(y, m - 1, d + addDays));
-}
-
 /** True for a timezone name Intl accepts (e.g. "America/Chicago"). */
 export function isValidTimezone(timeZone: unknown): timeZone is string {
   if (typeof timeZone !== "string" || !timeZone) return false;

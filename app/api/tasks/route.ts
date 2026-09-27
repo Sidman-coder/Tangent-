@@ -9,7 +9,9 @@ import {
   addRecurringTask,
   deleteRecurringTask,
   updateRecurringTask,
+  getUserTimezone,
 } from "@/lib/store";
+import { getUserToday } from "@/lib/time";
 import type { TaskKind } from "@/lib/types";
 import { withUser } from "@/lib/request-context";
 
@@ -58,7 +60,7 @@ export const POST = withUser(async (req: Request) => {
       }
       const task = await addTask({
         title: body.title.trim(),
-        date: body.date ?? new Date().toISOString().slice(0, 10),
+        date: body.date ?? getUserToday(await getUserTimezone()),
         time: body.time ?? "09:00",
         kind: TASK_KINDS.includes(body.kind as TaskKind) ? (body.kind as TaskKind) : undefined,
         completed: false,
@@ -132,7 +134,7 @@ export const POST = withUser(async (req: Request) => {
       const tasks = await addRecurringTask(
         {
           title: body.title.trim(),
-          date: body.date ?? new Date().toISOString().slice(0, 10),
+          date: body.date ?? getUserToday(await getUserTimezone()),
           time: body.time ?? "09:00",
           kind: TASK_KINDS.includes(body.kind as TaskKind) ? (body.kind as TaskKind) : undefined,
           completed: false,

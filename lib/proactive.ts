@@ -8,7 +8,7 @@
 // so they don't fit Batch's up-to-an-hour turnaround the way the daily brief does.
 
 import { getAllTasks, getContextAsString, addNotification, getUserTimezone } from "@/lib/store";
-import { ymdInTimezone } from "@/lib/dates";
+import { addDaysYMD, currentInstant, getUserToday } from "@/lib/time";
 import type { Notification } from "@/lib/types";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 
@@ -61,9 +61,9 @@ export async function runProactiveCheck(trigger: string): Promise<ProactiveCheck
     const tasks = await getAllTasks();
     const userContext = await getContextAsString();
     const timeZone = await getUserTimezone();
-    const now = new Date();
-    const today = ymdInTimezone(timeZone, 0, now);
-    const inThreeDays = ymdInTimezone(timeZone, 3, now);
+    const now = currentInstant();
+    const today = getUserToday(timeZone, now);
+    const inThreeDays = addDaysYMD(getUserToday(timeZone, now), 3);
     const todayTasks = tasks.filter((t) => t.date === today);
     const overdueTasks = tasks.filter((t) => !t.completed && t.date < today);
     const upcomingTasks = tasks.filter(
