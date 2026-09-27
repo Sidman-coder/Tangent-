@@ -33,7 +33,7 @@ export const MODELS = {
 };
 
 /** Feature labels recorded with every call (ai_usage.feature). */
-export type Feature = "plan" | "classify" | "agent" | "chat" | "context" | "brief" | "tangent" | "notif";
+export type Feature = "plan" | "classify" | "agent" | "chat" | "context" | "brief" | "tangent" | "notif" | "router";
 
 export type TaskConfig = {
   feature: Feature;

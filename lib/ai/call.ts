@@ -166,7 +166,7 @@ async function prepare(task: AiTask, request: ClaudeRequest, opts: CallOptions):
 
   const budget = await budgetDecision(ctx, cfg.feature);
   let tier = opts.tier ?? cfg.tier;
-  let route = opts.route;
+  let route = opts.route ?? ctx?.aiRoute;
   if (budget.action === "block") {
     console.warn(`[ai] daily budget reached; blocked ${cfg.feature}`);
     await recordUsage({ userId, feature: cfg.feature, model: "none", usage: {}, durationMs: 0, route: "budget:blocked" });

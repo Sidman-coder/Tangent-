@@ -12,6 +12,7 @@ import {
   recordAction,
   addVoiceLog,
   deleteTask,
+  updateTask,
 } from "@/lib/store";
 import { withUser } from "@/lib/request-context";
 
@@ -110,6 +111,28 @@ export const POST = withUser(async (req: Request) => {
         ok: true,
         action: "delete_task",
         response: `Deleted "${found.title}".`,
+        actionId: record.id,
+        state: await getAppState(),
+      });
+    }
+
+    if (pending.kind === "reschedule_task") {
+      // Queued by the no-AI router (lib/ai/router.ts): "move X to Friday at 4pm".
+      const payload = pending.payload as { taskId: string; title: string; date: string; time: string };
+      const found = (await getAllTasks()).find((t) => t.id === payload.taskId);
+      if (!found) {
+        return NextResponse.json({ ok: false, error: "That task no longer exists." }, { status: 422 });
+      }
+      const task = await updateTask(found.id, { date: payload.date, time: payload.time });
+      const record = await recordAction("reschedule_task", `Moved "${found.title}"`, {
+        rescheduled: { taskId: found.id, fromDate: found.date, fromTime: found.time },
+      });
+      await addVoiceLog({ text: "(confirmed) reschedule task", response: `Moved "${found.title}"`, action: "reschedule_task", ok: true });
+      return NextResponse.json({
+        ok: true,
+        action: "reschedule_task",
+        task,
+        response: `Moved "${found.title}".`,
         actionId: record.id,
         state: await getAppState(),
       });

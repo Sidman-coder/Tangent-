@@ -20,6 +20,8 @@ export type RequestContext = {
   db: SupabaseClient;
   /** Per-request read cache (see requestMemo). Dies with the request. */
   memo?: Map<string, Promise<unknown>>;
+  /** How lib/ai/router.ts routed this request; every Claude call records it in ai_usage.route. */
+  aiRoute?: string;
 };
 
 const storage = new AsyncLocalStorage<RequestContext>();
@@ -47,6 +49,11 @@ export function requestMemo<T>(key: string, load: () => Promise<T>): Promise<T> 
   ctx.memo.set(key, p);
   p.catch(() => ctx.memo?.delete(key));
   return p;
+}
+
+/** Labels the rest of this request's Claude calls (ai_usage.route). */
+export function setAiRoute(route: string): void {
+  getRequestContext().aiRoute = route;
 }
 
 /** Drops a cached read after a write that changes it. */

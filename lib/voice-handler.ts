@@ -15,7 +15,7 @@
 // Next.js route files may only export HTTP method handlers, so this can't
 // live in route.ts itself.
 import { NextResponse } from "next/server";
-import { addTask, addPlanWithTasks, addRecurringTask, completeTask, deleteTask, addVoiceLog, getAppState, getAllTasks, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, addPendingConfirmation, getUserTimezone } from "@/lib/store";
+import { addTask, addPlanWithTasks, addRecurringTask, completeTask, deleteTask, updateTask, addVoiceLog, getAppState, getAllTasks, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, addPendingConfirmation, getUserTimezone } from "@/lib/store";
 import { addDaysYMD, localNow, promptDateContext, singleRelativeDay, ymdFromParts } from "@/lib/time";
 import type { TaskKind } from "@/lib/types";
 import { needsAgentTools, runVoiceAgentToolLoop } from "@/lib/voice-agent-tools";
@@ -23,7 +23,10 @@ import { extractStructuredJson } from "@/lib/anthropic-json";
 import { generatePlan, isClearPlanRequest, planDates } from "@/lib/ai/plan";
 import { resolvePlanTitle } from "@/lib/plan-title";
 import { perfCount, perfSpan, withPerfTrace } from "@/lib/perf";
-import { callClaude } from "@/lib/ai/call";
+import { callClaude, recordUsage } from "@/lib/ai/call";
+import { matchTask, routeCommand, ROUTES, type FastRoute } from "@/lib/ai/router";
+import { getRequestContext, setAiRoute } from "@/lib/request-context";
+import { formatTime12 } from "@/lib/dates";
 
 const RESOURCE_ITEM_SCHEMA = {
   type: "object",
@@ -364,6 +367,110 @@ async function findTaskByTitle(title: string) {
   );
 }
 
+const TITLED = ["add_task", "complete_task", "delete_task", "add_recurring_task"];
+const TITLED_ACTIONS = new Set(TITLED);
+const KNOWN_ACTIONS = new Set(TITLED.concat(["create_plan", "delete_all_tasks", "get_calendars", "move_tasks"]));
+
+/** A FAST voiceCommand reply the handler can act on. Anything else is
+ *  low-confidence and escalates to SMART once. Exported for tests. */
+export function isUsableCommand(cmd: Record<string, unknown> | null): boolean {
+  if (!cmd || typeof cmd.action !== "string" || !KNOWN_ACTIONS.has(cmd.action)) return false;
+  if (TITLED_ACTIONS.has(cmd.action)) return typeof cmd.title === "string" && cmd.title.trim().length > 0;
+  if (cmd.action === "move_tasks") return Boolean(cmd.targetCalendarId || cmd.calendarId);
+  return true;
+}
+
+/** "today", "tomorrow" or "Fri, Oct 3", plus " at 4:00 PM" when a time is given. */
+function friendlyWhen(date: string, time: string | undefined, today: string): string {
+  const day =
+    date === today ? "today"
+    : date === addDaysYMD(today, 1) ? "tomorrow"
+    : new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+  return time ? `${day} at ${formatTime12(time)}` : day;
+}
+
+/** Runs a no-AI route from lib/ai/router.ts. Returns null when it can't be
+ *  carried out (no task by that name, or several), so the model gets a turn. */
+async function runFastRoute(route: FastRoute, text: string, today: string): Promise<NextResponse | null> {
+  const done = async (body: Record<string, unknown>) => {
+    // Zero-cost ai_usage row so routing distribution can be reported next to model calls.
+    void recordUsage({ userId: getRequestContext().userId, feature: "router", model: "none", usage: {}, durationMs: 0, route: `fast:${route.op}` });
+    await addVoiceLog({ text, response: String(body.response ?? ""), action: String(body.action), ok: true });
+    console.log("[router] fast path:", route.op);
+    return NextResponse.json({ ok: true, ...body });
+  };
+  const confirmBody = (pending: { id: string; kind: string; message: string }) => ({
+    action: "confirm_required",
+    pending: { id: pending.id, kind: pending.kind, message: pending.message },
+    response: pending.message,
+  });
+
+  if (route.op === "due") {
+    const due = (await getAllTasks())
+      .filter((t) => !t.completed && t.date >= route.start && t.date <= route.end)
+      .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+    const label = route.range === "week" ? "this week" : route.range;
+    const shown = due.slice(0, 8).map((t) => `${t.title} (${friendlyWhen(t.date, t.time || undefined, today)})`);
+    const response =
+      due.length === 0 ? `Nothing due ${label}.`
+      : `${due.length} due ${label}: ${shown.join("; ")}${due.length > shown.length ? `; and ${due.length - shown.length} more` : ""}.`;
+    return done({ action: "list_due", response, count: due.length });
+  }
+
+  if (route.op === "add") {
+    const displayTitle = route.time !== "09:00" ? `${route.title} (${route.time})` : route.title;
+    const calendarId = await resolveCalendarId(inferCalendarId(route.title));
+    const task = await addTask({ title: displayTitle, date: route.date, time: route.time, completed: false, calendarId });
+    if (task.wasDuplicate) {
+      return done({ action: "add_task", task, response: `Skipped 1 duplicate (already have "${task.title}" around ${task.time}).`, state: await getAppState() });
+    }
+    const record = await recordAction("add_task", `Added "${task.title}"`, { addedTaskIds: [task.id] });
+    return done({ action: "add_task", task, response: `Added ${route.title} for ${friendlyWhen(route.date, route.time, today)}.`, actionId: record.id, state: await getAppState() });
+  }
+
+  const tasks = await getAllTasks();
+
+  if (route.op === "complete" || route.op === "uncomplete") {
+    const completing = route.op === "complete";
+    const found = matchTask(tasks, route.title, { prefer: (t) => t.completed !== completing, today });
+    if (!found) return null;
+    if (found.completed === completing) {
+      return done({ action: completing ? "complete_task" : "uncomplete_task", response: `"${found.title}" is already ${completing ? "done" : "not done"}.` });
+    }
+    if (!completing) {
+      const task = await updateTask(found.id, { completed: false });
+      return done({ action: "uncomplete_task", task, response: `Marked "${found.title}" not done.`, state: await getAppState() });
+    }
+    const task = await completeTask(found.id);
+    const record = await recordAction("complete_task", `Completed "${found.title}"`, { completedTaskId: found.id });
+    return done({ action: "complete_task", task, response: `Marked "${found.title}" done.`, actionId: record.id, state: await getAppState() });
+  }
+
+  if (route.op === "delete") {
+    const found = matchTask(tasks, route.title, { date: route.date, time: route.time });
+    if (!found) return null;
+    // Same confirmation as the model's delete_task.
+    const pending = await addPendingConfirmation("delete_task", `Delete "${found.title}" from your schedule?`, { taskId: found.id, title: found.title });
+    return done(confirmBody(pending));
+  }
+
+  // reschedule: a change to something already on the calendar, so it's confirmed too.
+  const found = matchTask(tasks, route.title, {
+    date: route.fromDate,
+    prefer: (t) => !t.completed && t.date >= today,
+    today,
+  });
+  if (!found) return null;
+  const date = route.date ?? found.date;
+  const time = route.time ?? found.time;
+  const pending = await addPendingConfirmation(
+    "reschedule_task",
+    `Move "${found.title}" to ${friendlyWhen(date, time || undefined, today)}?`,
+    { taskId: found.id, title: found.title, date, time }
+  );
+  return done(confirmBody(pending));
+}
+
 /** Shared voice-command handler — used by both the pen/text pipeline (app/api/voice/route.ts)
  *  and the browser hold-to-record endpoint (app/api/voice-browser/route.ts), so the
  *  downstream Claude tool-use logic is only implemented once. */
@@ -455,9 +562,25 @@ async function handleVoiceTextInner(
       });
     }
 
+    // ── No-AI fast paths (lib/ai/router.ts) ──
+    // Before the agent check: "what's due today" would otherwise start the Canvas tool loop.
+    if (!opts.forcePlan) {
+      const fast = routeCommand(text, tz);
+      if (fast) {
+        const handled = await perfSpan(`router: ${fast.op}`, () => runFastRoute(fast, text, local.date));
+        if (handled) return handled;
+        console.log("[router] fast path missed:", fast.op, "— asking the model");
+        setAiRoute(ROUTES.fastMiss);
+      }
+    }
+    const routeAs = (route: string) => {
+      if (!getRequestContext().aiRoute) setAiRoute(route);
+    };
+
     // Gmail / Canvas commands — routed through a genuine multi-turn Claude tool-use loop
     // so Claude can read real inbox/assignment data, then act using add_task / create_plan.
     if (needsAgentTools(text)) {
+      routeAs(ROUTES.smart);
       console.log("[api/voice] Detected Gmail/Canvas/Calendar command — running agent tool loop");
       try {
         const result = await runVoiceAgentToolLoop(withContext(text), text);
@@ -503,6 +626,7 @@ async function handleVoiceTextInner(
     const isPlanRequest = opts.forcePlan || classifiedIntent === "goal_plan" || isClearPlanRequest(text) || /plan|study|workout|routine|schedule|prepare|curriculum|course|week|month|learn|guide/i.test(text);
 
     if (isPlanRequest) {
+      routeAs(ROUTES.smart);
       console.log("[api/voice] Detected plan request — using two-step approach");
 
       // FIX 2 — Extract date range from user text
@@ -700,17 +824,15 @@ async function handleVoiceTextInner(
 
     // ── Standard single-task / recurring path ─────────────────────────────────
     console.log("[api/voice] Calling Anthropic API...");
+    routeAs(ROUTES.fast);
     const userContext = await getContextAsString();
-    const anthropicResponse = await callClaude(
-      "voiceCommand",
-      {
-        system: await voiceSystemPrompt(tz, userContext),
-        messages: [
-          { role: "user", content: withContext(text) },
-        ],
-      },
-      { format: { type: "json_schema", schema: VOICE_COMMAND_SCHEMA } }
-    );
+    const voiceRequest = {
+      system: await voiceSystemPrompt(tz, userContext),
+      messages: [{ role: "user" as const, content: withContext(text) }],
+    };
+    const anthropicResponse = await callClaude("voiceCommand", voiceRequest, {
+      format: { type: "json_schema", schema: VOICE_COMMAND_SCHEMA },
+    });
 
     if (!anthropicResponse.ok) {
       console.error("[api/voice] Anthropic error:", anthropicResponse.status, anthropicResponse.error);
@@ -779,11 +901,33 @@ async function handleVoiceTextInner(
     }
 
 
-    let parsed: Record<string, unknown>;
+    let parsed: Record<string, unknown> | null = null;
+    let parseError = "Could not understand that command.";
     try {
       parsed = extractStructuredJson<Record<string, unknown>>(anthropicResponse.message);
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Could not understand that command.";
+      parseError = e instanceof Error ? e.message : parseError;
+    }
+    // Low-confidence FAST reply (unparseable, unknown action, or missing the
+    // field the action needs): ask the SMART model once before giving up.
+    if (!isUsableCommand(parsed)) {
+      console.log("[router] FAST reply unusable — escalating to SMART:", parsed ? `action=${String(parsed.action)} fields=${Object.keys(parsed).join(",")}` : parseError);
+      const smart = await callClaude("voiceCommand", voiceRequest, {
+        format: { type: "json_schema", schema: VOICE_COMMAND_SCHEMA },
+        tier: "SMART",
+        route: ROUTES.escalation,
+      });
+      if (smart.ok) {
+        try {
+          const retry = extractStructuredJson<Record<string, unknown>>(smart.message);
+          if (isUsableCommand(retry)) parsed = retry;
+        } catch (e) {
+          parseError = e instanceof Error ? e.message : parseError;
+        }
+      }
+    }
+    if (!parsed) {
+      const message = parseError;
       console.error("[api/voice] Structured response parsing failed:", message);
       await addVoiceLog({ text, response: message, action: "error", ok: false });
       return NextResponse.json({
