@@ -18,6 +18,7 @@ import type {
   CanvasFeedConfig,
   PendingBriefBatch,
   Goal,
+  Path,
   PathNode,
   TangentStatus,
   LegacyAnchor,
@@ -880,52 +881,77 @@ export function recordCanvasSync(count: number): CanvasFeedConfig | null {
   return { ...g.__tangentCanvasFeed };
 }
 
-// ─── Path ────────────────────────────────────────────────────────────────────
-// The goal, plus one recursive tree of nodes. Depth alternates work / idea, and
-// lib/path-layout.ts turns that into circles and tangents. Stored with the rest
-// of the workspace, so a branch you keep is still there next time.
+// ─── Paths ───────────────────────────────────────────────────────────────────
+// Several goals, each with its own tree. A node belongs to exactly one Path via
+// pathId; lib/path-layout.ts lays out one Path at a time. Stored with the rest
+// of the workspace.
 
 function space(): PathSpace {
   const ws = currentWorkspace();
-  // A workspace written before the recursive model still holds flat anchors and
-  // tangents. Fold them in once, on read, rather than migrating on deploy.
-  const legacy = ws.__tangentSpace as PathSpace & {
+  const stored = ws.__tangentSpace as PathSpace & {
+    goal?: Goal | null;
     anchors?: LegacyAnchor[];
     tangents?: LegacyTangentIdea[];
   };
-  if (legacy.anchors || legacy.tangents) {
-    const nodes: PathNode[] = [];
-    for (const a of legacy.anchors ?? []) {
-      nodes.push({
-        id: a.id,
-        parentId: null,
-        kind: "work",
-        title: a.title,
-        detail: a.detail,
-        category: a.kind,
-        hoursPerWeek: a.hoursPerWeek,
-        years: a.years,
-        status: "accepted",
-        origin: "you",
-        createdAt: a.createdAt,
-      });
-    }
-    for (const t of legacy.tangents ?? []) {
-      nodes.push({
-        id: t.id,
-        parentId: t.anchorId,
-        kind: "idea",
-        title: t.title,
-        rationale: t.rationale,
-        effort: t.effort,
-        status: t.status,
-        origin: t.origin,
-        createdAt: t.createdAt,
-      });
-    }
-    ws.__tangentSpace = { goal: legacy.goal ?? null, nodes: [...nodes, ...(legacy.nodes ?? [])] };
-    console.log("[store] migrated Path to the recursive model. Nodes:", nodes.length);
+
+  // Two older shapes can be on disk. Fold them forward once, on read, rather
+  // than migrating on deploy: flat anchors/tangents first, then the
+  // single-goal tree, so a workspace from either era lands in the same place.
+  const hadFlat = Boolean(stored.anchors || stored.tangents);
+  const hadSingleGoal = stored.goal !== undefined;
+  if (!hadFlat && !hadSingleGoal) return stored;
+
+  const nodes: PathNode[] = [];
+  const pathId = rid("path");
+
+  for (const a of stored.anchors ?? []) {
+    nodes.push({
+      id: a.id,
+      pathId,
+      parentId: null,
+      kind: "work",
+      title: a.title,
+      detail: a.detail,
+      category: a.kind,
+      hoursPerWeek: a.hoursPerWeek,
+      years: a.years,
+      status: "accepted",
+      origin: "you",
+      createdAt: a.createdAt,
+    });
   }
+  for (const t of stored.tangents ?? []) {
+    nodes.push({
+      id: t.id,
+      pathId,
+      parentId: t.anchorId,
+      kind: "idea",
+      title: t.title,
+      rationale: t.rationale,
+      effort: t.effort,
+      status: t.status,
+      origin: t.origin,
+      createdAt: t.createdAt,
+    });
+  }
+  for (const n of stored.nodes ?? []) nodes.push({ ...n, pathId: n.pathId ?? pathId });
+
+  const goal = stored.goal;
+  const paths: Path[] = [...(stored.paths ?? [])];
+  if (nodes.length > 0 || goal) {
+    paths.push({
+      id: pathId,
+      title: goal?.college ?? "Your first path",
+      kind: goal ? "college" : "other",
+      target: goal ? [goal.college, goal.focus].filter(Boolean).join(" - ") : "",
+      current: "",
+      createdAt: goal?.updatedAt ?? new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  ws.__tangentSpace = { paths, nodes };
+  console.log("[store] migrated Path to multi-path. Paths:", paths.length, "Nodes:", nodes.length);
   return ws.__tangentSpace;
 }
 
@@ -935,13 +961,39 @@ function rid(prefix: string): string {
 
 export function getPathSpace(): PathSpace {
   const s = space();
-  return { goal: s.goal ? { ...s.goal } : null, nodes: s.nodes.map((n) => ({ ...n })) };
+  return { paths: s.paths.map((p) => ({ ...p })), nodes: s.nodes.map((n) => ({ ...n })) };
 }
 
-export function setGoal(college: string, focus?: string): Goal {
-  const goal: Goal = { college, focus, updatedAt: new Date().toISOString() };
-  space().goal = goal;
-  return { ...goal };
+/** One Path and only its own nodes. What the deep view loads. */
+export function getPath(pathId: string): { path: Path; nodes: PathNode[] } | null {
+  const s = space();
+  const path = s.paths.find((p) => p.id === pathId);
+  if (!path) return null;
+  return { path: { ...path }, nodes: s.nodes.filter((n) => n.pathId === pathId).map((n) => ({ ...n })) };
+}
+
+export function createPath(input: Omit<Path, "id" | "createdAt" | "updatedAt">): Path {
+  const now = new Date().toISOString();
+  const path: Path = { ...input, id: rid("path"), createdAt: now, updatedAt: now };
+  space().paths.push(path);
+  return { ...path };
+}
+
+export function updatePath(id: string, patch: Partial<Omit<Path, "id" | "createdAt">>): Path | null {
+  const found = space().paths.find((p) => p.id === id);
+  if (!found) return null;
+  Object.assign(found, patch, { updatedAt: new Date().toISOString() });
+  return { ...found };
+}
+
+/** Removes a Path and every node in it. */
+export function removePath(id: string): boolean {
+  const s = space();
+  const before = s.paths.length;
+  s.paths = s.paths.filter((p) => p.id !== id);
+  if (s.paths.length === before) return false;
+  s.nodes = s.nodes.filter((n) => n.pathId !== id);
+  return true;
 }
 
 export function getPathNode(id: string): PathNode | null {
@@ -949,8 +1001,8 @@ export function getPathNode(id: string): PathNode | null {
   return found ? { ...found } : null;
 }
 
-/** The chain from a node up to the goal. Gives Claude the context that a node
- *  four levels deep is still, ultimately, about one college. */
+/** The chain from a node up to the root of its Path. Gives Claude the context
+ *  that a node four levels deep is still, ultimately, about one goal. */
 export function pathAncestry(id: string): PathNode[] {
   const s = space();
   const chain: PathNode[] = [];

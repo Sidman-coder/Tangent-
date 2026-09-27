@@ -25,8 +25,8 @@ async function GETHandler() {
     counts: {
       tasks: state.tasks.length,
       plans: state.plans.length,
+      paths: space.paths.length,
       pathNodes: space.nodes.length,
-      goal: space.goal ? 1 : 0,
     },
     hasAnthropicKey: Boolean(process.env.ANTHROPIC_API_KEY),
   });

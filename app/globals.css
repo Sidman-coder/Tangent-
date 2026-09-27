@@ -411,6 +411,55 @@ textarea:focus-visible {
   opacity: 1;
 }
 
+/* The door into Tangents. Deliberately unlike a nav row: its own surface and a
+   leaving-the-page arrow, because taking it replaces the whole window. */
+.rail-tangents {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 12px 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--accent);
+  text-decoration: none;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.12s ease;
+}
+.rail-tangents:hover {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: var(--accent);
+}
+.rail-tangents:active {
+  transform: translateY(1px);
+}
+.rail-tangents-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+.rail-tangents-copy strong {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.75;
+}
+.rail-tangents-copy span {
+  font-family: var(--font-display);
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.rail-tangents-arrow {
+  margin-left: auto;
+  flex: none;
+  opacity: 0.7;
+}
+.rail-tangents:hover .rail-tangents-arrow {
+  opacity: 1;
+}
+
 .rail-footer {
   padding-top: 14px;
   border-top: 1px solid var(--line);
@@ -5448,7 +5497,7 @@ textarea:focus {
     bottom: 0;
     left: 0;
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     height: 66px;
     padding: 6px 8px max(6px, env(safe-area-inset-bottom));
     border-top: 1px solid var(--line);

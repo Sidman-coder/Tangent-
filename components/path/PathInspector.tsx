@@ -2,7 +2,7 @@
 
 import { AnimatePresence, m } from "motion/react";
 import { Check, Plus, Sparkles, Trash2, X } from "lucide-react";
-import type { Goal, PathNode } from "@/lib/types";
+import type { Path, PathNode } from "@/lib/types";
 
 // The panel beside the drawing.
 //
@@ -12,7 +12,7 @@ import type { Goal, PathNode } from "@/lib/types";
 // here, one node at a time.
 
 type Props = {
-  goal: Goal;
+  path: Path;
   node: PathNode | null;
   ancestry: PathNode[];
   childCount: number;
@@ -33,7 +33,7 @@ const CATEGORY_LABEL: Record<string, string> = {
 };
 
 export default function PathInspector({
-  goal,
+  path,
   node,
   ancestry,
   childCount,
@@ -63,7 +63,7 @@ export default function PathInspector({
           <header className="path-inspector-head">
             <nav className="path-crumbs" aria-label="Where this sits">
               <button type="button" onClick={() => onSelectAncestor(null)}>
-                {goal.college}
+                {path.title}
               </button>
               {ancestry.slice(0, -1).map((a) => (
                 <button key={a.id} type="button" onClick={() => onSelectAncestor(a.id)}>

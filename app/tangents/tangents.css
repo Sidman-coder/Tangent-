@@ -10,6 +10,7 @@
  * not a second brand colour: if it is green, it is an idea branching off.
  */
 
+.tangents-root,
 .path-page {
   --path-void: #0a0812;
   --path-void-2: #151127;
@@ -18,7 +19,7 @@
   --path-ink: #efeafc;
   --path-ink-2: rgba(226, 217, 252, 0.62);
   --path-work: #b3a5f0;
-  --path-goal: #8f7ce8;
+  --path-goal: #9a88ef;
   --path-idea: #3ed08a;
   --path-idea-soft: rgba(62, 208, 138, 0.16);
   --path-panel: rgba(21, 17, 37, 0.97);
@@ -27,8 +28,9 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  /* Fills what the shell gives it. dvh, never vh: the iOS address bar. */
-  min-height: calc(100dvh - var(--topbar-h, 64px));
+  /* Tangents replaces the window: there is no app chrome above it.
+     dvh, never vh, because of the iOS address bar. */
+  min-height: 100dvh;
   background: radial-gradient(120% 100% at 50% 0%, var(--path-void-2) 0%, var(--path-void) 62%);
   color: var(--path-ink);
   /* clip, not hidden. The world layer is far larger than the viewport, which
@@ -721,10 +723,6 @@
 /* ─── Narrow screens ────────────────────────────────────────────────────── */
 
 @media (max-width: 860px) {
-  /* The fixed mobile nav sits over the bottom of the viewport. */
-  .path-page {
-    min-height: calc(100dvh - var(--topbar-h, 64px) - 66px);
-  }
   .path-inspector {
     top: auto;
     right: 12px;
@@ -758,5 +756,357 @@
   .path-idea,
   .path-btn {
     transition: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TANGENTS — the mode: its own window, its own bar, and the field of paths
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.tangents-root {
+  display: flex;
+  flex-direction: column;
+}
+.tangents-root.is-centred {
+  align-items: center;
+  justify-content: center;
+}
+
+.tangents-bar {
+  position: relative;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+}
+/* Over the drawing rather than above it: the canvas runs full height behind. */
+.tangents-bar.is-over {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+}
+.tangents-bar.is-over > * {
+  pointer-events: auto;
+}
+.tangents-bar h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-align: center;
+  color: var(--path-ink);
+}
+.tangents-bar-meta {
+  justify-self: end;
+  color: var(--path-ink-2);
+  font-size: 12.5px;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tangents-bar .path-chip {
+  justify-self: end;
+}
+
+.tangents-back {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px 7px 10px;
+  border: 1px solid var(--path-edge);
+  border-radius: 999px;
+  color: var(--path-ink-2);
+  font-family: var(--font-body);
+  font-size: 13px;
+  text-decoration: none;
+  transition: color 0.18s ease, border-color 0.18s ease;
+}
+.tangents-back:hover {
+  color: var(--path-ink);
+  border-color: var(--path-edge-strong);
+}
+
+/* The field scrolls if it outgrows the window; the spheres never reflow. */
+.tangents-space {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 8px 20px 40px;
+}
+
+.tangents-field {
+  position: relative;
+  flex: none;
+}
+
+.tangents-orbit {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+
+/* A flat disc with a thin ring, not a lit ball. The ring carries the progress,
+   so the one decorative thing on it is also the only informative thing. */
+.tangents-sphere {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 172px;
+  padding: 10px;
+  border-radius: var(--path-radius);
+  color: var(--path-ink);
+  text-decoration: none;
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.tangents-sphere svg {
+  width: 116px;
+  height: 116px;
+  overflow: visible;
+}
+.tangents-sphere-ring {
+  fill: none;
+  stroke: var(--path-edge-strong);
+  stroke-width: 1.25;
+  transition: stroke 0.22s ease;
+}
+.tangents-sphere-arc {
+  fill: none;
+  stroke: var(--path-idea);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  /* Start the arc at the top rather than at three o'clock. */
+  transform: rotate(-90deg);
+  transform-origin: center;
+}
+.tangents-sphere-core {
+  fill: var(--path-goal);
+  opacity: 0.85;
+  transition: opacity 0.22s ease, r 0.22s ease;
+}
+.tangents-sphere:hover {
+  transform: translateY(-4px);
+}
+.tangents-sphere:hover .tangents-sphere-ring {
+  stroke: var(--path-goal);
+}
+.tangents-sphere:hover .tangents-sphere-core {
+  opacity: 1;
+}
+.tangents-sphere:focus-visible {
+  outline: 2px solid var(--path-goal);
+  outline-offset: 3px;
+}
+.tangents-sphere-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  text-align: center;
+}
+.tangents-sphere-label strong {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.tangents-sphere-label span {
+  color: var(--path-ink-2);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+.tangents-sphere-when {
+  color: var(--path-idea);
+}
+
+.tangents-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 420px;
+  padding: 30px;
+  text-align: center;
+}
+.tangents-empty h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.tangents-empty p {
+  margin: 0;
+  color: var(--path-ink-2);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+/* ─── Intake ────────────────────────────────────────────────────────────── */
+
+.tangents-intake-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(6, 4, 14, 0.62);
+  backdrop-filter: blur(6px);
+}
+
+.tangents-intake {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(520px, 100%);
+  padding: 22px;
+  border: 1px solid var(--path-edge-strong);
+  border-radius: var(--path-radius);
+  background: var(--path-panel);
+  box-shadow: 0 30px 80px rgba(4, 2, 10, 0.6);
+}
+.tangents-intake-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.tangents-intake-step {
+  color: var(--path-ink-2);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+.tangents-intake-progress {
+  display: flex;
+  gap: 4px;
+}
+.tangents-intake-progress span {
+  flex: 1;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--path-edge);
+  transition: background 0.3s ease;
+}
+.tangents-intake-progress span.is-done {
+  background: var(--path-idea);
+}
+.tangents-intake-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 188px;
+}
+.tangents-intake-body h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+.tangents-intake-body > p {
+  margin: 0 0 4px;
+  color: var(--path-ink-2);
+  font-size: 13px;
+  line-height: 1.55;
+  max-width: 52ch;
+}
+.tangents-intake-input {
+  width: 100%;
+  padding: 11px 13px;
+  border: 1px solid var(--path-edge-strong);
+  border-radius: 10px;
+  background: rgba(10, 8, 18, 0.6);
+  color: var(--path-ink);
+  font-family: var(--font-body);
+  font-size: 14.5px;
+  resize: vertical;
+}
+.tangents-intake-input.is-area {
+  line-height: 1.5;
+}
+.tangents-intake-input::placeholder {
+  color: rgba(226, 217, 252, 0.4);
+}
+.tangents-intake-input:focus-visible {
+  outline: 2px solid var(--path-goal);
+  outline-offset: 1px;
+}
+.tangents-kinds {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 4px;
+}
+.tangents-kind {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--path-edge);
+  border-radius: 10px;
+  background: none;
+  color: var(--path-ink);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+.tangents-kind:hover {
+  border-color: var(--path-edge-strong);
+}
+.tangents-kind.is-on {
+  border-color: var(--path-idea);
+  background: var(--path-idea-soft);
+}
+.tangents-kind strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.tangents-kind span {
+  color: var(--path-ink-2);
+  font-size: 11.5px;
+}
+.tangents-intake-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.tangents-intake-skip {
+  align-self: center;
+  border: 0;
+  background: none;
+  color: var(--path-ink-2);
+  font-family: var(--font-body);
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.tangents-intake-skip:hover {
+  color: var(--path-ink);
+}
+
+@media (max-width: 640px) {
+  .tangents-bar {
+    grid-template-columns: auto 1fr;
+    row-gap: 10px;
+  }
+  .tangents-bar h1 {
+    text-align: left;
+  }
+  .tangents-bar-meta {
+    display: none;
+  }
+  .tangents-kinds {
+    grid-template-columns: 1fr;
   }
 }

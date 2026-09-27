@@ -7,7 +7,7 @@ import PathAmbient from "./PathAmbient";
 import { usePathCamera } from "./usePathCamera";
 import { layoutPath, ROOT_RADIUS } from "@/lib/path-layout";
 import type { PathLayout } from "@/lib/path-layout";
-import type { Goal, PathNode } from "@/lib/types";
+import type { Path, PathNode } from "@/lib/types";
 
 // The drawing.
 //
@@ -33,7 +33,7 @@ const SURFACE = 9000;
 const PANEL_W = 378;
 
 type Props = {
-  goal: Goal;
+  path: Path;
   nodes: PathNode[];
   focusedId: string | null;
   expanded: Set<string>;
@@ -65,7 +65,7 @@ function branchOf(nodes: PathNode[], id: string | null): Set<string> {
 }
 
 export default function PathScene({
-  goal,
+  path,
   nodes,
   focusedId,
   expanded,
@@ -145,8 +145,10 @@ export default function PathScene({
         >
           <defs>
             <radialGradient id="path-core">
-              <stop offset="0%" stopColor="var(--path-goal)" stopOpacity="0.95" />
-              <stop offset="70%" stopColor="var(--path-goal)" stopOpacity="0.16" />
+              {/* A whisper, not a lit ball. A bright radial blob behind the
+                  centre was the most generic thing on the page. */}
+              <stop offset="0%" stopColor="var(--path-goal)" stopOpacity="0.22" />
+              <stop offset="60%" stopColor="var(--path-goal)" stopOpacity="0.07" />
               <stop offset="100%" stopColor="var(--path-goal)" stopOpacity="0" />
             </radialGradient>
           </defs>
@@ -226,8 +228,10 @@ export default function PathScene({
                 className={`path-goal-node${focusedId === null ? " is-focused" : ""}`}
                 onClick={() => onFocus(null)}
               >
-                <span className="path-goal-name">{goal.college}</span>
-                {goal.focus && <span className="path-goal-focus">{goal.focus}</span>}
+                <span className="path-goal-name">{path.title}</span>
+                {path.target && path.target !== path.title && (
+                  <span className="path-goal-focus">{clip(path.target, 46)}</span>
+                )}
               </button>
             </div>
           </div>

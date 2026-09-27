@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchAndValidateIcs, syncCanvasFeed } from "@/lib/canvas-ics";
+import { fetchAndValidateIcs, importCutoff, syncCanvasFeed } from "@/lib/canvas-ics";
 import { getCanvasFeed, saveCanvasFeed, recordCanvasSync } from "@/lib/store";
 import { withWorkspaceRoute } from "@/lib/with-workspace";
 
@@ -21,7 +21,7 @@ async function POSTHandler(req: Request) {
     }
 
     const feed = saveCanvasFeed(icsUrl);
-    const result = await syncCanvasFeed(icsUrl, feed.connectedAt, validation.icsText);
+    const result = await syncCanvasFeed(icsUrl, importCutoff(), validation.icsText);
     recordCanvasSync(result.total);
 
     return NextResponse.json({ ok: true, ...result });
@@ -32,18 +32,33 @@ async function POSTHandler(req: Request) {
   }
 }
 
-/** Re-syncs the already-connected feed on demand. */
-async function GETHandler() {
+/**
+ * Re-syncs the already-connected feed.
+ *
+ * `?ifStale=<hours>` makes it a no-op when the feed was synced recently, so the
+ * app can call this on every load without hammering Canvas. Without it, the
+ * feed only ever updated when someone pressed a button, which meant it went
+ * stale the moment it was connected and new assignments never arrived.
+ */
+async function GETHandler(req: Request) {
   try {
     const feed = getCanvasFeed();
     if (!feed) {
       return NextResponse.json({ ok: false, error: "Canvas isn't connected yet." }, { status: 400 });
     }
 
-    const result = await syncCanvasFeed(feed.icsUrl, feed.connectedAt);
-    recordCanvasSync(result.total);
+    const ifStale = Number(new URL(req.url).searchParams.get("ifStale"));
+    if (Number.isFinite(ifStale) && ifStale > 0 && feed.lastSyncedAt) {
+      const age = Date.now() - new Date(feed.lastSyncedAt).getTime();
+      if (age < ifStale * 3600_000) {
+        return NextResponse.json({ ok: true, skipped: true, lastSyncedAt: feed.lastSyncedAt });
+      }
+    }
 
-    return NextResponse.json({ ok: true, ...result });
+    const result = await syncCanvasFeed(feed.icsUrl, importCutoff());
+    const updated = recordCanvasSync(result.total);
+
+    return NextResponse.json({ ok: true, ...result, lastSyncedAt: updated?.lastSyncedAt ?? null });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     console.error("[api/canvas/connect] GET error:", message);
@@ -51,6 +66,12 @@ async function GETHandler() {
   }
 }
 
+/** Reports the connection without touching Canvas, for the Settings panel. */
+async function HEADHandler() {
+  return new Response(null, { status: getCanvasFeed() ? 204 : 404 });
+}
+
 // Runs against the caller's own workspace, loaded and saved around the request.
 export const POST = withWorkspaceRoute(POSTHandler);
 export const GET = withWorkspaceRoute(GETHandler);
+export const HEAD = withWorkspaceRoute(HEADHandler);

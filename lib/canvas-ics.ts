@@ -76,6 +76,19 @@ export type SyncResult = { total: number; added: number; skipped: number };
  * used to keep both the initial connect and later re-syncs from pulling in a student's entire semester
  * history, only what's still ahead as of when they connected.
  */
+/** How far back an import reaches. Anything older than this is not actionable;
+ *  anything inside it still might be. Fixed window rather than "the moment you
+ *  pressed connect", which dropped work due earlier the same day and could
+ *  never be recovered, because every later sync reused that same instant. */
+export const IMPORT_WINDOW_DAYS = 21;
+
+export function importCutoff(): Date {
+  const d = new Date();
+  d.setDate(d.getDate() - IMPORT_WINDOW_DAYS);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
 export async function syncCanvasFeed(
   icsUrl: string,
   sinceDate?: string | Date,

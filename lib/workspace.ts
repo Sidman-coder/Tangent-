@@ -34,7 +34,7 @@ import type {
   BriefConfig,
   CanvasFeedConfig,
   PendingBriefBatch,
-  Goal,
+  Path,
   PathNode,
 } from "./types";
 import type { ChatMessage, ChatSession } from "./store";
@@ -53,9 +53,9 @@ export interface StoreData {
   chatSessions: ChatSession[];
 }
 
-/** The Path tree: one goal at the centre, one flat list of nodes linked by
- *  parentId. lib/path-layout.ts turns it into circles and tangents. */
-export type PathSpace = { goal: Goal | null; nodes: PathNode[] };
+/** Every Path the person is running, and every node across all of them.
+ *  Nodes carry a pathId; lib/path-layout.ts lays out one path at a time. */
+export type PathSpace = { paths: Path[]; nodes: PathNode[] };
 
 /** Everything one workspace owns. Keys match the old `global.__tangent*` names
  *  so lib/store.ts needed no renaming. */
@@ -110,7 +110,7 @@ export function defaultWorkspaceData(): WorkspaceData {
     __tangentBriefConfig: null,
     __tangentCanvasFeed: null,
     __tangentPendingBriefBatch: null,
-    __tangentSpace: { goal: null, nodes: [] },
+    __tangentSpace: { paths: [], nodes: [] },
   };
 }
 

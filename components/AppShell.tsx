@@ -5,9 +5,9 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   CalendarDays,
-  CheckSquare2,
   Home,
   Spline,
+  ArrowUpRight,
   MessageSquareText,
   Search,
   Settings,
@@ -18,32 +18,14 @@ import FirstRun from "./FirstRun";
 import TangentLogo from "@/components/TangentLogo";
 import DesktopNotifPrompt from "./DesktopNotifPrompt";
 
+// Three places you work, plus settings. Tasks used to be its own page; it only
+// ever showed today, which Today already does, and everything else about a task
+// belongs on the day it falls on. Tangents is deliberately not in this list: it
+// is a mode, not a page, and it gets its own door at the bottom of the rail.
 const NAV_LINKS = [
-  {
-    href: "/",
-    label: "Today",
-    icon: Home,
-  },
-  {
-    href: "/tasks",
-    label: "Tasks",
-    icon: CheckSquare2,
-  },
-  {
-    href: "/calendar",
-    label: "Calendar",
-    icon: CalendarDays,
-  },
-  {
-    href: "/path",
-    label: "Path",
-    icon: Spline,
-  },
-  {
-    href: "/ai",
-    label: "Tangent AI",
-    icon: MessageSquareText,
-  },
+  { href: "/", label: "Today", icon: Home },
+  { href: "/calendar", label: "Calendar", icon: CalendarDays },
+  { href: "/ai", label: "Tangent AI", icon: MessageSquareText },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -81,9 +63,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     if (savedName) setProfileName(savedName);
   }, []);
 
+  // Canvas used to update only when someone pressed a button, so a connected
+  // feed went stale immediately. This asks the server to re-sync if it has been
+  // more than six hours; the server no-ops otherwise, and a daily cron covers
+  // anyone who never opens the app.
+  useEffect(() => {
+    void fetch("/api/canvas/connect?ifStale=6").catch(() => {});
+  }, []);
+
   const profileInitial = (profileName || "T").charAt(0).toUpperCase();
 
   const openPalette = () => window.dispatchEvent(new Event("tangent:open-palette"));
+
+  // Tangents takes over the window. Returning children bare rather than hiding
+  // the chrome with CSS keeps the rail and topbar out of the tree entirely, so
+  // nothing in them can catch a pointer or a tab stop over the canvas.
+  if (pathname.startsWith("/tangents")) {
+    return <>{children}</>;
+  }
 
   return (
     <div className="shell">
@@ -113,6 +110,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="rail-spacer" />
+
+        {/* Tangents is a mode, not a page, so its entry is deliberately unlike
+            a nav row: its own block, its own surface, and it leaves the app
+            behind when you take it. */}
+        <Link href="/tangents" className="rail-tangents" aria-label="Work on your tangents">
+          <Spline size={17} aria-hidden="true" />
+          <span className="rail-tangents-copy">
+            <strong>Work on your</strong>
+            <span>tangents</span>
+          </span>
+          <ArrowUpRight size={15} className="rail-tangents-arrow" aria-hidden="true" />
+        </Link>
 
         <div className="rail-footer">
           <Link href="/settings" className="rail-profile" aria-label="Open account settings">

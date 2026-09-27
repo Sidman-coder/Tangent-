@@ -219,6 +219,8 @@ export type PathNodeKind = "work" | "idea";
 
 export type PathNode = {
   id: string;
+  /** Which Path this node belongs to. Every node has exactly one. */
+  pathId: string;
   /** null means it hangs off the goal, at the centre of the root circle. */
   parentId: string | null;
   kind: PathNodeKind;
@@ -262,6 +264,41 @@ export type LegacyTangentIdea = {
   createdAt: string;
 };
 
+/**
+ * One Path: a single goal and the tree that grows toward it.
+ *
+ * Deliberately not college-specific. A Path is anything you can state a target
+ * for and make progress against - a college, a job, a chess rating, a
+ * certification. The intake below is the coaching-intake shape: where you are,
+ * where you want to be, by when, and what you can actually give it. Those four
+ * are what let Tangent judge whether a branch is worth your hours, and
+ * `standing` is what the first circle gets populated from.
+ */
+export type PathGoalKind = "college" | "career" | "skill" | "other";
+
+export type Path = {
+  id: string;
+  /** Short label, the one that rides on the sphere. "Georgia Tech", "2000 USCF". */
+  title: string;
+  kind: PathGoalKind;
+  /** The target, stated so you could tell whether you hit it. */
+  target: string;
+  /** Where you are now. The honest version. */
+  current: string;
+  /** When you want it by. Free text, because "Fall 2027" is as real as a date. */
+  deadline?: string;
+  /** Hours a week you can actually give it, not what you wish. */
+  hoursPerWeek?: number;
+  /** What is in the way: money, access, location, age, anything. */
+  constraints?: string;
+  /** What you already have going for it. Seeds the first circle. */
+  standing?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** Superseded by Path. Kept so a workspace saved before multi-path can be read
+ *  once and migrated into a single Path; nothing writes this. */
 export type Goal = {
   /** The college you're aiming at. */
   college: string;

@@ -270,7 +270,7 @@ export default function DashboardPage() {
         onComplete={completeFromAttention}
         onTomorrow={moveToTomorrow}
         onOpen={(task) => router.push(`/calendar?date=${task.date}`)}
-        onSeeAll={() => router.push("/tasks")}
+        onSeeAll={() => router.push(`/calendar?date=${today}`)}
       />
 
       <aside className="today-insights" aria-label="Schedule context">
