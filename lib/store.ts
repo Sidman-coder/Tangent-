@@ -2,6 +2,7 @@ import "server-only";
 import { getRequestContext } from "./request-context";
 import { DEFAULT_TIMEZONE, isValidTimezone } from "./dates";
 import { expandRecurrence, getUserToday, weekRange } from "./time";
+import { decryptFeedUrl, encryptFeedUrl, maskCanvasFeedUrl as maskFeedUrl } from "./canvas-feed-security";
 import type {
   Task,
   Plan,
@@ -1546,20 +1547,16 @@ type CanvasFeedRow = { ics_url: string; connected_at: string; last_synced_at: st
 
 function canvasFeedFromRow(r: CanvasFeedRow): CanvasFeedConfig {
   return {
-    icsUrl: r.ics_url,
+    icsUrl: decryptFeedUrl(r.ics_url),
     connectedAt: iso(r.connected_at),
     lastSyncedAt: r.last_synced_at ? iso(r.last_synced_at) : null,
     lastSyncCount: r.last_sync_count,
   };
 }
 
-/** "https://school.instructure.com/…/••••••.ics" — host only, no path token or query. */
+/** "school.instructure.com/…/user_••••.ics" — host only, never the token. */
 export function maskCanvasFeedUrl(icsUrl: string): string {
-  try {
-    return `${new URL(icsUrl).origin}/…/••••••.ics`;
-  } catch {
-    return "••••••.ics";
-  }
+  return maskFeedUrl(icsUrl);
 }
 
 /** Full feed config including the secret URL. Server-only callers. */
@@ -1591,7 +1588,7 @@ export async function saveCanvasFeed(icsUrl: string): Promise<CanvasFeedConfig> 
   const { data, error } = await db
     .from("canvas_feeds")
     .upsert(
-      { user_id: userId, ics_url: icsUrl, connected_at: new Date().toISOString(), last_synced_at: null, last_sync_count: 0 },
+      { user_id: userId, ics_url: encryptFeedUrl(icsUrl), connected_at: new Date().toISOString(), last_synced_at: null, last_sync_count: 0 },
       { onConflict: "user_id" }
     )
     .select("ics_url, connected_at, last_synced_at, last_sync_count")

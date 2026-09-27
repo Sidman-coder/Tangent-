@@ -8,6 +8,7 @@ import ical from "node-ical";
 import type { CalendarResponse, ParameterValue, VEvent } from "node-ical";
 import { addTask, getUserTimezone } from "./store";
 import { getUserToday } from "./time";
+import { CanvasFeedError, fetchCanvasFeedText, parseCanvasFeedUrl, type FetchDeps } from "./canvas-feed-security";
 
 function textValue(value: ParameterValue<string> | undefined): string {
   if (!value) return "";
@@ -15,49 +16,33 @@ function textValue(value: ParameterValue<string> | undefined): string {
 }
 
 export type IcsValidation =
-  | { ok: true; icsText: string; eventCount: number }
+  | { ok: true; url: string; icsText: string; eventCount: number }
   | { ok: false; error: string };
 
-/** Fetches a candidate Canvas calendar-feed URL and confirms it is a real, parseable .ics feed. */
-export async function fetchAndValidateIcs(rawUrl: string): Promise<IcsValidation> {
-  let url: URL;
+/** Parses feed text, or throws a student-friendly CanvasFeedError. */
+function parseFeed(icsText: string): CalendarResponse {
   try {
-    url = new URL(rawUrl.trim());
+    return ical.sync.parseICS(icsText);
   } catch {
-    return { ok: false, error: "That doesn't look like a valid URL." };
+    throw new CanvasFeedError("That calendar feed couldn't be read. Copy a fresh Calendar Feed link from Canvas and try again.");
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    return { ok: false, error: "The calendar feed link must start with http:// or https://." };
-  }
+}
 
-  let res: Response;
+/** Fetches a candidate Canvas calendar-feed link under the rules in
+ *  canvas-feed-security.ts and confirms it is a real, parseable .ics feed.
+ *  `url` is the normalized link (webcal:// → https://) to store. */
+export async function fetchAndValidateIcs(rawUrl: string, deps?: FetchDeps): Promise<IcsValidation> {
   try {
-    res = await fetch(url.toString());
+    const url = parseCanvasFeedUrl(rawUrl).toString();
+    const icsText = await fetchCanvasFeedText(url, deps);
+    const parsed = parseFeed(icsText);
+    const eventCount = Object.values(parsed).filter((item) => item?.type === "VEVENT").length;
+    return { ok: true, url, icsText, eventCount };
   } catch (e) {
-    console.error("[canvas-ics] fetch failed:", e instanceof Error ? e.message : e);
-    return { ok: false, error: "Couldn't reach that link. Check the URL and try again." };
+    if (e instanceof CanvasFeedError) return { ok: false, error: e.message };
+    console.error("[canvas-ics] validation failed:", e instanceof Error ? e.name : "error");
+    return { ok: false, error: "Couldn't check that link. Try again in a minute." };
   }
-  if (!res.ok) {
-    return { ok: false, error: `That link returned an error (${res.status}). Check the URL and try again.` };
-  }
-
-  const icsText = await res.text();
-  if (!icsText.includes("BEGIN:VCALENDAR")) {
-    return {
-      ok: false,
-      error: "That link didn't return a calendar feed. Make sure you copied the Calendar Feed link from Canvas.",
-    };
-  }
-
-  let parsed: CalendarResponse;
-  try {
-    parsed = ical.sync.parseICS(icsText);
-  } catch {
-    return { ok: false, error: "That calendar feed couldn't be read. Check the URL and try again." };
-  }
-
-  const eventCount = Object.values(parsed).filter((item) => item?.type === "VEVENT").length;
-  return { ok: true, icsText, eventCount };
 }
 
 /** Wall-clock date/time of an event in the student's timezone. All-day events
@@ -86,17 +71,17 @@ function toTaskDateTime(date: Date & { dateOnly?: boolean }, timeZone: string): 
 export type SyncResult = { total: number; added: number; skipped: number };
 
 /**
- * Re-fetches the feed and ingests VEVENT entries as Canvas-sourced tasks via the normal addTask path.
+ * Fetches the feed (unless the text was just fetched by fetchAndValidateIcs) and ingests VEVENT entries as Canvas-sourced tasks via the normal addTask path.
  * Only events on or after the student's local today are imported (earlier ones are not counted in
  * `total`), so neither the first connect nor a re-sync pulls in a semester of history.
  */
-export async function syncCanvasFeed(icsUrl: string): Promise<SyncResult> {
-  const res = await fetch(icsUrl);
-  if (!res.ok) {
-    throw new Error(`Canvas feed returned ${res.status}`);
-  }
-  const icsText = await res.text();
-  const parsed = ical.sync.parseICS(icsText);
+export async function syncCanvasFeed(
+  icsUrl: string,
+  opts: { icsText?: string; deps?: FetchDeps } = {}
+): Promise<SyncResult> {
+  // Re-syncs go through the same checks as connecting (scheme, host, DNS, redirects, limits).
+  const icsText = opts.icsText ?? (await fetchCanvasFeedText(icsUrl, opts.deps));
+  const parsed = parseFeed(icsText);
   const timeZone = await getUserTimezone();
   const today = getUserToday(timeZone);
 
