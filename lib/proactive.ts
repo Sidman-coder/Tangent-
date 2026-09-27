@@ -7,7 +7,8 @@
 // time-sensitive (an overdue-task nudge is only useful soon after it goes overdue),
 // so they don't fit Batch's up-to-an-hour turnaround the way the daily brief does.
 
-import { getAllTasks, getContextAsString, addNotification } from "@/lib/store";
+import { getAllTasks, getContextAsString, addNotification, getUserTimezone } from "@/lib/store";
+import { ymdInTimezone } from "@/lib/dates";
 import type { Notification } from "@/lib/types";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 
@@ -59,20 +60,22 @@ export async function runProactiveCheck(trigger: string): Promise<ProactiveCheck
 
     const tasks = await getAllTasks();
     const userContext = await getContextAsString();
+    const timeZone = await getUserTimezone();
     const now = new Date();
-    const today = now.toISOString().split("T")[0];
+    const today = ymdInTimezone(timeZone, 0, now);
+    const inThreeDays = ymdInTimezone(timeZone, 3, now);
     const todayTasks = tasks.filter((t) => t.date === today);
     const overdueTasks = tasks.filter((t) => !t.completed && t.date < today);
     const upcomingTasks = tasks.filter(
       (t) =>
         !t.completed &&
         t.date > today &&
-        t.date <= new Date(now.getTime() + 3 * 86400000).toISOString().split("T")[0]
+        t.date <= inThreeDays
     );
 
     const agentContext = `
 Today: ${today}
-Current time: ${now.toLocaleTimeString()}
+Current time: ${now.toLocaleTimeString("en-US", { timeZone })}
 
 Today's tasks:
 ${todayTasks.map((t) => `- ${t.time} ${t.title} (${t.completed ? "done" : "pending"})`).join("\n") || "None"}

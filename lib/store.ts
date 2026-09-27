@@ -1,5 +1,6 @@
 import "server-only";
 import { getRequestContext } from "./request-context";
+import { DEFAULT_TIMEZONE, isValidTimezone } from "./dates";
 import type {
   Task,
   Plan,
@@ -85,12 +86,10 @@ type LegacyData = {
 const g = global as typeof global & {
   __tangentLegacy?: LegacyData;
   __tangentUserContext?: UserContext;
-  __tangentNotifications?: Notification[];
   __tangentActions?: ActionRecord[];
   __tangentPending?: PendingConfirmation[];
   __tangentBriefConfig?: BriefConfig | null;
   __tangentCanvasFeed?: CanvasFeedConfig | null;
-  __tangentPendingBriefBatch?: PendingBriefBatch | null;
 };
 if (!g.__tangentLegacy) {
   g.__tangentLegacy = {
@@ -105,12 +104,10 @@ const store: LegacyData = g.__tangentLegacy;
 if (!g.__tangentUserContext) {
   g.__tangentUserContext = { entries: [], compressedSummary: "", lastUpdated: new Date().toISOString(), totalInteractions: 0 };
 }
-if (!g.__tangentNotifications) g.__tangentNotifications = [];
 if (!g.__tangentActions) g.__tangentActions = [];
 if (!g.__tangentPending) g.__tangentPending = [];
 if (g.__tangentBriefConfig === undefined) g.__tangentBriefConfig = null;
 if (g.__tangentCanvasFeed === undefined) g.__tangentCanvasFeed = null;
-if (g.__tangentPendingBriefBatch === undefined) g.__tangentPendingBriefBatch = null;
 
 // ─── Task rows ────────────────────────────────────────────────────────────────
 
@@ -1014,56 +1011,167 @@ export async function setCompressedSummary(summary: string): Promise<void> {
   console.log("[store] Context compressed. Summary length:", summary.length);
 }
 
+// ─── Timezone ─────────────────────────────────────────────────────────────────
+
+/** The student's IANA timezone (profiles.timezone), for "today" on the server. */
+export async function getUserTimezone(): Promise<string> {
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("profiles").select("timezone").eq("user_id", userId).maybeSingle();
+  if (error) fail("getUserTimezone", error);
+  return isValidTimezone(data?.timezone) ? data.timezone : DEFAULT_TIMEZONE;
+}
+
 // ─── Notification functions ───────────────────────────────────────────────────
 
+const MAX_NOTIFICATIONS = 50;
+const NOTIFICATION_COLUMNS = "id, type, title, body, action_label, action_data, read, dismissed, created_at";
+
+type NotificationRow = {
+  id: string;
+  type: Notification["type"];
+  title: string;
+  body: string;
+  action_label: string | null;
+  action_data: Record<string, unknown> | null;
+  read: boolean;
+  dismissed: boolean;
+  created_at: string;
+};
+
+function notificationFromRow(r: NotificationRow): Notification {
+  const n: Notification = {
+    id: r.id,
+    timestamp: iso(r.created_at),
+    type: r.type,
+    title: r.title,
+    body: r.body,
+    read: r.read,
+    dismissed: r.dismissed,
+  };
+  if (r.action_label) n.actionLabel = r.action_label;
+  if (r.action_data) n.actionData = r.action_data;
+  return n;
+}
+
+async function findLiveNotification(type: Notification["type"], taskId: string): Promise<Notification | null> {
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("notifications")
+    .select(NOTIFICATION_COLUMNS)
+    .eq("user_id", userId)
+    .eq("type", type)
+    .eq("task_id", taskId)
+    .eq("dismissed", false)
+    .maybeSingle();
+  if (error) fail("addNotification", error);
+  return data ? notificationFromRow(data as NotificationRow) : null;
+}
+
 export async function getNotifications(): Promise<Notification[]> {
-  return g.__tangentNotifications!
-    .filter((n) => !n.dismissed)
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("notifications")
+    .select(NOTIFICATION_COLUMNS)
+    .eq("user_id", userId)
+    .eq("dismissed", false)
+    .order("created_at", { ascending: false })
+    .order("id")
+    .limit(MAX_NOTIFICATIONS);
+  if (error) fail("getNotifications", error);
+  return ((data ?? []) as NotificationRow[]).map(notificationFromRow);
 }
 
 export async function addNotification(notif: Omit<Notification, "id" | "timestamp" | "read" | "dismissed">): Promise<Notification> {
   // Dedup by task + type: proactive checks run on every page load AND on a cron
   // schedule, so without this the same overdue/reschedule nudge for one task can
-  // stack up every time either trigger fires while it's still unresolved.
-  const taskId = notif.actionData?.taskId;
+  // stack up every time either trigger fires while it's still unresolved. The
+  // partial unique index notifications_live_dedup_idx makes this race-safe.
+  const rawTaskId = notif.actionData?.taskId;
+  const taskId = rawTaskId === undefined || rawTaskId === null || rawTaskId === "" ? null : String(rawTaskId);
   if (taskId) {
-    const existing = g.__tangentNotifications!.find(
-      (n) => !n.dismissed && n.type === notif.type && n.actionData?.taskId === taskId
-    );
+    const existing = await findLiveNotification(notif.type, taskId);
     if (existing) {
       console.log("[store] Notification deduped:", notif.type, taskId);
       return existing;
     }
   }
-  const full: Notification = {
-    ...notif,
-    id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-    timestamp: new Date().toISOString(),
-    read: false,
-    dismissed: false,
-  };
-  g.__tangentNotifications!.unshift(full);
-  // Keep max 50 notifications
-  if (g.__tangentNotifications!.length > 50) {
-    g.__tangentNotifications = g.__tangentNotifications!.slice(0, 50);
+
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("notifications")
+    .insert({
+      user_id: userId,
+      type: notif.type,
+      title: notif.title,
+      body: notif.body,
+      action_label: notif.actionLabel ?? null,
+      action_data: notif.actionData ?? null,
+    })
+    .select(NOTIFICATION_COLUMNS)
+    .single();
+  if (error) {
+    // Lost a race with a concurrent check that inserted the same live notification.
+    if (error.code === "23505" && taskId) {
+      const existing = await findLiveNotification(notif.type, taskId);
+      if (existing) {
+        console.log("[store] Notification deduped (concurrent):", notif.type, taskId);
+        return existing;
+      }
+    }
+    fail("addNotification", error);
   }
+  const full = notificationFromRow(data as NotificationRow);
+
+  // Keep the newest MAX_NOTIFICATIONS (dismissed ones included).
+  const { data: old, error: oldError } = await db
+    .from("notifications")
+    .select("id")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .order("id")
+    .range(MAX_NOTIFICATIONS, MAX_NOTIFICATIONS + PAGE - 1);
+  if (oldError) fail("addNotification", oldError);
+  const oldIds = (old ?? []).map((r: { id: string }) => r.id);
+  if (oldIds.length) {
+    const { error: delError } = await db.from("notifications").delete().eq("user_id", userId).in("id", oldIds);
+    if (delError) fail("addNotification", delError);
+  }
+
   console.log("[store] Notification added:", full.type, full.title);
   return full;
 }
 
+async function updateNotification(where: string, id: string, row: Record<string, unknown>): Promise<void> {
+  if (!isUuid(id)) return;
+  const { db, userId } = ctx();
+  const { error } = await db.from("notifications").update(row).eq("user_id", userId).eq("id", id);
+  if (error) fail(where, error);
+}
+
 export async function markNotificationRead(id: string): Promise<void> {
-  const n = g.__tangentNotifications!.find((n) => n.id === id);
-  if (n) n.read = true;
+  await updateNotification("markNotificationRead", id, { read: true });
 }
 
 export async function dismissNotification(id: string): Promise<void> {
-  const n = g.__tangentNotifications!.find((n) => n.id === id);
-  if (n) n.dismissed = true;
+  await updateNotification("dismissNotification", id, { dismissed: true });
+}
+
+export async function dismissAllNotifications(): Promise<void> {
+  const { db, userId } = ctx();
+  const { error } = await db.from("notifications").update({ dismissed: true }).eq("user_id", userId).eq("dismissed", false);
+  if (error) fail("dismissAllNotifications", error);
 }
 
 export async function getUnreadNotificationCount(): Promise<number> {
-  return g.__tangentNotifications!.filter((n) => !n.read && !n.dismissed).length;
+  const { db, userId } = ctx();
+  const { count, error } = await db
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("read", false)
+    .eq("dismissed", false);
+  if (error) fail("getUnreadNotificationCount", error);
+  return count ?? 0;
 }
 
 // ─── Action Receipts + Undo ────────────────────────────────────────────────
@@ -1190,13 +1298,33 @@ export async function saveBriefConfig(config: BriefConfig): Promise<BriefConfig>
 
 // Tracks an in-flight Anthropic Message Batch submitted by the daily-brief cron job
 // (see app/api/cron/daily-brief/route.ts) so the next cron tick knows to poll for the
-// result instead of resubmitting.
+// result instead of resubmitting. Stored on the student's brief_configs row.
 export async function getPendingBriefBatch(): Promise<PendingBriefBatch | null> {
-  return g.__tangentPendingBriefBatch ? { ...g.__tangentPendingBriefBatch } : null;
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("brief_configs")
+    .select("pending_batch_id, pending_batch_submitted_at")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) fail("getPendingBriefBatch", error);
+  if (!data?.pending_batch_id) return null;
+  return { batchId: data.pending_batch_id, submittedAt: iso(data.pending_batch_submitted_at ?? new Date().toISOString()) };
 }
 
 export async function setPendingBriefBatch(batch: PendingBriefBatch | null): Promise<void> {
-  g.__tangentPendingBriefBatch = batch;
+  const { db, userId } = ctx();
+  const { error } = batch
+    ? await db
+        .from("brief_configs")
+        .upsert(
+          { user_id: userId, pending_batch_id: batch.batchId, pending_batch_submitted_at: batch.submittedAt },
+          { onConflict: "user_id" }
+        )
+    : await db
+        .from("brief_configs")
+        .update({ pending_batch_id: null, pending_batch_submitted_at: null })
+        .eq("user_id", userId);
+  if (error) fail("setPendingBriefBatch", error);
   console.log("[store] setPendingBriefBatch:", batch ? `${batch.batchId} (submitted ${batch.submittedAt})` : "cleared");
 }
 

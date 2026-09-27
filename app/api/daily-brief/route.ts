@@ -5,7 +5,8 @@
 // button wants an answer now, not in up to an hour. Both routes publish through the
 // same publishDailyBrief() so the Bell only ever shows one pinned brief per day.
 import { NextResponse } from "next/server";
-import { getAllTasks, getContextAsString } from "@/lib/store";
+import { getAllTasks, getContextAsString, getUserTimezone } from "@/lib/store";
+import { ymdInTimezone } from "@/lib/dates";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import { DAILY_BRIEF_SCHEMA, DEFAULT_DAILY_BRIEF, publishDailyBrief, type DailyBrief } from "@/lib/daily-brief";
 import { withUser } from "@/lib/request-context";
@@ -20,9 +21,10 @@ export const POST = withUser(async () => {
 
     const tasks = await getAllTasks();
     const userContext = await getContextAsString();
+    const timeZone = await getUserTimezone();
     const now = new Date();
-    const today = now.toISOString().split("T")[0];
-    const tomorrow = new Date(now.getTime() + 86400000).toISOString().split("T")[0];
+    const today = ymdInTimezone(timeZone, 0, now);
+    const tomorrow = ymdInTimezone(timeZone, 1, now);
 
     const todayTasks = tasks.filter((t) => t.date === today);
     const tomorrowTasks = tasks.filter((t) => t.date === tomorrow);
@@ -30,8 +32,8 @@ export const POST = withUser(async () => {
     const completedToday = todayTasks.filter((t) => t.completed);
 
     const briefContext = `
-Date: ${now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
-Time: ${now.toLocaleTimeString()}
+Date: ${now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone })}
+Time: ${now.toLocaleTimeString("en-US", { timeZone })}
 
 Today's tasks (${todayTasks.length} total, ${completedToday.length} done):
 ${todayTasks.map((t) => `- ${t.time} ${t.title} [${t.completed ? "✓" : "pending"}]`).join("\n") || "Nothing scheduled"}

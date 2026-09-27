@@ -10,6 +10,12 @@
 export function isAuthorizedCronRequest(request: Request): boolean {
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret) {
+    // These routes act for every student with the service role, so production
+    // fails closed without a secret. Local dev stays manually triggerable.
+    if (process.env.NODE_ENV === "production") {
+      console.error("[cron] CRON_SECRET is not set — refusing cron request in production.");
+      return false;
+    }
     console.warn("[cron] CRON_SECRET is not set — allowing request unauthenticated. Set it before deploying.");
     return true;
   }

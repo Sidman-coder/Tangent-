@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getNotifications, markNotificationRead, dismissNotification, getUnreadNotificationCount } from "@/lib/store";
+import { getNotifications, markNotificationRead, dismissNotification, dismissAllNotifications, getUnreadNotificationCount } from "@/lib/store";
 import { withUser } from "@/lib/request-context";
 
 export const runtime = "nodejs";
@@ -27,7 +27,7 @@ export const POST = withUser(async (request: Request) => {
     }
 
     if (body.action === "dismiss_all") {
-      for (const n of await getNotifications()) await dismissNotification(n.id);
+      await dismissAllNotifications();
       return NextResponse.json({ ok: true });
     }
 

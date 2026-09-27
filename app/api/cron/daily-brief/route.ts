@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import { pollPendingBriefBatch, submitDailyBriefBatch } from "@/lib/daily-brief";
+import { forEachCronUser } from "@/lib/cron-users";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Scheduled in vercel.json (once daily). This is the real "Daily Brief" feature —
+// Scheduled in vercel.json (once daily). Runs once per student (forEachCronUser),
+// each with their own tasks, context, brief config and pending batch. This is the real "Daily Brief" feature —
 // it aggregates the student's saved brief-sources config (RSS feeds, manual URLs,
 // stale-task checks; see the "Brief" tab in the AI console and lib/brief-sources.ts)
 // and publishes the same pinned daily_brief notification the on-demand "Today's
@@ -31,21 +34,23 @@ export async function GET(request: Request) {
   }
 
   try {
-    const pollResult = await pollPendingBriefBatch();
+    const results = await forEachCronUser("daily-brief", async () => {
+      const pollResult = await pollPendingBriefBatch();
 
-    if (pollResult.checked && !pollResult.finalized) {
-      // Either still processing, or the check itself failed — either way, don't
-      // submit a second batch on top of one that might still resolve.
-      return NextResponse.json({ ok: true, phase: "pending", ...pollResult });
-    }
+      if (pollResult.checked && !pollResult.finalized) {
+        // Either still processing, or the check itself failed — either way, don't
+        // submit a second batch on top of one that might still resolve.
+        return { phase: "pending" as const, ...pollResult };
+      }
 
-    const submission = await submitDailyBriefBatch();
-    return NextResponse.json({
-      ok: true,
-      phase: "submitted",
-      ...submission,
-      finalizedFromPreviousTick: pollResult.finalized ? pollResult.notification : undefined,
+      const submission = await submitDailyBriefBatch();
+      return {
+        phase: "submitted" as const,
+        ...submission,
+        finalizedFromPreviousTick: pollResult.finalized ? pollResult.notification : undefined,
+      };
     });
+    return NextResponse.json({ ok: results.every((r) => r.ok), students: results.length, results });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     console.error("[api/cron/daily-brief] Error:", message);

@@ -14,8 +14,10 @@ import {
   getBriefConfig,
   getContextAsString,
   getPendingBriefBatch,
+  getUserTimezone,
   setPendingBriefBatch,
 } from "@/lib/store";
+import { ymdInTimezone } from "@/lib/dates";
 import type { Notification } from "@/lib/types";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import { submitMessageBatch, getBatchStatus, fetchBatchResults } from "@/lib/anthropic-batch";
@@ -70,9 +72,10 @@ async function buildBriefContext(): Promise<string> {
   const tasks = await getAllTasks();
   const userContext = await getContextAsString();
   const config = await getBriefConfig();
+  const timeZone = await getUserTimezone();
   const now = new Date();
-  const today = now.toISOString().split("T")[0];
-  const tomorrow = new Date(now.getTime() + 86400000).toISOString().split("T")[0];
+  const today = ymdInTimezone(timeZone, 0, now);
+  const tomorrow = ymdInTimezone(timeZone, 1, now);
 
   const todayTasks = tasks.filter((t) => t.date === today);
   const tomorrowTasks = tasks.filter((t) => t.date === tomorrow);
@@ -99,8 +102,8 @@ async function buildBriefContext(): Promise<string> {
   const sourceNarration = await generateBriefNarration({ staleItems, feedHeadlines, manualSummaries });
 
   return `
-Date: ${now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
-Time: ${now.toLocaleTimeString()}
+Date: ${now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone })}
+Time: ${now.toLocaleTimeString("en-US", { timeZone })}
 
 Today's tasks (${todayTasks.length} total, ${completedToday.length} done):
 ${todayTasks.map((t) => `- ${t.time} ${t.title} [${t.completed ? "✓" : "pending"}]`).join("\n") || "Nothing scheduled"}
