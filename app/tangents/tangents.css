@@ -219,7 +219,7 @@
   width: max-content;
   padding: 7px 13px 7px 9px;
   border: 1px solid var(--path-edge);
-  border-radius: var(--r-sm);
+  border-radius: 999px;
   background: #1a1630;
   backdrop-filter: blur(8px);
   color: var(--path-ink);
@@ -260,7 +260,7 @@
   width: max-content;
   max-width: 216px;
   border: 1px solid rgba(62, 208, 138, 0.38);
-  border-radius: var(--r-lg);
+  border-radius: 12px;
   /* Opaque: when two branches end close together the cards stack cleanly
      instead of their words bleeding through each other. */
   background: #0f1f1a;
@@ -329,7 +329,7 @@
   gap: 2px;
   padding: 4px;
   border: 1px solid var(--path-edge-strong);
-  border-radius: var(--r-lg);
+  border-radius: 14px;
   background: var(--path-panel);
   backdrop-filter: blur(12px);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
@@ -352,7 +352,7 @@
   height: 34px;
   padding: 0 12px;
   border: 0;
-  border-radius: var(--r-md);
+  border-radius: 10px;
   background: transparent;
   color: var(--path-ink);
   font-family: var(--font-body);
@@ -405,7 +405,7 @@
 /* The one standalone chip left: "New path" in the Tangents bar. */
 .path-chip {
   border: 1px solid var(--path-edge-strong);
-  border-radius: var(--r-sm);
+  border-radius: 999px;
   background: var(--path-panel);
   padding: 0 14px;
 }
@@ -476,7 +476,7 @@
   width: 28px;
   height: 28px;
   border: 1px solid var(--path-edge);
-  border-radius: var(--r-md);
+  border-radius: 8px;
   background: none;
   color: var(--path-ink-2);
   cursor: pointer;
@@ -514,7 +514,7 @@
   margin: 2px 0 0;
   padding: 12px;
   border: 1px solid var(--path-edge);
-  border-radius: var(--r-lg);
+  border-radius: 12px;
 }
 .path-facts div {
   display: flex;
@@ -552,7 +552,7 @@
   height: 34px;
   padding: 0 13px;
   border: 1px solid var(--path-edge-strong);
-  border-radius: var(--r-md);
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.04);
   color: var(--path-ink);
   font-family: var(--font-body);
@@ -641,7 +641,7 @@
   height: 38px;
   padding: 0 11px;
   border: 1px solid var(--path-edge-strong);
-  border-radius: var(--r-md);
+  border-radius: 10px;
   background: rgba(10, 8, 18, 0.6);
   color: var(--path-ink);
   font-family: var(--font-body);
@@ -771,7 +771,7 @@
   transform: translateX(-50%);
   padding: 9px 14px;
   border: 1px solid rgba(255, 143, 143, 0.4);
-  border-radius: var(--r-md);
+  border-radius: 10px;
   background: var(--path-panel);
   backdrop-filter: blur(12px);
   z-index: 5;
@@ -896,7 +896,7 @@
   gap: 7px;
   padding: 7px 13px 7px 10px;
   border: 1px solid var(--path-edge);
-  border-radius: var(--r-sm);
+  border-radius: 999px;
   color: var(--path-ink-2);
   font-family: var(--font-body);
   font-size: 13px;
@@ -1065,7 +1065,7 @@
   will-change: transform;
   /* A quiet plate under the words, so the orbit runs behind them. */
   padding: 6px 12px 7px;
-  border-radius: var(--r-lg);
+  border-radius: 12px;
   background: rgba(12, 10, 22, 0.72);
   backdrop-filter: blur(6px);
 }
@@ -1175,7 +1175,7 @@
 .tangents-intake-progress span {
   flex: 1;
   height: 2px;
-  border-radius: var(--r-sm);
+  border-radius: 2px;
   background: var(--path-edge);
   transition: background 0.3s ease;
 }
@@ -1207,7 +1207,7 @@
   width: 100%;
   padding: 11px 13px;
   border: 1px solid var(--path-edge-strong);
-  border-radius: var(--r-md);
+  border-radius: 10px;
   background: rgba(10, 8, 18, 0.6);
   color: var(--path-ink);
   font-family: var(--font-body);
@@ -1236,7 +1236,7 @@
   gap: 3px;
   padding: 14px 14px 13px;
   border: 1px solid var(--path-edge);
-  border-radius: var(--r-md);
+  border-radius: 10px;
   background: none;
   color: var(--path-ink);
   text-align: left;
@@ -1259,7 +1259,7 @@
   width: 34px;
   height: 34px;
   margin-bottom: 8px;
-  border-radius: var(--r-md);
+  border-radius: 10px;
   border: 1px solid var(--path-edge);
   background: rgba(154, 136, 239, 0.1);
   color: var(--path-work);
@@ -1277,7 +1277,7 @@
   height: 30px;
   padding: 0 12px;
   border: 1px solid var(--path-edge-strong);
-  border-radius: var(--r-sm);
+  border-radius: 999px;
   background: transparent;
   color: var(--path-ink-2);
   font-family: var(--font-body);
@@ -1482,7 +1482,7 @@
   height: 30px;
   padding: 0 11px;
   border: 0;
-  border-radius: var(--r-md);
+  border-radius: 9px;
   background: transparent;
   color: var(--path-ink-2);
   font-family: var(--font-body);
@@ -1617,7 +1617,7 @@
   gap: 4px;
   padding: 11px 12px;
   border: 1px solid var(--path-edge);
-  border-radius: var(--r-lg);
+  border-radius: 12px;
   background: rgba(10, 8, 18, 0.35);
 }
 .path-inspector-part h3 {
