@@ -20,6 +20,7 @@ import {
 import { addDaysYMD, currentInstant, getUserToday } from "@/lib/time";
 import type { Notification } from "@/lib/types";
 import { extractStructuredJson } from "@/lib/anthropic-json";
+import { modelParams } from "@/lib/ai/models";
 import { submitMessageBatch, getBatchStatus, fetchBatchResults } from "@/lib/anthropic-batch";
 import { checkStaleItems, fetchRSSSummary, summarizeManualUrl, generateBriefNarration } from "@/lib/brief-sources";
 
@@ -134,10 +135,8 @@ export async function submitDailyBriefBatch(): Promise<{ batchId: string }> {
     {
       custom_id: DAILY_BRIEF_BATCH_CUSTOM_ID,
       params: {
-        model: "claude-sonnet-4-5",
-        max_tokens: 300,
+        ...modelParams("dailyBrief", { format: { type: "json_schema", schema: DAILY_BRIEF_SCHEMA } }),
         system: [{ type: "text", text: DAILY_BRIEF_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
-        output_config: { format: { type: "json_schema", schema: DAILY_BRIEF_SCHEMA } },
         messages: [{ role: "user", content: briefContext }],
       },
     },

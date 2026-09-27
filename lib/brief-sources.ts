@@ -1,5 +1,6 @@
 import type { Task } from "./types";
 import { claudeFetch } from "@/lib/perf";
+import { modelParams } from "@/lib/ai/models";
 
 export function checkStaleItems(tasks: Task[], daysThreshold = 5): string[] {
   const now = Date.now();
@@ -47,7 +48,7 @@ async function callHaikuCached(systemPrompt: string, userContent: string, maxTok
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-haiku-4-5",
+      ...modelParams("briefSources"),
       max_tokens: maxTokens,
       // Static system prompt in its own cached block — only per-user variable
       // data goes in the user message, so this block actually hits cache.

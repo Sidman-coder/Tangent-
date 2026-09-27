@@ -11,6 +11,7 @@ import { extractStructuredJson } from "@/lib/anthropic-json";
 import { DAILY_BRIEF_SCHEMA, DEFAULT_DAILY_BRIEF, publishDailyBrief, type DailyBrief } from "@/lib/daily-brief";
 import { withUser } from "@/lib/request-context";
 import { claudeFetch } from "@/lib/perf";
+import { modelParams } from "@/lib/ai/models";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,8 +58,7 @@ ${userContext}
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-5",
-        max_tokens: 300,
+        ...modelParams("dailyBrief", { format: { type: "json_schema", schema: DAILY_BRIEF_SCHEMA } }),
         // Static system prompt in its own cached block — only per-user variable
         // data (briefContext) goes in the user message, so this block hits cache
         // on every subsequent brief generation.
@@ -71,7 +71,6 @@ The greeting is one sentence referencing something specific about their day. The
             cache_control: { type: "ephemeral" },
           },
         ],
-        output_config: { format: { type: "json_schema", schema: DAILY_BRIEF_SCHEMA } },
         messages: [{ role: "user", content: briefContext }],
       }),
     });

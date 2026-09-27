@@ -12,6 +12,7 @@ import { addDaysYMD, currentInstant, getUserToday } from "@/lib/time";
 import type { Notification } from "@/lib/types";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import { claudeFetch } from "@/lib/perf";
+import { modelParams } from "@/lib/ai/models";
 
 const PROACTIVE_NOTIFICATIONS_SCHEMA = {
   type: "object",
@@ -99,8 +100,7 @@ ${userContext}
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-haiku-4-5",
-        max_tokens: 400,
+        ...modelParams("proactive", { format: { type: "json_schema", schema: PROACTIVE_NOTIFICATIONS_SCHEMA } }),
         system: `You are a proactive productivity assistant. Analyze the user's schedule and context, then generate 0 to 3 actionable notifications only if something genuinely needs attention.
 
 Do not generate notifications for:
@@ -125,7 +125,6 @@ free slot — do not offer it if you cannot suggest a concrete date and time.
 Each notification's title should be short, under 8 words. Each body should be a specific actionable message under 30 words. actionLabel is an optional button label like 'Reschedule' or 'Add prep time'.
 
 If nothing needs attention return an empty notifications array.`,
-        output_config: { format: { type: "json_schema", schema: PROACTIVE_NOTIFICATIONS_SCHEMA } },
         messages: [{ role: "user", content: agentContext }],
       }),
     });

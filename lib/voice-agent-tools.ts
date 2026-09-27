@@ -14,8 +14,8 @@ import { getUpcomingEvents, getEventsForDate } from "@/lib/calendar";
 import { currentUserIsOwner } from "@/lib/request-context";
 import { resolvePlanTitle } from "@/lib/plan-title";
 import { claudeFetch, perfCount, perfSpan } from "@/lib/perf";
+import { modelParams } from "@/lib/ai/models";
 
-const MODEL = "claude-sonnet-4-5";
 const MAX_TOOL_TURNS = 8;
 
 const GMAIL_KEYWORDS = /\b(email|emails|gmail|inbox|unread|message|messages)\b/i;
@@ -639,9 +639,7 @@ export async function runVoiceAgentToolLoop(userText: string, requestText = user
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 2048,
-        temperature: 0,
+        ...modelParams("agent"),
         system: await systemPrompt(tz, userContext),
         tools: TOOLS,
         messages,

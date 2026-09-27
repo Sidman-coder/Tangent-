@@ -5,6 +5,7 @@ import { extractContextFacts } from "@/lib/context-extract";
 import { getUserTimezone } from "@/lib/store";
 import { promptDateContext } from "@/lib/time";
 import { claudeFetch } from "@/lib/perf";
+import { modelParams } from "@/lib/ai/models";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,9 +34,7 @@ async function planReply(apiKey: string, messages: { role: "user" | "assistant";
     method: "POST",
     headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
     body: JSON.stringify({
-      model: "claude-sonnet-4-5",
-      max_tokens: 700,
-      temperature: 0.4,
+      ...modelParams("chatPlan"),
       system: PLAN_SYSTEM(promptDateContext(await getUserTimezone())),
       messages: messages.slice(-12),
     }),

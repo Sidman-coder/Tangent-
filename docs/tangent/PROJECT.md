@@ -85,6 +85,7 @@ Dev and Preview share the production Supabase project, so Supabase values and `C
 | `SUPABASE_SERVICE_ROLE_KEY` | Secret | Yes (crons) | Production | Admin client, used only by cron jobs (`lib/cron-users.ts`, `runAsUser`); bypasses RLS |
 | `ALLOWED_EMAILS` | Config | Yes | Production, Preview | Invite list, comma-separated; empty means nobody can sign in (fails closed) |
 | `ANTHROPIC_API_KEY` | Secret | Yes | Production, Preview | All Claude calls |
+| `AI_MODEL_FAST` / `AI_MODEL_SMART` | Config | No | Production, Preview | Override the model for a tier (defaults `claude-haiku-4-5` / `claude-sonnet-5`, set in `lib/ai/models.ts`) |
 | `CRON_SECRET` | Secret | Yes | Production | Vercel sends it as `Authorization: Bearer …` to `/api/cron/*`; without it, cron routes reject every request |
 | `CANVAS_FEED_KEY` | Secret | Recommended | Production, Preview | 32-byte base64 key that encrypts stored Canvas feed URLs. Without it, feed URLs are stored in plaintext. Once rows are encrypted, losing it makes them unreadable. |
 | `CANVAS_ALLOWED_HOSTS` | Config | No | Production, Preview | Extra Canvas hostnames beyond the built-in `*.instructure.com` allow-list |

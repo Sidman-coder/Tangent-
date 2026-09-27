@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getTaskChat, addTaskChatMessage, getAllTasks } from "@/lib/store";
 import { withUser } from "@/lib/request-context";
 import { claudeFetch } from "@/lib/perf";
+import { modelParams } from "@/lib/ai/models";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -83,9 +84,7 @@ Do not output JSON. Respond only in plain conversational text.`;
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-5",
-        max_tokens: 500,
-        temperature: 0.5,
+        ...modelParams("taskChat"),
         system: systemPrompt,
         messages: [
           ...conversationHistory,

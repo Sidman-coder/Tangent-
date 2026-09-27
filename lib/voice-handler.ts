@@ -22,6 +22,7 @@ import { needsAgentTools, runVoiceAgentToolLoop } from "@/lib/voice-agent-tools"
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import { resolvePlanTitle } from "@/lib/plan-title";
 import { claudeFetch, perfCount, perfSpan, withPerfTrace } from "@/lib/perf";
+import { modelParams } from "@/lib/ai/models";
 
 const RESOURCE_ITEM_SCHEMA = {
   type: "object",
@@ -717,11 +718,8 @@ Rules:
             "anthropic-version": "2023-06-01",
           },
           body: JSON.stringify({
-            model: "claude-sonnet-4-5",
-            max_tokens: 4096,
-            temperature: 0,
+            ...modelParams("plan", { format: { type: "json_schema", schema: PLAN_SCHEMA } }),
             system: planSystemPrompt,
-            output_config: { format: { type: "json_schema", schema: PLAN_SCHEMA } },
             messages: [{
               role: "user",
               content: `Create a plan from ${startDate} to ${endDate} (${dayCount} days, ${expectedTaskCount} tasks, one task every ${taskInterval} day${taskInterval > 1 ? "s" : ""}). Request: ${withContext(text)}`,
@@ -860,11 +858,8 @@ Rules:
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-5",
-        max_tokens: 4096,
-        temperature: 0,
+        ...modelParams("voiceCommand", { format: { type: "json_schema", schema: VOICE_COMMAND_SCHEMA } }),
         system: await voiceSystemPrompt(tz, userContext),
-        output_config: { format: { type: "json_schema", schema: VOICE_COMMAND_SCHEMA } },
         messages: [
           { role: "user", content: withContext(text) },
         ],
@@ -887,11 +882,8 @@ Rules:
             "anthropic-version": "2023-06-01",
           },
           body: JSON.stringify({
-            model: "claude-sonnet-4-5",
-            max_tokens: 4096,
-            temperature: 0,
+            ...modelParams("voiceCommandRetry", { format: { type: "json_schema", schema: VOICE_COMMAND_SCHEMA } }),
             system: `Extract a short task title from the user's message and respond with an add_task command. ${promptDateContext(tz)}`,
-            output_config: { format: { type: "json_schema", schema: VOICE_COMMAND_SCHEMA } },
             messages: [{ role: "user", content: text.substring(0, 100) }],
           }),
         });
