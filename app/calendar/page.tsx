@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { m, useReducedMotion } from "motion/react";
 import { useAppState } from "@/components/AppStateProvider";
 import AddTaskModal from "@/components/AddTaskModal";
 import Button from "@/components/ui/Button";
@@ -94,6 +95,15 @@ function recurringLabel(task: Task): string {
 type RecurDeleteTarget = { taskId: string; parentId: string; title: string };
 type RecurEditTarget = { taskId: string; parentId: string; task: Task };
 
+/** "4:00 PM" becomes "4p", "4:30 PM" becomes "4:30p": chip-sized. */
+function shortTime(hhmm: string): string {
+  const [h, mm] = hhmm.split(":").map(Number);
+  if (!Number.isFinite(h)) return "";
+  const suffix = h < 12 ? "a" : "p";
+  const hour = h % 12 === 0 ? 12 : h % 12;
+  return mm ? `${hour}:${String(mm).padStart(2, "0")}${suffix}` : `${hour}${suffix}`;
+}
+
 export default function CalendarPage() {
   const { state, refresh } = useAppState();
   const now = new Date();
@@ -183,8 +193,12 @@ export default function CalendarPage() {
 
   const cells = getMonthGrid(year, month);
 
-  const prevMonth = () => { if (month === 0) { setYear((y) => y - 1); setMonth(11); } else setMonth((m) => m - 1); };
-  const nextMonth = () => { if (month === 11) { setYear((y) => y + 1); setMonth(0); } else setMonth((m) => m + 1); };
+  // Which way the last month change went, so the new month slides in from
+  // the side you are travelling toward.
+  const [monthDir, setMonthDir] = useState(0);
+  const reduced = useReducedMotion() ?? false;
+  const prevMonth = () => { setMonthDir(-1); if (month === 0) { setYear((y) => y - 1); setMonth(11); } else setMonth((mo) => mo - 1); };
+  const nextMonth = () => { setMonthDir(1); if (month === 11) { setYear((y) => y + 1); setMonth(0); } else setMonth((mo) => mo + 1); };
 
   const addCalendar = async () => {
     const name = newCalName.trim();
@@ -279,7 +293,7 @@ export default function CalendarPage() {
       <div className="calendar-page">
         <section className="calendar-toolbar" aria-label="Calendar controls">
           <div className="calendar-toolbar-primary">
-            <Button variant="secondary" size="sm" onClick={() => { setYear(now.getFullYear()); setMonth(now.getMonth()); }}>Today</Button>
+            <Button variant="secondary" size="sm" onClick={() => { const here = year * 12 + month; const there = now.getFullYear() * 12 + now.getMonth(); setMonthDir(Math.sign(there - here)); setYear(now.getFullYear()); setMonth(now.getMonth()); }}>Today</Button>
             <div className="calendar-month-actions">
               <Button variant="quiet" size="sm" onClick={prevMonth} aria-label="Previous month" icon={<ChevronLeft size={16} aria-hidden="true" />}>Previous</Button>
               <Button variant="quiet" size="sm" onClick={nextMonth} aria-label="Next month" icon={<ChevronRight size={16} aria-hidden="true" />}>Next</Button>
@@ -342,66 +356,80 @@ export default function CalendarPage() {
       )}
 
       <section className="calendar-grid-shell">
-        <div className="cal-month-grid">
+        <div className="cal-weekday-row" aria-hidden="true">
           {WEEKDAY_LABELS.map((d) => (
             <div key={d} className="cal-weekday-label">
               {d}
             </div>
           ))}
-
+        </div>
+        <m.div
+          key={`${year}-${month}`}
+          className="cal-month-grid"
+          initial={reduced || monthDir === 0 ? false : { opacity: 0, x: monthDir * 28 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ type: "spring", visualDuration: 0.38, bounce: 0.08 }}
+        >
           {cells.map((d, idx) => {
             const inMonth = d.getMonth() === month;
             const ymd = toYMD(d);
             const dayTasks = tasksForDay(ymd);
             const isToday = ymd === todayYmd;
             const isSelected = ymd === selectedDay;
-            const kindCounts = new Map<string, number>();
-            for (const t of dayTasks) {
-              const key = t.kind ?? NO_KIND;
-              kindCounts.set(key, (kindCounts.get(key) ?? 0) + 1);
-            }
-            const ribbonKinds = sortKindKeys(Array.from(kindCounts.keys()));
-            let className = "cal-day";
+            // The day's own tasks, in time order, shown as chips: the grid
+            // answers "what's on" without opening every day.
+            const ordered = [...dayTasks].sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+            const shown = ordered.slice(0, 3);
+            const more = ordered.length - shown.length;
+            let className = "cal-cell";
+            if (!inMonth) className += " is-outside";
             if (isToday) className += " is-today";
             if (isSelected) className += " is-selected";
             return (
-              <button
-                type="button"
-                key={`${ymd}-${idx}`}
-                className={className}
-                style={{ opacity: inMonth ? 1 : 0.28 }}
-                onClick={() => inMonth && setSelectedDay(ymd === selectedDay ? null : ymd)}
-                aria-label={`${d.toDateString()}${dayTasks.length ? `, ${dayTasks.length} tasks` : ""}`}
-                disabled={!inMonth}
-              >
-                {isToday && <span className="cal-day-today-dot" aria-hidden="true" />}
-                <div className="d">{d.getDate()}</div>
-                {ribbonKinds.length > 0 && (
-                  <div className="cal-day-ribbons">
-                    {ribbonKinds.map((key) => {
-                      const kindArg = key === NO_KIND ? undefined : key;
-                      const count = kindCounts.get(key) ?? 0;
-                      const color = getKindColor(kindArg);
-                      return (
+              <div key={`${ymd}-${idx}`} className={className}>
+                <button
+                  type="button"
+                  className="cal-day"
+                  onClick={() => inMonth && setSelectedDay(ymd === selectedDay ? null : ymd)}
+                  aria-label={`${d.toDateString()}${dayTasks.length ? `, ${dayTasks.length} tasks` : ""}`}
+                  disabled={!inMonth}
+                >
+                  <span className="d">{d.getDate()}</span>
+                  {inMonth && shown.length > 0 && (
+                    <span className="cal-chips">
+                      {shown.map((t) => (
                         <span
-                          key={key}
-                          className="cal-day-ribbon"
-                          style={{ height: count >= 4 ? 5 : 3, background: `${color}A6` }}
-                          title={`${count} ${kindArg ?? "other"} task${count !== 1 ? "s" : ""}`}
-                        />
-                      );
-                    })}
-                  </div>
+                          key={t.id}
+                          className={`cal-chip${t.completed ? " is-done" : ""}`}
+                          style={{ "--chip": getKindColor(t.kind) } as React.CSSProperties}
+                        >
+                          {t.time && <span className="cal-chip-time">{shortTime(t.time)}</span>}
+                          <span className="cal-chip-title">{t.title}</span>
+                        </span>
+                      ))}
+                      {more > 0 && <span className="cal-chip-more">+{more} more</span>}
+                    </span>
+                  )}
+                </button>
+                {inMonth && (
+                  <button
+                    type="button"
+                    className="cal-day-add"
+                    aria-label={`Add a task on ${d.toDateString()}`}
+                    title="Add a task"
+                    onClick={() => {
+                      setAddModalDate(ymd);
+                      setAddModalTime(undefined);
+                      setShowAddModal(true);
+                    }}
+                  >
+                    <Plus size={14} strokeWidth={2} aria-hidden="true" />
+                  </button>
                 )}
-                {dayTasks.length > 0 && (
-                  <span className="calendar-day-count">
-                    {dayTasks.length} task{dayTasks.length !== 1 ? "s" : ""}
-                  </span>
-                )}
-              </button>
+              </div>
             );
           })}
-        </div>
+        </m.div>
       </section>
       </div>
 

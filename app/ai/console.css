@@ -100,17 +100,19 @@
   border: 0;
   border-radius: 999px;
   background: var(--accent);
-  color: #fff;
+  /* The accent's own ink, not white: in dark mode the accent is a light
+     lavender and white text on it was close to unreadable. */
+  color: var(--accent-ink);
   font: 600 13px/1 var(--font-body);
   white-space: nowrap;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgb(from var(--accent) r g b / 0.28);
+  box-shadow: 0 2px 8px rgb(from var(--accent) r g b / 0.2);
   transition: transform 0.25s var(--tg-spring), box-shadow 0.25s ease;
 }
 
 .tg-brief-pill:hover {
   transform: translateY(-1px);
-  box-shadow: 0 8px 22px rgb(from var(--accent) r g b / 0.36);
+  box-shadow: 0 6px 16px rgb(from var(--accent) r g b / 0.26);
 }
 
 .tg-brief-pill:hover::after {
@@ -123,8 +125,8 @@
 
 .tg-brief-pill-when {
   padding-left: 8px;
-  border-left: 1px solid rgba(255, 255, 255, 0.3);
-  color: rgba(255, 255, 255, 0.78);
+  border-left: 1px solid rgb(from var(--accent-ink) r g b / 0.3);
+  color: rgb(from var(--accent-ink) r g b / 0.75);
   font-weight: 500;
 }
 
@@ -737,12 +739,47 @@
 }
 
 .tg-side-empty {
-  margin: 0 2px;
-  padding: 14px 12px;
-  border: 1px dashed var(--line-strong);
-  border-radius: 8px;
-  color: var(--text-3);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 4px 2px 0;
+  padding: 16px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent-soft) 45%, transparent);
+  color: var(--text-2);
   font: 400 12.5px/1.45 var(--font-body);
+}
+.tg-side-empty strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+.tg-side-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--accent);
+}
+.tg-composer-hint {
+  margin: 8px 2px 0;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+.tg-composer-hint kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
 }
 
 .tg-chat-list {
@@ -1757,5 +1794,22 @@
 
   .tg-msg-user {
     max-width: 88%;
+  }
+}
+
+.tg-hero > :nth-child(7) { animation-delay: 360ms; }
+
+/* Suggestions arrive one after another rather than as a block. */
+.tg-examples > .tg-example {
+  animation: tg-fade-up 0.45s var(--tg-ease-out) both;
+}
+.tg-examples > .tg-example:nth-child(1) { animation-delay: 380ms; }
+.tg-examples > .tg-example:nth-child(2) { animation-delay: 430ms; }
+.tg-examples > .tg-example:nth-child(3) { animation-delay: 480ms; }
+.tg-examples > .tg-example:nth-child(4) { animation-delay: 530ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-examples > .tg-example {
+    animation: none;
   }
 }

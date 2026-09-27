@@ -185,7 +185,7 @@ export default function PathGallery({ paths, onNew }: Props) {
   const reduced = useReducedMotion() ?? false;
   const stageRef = useRef<HTMLDivElement>(null);
   const [stage, setStage] = useState({ width: 0, height: 0 });
-  const [portal, setPortal] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [portal, setPortal] = useState<{ id: string; title: string; target: string; x: number; y: number } | null>(null);
 
   // The dust behind the field drifts against the pointer, so the field has
   // depth before anything is touched. A ref, read by the canvas each frame.
@@ -227,7 +227,14 @@ export default function PathGallery({ paths, onNew }: Props) {
   const open = useCallback(
     (path: PathWithCounts, origin: { x: number; y: number }) => {
       router.prefetch(`/tangents/${path.id}`);
-      setPortal({ id: path.id, ...origin });
+      // Tells the path page its goal is already on screen, in the middle,
+      // so it opens around it instead of animating a second entrance.
+      try {
+        sessionStorage.setItem("tangents-portal", path.id);
+      } catch {
+        // Private mode: the path page just plays its normal entrance.
+      }
+      setPortal({ id: path.id, title: path.title, target: path.target, ...origin });
     },
     [router]
   );
@@ -383,6 +390,32 @@ export default function PathGallery({ paths, onNew }: Props) {
           />
         )}
       </AnimatePresence>
+
+      {/* The disc you pressed becomes the goal card and travels to the middle
+          of the screen, which is exactly where the path page draws its goal
+          on first paint (camera at the origin, 90% zoom). The page then opens
+          around it rather than cutting to a new picture. */}
+      {portal && (
+        <m.div
+          className="tangents-portal-ghost"
+          initial={{ x: portal.x, y: portal.y, scale: 0.45, opacity: 0.4 }}
+          animate={{
+            x: typeof window === "undefined" ? portal.x : window.innerWidth / 2,
+            y: typeof window === "undefined" ? portal.y : window.innerHeight / 2,
+            scale: 0.9,
+            opacity: 1,
+          }}
+          transition={{ duration: 0.6, ease: [0.7, 0, 0.2, 1] }}
+          aria-hidden="true"
+        >
+          <span className="path-goal-node is-focused">
+            <span className="path-goal-name">{portal.title}</span>
+            {portal.target && portal.target !== portal.title && (
+              <span className="path-goal-focus">{portal.target.length > 46 ? `${portal.target.slice(0, 45)}…` : portal.target}</span>
+            )}
+          </span>
+        </m.div>
+      )}
     </div>
   );
 }

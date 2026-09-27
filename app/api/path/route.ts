@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import {
   addPathNode,
@@ -28,42 +28,72 @@ const STATUSES: TangentStatus[] = ["suggested", "accepted", "done", "dismissed"]
 const KINDS: PathGoalKind[] = ["college", "career", "skill", "other"];
 
 /** Three branches, never more. The panel shows one node at a time, and a wall of
- *  options is the opposite of a next step. */
+ *  options is the opposite of a next step.
+ *
+ *  The title rides on a card on the drawing, so it is short; the substance is
+ *  in the summary, the reason and the first step, which the inspector shows
+ *  when the card is opened. Length limits live in the descriptions and are
+ *  enforced by trimming on our side: schema length constraints are not sent to
+ *  the API and would fail the parse client-side instead. */
 const BranchSchema = z.object({
   branches: z
     .array(
       z.object({
         title: z
           .string()
-          .describe("One concrete move, written as an instruction the person can act on this month."),
-        rationale: z
+          .describe(
+            "A short label for the card on the drawing: 2 to 6 words, starting with a verb, no punctuation at the end. e.g. \"Enter a rated tournament\"."
+          ),
+        summary: z
           .string()
-          .describe("One sentence: what this adds that the parent work alone does not."),
-        effort: z.string().describe('Rough commitment, e.g. "2 hrs/wk for 6 weeks" or "one weekend".'),
+          .describe("One or two plain sentences: exactly what to do, specific enough to start without asking anything else."),
+        why: z
+          .string()
+          .describe("One sentence: how this moves them from where they are now toward the goal, and what it adds that the thing it branches from does not."),
+        first_step: z
+          .string()
+          .describe("One thing they can do this week in under an hour to start it."),
+        effort: z.string().describe('The shape of the commitment, e.g. "2 hrs a week for 6 weeks" or "one weekend".'),
+        hours_per_week: z.number().describe("Average hours a week this takes while it runs. 0 for a one-off."),
       })
     )
     .length(3),
 });
 
-/** What the intake is for: every branch is judged against these five facts. */
-const SYSTEM = `You extend someone's existing work toward a goal they have stated.
+/** What each kind of goal is actually judged on. Branches are aimed at that,
+ *  not at looking busy. */
+const KIND_LENS: Record<PathGoalKind, string> = {
+  college:
+    "This is an admission goal. What moves a reader is depth over breadth, real impact on other people, leadership that produced something, and a clear line from their activities to the major they are applying for. Programmes that mainly cost money carry little weight; prefer things that make them visibly better at what they already do.",
+  career:
+    "This is a hiring goal. What moves a hiring manager is shipped work they can look at, skills shown rather than claimed, and someone who can vouch for them. Favour branches that produce an artifact, a reference, or a direct conversation with someone in the field.",
+  skill:
+    "This is a measured-skill goal. What moves the number is deliberate practice on specific weaknesses, fast feedback, and performing in the setting where the measure is taken (rated events, graded exams, testing). Favour branches that find and fix weaknesses over branches that just add volume.",
+  other:
+    "Work backward from the stated finish line: favour branches that produce a visible piece of the finished thing, or remove what is blocking it, over preparation for its own sake.",
+};
+
+/** What the intake is for: every branch is judged against these facts. */
+const SYSTEM = `You help a student extend what they are already doing toward a goal they have stated.
 
 The goal can be anything with a target you could verify: a university place, a job,
-a chess rating, a certification, a body of work. Never assume it is about college.
+a rating, a certification, a body of work. Never assume it is about college unless it is.
 
-You are given the goal, where they are now, their deadline, the hours a week they
-can actually give it, what is in their way, and the chain of work and ideas leading
-down to the one thing they want to branch off now. Propose exactly three branches
-off the last item in that chain.
+You are given the goal, where they are now, today's date and their deadline, the hours a
+week they can give it and how many of those are already committed, what is in their way,
+everything already on their path, and the chain leading down to the one item they want to
+branch off now. Propose exactly three branches off the last item in that chain.
 
 Rules:
-- Branch off what they already have. Never propose starting something unrelated.
+- Branch off what they already have. Each branch must grow directly out of that item; never propose something unrelated to it.
 - Each branch is a concrete action, not a theme. "Ask the coach to let you run CAD for regionals", not "develop leadership skills".
-- Respect the stated hours a week and the stated constraints. A branch they cannot afford, reach, or fit is a wasted branch.
-- Vary the angle across the three: one that deepens the work, one that widens its audience or output, one that connects it to a second interest.
+- Respect the hours and the constraints. If the remaining hours are small, propose small branches. A branch they cannot afford, reach, or fit is a wasted branch.
+- Respect the deadline. Do not propose anything that cannot pay off before it.
+- Do not repeat or lightly reword anything already on their path.
+- Vary the angle across the three: one that deepens the item, one that widens who sees its results, one that connects it to something else they already do.
 - The deeper the chain, the more specific you get. A branch off a branch is a next step, not a restatement.
-- Write to them as "you". No preamble, no flattery.
-- Never claim a branch guarantees the goal.`;
+- Write to them as "you", in plain words a high-school student would use. No preamble, no flattery, no jargon.
+- Never claim a branch guarantees the goal, and never invent facts about specific programmes, deadlines or prices you are not sure of.`;
 
 function nodeLine(n: PathNode): string {
   const bits = [n.title];
@@ -74,16 +104,27 @@ function nodeLine(n: PathNode): string {
   return bits.join(" - ");
 }
 
-function pathBrief(path: Path): string {
+function pathBrief(path: Path, committedHours: number): string {
+  const today = new Date().toISOString().slice(0, 10);
   return [
     `Goal: ${path.target || path.title}`,
-    path.current ? `Where they are now: ${path.current}` : null,
-    path.deadline ? `By: ${path.deadline}` : null,
-    path.hoursPerWeek ? `Hours a week available: ${path.hoursPerWeek}` : null,
+    `Kind of goal: ${path.kind}`,
+    KIND_LENS[path.kind] ?? KIND_LENS.other,
+    path.current ? `Where they are now: ${path.current}` : "Where they are now: not stated",
+    `Today: ${today}`,
+    path.deadline ? `Deadline: ${path.deadline}` : "Deadline: none stated",
+    path.hoursPerWeek
+      ? `Hours a week available: ${path.hoursPerWeek}, of which about ${committedHours} are already committed to kept branches`
+      : "Hours a week available: not stated; keep branches modest",
     path.constraints ? `In the way: ${path.constraints}` : null,
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function clipText(text: string, max: number): string {
+  const t = text.trim().replace(/[.\s]+$/, "");
+  return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
 }
 
 function str(v: unknown): string {
@@ -151,8 +192,11 @@ async function POSTHandler(req: Request) {
 
     // What they already have becomes the first circle, so the path is never
     // born empty. One line each, however they wrote it.
-    const seeds = str(body.standing)
-      .split(/[\n,;]+/)
+    // One per line when they used lines ("Robotics club, programming lead"
+    // stays one item); commas and semicolons only when it is all on one line.
+    const standing = str(body.standing);
+    const seeds = standing
+      .split(standing.includes("\n") ? /\n+/ : /[,;]+/)
       .map((line) => line.trim())
       .filter(Boolean)
       .slice(0, 8);
@@ -264,31 +308,58 @@ async function POSTHandler(req: Request) {
     if (!owning) return NextResponse.json({ error: "No such path." }, { status: 404 });
 
     const chain = pathAncestry(parent.id);
-    const siblings = owning.nodes
-      .filter((n) => n.parentId === parent.parentId && n.id !== parent.id)
-      .map(nodeLine);
+    const chainIds = new Set(chain.map((n) => n.id));
+    // Everything else on the path, grouped under what it hangs off, so the
+    // model can avoid repeats and see what it could connect to. Suggestions
+    // still waiting on a decision about this same item are about to be
+    // replaced, so they are left out.
+    const others = owning.nodes.filter(
+      (n) => !chainIds.has(n.id) && n.status !== "dismissed" && !(n.parentId === parent.id && n.status === "suggested")
+    );
+    const byParent = new Map<string | null, PathNode[]>();
+    for (const n of others) byParent.set(n.parentId, [...(byParent.get(n.parentId) ?? []), n]);
+    const outline: string[] = [];
+    const walk = (parentId: string | null, depth: number) => {
+      for (const n of byParent.get(parentId) ?? []) {
+        outline.push(`${"  ".repeat(depth)}- ${nodeLine(n)} [${n.kind}, ${n.status}]`);
+        walk(n.id, depth + 1);
+      }
+    };
+    walk(null, 0);
+    for (const n of chain) walk(n.id, 1);
+
+    const committedHours = owning.nodes
+      .filter((n) => n.status === "accepted" && n.kind === "idea")
+      .reduce((sum, n) => sum + (n.hoursPerWeek ?? 0), 0);
 
     const prompt = [
-      pathBrief(owning.path),
-      `The chain down to what they want to branch off:\n${chain
+      pathBrief(owning.path, committedHours),
+      `The chain down to what they want to branch off now:\n${chain
         .map((n, i) => `${"  ".repeat(i)}${i + 1}. ${nodeLine(n)}`)
         .join("\n")}`,
-      siblings.length
-        ? `Alongside it, for context and cross-connections:\n${siblings.map((s) => `- ${s}`).join("\n")}`
-        : "Nothing else sits alongside it yet.",
+      outline.length
+        ? `Already on their path (do not repeat these; connect to them where it helps):\n${outline.join("\n")}`
+        : "Nothing else is on their path yet.",
     ].join("\n\n");
 
     try {
       const client = new Anthropic({ apiKey });
-      const response = await client.messages.parse({
+      // Refusal fallbacks are on: if this model declines, the API re-runs the
+      // same request on a fallback model inside the same call.
+      const response = await client.beta.messages.parse({
         model: "claude-opus-5",
         max_tokens: 16000,
         thinking: { type: "adaptive" },
+        betas: ["server-side-fallback-2026-07-01"],
+        fallbacks: "default",
         system: SYSTEM,
         messages: [{ role: "user", content: prompt }],
-        output_config: { format: zodOutputFormat(BranchSchema) },
+        output_config: { format: betaZodOutputFormat(BranchSchema) },
       });
 
+      if (response.stop_reason === "refusal") {
+        return NextResponse.json({ error: "Tangent can't draft branches for this one." }, { status: 422 });
+      }
       const parsed = response.parsed_output;
       if (!parsed) {
         return NextResponse.json({ error: "Tangent couldn't draft branches this time." }, { status: 502 });
@@ -301,9 +372,12 @@ async function POSTHandler(req: Request) {
           pathId: parent.pathId,
           parentId: parent.id,
           kind,
-          title: b.title,
-          rationale: b.rationale,
-          effort: b.effort,
+          // Short enough for the card; the substance is in the inspector.
+          title: clipText(b.title, 48),
+          detail: `${b.summary.trim()}\n\nFirst step: ${b.first_step.trim()}`,
+          rationale: b.why.trim(),
+          effort: b.effort.trim(),
+          ...(b.hours_per_week > 0 ? { hoursPerWeek: Math.round(b.hours_per_week * 10) / 10 } : {}),
           origin: "tangent" as const,
           status: "suggested" as const,
         }))
@@ -312,7 +386,18 @@ async function POSTHandler(req: Request) {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       console.error("[api/path] generate failed:", message);
-      return NextResponse.json({ error: "Tangent couldn't reach Claude just now." }, { status: 502 });
+      // Most specific first: busy is worth retrying in a moment, a bad key or
+      // request is not.
+      if (err instanceof Anthropic.RateLimitError) {
+        return NextResponse.json({ error: "Tangent is busy right now. Try again in a minute." }, { status: 429 });
+      }
+      if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
+        return NextResponse.json({ error: "Tangent's AI key isn't working. Check ANTHROPIC_API_KEY." }, { status: 503 });
+      }
+      if (err instanceof Anthropic.APIConnectionError) {
+        return NextResponse.json({ error: "Tangent couldn't reach Claude just now." }, { status: 502 });
+      }
+      return NextResponse.json({ error: "Tangent couldn't draft branches this time." }, { status: 502 });
     }
   }
 

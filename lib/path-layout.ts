@@ -65,11 +65,13 @@ const RADIUS_DECAY = 0.62;
 const MIN_RADIUS = 54;
 /** Tangent length relative to the radius it leaves. */
 const TANGENT_REACH = 2.05;
-/** Angular offset between sibling ideas leaving the same member, radians. */
-const IDEA_FAN = 0.26;
-/** Siblings also reach different distances, so three branches off one member
- *  spread in two dimensions instead of landing in a row. */
-const IDEA_REACH_STEP = 0.34;
+/** Angular step between sibling ideas leaving the same member, radians. Each
+ *  one touches the circle a little further round and so leaves at a different
+ *  angle: the tangents open like a fan instead of running side by side. */
+const IDEA_FAN = 0.44;
+/** Siblings also reach different distances, so branches off one member spread
+ *  in two dimensions instead of landing in a column. */
+const IDEA_REACH_STEP = 0.42;
 /** A child circle may use this much of the compass, radians. Kept under a full
  *  half-turn so a grown circle's members stay ahead of the direction it was
  *  travelling rather than folding back across the branch that made it. */
@@ -151,17 +153,28 @@ function layoutCircle(
     const ideas = childrenOf(ctx.nodes, member.id);
     if (ideas.length === 0) return;
 
-    // Each idea leaves from its own touch point, fanned a few degrees apart, so
-    // a member with three ideas shows three real tangents rather than three
-    // beads threaded on one line.
-    const fanStart = -((ideas.length - 1) / 2) * IDEA_FAN;
+    // Each idea leaves from its own touch point. On the first circle they
+    // alternate between the two tangent directions, so a member with three
+    // ideas splits them either side of itself; deeper circles keep every idea
+    // on the side the circle is heading, so nothing folds back toward its
+    // parent. Within a side, rank k touches further round in the direction of
+    // travel and reaches further, so the lines diverge and never cross.
     const reach = radius * TANGENT_REACH;
+    const bothSides = depth === 0 && ideas.length > 1;
 
     ideas.forEach((idea, j) => {
-      const touchAngle = angle + fanStart + j * IDEA_FAN;
+      const side = bothSides && j % 2 === 1 ? -1 : 1;
+      const rank = bothSides ? Math.floor(j / 2) : j;
+      const base = tangentDir(angle, facing);
+      const dirSign = side;
+      // +1 when this side travels counter-clockwise round the circle.
+      const ccw = base.x * -Math.sin(angle) + base.y * Math.cos(angle) > 0 ? dirSign : -dirSign;
+      const offset = bothSides ? (rank + 0.5) * IDEA_FAN : rank * IDEA_FAN;
+      const touchAngle = angle + ccw * offset;
       const touch = onCircle(center, radius, touchAngle);
-      const dir = tangentDir(touchAngle, facing);
-      const reachOut = reach * (1 + j * IDEA_REACH_STEP);
+      const ccwDir = { x: -Math.sin(touchAngle), y: Math.cos(touchAngle) };
+      const dir = ccw > 0 ? ccwDir : { x: -ccwDir.x, y: -ccwDir.y };
+      const reachOut = reach * (1 + rank * IDEA_REACH_STEP);
       const end = { x: touch.x + reachOut * dir.x, y: touch.y + reachOut * dir.y };
 
       ctx.tangents.push({ node: idea, memberId: member.id, touch, end, dir, depth: depth + 2 });

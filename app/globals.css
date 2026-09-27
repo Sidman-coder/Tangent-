@@ -7931,3 +7931,201 @@ textarea:focus {
     overflow-x: auto;
   }
 }
+
+/* ── Calendar grid: days that say what's on them ─────────────────────────────
+   Each day shows its first three tasks as chips (time, title, a bar in the
+   task's kind colour) and "+N more", so the month answers "what's on" at a
+   glance. A quick-add button appears on hover. Replaces the kind ribbons and
+   "3 tasks" count, which made every day a click to find out anything. */
+.calendar-grid-shell .cal-weekday-row {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+.calendar-grid-shell .cal-weekday-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+.calendar-grid-shell .cal-month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  /* Older rules sized the first row for weekday labels, which used to share
+     this grid. They have their own row now, so every week is the same height. */
+  grid-template-rows: none;
+  grid-auto-rows: minmax(112px, 1fr);
+}
+.cal-cell {
+  position: relative;
+  min-width: 0;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.cal-cell:nth-child(7n) {
+  border-right: 0;
+}
+.cal-cell.is-outside {
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+}
+.calendar-grid-shell .cal-cell .cal-day {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  min-height: 112px;
+  padding: 8px 8px 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+}
+.calendar-grid-shell .cal-cell.is-outside .cal-day .d {
+  opacity: 0.4;
+}
+.calendar-grid-shell .cal-cell .cal-day:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-soft) 45%, transparent);
+  box-shadow: none;
+}
+.calendar-grid-shell .cal-cell.is-selected .cal-day {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.calendar-grid-shell .cal-cell .cal-day:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.calendar-grid-shell .cal-cell.is-today .cal-day .d {
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: 0 2px 8px rgb(from var(--accent) r g b / 0.35);
+}
+
+.cal-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.cal-chip {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  padding: 3px 6px 3px 7px;
+  border-radius: 6px;
+  border-left: 2px solid var(--chip);
+  background: color-mix(in srgb, var(--chip) 11%, transparent);
+  color: var(--text);
+  font-size: 11.5px;
+  line-height: 1.25;
+}
+.cal-chip-time {
+  flex: none;
+  color: var(--text-2);
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.cal-chip-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cal-chip.is-done {
+  opacity: 0.5;
+}
+.cal-chip.is-done .cal-chip-title {
+  text-decoration: line-through;
+}
+.cal-chip-more {
+  padding-left: 7px;
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.cal-day-add {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--accent);
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.85);
+  transition: opacity 0.14s ease, transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), background 0.14s ease;
+}
+.cal-cell:hover .cal-day-add,
+.cal-day-add:focus-visible {
+  opacity: 1;
+  transform: scale(1);
+}
+.cal-day-add:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* Phones: a chip per task no longer fits, so a day shows coloured dots. */
+@media (max-width: 720px) {
+  .calendar-grid-shell .cal-month-grid {
+    grid-template-rows: none;
+    grid-auto-rows: minmax(64px, 1fr);
+  }
+  .calendar-grid-shell .cal-cell .cal-day {
+    min-height: 64px;
+    padding: 6px 4px;
+    align-items: center;
+  }
+  .cal-chips {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 3px;
+  }
+  .cal-chip {
+    width: 6px;
+    height: 6px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: var(--chip);
+  }
+  .cal-chip-time,
+  .cal-chip-title {
+    display: none;
+  }
+  .cal-chip-more {
+    padding: 0;
+    font-size: 9.5px;
+  }
+  .cal-day-add {
+    display: none;
+  }
+}
+
+/* The weekday labels now have their own row above the month, so the month
+   fills what is left rather than 100% of the shell (which pushed the last
+   week below the fold by exactly one label row). */
+.calendar-grid-shell {
+  display: flex;
+  flex-direction: column;
+}
+.calendar-grid-shell .cal-weekday-row {
+  flex: none;
+}
+.calendar-grid-shell .cal-month-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-auto-rows: minmax(96px, 1fr);
+}

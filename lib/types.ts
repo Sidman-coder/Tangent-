@@ -32,6 +32,9 @@ export type Task = {
   startAction?: string;
   /** Set when this task was created by an external ingestion path rather than the user or AI. */
   source?: "canvas";
+  /** The event's UID in its source feed. Lets a re-sync move or rename the task
+   *  it already made instead of adding a second copy. */
+  externalId?: string;
 };
 
 export type Plan = {
@@ -121,6 +124,9 @@ export interface BriefConfig {
 
 export interface CanvasFeedConfig {
   icsUrl: string;
+  /** IANA zone the person's browser reported, e.g. "America/New_York". Due
+   *  times are converted into it; the server itself runs on UTC. */
+  timeZone?: string;
   connectedAt: string;
   lastSyncedAt: string | null;
   lastSyncCount: number;

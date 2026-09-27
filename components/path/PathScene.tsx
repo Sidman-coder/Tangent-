@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { Maximize2, Minus, Plus, Shrink } from "lucide-react";
 import PathAmbient from "./PathAmbient";
 import { usePathCamera } from "./usePathCamera";
-import type { PathCamera } from "./usePathCamera";
+import type { Bounds, PathCamera } from "./usePathCamera";
 import { layoutPath, ROOT_RADIUS } from "@/lib/path-layout";
 import type { PathLayout } from "@/lib/path-layout";
 import type { Path, PathNode, TangentStatus } from "@/lib/types";
@@ -73,6 +73,39 @@ function clip(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
+/** World bounds of a node plus everything laid out beneath it, including the
+ *  full extent of any circle that has been opened under it. */
+function subtreeBounds(layout: PathLayout, nodes: PathNode[], id: string): Bounds | null {
+  const origin = layout.points.get(id);
+  if (!origin) return null;
+  const children = new Map<string, string[]>();
+  for (const n of nodes) {
+    if (!n.parentId) continue;
+    const list = children.get(n.parentId) ?? [];
+    list.push(n.id);
+    children.set(n.parentId, list);
+  }
+  const b = { minX: origin.x, minY: origin.y, maxX: origin.x, maxY: origin.y };
+  const grow = (x: number, y: number, r = 0) => {
+    b.minX = Math.min(b.minX, x - r);
+    b.minY = Math.min(b.minY, y - r);
+    b.maxX = Math.max(b.maxX, x + r);
+    b.maxY = Math.max(b.maxY, y + r);
+  };
+  const circles = new Map(layout.circles.map((c) => [c.id, c]));
+  const queue = [id];
+  while (queue.length) {
+    const next = queue.shift()!;
+    const p = layout.points.get(next);
+    if (!p) continue;
+    grow(p.x, p.y);
+    const circle = circles.get(next);
+    if (circle) grow(circle.center.x, circle.center.y, circle.radius);
+    for (const child of children.get(next) ?? []) queue.push(child);
+  }
+  return b;
+}
+
 /** Ancestors of `id`, plus `id` itself. Everything else dims. */
 function branchOf(nodes: PathNode[], id: string | null): Set<string> {
   const live = new Set<string>();
@@ -101,6 +134,20 @@ export default function PathScene({
 }: Props) {
   const [filter, setFilter] = useState<Filter>("all");
 
+  // Arriving through the field's portal: the goal card is already on screen,
+  // in the middle, so it must not play its own entrance, and the camera holds
+  // on it for a beat before framing the tree.
+  const [fromPortal] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const hit = sessionStorage.getItem("tangents-portal") === path.id;
+      if (hit) sessionStorage.removeItem("tangents-portal");
+      return hit;
+    } catch {
+      return false;
+    }
+  });
+
   // Entrances are choreographed only on first paint: the rings ripple out from
   // the goal, then the work, then the ideas. Anything added later just appears
   // with its own short spring, rather than waiting out a staged delay.
@@ -119,12 +166,33 @@ export default function PathScene({
   const live = useMemo(() => branchOf(nodes, focusedId), [nodes, focusedId]);
   const dimming = live.size > 0;
 
-  // Let the page trigger "zoom to fit" without reaching into the camera.
-  const fitRef = useRef(camera.fit);
-  fitRef.current = camera.fit;
+
+  // The chrome that covers the stage, in screen pixels: the header on top, the
+  // dock and zoom bar underneath, and the inspector while something is open.
+  const insetsFor = useCallback(
+    (panelOpen: boolean) => {
+      const { width, height } = camera.size;
+      const phone = width <= 860;
+      return {
+        top: phone ? 64 : 84,
+        bottom: phone ? (panelOpen ? Math.round(height * 0.58) : 124) : 84,
+        right: !phone && panelOpen ? PANEL_W : 0,
+      };
+    },
+    [camera.size]
+  );
+
+  const fitAll = useCallback(
+    () => camera.fit(layout.bounds, { insets: insetsFor(Boolean(focusedId)), anchorWhenClamped: { x: 0, y: 0 } }),
+    [camera, layout.bounds, insetsFor, focusedId]
+  );
+
+  // Let the page trigger "zoom to fit" (Tidy uses it) without reaching into the camera.
+  const fitAllRef = useRef(fitAll);
+  fitAllRef.current = fitAll;
   useEffect(() => {
-    registerFit(() => fitRef.current(layout.bounds));
-  }, [layout.bounds, registerFit]);
+    registerFit(() => fitAllRef.current());
+  }, [registerFit]);
 
   // Frame the whole tree once, then leave the camera alone.
   //
@@ -135,27 +203,59 @@ export default function PathScene({
   useEffect(() => {
     if (framed.current || !camera.size.width || layout.members.length === 0) return;
     framed.current = true;
-    camera.fit(layout.bounds);
-  }, [camera, layout.bounds, layout.members.length]);
+    if (fromPortal) {
+      const t = setTimeout(fitAll, 320);
+      return () => clearTimeout(t);
+    }
+    fitAll();
+  }, [camera.size.width, fitAll, layout.members.length]);
 
   // Following the focus is the point of the camera: picking a node off-screen
   // should bring you to it rather than leaving you to hunt for it.
+  //
+  // Picking something frames it together with everything branching from it:
+  // pick a member and the camera closes in on that stretch of the circle and
+  // its tangents; pick an idea whose circle is open and it frames that circle.
+  // Capped so a lone leaf is brought close enough to read, not blown up.
   useEffect(() => {
     if (!focusedId) return;
-    const point = layout.points.get(focusedId);
-    if (!point) return;
-    const zoom = Math.max(camera.read().scale, 0.75);
-    const panelled = camera.size.width > 860;
-    camera.flyTo({ x: point.x + (panelled ? PANEL_W / 2 / zoom : 0), y: point.y }, zoom);
+    const bounds = subtreeBounds(layout, nodes, focusedId);
+    if (!bounds) return;
+    camera.fit(bounds, { insets: insetsFor(true), maxScale: 1.25, minScale: 0.55 });
     // Re-running on layout would fight the user's own panning after an expand.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusedId]);
+
+  // Opening a circle frames it: the new ideas come to you rather than
+  // appearing off the edge of the screen.
+  const previousExpanded = useRef(expanded);
+  useEffect(() => {
+    const opened = Array.from(expanded).find((id) => !previousExpanded.current.has(id));
+    previousExpanded.current = expanded;
+    if (!opened) return;
+    const bounds = subtreeBounds(layout, nodes, opened);
+    if (bounds) camera.fit(bounds, { insets: insetsFor(Boolean(focusedId)), maxScale: 1.2, minScale: 0.5 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layout]);
+
+  // Past a certain distance idea cards cannot all be read at once, and drawn
+  // at full size they pile up. The stage carries a level of detail that CSS
+  // uses to fold them to dots; the zoom listener flips it only on crossings.
+  useEffect(() => {
+    const stage = camera.stageRef.current;
+    if (!stage) return;
+    return camera.onZoom((scale) => {
+      const lod = scale < 0.5 ? "far" : "near";
+      if (stage.dataset.lod !== lod) stage.dataset.lod = lod;
+    });
+  }, [camera]);
 
   const matches = (status: TangentStatus) => filter === "all" || status === filter;
 
   const nodeState = (node: PathNode) =>
     [
       node.kind === "idea" && !matches(node.status) ? "is-filtered" : "",
+      dimming && live.has(node.id) ? "is-live" : "",
       node.status === "accepted" || node.status === "done" ? "is-kept" : "is-suggested",
       node.status === "done" ? "is-done" : "",
       focusedId === node.id ? "is-focused" : "",
@@ -279,7 +379,7 @@ export default function PathScene({
           <m.div
             className="path-point path-point-goal"
             style={{ left: 0, top: 0 }}
-            initial={reduced ? false : { opacity: 0, scale: 0.8, filter: "blur(8px)" }}
+            initial={reduced || fromPortal ? false : { opacity: 0, scale: 0.8, filter: "blur(8px)" }}
             animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
             transition={{ type: "spring", visualDuration: 0.7, bounce: 0.2 }}
           >
@@ -303,8 +403,17 @@ export default function PathScene({
             {layout.members.map((member, i) => (
               <m.div
                 key={member.node.id}
-                className="path-point"
-                style={{ left: member.point.x, top: member.point.y }}
+                className="path-point is-member"
+                // The label sits outside the circle, on the side its point
+                // faces, so it never covers the goal or its neighbours.
+                style={
+                  {
+                    left: member.point.x,
+                    top: member.point.y,
+                    "--ax": Math.cos(member.angle).toFixed(3),
+                    "--ay": Math.sin(member.angle).toFixed(3),
+                  } as React.CSSProperties
+                }
                 initial={reduced ? false : { opacity: 0, scale: 0.6 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.8 }}
@@ -358,7 +467,7 @@ export default function PathScene({
                         onFocus={() => onFocus(node.id)}
                         aria-label={`Idea: ${node.title}. Open it.`}
                       >
-                        {clip(node.title, 46)}
+                        <span className="path-idea-title">{clip(node.title, 40)}</span>
                       </button>
                       {children.length > 0 && (
                         <button
@@ -459,7 +568,7 @@ export default function PathScene({
           type="button"
           data-path-interactive
           className="path-zoombar-btn"
-          onClick={() => camera.fit(layout.bounds)}
+          onClick={fitAll}
           aria-label="Fit the whole path"
           title="Fit the whole path"
         >

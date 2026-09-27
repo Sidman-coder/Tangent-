@@ -172,7 +172,9 @@
   left: 0;
   top: 0;
   transform-origin: 0 0;
-  transform: scale(calc(1 / var(--path-zoom, 1)));
+  /* Constant size while zoomed in; when zoomed out, labels give way a little
+     (down to 72%) so a wide view is not a wall of cards. */
+  transform: scale(calc(clamp(0.72, var(--path-zoom, 1), 1) / var(--path-zoom, 1)));
 }
 
 .path-goal-node {
@@ -1231,8 +1233,8 @@
 .tangents-kind {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 10px 12px;
+  gap: 3px;
+  padding: 14px 14px 13px;
   border: 1px solid var(--path-edge);
   border-radius: 10px;
   background: none;
@@ -1245,8 +1247,53 @@
   border-color: var(--path-edge-strong);
 }
 .tangents-kind.is-on {
-  border-color: var(--path-idea);
-  background: var(--path-idea-soft);
+  border-color: var(--path-goal);
+  background: rgba(154, 136, 239, 0.12);
+}
+.tangents-kind:hover .tangents-kind-icon {
+  transform: translateY(-1px) rotate(-4deg);
+}
+.tangents-kind-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  border: 1px solid var(--path-edge);
+  background: rgba(154, 136, 239, 0.1);
+  color: var(--path-work);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* One-tap answers under a question. */
+.tangents-intake-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+.tangents-intake-chip {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--path-edge-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--path-ink-2);
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.tangents-intake-chip:hover {
+  color: var(--path-ink);
+  border-color: var(--path-goal);
+}
+.tangents-intake-chip.is-on {
+  color: #17132a;
+  background: var(--path-work);
+  border-color: var(--path-work);
 }
 .tangents-kind strong {
   font-size: 13px;
@@ -1497,4 +1544,107 @@
 .tangents-empty {
   position: relative;
   z-index: 0;
+}
+
+/* ─── Member labels sit outside their circle ─────────────────────────────────
+   Pushed out along the radius by half their own size plus a gap, so the pill's
+   inner edge meets the ring instead of its middle sitting on it. */
+.path-point.is-member .path-work {
+  transform: translate(
+    calc(-50% + var(--ax, 0) * 50% + var(--ax, 0) * 10px),
+    calc(-50% + var(--ay, 0) * 50% + var(--ay, 0) * 8px)
+  );
+}
+/* The dot marks the exact point on the ring, so it is drawn there. */
+.path-point.is-member::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--path-work);
+  box-shadow: 0 0 0 3px rgba(179, 165, 240, 0.18);
+}
+
+/* ─── Idea cards: a short title, two lines at most ─────────────────────────── */
+.path-idea-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ─── Level of detail ────────────────────────────────────────────────────────
+   Far out, an idea is a dot on the end of its tangent; its words come back as
+   you zoom in, or when it is the one you picked. */
+.path-stage[data-lod="far"] .path-idea:not(.is-focused):not(.is-live) {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border-radius: 50%;
+  border-color: var(--path-idea);
+  background: var(--path-idea-soft);
+}
+.path-stage[data-lod="far"] .path-idea:not(.is-focused):not(.is-live) .path-idea-body {
+  position: absolute;
+  inset: -8px;
+  padding: 0;
+  font-size: 0;
+  color: transparent;
+  background: transparent;
+}
+.path-stage[data-lod="far"] .path-idea:not(.is-focused):not(.is-live) .path-idea-grow {
+  display: none;
+}
+.path-point.is-member .path-work-dot {
+  display: none;
+}
+.path-point.is-member .path-work {
+  padding-left: 13px;
+}
+
+/* ─── Inspector: a drafted branch in labelled parts ───────────────────────── */
+.path-inspector-body.is-lead {
+  color: var(--path-ink);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.path-inspector-part {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 11px 12px;
+  border: 1px solid var(--path-edge);
+  border-radius: 12px;
+  background: rgba(10, 8, 18, 0.35);
+}
+.path-inspector-part h3 {
+  margin: 0;
+  color: var(--path-ink-2);
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.path-inspector-part p {
+  margin: 0;
+  color: var(--path-ink);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.path-inspector-part.is-step {
+  border-color: rgba(62, 208, 138, 0.3);
+  background: var(--path-idea-soft);
+}
+
+.tangents-portal-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 61;
+  width: 0;
+  height: 0;
+  pointer-events: none;
 }

@@ -551,6 +551,9 @@ export default function AiPage() {
             {todayLine && <p className="tg-hero-today">{todayLine}</p>}
             {err && <p className="tg-error" role="alert">{err}</p>}
             {composer}
+            <p className="tg-composer-hint">
+              <kbd>Enter</kbd> to send, <kbd>Shift</kbd> + <kbd>Enter</kbd> for a new line
+            </p>
             <p className="tg-examples-label">Try asking</p>
             <div className="tg-examples">
               {SUGGESTIONS.map(({ icon: Icon, text, detail }) => (

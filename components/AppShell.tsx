@@ -19,6 +19,7 @@ import CommandPalette from "./CommandPalette";
 import FirstRun from "./FirstRun";
 import TangentLogo from "@/components/TangentLogo";
 import DesktopNotifPrompt from "./DesktopNotifPrompt";
+import { useAppState } from "./AppStateProvider";
 
 // Three places you work, plus settings. Tasks used to be its own page; it only
 // ever showed today, which Today already does, and everything else about a task
@@ -44,6 +45,7 @@ function estTimeFor(d: Date): string {
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { refresh: refreshState } = useAppState();
   const [notifOpen, setNotifOpen] = useState(false);
   const [estTime, setEstTime] = useState<string | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -70,7 +72,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // more than six hours; the server no-ops otherwise, and a daily cron covers
   // anyone who never opens the app.
   useEffect(() => {
-    void fetch("/api/canvas/connect?ifStale=6").catch(() => {});
+    const tz = encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    void fetch(`/api/canvas/connect?ifStale=6&tz=${tz}`)
+      .then((res) => res.json())
+      .then((data: { added?: number; updated?: number }) => {
+        // A re-sync that brought anything in should show it without a reload.
+        if ((data.added ?? 0) + (data.updated ?? 0) > 0) void refreshState();
+      })
+      .catch(() => {});
+    // Once, on load: re-running on every refresh identity change would re-sync
+    // in a loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const profileInitial = (profileName || "T").charAt(0).toUpperCase();
@@ -82,7 +94,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // nothing in them can catch a pointer or a tab stop over the canvas.
   if (pathname.startsWith("/tangents")) {
     return (
-      <m.div key={pathname} className="tangents-route" {...pageEnter}>
+      // Opacity only: a lift or blur here would move the goal card off the
+      // spot the field's portal delivered it to.
+      <m.div
+        key={pathname}
+        className="tangents-route"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1, transition: { duration: 0.22 } }}
+      >
         {children}
       </m.div>
     );

@@ -85,8 +85,29 @@ export default function PathInspector({
           </p>
           <h2 className="path-inspector-title">{node.title}</h2>
 
-          {node.detail && <p className="path-inspector-body">{node.detail}</p>}
-          {node.rationale && <p className="path-inspector-body">{node.rationale}</p>}
+          {/* The card on the drawing carries only the short title; the
+              substance lives here, in labelled parts. Drafted branches store
+              "summary\n\nFirst step: ..." in detail. */}
+          {(() => {
+            const [summary, firstStep] = (node.detail ?? "").split(/\n\nFirst step:\s*/);
+            return (
+              <>
+                {summary && <p className="path-inspector-body is-lead">{summary}</p>}
+                {node.rationale && (
+                  <section className="path-inspector-part">
+                    <h3>Why this</h3>
+                    <p>{node.rationale}</p>
+                  </section>
+                )}
+                {firstStep && (
+                  <section className="path-inspector-part is-step">
+                    <h3>First step, this week</h3>
+                    <p>{firstStep}</p>
+                  </section>
+                )}
+              </>
+            );
+          })()}
 
           {(node.effort || node.hoursPerWeek || node.years) && (
             <dl className="path-facts">

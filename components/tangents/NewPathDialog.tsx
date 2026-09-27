@@ -1,20 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { AnimatePresence, m } from "motion/react";
-import { ArrowLeft, ArrowRight, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Briefcase, GraduationCap, Target, Trophy, X } from "lucide-react";
 import type { PathGoalKind } from "@/lib/types";
 
 // Starting a path.
 //
-// The questions are the coaching-intake shape, which is also exactly what the
-// model needs to judge a branch: where you are, where you want to be, by when,
-// what you can actually give it, and what is in the way. A goal without a
-// current state is a wish, and a goal without hours is a wish with a date on it.
+// First you say what kind of thing you are going after, because a university,
+// a job, a rating and "anything else" are measured differently, and asking all
+// four the same generic questions got generic answers. Every question after
+// that is worded for the kind you picked, says in plain words what a good
+// answer looks like, and shows one.
 //
-// Asked one at a time rather than as a form. Six fields in a single panel reads
-// as paperwork; one question at a time reads as being asked, and it is the only
-// moment in the product where we get to sound like a person.
+// The answers land in the same six facts the model is given for every branch:
+// the target, where you are, the deadline, the hours you can give it, what you
+// already have (which seeds the first circle) and what is in the way. A goal
+// without a current state is a wish; a goal without hours is a wish with a date.
+//
+// One question at a time rather than a form: six fields in one panel reads as
+// paperwork; one at a time reads as being asked.
 
 export type PathDraft = {
   title: string;
@@ -32,66 +37,209 @@ type Props = {
   onCreate: (draft: PathDraft) => Promise<boolean>;
 };
 
-const KINDS: { value: PathGoalKind; label: string; hint: string }[] = [
-  { value: "college", label: "A place to study", hint: "a university, a programme" },
-  { value: "career", label: "Work", hint: "a job, an internship, a client" },
-  { value: "skill", label: "A level of skill", hint: "a rating, a belt, a certification" },
-  { value: "other", label: "Something else", hint: "anything with a finish line" },
-];
+type FieldKey = Exclude<keyof PathDraft, "kind">;
 
 type Step = {
-  key: keyof PathDraft;
+  key: FieldKey;
   question: string;
   help: string;
   placeholder: string;
   multiline?: boolean;
   optional?: boolean;
+  /** One-tap answers, for the questions where most people pick a common one. */
+  chips?: string[];
 };
 
-const STEPS: Step[] = [
-  {
-    key: "target",
-    question: "What are you going after?",
-    help: "State it so you could tell whether you hit it. A number, a place, a title.",
-    placeholder: "Reach 2000 USCF",
-  },
-  {
-    key: "current",
-    question: "Where are you now?",
-    help: "The honest version. This is what everything gets measured against.",
-    placeholder: "1450, plateaued for about a year",
-  },
-  {
-    key: "deadline",
-    question: "By when?",
-    help: "A real date or a rough one. Both work.",
-    placeholder: "End of next summer",
-    optional: true,
-  },
-  {
-    key: "hoursPerWeek",
-    question: "How many hours a week can you actually give it?",
-    help: "What you can sustain on a normal week, not a good one. Branches get sized to this.",
-    placeholder: "6",
-    optional: true,
-  },
-  {
-    key: "standing",
-    question: "What have you already got going for it?",
-    help: "One per line. These become the first circle, so the path does not start empty.",
-    placeholder: "Weekly club nights\nTactics trainer streak\nCoach every other Sunday",
-    multiline: true,
-    optional: true,
-  },
-  {
-    key: "constraints",
-    question: "What is in the way?",
-    help: "Money, travel, time of year, anything. Tangent will not suggest what you cannot do.",
-    placeholder: "No budget for a full-time coach, and exams in May",
-    multiline: true,
-    optional: true,
-  },
+const KINDS: { value: PathGoalKind; label: string; hint: string; icon: typeof Target }[] = [
+  { value: "college", label: "Get into a school", hint: "A university, college or programme", icon: GraduationCap },
+  { value: "career", label: "Land a role", hint: "A job, internship or first client", icon: Briefcase },
+  { value: "skill", label: "Reach a level", hint: "A rating, grade, belt or certification", icon: Trophy },
+  { value: "other", label: "Something else", hint: "Anything with a clear finish line", icon: Target },
 ];
+
+const HOURS: Step = {
+  key: "hoursPerWeek",
+  question: "How many hours a week can you really give it?",
+  help: "Think of a normal week, not your best one. Every suggestion gets sized to fit this.",
+  placeholder: "5",
+  optional: true,
+  chips: ["2", "4", "6", "10"],
+};
+
+/** The questions, worded for each kind. Same six facts underneath. */
+const QUESTIONS: Record<PathGoalKind, { name: string; steps: Step[] }> = {
+  college: {
+    name: "Georgia Tech",
+    steps: [
+      {
+        key: "target",
+        question: "Which school, and for what?",
+        help: "Name the school and the major or programme. If you have a shortlist, pick the one you want most.",
+        placeholder: "Georgia Tech, Computer Science",
+      },
+      {
+        key: "current",
+        question: "Where do you stand today?",
+        help: "Your grade, GPA, test scores, and the classes you are taking. Be honest; this is only for you.",
+        placeholder: "Junior, 3.8 unweighted, SAT 1420, taking AP Calc BC",
+      },
+      {
+        key: "deadline",
+        question: "When do you apply?",
+        help: "The date you actually submit by. A rough one is fine.",
+        placeholder: "Nov 1, 2027 (early action)",
+        optional: true,
+      },
+      HOURS,
+      {
+        key: "standing",
+        question: "What are you already doing that the school would care about?",
+        help: "One per line: clubs, jobs, projects, sports, awards. These become the first circle of your path.",
+        placeholder: "Robotics club, programming lead\nSummer research at the university lab\nVarsity tennis",
+        multiline: true,
+        optional: true,
+      },
+      {
+        key: "constraints",
+        question: "What limits what you can do?",
+        help: "Money, getting places, family, school rules. Tangent won't suggest anything you can't actually do.",
+        placeholder: "No car, can't pay for summer programmes, tennis season Aug to Nov",
+        multiline: true,
+        optional: true,
+      },
+    ],
+  },
+  career: {
+    name: "Fintech internship",
+    steps: [
+      {
+        key: "target",
+        question: "What role, and where?",
+        help: "The job title and the kind of place. A specific company is great if you have one.",
+        placeholder: "Summer software internship at a fintech startup",
+      },
+      {
+        key: "current",
+        question: "What would your resume say today?",
+        help: "Experience, skills and anything you have built. Leave nothing out because it feels small.",
+        placeholder: "One Python project on GitHub, part-time cashier, no resume yet",
+      },
+      {
+        key: "deadline",
+        question: "When do you need it by?",
+        help: "When applications close, or when you want to start.",
+        placeholder: "Applications close Feb 2027",
+        optional: true,
+      },
+      HOURS,
+      {
+        key: "standing",
+        question: "What are you already doing that counts toward it?",
+        help: "One per line: projects, classes, clubs, jobs. These become the first circle of your path.",
+        placeholder: "Building a budgeting app\nCS club\nPart-time cashier",
+        multiline: true,
+        optional: true,
+      },
+      {
+        key: "constraints",
+        question: "What's in the way?",
+        help: "Location, time, money, no contacts yet. Tangent plans around it instead of ignoring it.",
+        placeholder: "Remote only, no referrals, school until 3pm",
+        multiline: true,
+        optional: true,
+      },
+    ],
+  },
+  skill: {
+    name: "2000 USCF",
+    steps: [
+      {
+        key: "target",
+        question: "What level, and how is it measured?",
+        help: "A number or a title someone else could check: a rating, a grade, a belt, a certification.",
+        placeholder: "2000 USCF rating",
+      },
+      {
+        key: "current",
+        question: "Where are you now, by that same measure?",
+        help: "Your current number or level, and how long you have been there.",
+        placeholder: "1450 USCF, stuck for about a year",
+      },
+      {
+        key: "deadline",
+        question: "By when?",
+        help: "A real date or a rough one. Both work.",
+        placeholder: "End of next summer",
+        optional: true,
+      },
+      HOURS,
+      {
+        key: "standing",
+        question: "How do you practise now?",
+        help: "One per line: classes, coaches, apps, books, routines. These become the first circle of your path.",
+        placeholder: "Weekly class\nRapid games on chess.com\nA chess book\nPuzzles",
+        multiline: true,
+        optional: true,
+      },
+      {
+        key: "constraints",
+        question: "What gets in the way of practising?",
+        help: "Money, time of year, equipment, anything. Tangent won't suggest what you can't do.",
+        placeholder: "No budget for a coach, exams in May",
+        multiline: true,
+        optional: true,
+      },
+    ],
+  },
+  other: {
+    name: "First album",
+    steps: [
+      {
+        key: "target",
+        question: "What does done look like?",
+        help: "Say it so a friend could check whether you did it.",
+        placeholder: "Release a 10-song album on Spotify",
+      },
+      {
+        key: "current",
+        question: "Where are you now?",
+        help: "What exists today, and what doesn't yet.",
+        placeholder: "8 demos recorded, nothing mixed, no cover art",
+      },
+      {
+        key: "deadline",
+        question: "By when?",
+        help: "A real date or a rough one. Both work.",
+        placeholder: "Before next summer",
+        optional: true,
+      },
+      HOURS,
+      {
+        key: "standing",
+        question: "What have you already got going for it?",
+        help: "One per line: habits, tools, people, things in progress. These become the first circle of your path.",
+        placeholder: "Home recording setup\nA friend who mixes\nSongwriting every Sunday",
+        multiline: true,
+        optional: true,
+      },
+      {
+        key: "constraints",
+        question: "What's in the way?",
+        help: "Money, time, skills you don't have yet. Tangent plans around it.",
+        placeholder: "No budget for mastering, can't sing live",
+        multiline: true,
+        optional: true,
+      },
+    ],
+  },
+};
+
+const NAME_STEP = (placeholder: string): Step => ({
+  key: "title",
+  question: "Give it a short name",
+  help: "Two or three words. It's the label you'll see on your path.",
+  placeholder,
+});
 
 export default function NewPathDialog({ onCancel, onCreate }: Props) {
   const [draft, setDraft] = useState<PathDraft>({
@@ -104,28 +252,47 @@ export default function NewPathDialog({ onCancel, onCreate }: Props) {
     constraints: "",
     standing: "",
   });
-  const [stage, setStage] = useState(-1); // -1 is the name-and-kind screen
+  // -1 is choosing the kind; 0 is the name; then the kind's own questions.
+  const [stage, setStage] = useState(-1);
+  const [picked, setPicked] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const step = stage >= 0 ? STEPS[stage] : null;
-  const isLast = stage === STEPS.length - 1;
+  const steps = useMemo(() => {
+    const set = QUESTIONS[draft.kind];
+    return [NAME_STEP(set.name), ...set.steps];
+  }, [draft.kind]);
+
+  const step = stage >= 0 ? steps[stage] : null;
+  const isLast = stage === steps.length - 1;
   const value = step ? draft[step.key] : "";
 
-  const set = (key: keyof PathDraft, v: string) => setDraft((d) => ({ ...d, [key]: v }));
+  const set = (key: FieldKey, v: string) => setDraft((d) => ({ ...d, [key]: v }));
+
+  const choose = (kind: PathGoalKind) => {
+    setDraft((d) => ({ ...d, kind }));
+    setPicked(true);
+    setError(null);
+    // Straight on: picking is the answer.
+    setStage(0);
+  };
 
   const next = async () => {
     setError(null);
     if (stage === -1) {
-      if (!draft.title.trim()) {
-        setError("Give the path a short name.");
+      if (!picked) {
+        setError("Pick the one closest to your goal.");
         return;
       }
       setStage(0);
       return;
     }
     if (step && !step.optional && !String(value).trim()) {
-      setError("This one matters. Everything else gets judged against it.");
+      setError(step.key === "title" ? "Give it a short name first." : "This one matters: every suggestion is judged against it.");
+      return;
+    }
+    if (step?.key === "hoursPerWeek" && String(value).trim() && !(Number(value) > 0)) {
+      setError("Just a number of hours, like 5.");
       return;
     }
     if (!isLast) {
@@ -139,6 +306,8 @@ export default function NewPathDialog({ onCancel, onCreate }: Props) {
     if (!ok) setError("That didn't save. Try again.");
   };
 
+  const total = steps.length;
+
   return (
     <div className="tangents-intake-scrim" role="dialog" aria-modal="true" aria-label="Start a path">
       <m.div
@@ -149,7 +318,7 @@ export default function NewPathDialog({ onCancel, onCreate }: Props) {
       >
         <header className="tangents-intake-head">
           <span className="tangents-intake-step">
-            {stage === -1 ? "New path" : `${stage + 1} of ${STEPS.length}`}
+            {stage === -1 ? "New path" : `Question ${stage + 1} of ${total}`}
           </span>
           <button type="button" className="path-inspector-close" onClick={onCancel} aria-label="Cancel">
             <X size={16} aria-hidden="true" />
@@ -157,7 +326,7 @@ export default function NewPathDialog({ onCancel, onCreate }: Props) {
         </header>
 
         <div className="tangents-intake-progress" aria-hidden="true">
-          {STEPS.map((s, i) => (
+          {steps.map((s, i) => (
             <span key={s.key} className={i <= stage ? "is-done" : ""} />
           ))}
         </div>
@@ -178,30 +347,28 @@ export default function NewPathDialog({ onCancel, onCreate }: Props) {
           >
             {stage === -1 ? (
               <>
-                <h2>What should we call it?</h2>
-                <p>Short. It rides on the sphere.</p>
-                <input
-                  className="tangents-intake-input"
-                  value={draft.title}
-                  onChange={(e) => set("title", e.target.value)}
-                  placeholder="2000 USCF"
-                  onKeyDown={(e) => e.key === "Enter" && void next()}
-                  autoFocus
-                />
+                <h2>What are you working toward?</h2>
+                <p>Pick the closest one. The questions after this are shaped around it.</p>
                 <div className="tangents-kinds" role="radiogroup" aria-label="What kind of goal">
-                  {KINDS.map((k) => (
-                    <button
-                      key={k.value}
-                      type="button"
-                      role="radio"
-                      aria-checked={draft.kind === k.value}
-                      className={`tangents-kind${draft.kind === k.value ? " is-on" : ""}`}
-                      onClick={() => set("kind", k.value)}
-                    >
-                      <strong>{k.label}</strong>
-                      <span>{k.hint}</span>
-                    </button>
-                  ))}
+                  {KINDS.map((k) => {
+                    const Icon = k.icon;
+                    return (
+                      <button
+                        key={k.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={picked && draft.kind === k.value}
+                        className={`tangents-kind${picked && draft.kind === k.value ? " is-on" : ""}`}
+                        onClick={() => choose(k.value)}
+                      >
+                        <span className="tangents-kind-icon" aria-hidden="true">
+                          <Icon size={18} />
+                        </span>
+                        <strong>{k.label}</strong>
+                        <span>{k.hint}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </>
             ) : (
@@ -229,6 +396,20 @@ export default function NewPathDialog({ onCancel, onCreate }: Props) {
                       autoFocus
                     />
                   )}
+                  {step.chips && (
+                    <div className="tangents-intake-chips" role="group" aria-label="Quick answers">
+                      {step.chips.map((chip) => (
+                        <button
+                          key={chip}
+                          type="button"
+                          className={`tangents-intake-chip${String(value) === chip ? " is-on" : ""}`}
+                          onClick={() => set(step.key, chip)}
+                        >
+                          {chip} h
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </>
               )
             )}
@@ -250,10 +431,12 @@ export default function NewPathDialog({ onCancel, onCreate }: Props) {
             <ArrowLeft size={15} aria-hidden="true" />
             {stage <= -1 ? "Cancel" : "Back"}
           </button>
-          <button type="button" className="path-btn is-primary" onClick={() => void next()} disabled={submitting}>
-            {submitting ? "Creating" : isLast ? "Create the path" : "Next"}
-            {!isLast && <ArrowRight size={15} aria-hidden="true" />}
-          </button>
+          {stage >= 0 && (
+            <button type="button" className="path-btn is-primary" onClick={() => void next()} disabled={submitting}>
+              {submitting ? "Creating" : isLast ? "Create the path" : "Next"}
+              {!isLast && <ArrowRight size={15} aria-hidden="true" />}
+            </button>
+          )}
         </footer>
 
         {step?.optional && (

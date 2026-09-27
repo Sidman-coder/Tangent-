@@ -38,6 +38,18 @@ function clampScale(value: number): number {
 
 type Cam = { x: number; y: number; scale: number };
 
+export type Bounds = { minX: number; minY: number; maxX: number; maxY: number };
+
+export type FitOptions = {
+  /** Screen pixels covered by chrome on each side (header, toolbars, panel). */
+  insets?: Partial<{ top: number; right: number; bottom: number; left: number }>;
+  /** Never zoom in past this, so framing one small branch does not blow it up. */
+  maxScale?: number;
+  minScale?: number;
+  /** Where to centre when the fit had to stop at the minimum zoom. */
+  anchorWhenClamped?: Vec;
+};
+
 export type PathCamera = {
   stageRef: React.RefObject<HTMLDivElement>;
   worldRef: React.RefObject<HTMLDivElement>;
@@ -46,7 +58,7 @@ export type PathCamera = {
   /** Current camera, read without subscribing. Used by the ambient layer. */
   read: () => Cam;
   flyTo: (point: Vec, zoom?: number) => void;
-  fit: (bounds: { minX: number; minY: number; maxX: number; maxY: number }) => void;
+  fit: (bounds: Bounds, options?: FitOptions) => void;
   zoomBy: (factor: number) => void;
   /** Called with the scale whenever the camera paints. Returns an unsubscribe. */
   onZoom: (listener: (scale: number) => void) => () => void;
@@ -165,27 +177,41 @@ export function usePathCamera(reduced: boolean): PathCamera {
   );
 
   const fit = useCallback(
-    (bounds: { minX: number; minY: number; maxX: number; maxY: number }) => {
+    (bounds: Bounds, options: FitOptions = {}) => {
       if (!size.width || !size.height) return;
+      const inset = { top: 0, right: 0, bottom: 0, left: 0, ...options.insets };
       const w = Math.max(bounds.maxX - bounds.minX, 1);
       const h = Math.max(bounds.maxY - bounds.minY, 1);
       const margin = labelMargins(size.width, size.height);
-      const usableW = Math.max(size.width - margin.x * 2, 120);
-      const usableH = Math.max(size.height - margin.y * 2, 120);
-      const wanted = Math.min(usableW / w, usableH / h);
+      // What is actually visible once the header, the toolbars and any open
+      // panel are taken out. Framing into the whole stage put nodes under them.
+      const viewW = size.width - inset.left - inset.right;
+      const viewH = size.height - inset.top - inset.bottom;
+      const usableW = Math.max(viewW - margin.x * 2, 120);
+      const usableH = Math.max(viewH - margin.y * 2, 120);
+      let scale = Math.min(usableW / w, usableH / h);
+      if (options.maxScale !== undefined) scale = Math.min(scale, options.maxScale);
       // Labels hold their size while the drawing scales, so past a point
-      // "fit everything" turns a big tree into a pile of overlapping cards.
-      // Below that floor, frame the goal at a readable zoom instead and let
-      // the person pinch or drag out to the rest.
-      const floor = size.width < 640 ? 0.6 : 0.32;
-      if (wanted < floor) {
-        startSpring({ x: 0, y: 0, scale: clampScale(floor) });
-        return;
+      // "fit everything" turns a big tree into a pile of cards. Below that
+      // floor, frame the goal at a readable zoom and let the person pinch or
+      // drag out to the rest.
+      const floor = options.minScale ?? (size.width < 640 ? 0.6 : 0.32);
+      let cx = (bounds.minX + bounds.maxX) / 2;
+      let cy = (bounds.minY + bounds.maxY) / 2;
+      if (scale < floor) {
+        scale = floor;
+        if (options.anchorWhenClamped) {
+          cx = options.anchorWhenClamped.x;
+          cy = options.anchorWhenClamped.y;
+        }
       }
+      scale = clampScale(scale);
+      // The camera centres the stage, so shift by half the inset imbalance to
+      // centre the visible window instead.
       startSpring({
-        x: (bounds.minX + bounds.maxX) / 2,
-        y: (bounds.minY + bounds.maxY) / 2,
-        scale: clampScale(wanted),
+        x: cx + (inset.right - inset.left) / 2 / scale,
+        y: cy + (inset.bottom - inset.top) / 2 / scale,
+        scale,
       });
     },
     [size.height, size.width, startSpring]

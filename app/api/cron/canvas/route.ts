@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
-import { importCutoff, syncCanvasFeed } from "@/lib/canvas-ics";
+import { DEFAULT_TIME_ZONE, importCutoff, syncCanvasFeed } from "@/lib/canvas-ics";
 import { getCanvasFeed, recordCanvasSync } from "@/lib/store";
 import { forEachWorkspace } from "@/lib/workspace";
 
@@ -22,7 +22,7 @@ export async function GET(request: Request) {
   const runs = await forEachWorkspace(async () => {
     const feed = getCanvasFeed();
     if (!feed) return { connected: false as const };
-    const result = await syncCanvasFeed(feed.icsUrl, importCutoff());
+    const result = await syncCanvasFeed(feed.icsUrl, importCutoff(), undefined, feed.timeZone ?? DEFAULT_TIME_ZONE);
     recordCanvasSync(result.total);
     return { connected: true as const, ...result };
   });

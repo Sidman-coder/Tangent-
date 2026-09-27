@@ -861,9 +861,10 @@ export function getCanvasFeed(): CanvasFeedConfig | null {
   return g.__tangentCanvasFeed ? { ...g.__tangentCanvasFeed } : null;
 }
 
-export function saveCanvasFeed(icsUrl: string): CanvasFeedConfig {
+export function saveCanvasFeed(icsUrl: string, timeZone?: string): CanvasFeedConfig {
   const config: CanvasFeedConfig = {
     icsUrl,
+    ...(timeZone ? { timeZone } : {}),
     connectedAt: new Date().toISOString(),
     lastSyncedAt: null,
     lastSyncCount: 0,
@@ -871,6 +872,14 @@ export function saveCanvasFeed(icsUrl: string): CanvasFeedConfig {
   g.__tangentCanvasFeed = config;
   console.log("[store] saveCanvasFeed:", icsUrl);
   return { ...config };
+}
+
+/** Remembers the zone once a browser reports it, for feeds connected before
+ *  the zone was recorded. */
+export function setCanvasTimeZone(timeZone: string): boolean {
+  if (!g.__tangentCanvasFeed || g.__tangentCanvasFeed.timeZone) return false;
+  g.__tangentCanvasFeed.timeZone = timeZone;
+  return true;
 }
 
 export function recordCanvasSync(count: number): CanvasFeedConfig | null {

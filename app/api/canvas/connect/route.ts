@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { fetchAndValidateIcs, importCutoff, syncCanvasFeed } from "@/lib/canvas-ics";
-import { getCanvasFeed, saveCanvasFeed, recordCanvasSync } from "@/lib/store";
+import { DEFAULT_TIME_ZONE, fetchAndValidateIcs, importCutoff, isValidTimeZone, normalizeFeedUrl, syncCanvasFeed } from "@/lib/canvas-ics";
+import { getCanvasFeed, saveCanvasFeed, recordCanvasSync, setCanvasTimeZone } from "@/lib/store";
 import { withWorkspaceRoute } from "@/lib/with-workspace";
 
 export const dynamic = "force-dynamic";
@@ -9,8 +9,9 @@ export const maxDuration = 60;
 
 async function POSTHandler(req: Request) {
   try {
-    const body = (await req.json()) as { icsUrl?: string };
-    const icsUrl = body.icsUrl?.trim();
+    const body = (await req.json()) as { icsUrl?: string; timeZone?: string };
+    const icsUrl = body.icsUrl ? normalizeFeedUrl(body.icsUrl) : "";
+    const timeZone = isValidTimeZone(body.timeZone) ? body.timeZone : DEFAULT_TIME_ZONE;
     if (!icsUrl) {
       return NextResponse.json({ ok: false, error: "Paste your Canvas calendar feed link before connecting." }, { status: 400 });
     }
@@ -20,8 +21,8 @@ async function POSTHandler(req: Request) {
       return NextResponse.json({ ok: false, error: validation.error }, { status: 400 });
     }
 
-    const feed = saveCanvasFeed(icsUrl);
-    const result = await syncCanvasFeed(icsUrl, importCutoff(), validation.icsText);
+    saveCanvasFeed(icsUrl, timeZone);
+    const result = await syncCanvasFeed(icsUrl, importCutoff(), validation.icsText, timeZone);
     recordCanvasSync(result.total);
 
     return NextResponse.json({ ok: true, ...result });
@@ -42,8 +43,14 @@ async function POSTHandler(req: Request) {
  */
 async function GETHandler(req: Request) {
   try {
+    const params = new URL(req.url).searchParams;
+    const reportedZone = params.get("tz");
+    // A feed connected before zones were recorded has every due time shifted
+    // to UTC. The first time a browser reports its zone, re-sync at once
+    // rather than waiting out the cooldown, so those tasks get corrected.
+    const zoneJustLearned = isValidTimeZone(reportedZone) && setCanvasTimeZone(reportedZone);
     const feed = getCanvasFeed();
-    const ifStale = Number(new URL(req.url).searchParams.get("ifStale"));
+    const ifStale = Number(params.get("ifStale"));
     if (!feed) {
       // The on-load nudge runs for everyone; most people never connect Canvas.
       // For them there is nothing to do, which is not an error, and answering
@@ -54,14 +61,14 @@ async function GETHandler(req: Request) {
       return NextResponse.json({ ok: false, error: "Canvas isn't connected yet." }, { status: 400 });
     }
 
-    if (Number.isFinite(ifStale) && ifStale > 0 && feed.lastSyncedAt) {
+    if (!zoneJustLearned && Number.isFinite(ifStale) && ifStale > 0 && feed.lastSyncedAt) {
       const age = Date.now() - new Date(feed.lastSyncedAt).getTime();
       if (age < ifStale * 3600_000) {
         return NextResponse.json({ ok: true, skipped: true, lastSyncedAt: feed.lastSyncedAt });
       }
     }
 
-    const result = await syncCanvasFeed(feed.icsUrl, importCutoff());
+    const result = await syncCanvasFeed(feed.icsUrl, importCutoff(), undefined, feed.timeZone ?? DEFAULT_TIME_ZONE);
     const updated = recordCanvasSync(result.total);
 
     return NextResponse.json({ ok: true, ...result, lastSyncedAt: updated?.lastSyncedAt ?? null });
