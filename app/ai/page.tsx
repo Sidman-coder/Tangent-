@@ -25,6 +25,7 @@ import Link from "next/link";
 import PenMark from "@/components/console/PenMark";
 import BriefPanel, { CADENCE_LABEL, type BriefSummary } from "@/components/console/BriefPanel";
 import { formatTime12, toYMD } from "@/lib/dates";
+import { tracksCompletion } from "@/lib/urgency";
 import "./console.css";
 
 type ConsoleMode = "chat" | "brief";
@@ -120,8 +121,13 @@ export default function AiPage() {
     if (!state) return null;
     const ymd = toYMD(new Date());
     const now = new Date().toTimeString().slice(0, 5);
+    // Counts what Today counts. This used to filter on `!completed` alone, so
+    // it swept in School Blocks and commitments — scheduled things that never
+    // get ticked off — and reported a bigger number than the dashboard for the
+    // same day. Canvas assignments still count: they arrive with source
+    // "canvas", which tracksCompletion lets through.
     const open = state.tasks
-      .filter((t) => t.date === ymd && !t.completed)
+      .filter((t) => t.date === ymd && !t.completed && tracksCompletion(t))
       .sort((a, b) => (a.time || "99").localeCompare(b.time || "99"));
     const next = open.find((t) => t.time && t.time >= now) ?? null;
     return { left: open.length, next };

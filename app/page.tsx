@@ -4,9 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
-import { Plus } from "lucide-react";
+import { MessageSquareText, Plus } from "lucide-react";
 import { useAppState } from "@/components/AppStateProvider";
 import ActionReceipt from "@/components/ActionReceipt";
+import TaskChatModal from "@/components/TaskChatModal";
 import AttentionSection, { type AttentionReceipt } from "@/components/dashboard/AttentionSection";
 import MonthRhythm from "@/components/MonthRhythm";
 import WeekAhead from "@/components/dashboard/WeekAhead";
@@ -18,6 +19,7 @@ import { toYMD } from "@/lib/dates";
 import { getGreeting } from "@/lib/greetings";
 import { riseIn, rowPresence, spring, staggerChildren } from "@/lib/motion";
 import { getSchedulePulse } from "@/lib/schedule-insights";
+import { canAskForHelp } from "@/lib/task-help";
 import { taskColor } from "@/lib/task-colors";
 import { getUrgency, tracksCompletion } from "@/lib/urgency";
 
@@ -56,6 +58,9 @@ export default function DashboardPage() {
   const [overrides, setOverrides] = useState<Record<string, Override>>({});
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<AttentionReceipt | null>(null);
+  // The task assistant already existed end to end — component, /api/task-chat,
+  // and per-task history in the store — but nothing ever opened it.
+  const [helpTask, setHelpTask] = useState<Task | null>(null);
   const receiptSeq = useRef(0);
 
   // "Starts in 40 min" and "missed earlier today" drift, so keep the clock live.
@@ -299,6 +304,19 @@ export default function DashboardPage() {
                     kindColor={colorForTask(task)}
                     onComplete={tracksCompletion(task) ? () => void setCompleted(task, !task.completed) : undefined}
                     onOpen={() => router.push(`/calendar?date=${task.date}`)}
+                    actions={
+                      canAskForHelp(task) ? (
+                        <button
+                          type="button"
+                          className="ui-task-help"
+                          onClick={() => setHelpTask(task)}
+                          aria-label={`Get help with ${task.title}`}
+                        >
+                          <MessageSquareText size={13} aria-hidden="true" />
+                          <span>Help</span>
+                        </button>
+                      ) : undefined
+                    }
                   />
                 </m.div>
               ))}
@@ -310,6 +328,8 @@ export default function DashboardPage() {
           </div>
         )}
       </m.section>
+
+      {helpTask && <TaskChatModal task={helpTask} onClose={() => setHelpTask(null)} />}
 
       {recentActions.length > 0 && (
         <m.details variants={riseIn} className="today-recent">

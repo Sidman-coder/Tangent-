@@ -186,12 +186,6 @@
 }
 
 /* Linear: "Get started" label + outlined cards (icon, title, one-line detail). */
-.tg-examples-label {
-  margin: 22px 2px 8px;
-  color: var(--text-2);
-  font: 500 12.5px/1 var(--font-body);
-}
-
 .tg-examples {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

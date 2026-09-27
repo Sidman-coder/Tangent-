@@ -10,7 +10,14 @@
 export function isAuthorizedCronRequest(request: Request): boolean {
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret) {
-    console.warn("[cron] CRON_SECRET is not set — allowing request unauthenticated. Set it before deploying.");
+    // Missing secret used to mean "allow", which is fine on a laptop and an
+    // open door on a public URL. It now only opens the door off production,
+    // so losing the env var fails the cron rather than exposing it.
+    if (process.env.NODE_ENV === "production") {
+      console.error("[cron] CRON_SECRET is not set in production — refusing. See SETUP.md.");
+      return false;
+    }
+    console.warn("[cron] CRON_SECRET is not set — allowing unauthenticated in development only.");
     return true;
   }
   return request.headers.get("authorization") === `Bearer ${cronSecret}`;
