@@ -47,6 +47,11 @@ function ctx() {
   return { db, userId };
 }
 
+/** Postgres returns "…+00:00"; the UI compares ISO strings, so normalise to "…Z". */
+function iso(ts: string): string {
+  return new Date(ts).toISOString();
+}
+
 function fail(where: string, error: { message: string }): never {
   throw new Error(`[store] ${where}: ${error.message}`);
 }
@@ -75,8 +80,6 @@ type LegacyData = {
   voiceLogs: VoiceLogEntry[];
   lastVoiceCommand: string | null;
   lastVoiceResponse: string | null;
-  taskChats: Record<string, ChatMessage[]>;
-  chatSessions: ChatSession[];
 };
 
 const g = global as typeof global & {
@@ -96,8 +99,6 @@ if (!g.__tangentLegacy) {
     voiceLogs: [],
     lastVoiceCommand: null,
     lastVoiceResponse: null,
-    taskChats: {},
-    chatSessions: [],
   };
 }
 const store: LegacyData = g.__tangentLegacy;
@@ -684,64 +685,211 @@ export async function deletePlan(planId: string): Promise<boolean> {
 
 // ─── Task chat functions ──────────────────────────────────────────────────────
 
+const MAX_MESSAGES = 200;
+const MAX_CHATS = 50;
+
+type MessageRow = { id: number; role: "user" | "assistant"; content: string; created_at: string };
+
+function messageFromRow(r: MessageRow): ChatMessage {
+  return { role: r.role, content: r.content, timestamp: iso(r.created_at) };
+}
+
+/** Deletes the oldest rows of a message thread beyond the cap. */
+async function trimThread(table: "chat_messages" | "task_chat_messages", column: "session_id" | "task_id", key: string) {
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from(table)
+    .select("id")
+    .eq("user_id", userId)
+    .eq(column, key)
+    .order("id", { ascending: false })
+    .range(MAX_MESSAGES, MAX_MESSAGES + PAGE - 1);
+  if (error) fail(`trim ${table}`, error);
+  const ids = (data ?? []).map((r: { id: number }) => r.id);
+  if (ids.length === 0) return;
+  const { error: delError } = await db.from(table).delete().eq("user_id", userId).in("id", ids);
+  if (delError) fail(`trim ${table}`, delError);
+}
+
 export async function getTaskChat(taskId: string): Promise<ChatMessage[]> {
-  return (store.taskChats[taskId] ?? []).map((m) => ({ ...m }));
+  if (!isUuid(taskId)) return [];
+  const { db, userId } = ctx();
+  const rows = await selectAll<MessageRow>("getTaskChat", (from, to) =>
+    db
+      .from("task_chat_messages")
+      .select("id, role, content, created_at")
+      .eq("user_id", userId)
+      .eq("task_id", taskId)
+      .order("id")
+      .range(from, to)
+  );
+  return rows.map(messageFromRow);
 }
 
 export async function addTaskChatMessage(taskId: string, role: "user" | "assistant", content: string): Promise<ChatMessage> {
-  if (!store.taskChats[taskId]) store.taskChats[taskId] = [];
-  const msg: ChatMessage = { role, content, timestamp: new Date().toISOString() };
-  store.taskChats[taskId].push(msg);
-  if (store.taskChats[taskId].length > 200) store.taskChats[taskId].splice(0, 1);
+  if (!isUuid(taskId)) throw new Error("[store] addTaskChatMessage: task not found");
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("task_chat_messages")
+    .insert({ user_id: userId, task_id: taskId, role, content })
+    .select("id, role, content, created_at")
+    .single();
+  if (error) fail("addTaskChatMessage", error);
+  await trimThread("task_chat_messages", "task_id", taskId);
   console.log("[store] addTaskChatMessage:", taskId, role, content.slice(0, 60));
-  return { ...msg };
+  return messageFromRow(data as MessageRow);
 }
 
 // ─── Chat session functions ───────────────────────────────────────────────────
 
-function copySession(s: ChatSession): ChatSession {
-  return { ...s, messages: s.messages.map((m) => ({ ...m })) };
+type SessionRow = {
+  id: string;
+  title: string;
+  task_ids: string[];
+  plan_id: string | null;
+  color: string | null;
+  pinned: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+const SESSION_COLUMNS = "id, title, task_ids, plan_id, color, pinned, created_at, updated_at";
+
+function sessionFromRow(r: SessionRow, messages: ChatMessage[]): ChatSession {
+  const s: ChatSession = {
+    id: r.id,
+    title: r.title,
+    messages,
+    createdAt: iso(r.created_at),
+    updatedAt: iso(r.updated_at),
+    pinned: r.pinned,
+  };
+  if (r.task_ids?.length) s.taskIds = [...r.task_ids];
+  if (r.plan_id) s.planId = r.plan_id;
+  if (r.color) s.color = r.color;
+  return s;
 }
 
+async function getSessionRow(sessionId: string): Promise<SessionRow | null> {
+  if (!isUuid(sessionId)) return null;
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("chat_sessions")
+    .select(SESSION_COLUMNS)
+    .eq("user_id", userId)
+    .eq("id", sessionId)
+    .maybeSingle();
+  if (error) fail("getChatSession", error);
+  return (data as SessionRow | null) ?? null;
+}
+
+async function updateSessionRow(where: string, sessionId: string, row: Record<string, unknown>): Promise<SessionRow | null> {
+  if (!isUuid(sessionId)) return null;
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("chat_sessions")
+    .update(row)
+    .eq("user_id", userId)
+    .eq("id", sessionId)
+    .select(SESSION_COLUMNS)
+    .maybeSingle();
+  if (error) fail(where, error);
+  return (data as SessionRow | null) ?? null;
+}
+
+async function sessionMessages(sessionIds: string[]): Promise<Map<string, ChatMessage[]>> {
+  const bySession = new Map<string, ChatMessage[]>();
+  if (sessionIds.length === 0) return bySession;
+  const { db, userId } = ctx();
+  const rows = await selectAll<MessageRow & { session_id: string }>("chat messages", (from, to) =>
+    db
+      .from("chat_messages")
+      .select("id, session_id, role, content, created_at")
+      .eq("user_id", userId)
+      .in("session_id", sessionIds)
+      .order("id")
+      .range(from, to)
+  );
+  for (const r of rows) {
+    const list = bySession.get(r.session_id) ?? [];
+    list.push(messageFromRow(r));
+    bySession.set(r.session_id, list);
+  }
+  return bySession;
+}
+
+/** Newest chat first, each with its messages (the chat list searches them). */
 export async function getAllChatSessions(): Promise<ChatSession[]> {
-  return store.chatSessions.map(copySession);
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("chat_sessions")
+    .select(SESSION_COLUMNS)
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .order("id")
+    .limit(MAX_CHATS);
+  if (error) fail("getAllChatSessions", error);
+  const rows = (data ?? []) as SessionRow[];
+  const messages = await sessionMessages(rows.map((r) => r.id));
+  return rows.map((r) => sessionFromRow(r, messages.get(r.id) ?? []));
 }
 
 export async function createChatSession(title?: string): Promise<ChatSession> {
-  const session: ChatSession = {
-    id: uid("sess"),
-    title: title ?? `Chat ${new Date().toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`,
-    messages: [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-  store.chatSessions.unshift(session);
-  if (store.chatSessions.length > 50) store.chatSessions.length = 50;
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("chat_sessions")
+    .insert({
+      user_id: userId,
+      title: title ?? `Chat ${new Date().toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`,
+    })
+    .select(SESSION_COLUMNS)
+    .single();
+  if (error) fail("createChatSession", error);
+  const session = sessionFromRow(data as SessionRow, []);
+
+  // Keep the newest MAX_CHATS chats; their messages cascade.
+  const { data: old, error: oldError } = await db
+    .from("chat_sessions")
+    .select("id")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .order("id")
+    .range(MAX_CHATS, MAX_CHATS + PAGE - 1);
+  if (oldError) fail("createChatSession", oldError);
+  const oldIds = (old ?? []).map((r: { id: string }) => r.id);
+  if (oldIds.length) {
+    const { error: delError } = await db.from("chat_sessions").delete().eq("user_id", userId).in("id", oldIds);
+    if (delError) fail("createChatSession", delError);
+  }
+
   console.log("[store] createChatSession:", session.id, session.title);
-  return { ...session, messages: [] };
+  return session;
 }
 
 export async function getChatSession(sessionId: string): Promise<ChatSession | null> {
-  const s = store.chatSessions.find((s) => s.id === sessionId);
-  return s ? copySession(s) : null;
+  const row = await getSessionRow(sessionId);
+  if (!row) return null;
+  const messages = await sessionMessages([row.id]);
+  return sessionFromRow(row, messages.get(row.id) ?? []);
 }
 
 export async function addChatSessionMessage(sessionId: string, role: "user" | "assistant", content: string): Promise<ChatMessage | null> {
-  const session = store.chatSessions.find((s) => s.id === sessionId);
-  if (!session) return null;
-  const msg: ChatMessage = { role, content, timestamp: new Date().toISOString() };
-  session.messages.push(msg);
-  session.updatedAt = new Date().toISOString();
-  if (session.messages.length > 200) session.messages.splice(0, 1);
-  return { ...msg };
+  const row = await updateSessionRow("addChatSessionMessage", sessionId, { updated_at: new Date().toISOString() });
+  if (!row) return null;
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("chat_messages")
+    .insert({ user_id: userId, session_id: sessionId, role, content })
+    .select("id, role, content, created_at")
+    .single();
+  if (error) fail("addChatSessionMessage", error);
+  await trimThread("chat_messages", "session_id", sessionId);
+  return messageFromRow(data as MessageRow);
 }
 
 export async function renameChatSession(sessionId: string, title: string): Promise<boolean> {
-  const session = store.chatSessions.find((s) => s.id === sessionId);
-  if (!session) return false;
-  session.title = title.trim() || session.title;
-  session.updatedAt = new Date().toISOString();
-  return true;
+  if (!title.trim()) return !!(await getSessionRow(sessionId));
+  return !!(await updateSessionRow("renameChatSession", sessionId, { title: title.trim(), updated_at: new Date().toISOString() }));
 }
 
 /** Sets a chat's user-chosen highlight color (null clears it) and/or pin state. */
@@ -749,11 +897,12 @@ export async function styleChatSession(
   sessionId: string,
   style: { color?: string | null; pinned?: boolean }
 ): Promise<ChatSession | null> {
-  const session = store.chatSessions.find((s) => s.id === sessionId);
-  if (!session) return null;
-  if (style.color !== undefined) session.color = style.color;
-  if (style.pinned !== undefined) session.pinned = style.pinned;
-  return copySession(session);
+  const row: Record<string, unknown> = {};
+  if (style.color !== undefined) row.color = style.color;
+  if (style.pinned !== undefined) row.pinned = style.pinned;
+  if (Object.keys(row).length === 0) return getChatSession(sessionId);
+  if (!(await updateSessionRow("styleChatSession", sessionId, row))) return null;
+  return getChatSession(sessionId);
 }
 
 /** Links a chat to the tasks/plan an action touched (read from the action's
@@ -762,13 +911,13 @@ export async function linkChatSession(
   sessionId: string,
   link: { actionId?: string; taskIds?: string[]; planId?: string | null }
 ): Promise<ChatSession | null> {
-  const session = store.chatSessions.find((s) => s.id === sessionId);
-  if (!session) return null;
-  const taskIds = new Set(session.taskIds ?? []);
-  let planId = session.planId ?? null;
+  const current = await getSessionRow(sessionId);
+  if (!current) return null;
+  const taskIds = new Set(current.task_ids ?? []);
+  let planId = current.plan_id;
 
   if (link.actionId) {
-    const snap = g.__tangentActions!.find((a) => a.id === link.actionId)?.snapshot;
+    const snap = (await findActionRecord(link.actionId))?.snapshot;
     if (snap) {
       if (snap.addedPlanId) planId = snap.addedPlanId;
       for (const id of snap.addedTaskIds ?? []) taskIds.add(id);
@@ -780,15 +929,20 @@ export async function linkChatSession(
   for (const id of link.taskIds ?? []) taskIds.add(id);
   if (link.planId) planId = link.planId;
 
-  session.taskIds = Array.from(taskIds);
-  session.planId = planId;
-  return copySession(session);
+  const row = await updateSessionRow("linkChatSession", sessionId, {
+    task_ids: Array.from(taskIds).filter(isUuid),
+    plan_id: isUuid(planId) ? planId : null,
+  });
+  if (!row) return null;
+  return getChatSession(sessionId);
 }
 
 export async function deleteChatSession(sessionId: string): Promise<boolean> {
-  const idx = store.chatSessions.findIndex((s) => s.id === sessionId);
-  if (idx === -1) return false;
-  store.chatSessions.splice(idx, 1);
+  if (!isUuid(sessionId)) return false;
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("chat_sessions").delete().eq("user_id", userId).eq("id", sessionId).select("id");
+  if (error) fail("deleteChatSession", error);
+  if (!data?.length) return false;
   console.log("[store] deleteChatSession:", sessionId);
   return true;
 }
@@ -935,6 +1089,10 @@ export async function recordAction(
   }
   console.log("[store] recordAction:", record.id, kind, "-", summary);
   return { ...record };
+}
+
+async function findActionRecord(id: string): Promise<ActionRecord | null> {
+  return g.__tangentActions!.find((a) => a.id === id) ?? null;
 }
 
 export async function getRecentActions(limit = 20): Promise<ActionRecord[]> {
