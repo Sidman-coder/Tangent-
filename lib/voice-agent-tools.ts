@@ -15,6 +15,7 @@ import { currentUserIsOwner } from "@/lib/request-context";
 import { resolvePlanTitle } from "@/lib/plan-title";
 import { perfCount, perfSpan } from "@/lib/perf";
 import { callClaude } from "@/lib/ai/call";
+import { cacheLastMessage, layeredSystem } from "@/lib/ai/cache";
 import type Anthropic from "@anthropic-ai/sdk";
 
 const MAX_TOOL_TURNS = 8;
@@ -511,15 +512,12 @@ async function executeTool(name: string, input: Record<string, unknown>, request
   }
 }
 
-async function systemPrompt(tz: string, userContext?: string): Promise<string> {
+/** Agent prompt in cache order (lib/ai/cache.ts): tools and the playbook are the
+ *  same for every student; their memory and calendars follow; the date is last. */
+async function systemPrompt(tz: string, userContext?: string): Promise<Anthropic.TextBlockParam[]> {
   const calendars = await getCalendars();
   const calendarList = calendars.map((c) => `${c.id} (${c.name})`).join(", ");
-
-  return `You are TANGENT's voice assistant. ${promptDateContext(tz)}
-
-The user gave a voice command that may require reading their Gmail, Canvas or calendar data before you can respond or act.
-${userContext ? `
-USER CONTEXT (what you know about this user from past interactions):
+  const context = `${userContext ? `USER CONTEXT (what you know about this user from past interactions):
 ${userContext}
 
 Use this context to:
@@ -527,10 +525,17 @@ Use this context to:
 - Reference their goals and commitments when relevant
 - Personalize suggestions based on their patterns
 - Never ask for information you already know from context
-` : ''}
+
+` : ""}Current calendars: ${calendarList}`;
+  return layeredSystem({ playbook: AGENT_PLAYBOOK, context, volatile: promptDateContext(tz) });
+}
+
+const AGENT_PLAYBOOK = `You are TANGENT's voice assistant. The student's local date and time are given at the very end; resolve every relative date against them.
+
+The user gave a voice command that may require reading their Gmail, Canvas or calendar data before you can respond or act.
 
 CALENDAR AWARENESS:
-Current calendars: ${calendarList}
+The student's current calendars are listed after these instructions.
 Always assign tasks to the correct calendar based on content.
 Work tasks → cal_work
 Personal tasks → cal_personal
@@ -574,7 +579,6 @@ It must reference something real — a specific resource linked in the resources
 It must be under 20 words.
 It must start with a verb — Watch, Read, Open, Write, Complete, Solve, Review, Draft.
 Never say "Start by" or "Begin with" — just give the direct action.`;
-}
 
 export type ToolLoopResult = {
   response: string;
@@ -630,12 +634,15 @@ export async function runVoiceAgentToolLoop(userText: string, requestText = user
   let lastActionId: string | undefined;
   const sourcesChecked = new Set<string>();
 
+  // Built once: every turn re-sends the same prefix, and turn N+1 reads turn N's
+  // cached prompt (breakpoint on the newest message) instead of paying for it again.
+  const system = await systemPrompt(tz, userContext);
   for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
     perfCount("tool-loop turns");
     const res = await callClaude("agent", {
-      system: await systemPrompt(tz, userContext),
+      system,
       tools: TOOLS as unknown as Anthropic.Tool[],
-      messages: messages as unknown as Anthropic.MessageParam[],
+      messages: cacheLastMessage(messages as unknown as Anthropic.MessageParam[]),
     });
 
     if (!res.ok) throw new Error(`Anthropic error ${res.status}: ${res.error}`);

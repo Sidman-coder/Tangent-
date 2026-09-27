@@ -155,15 +155,21 @@ export type UsageTokens = {
   output_tokens?: number | null;
   cache_creation_input_tokens?: number | null;
   cache_read_input_tokens?: number | null;
+  /** Per-TTL split of cache_creation_input_tokens, when the API reports it. */
+  cache_creation?: { ephemeral_5m_input_tokens?: number | null; ephemeral_1h_input_tokens?: number | null } | null;
 };
 
-/** Estimated USD cost of one response. Cache writes are priced at the task's TTL. */
+/** Estimated USD cost of one response. Cache writes are priced per TTL from the
+ *  usage breakdown, else at the task's TTL. */
 export function estimateCostUsd(model: string, usage: UsageTokens, opts: { batch?: boolean; cacheTtl?: "5m" | "1h" } = {}): number {
   const p = priceFor(model);
-  const writeMult = opts.cacheTtl === "1h" ? 2 : 1.25;
+  const split = usage.cache_creation;
+  const writeUnits = split
+    ? (split.ephemeral_5m_input_tokens ?? 0) * 1.25 + (split.ephemeral_1h_input_tokens ?? 0) * 2
+    : (usage.cache_creation_input_tokens ?? 0) * (opts.cacheTtl === "1h" ? 2 : 1.25);
   const usd =
     ((usage.input_tokens ?? 0) * p.input +
-      (usage.cache_creation_input_tokens ?? 0) * p.input * writeMult +
+      writeUnits * p.input +
       (usage.cache_read_input_tokens ?? 0) * p.input * 0.1 +
       (usage.output_tokens ?? 0) * p.output) /
     1_000_000;

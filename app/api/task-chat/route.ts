@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getTaskChat, addTaskChatMessage, getAllTasks } from "@/lib/store";
 import { withUser } from "@/lib/request-context";
 import { callClaude, messageText } from "@/lib/ai/call";
+import { cacheHistory } from "@/lib/ai/cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -77,10 +78,11 @@ Do not output JSON. Respond only in plain conversational text.`;
 
     const anthropicResponse = await callClaude("taskChat", {
       system: systemPrompt,
-      messages: [
+      // Settled history cached (lib/ai/cache.ts); takes effect once a long chat passes the minimum.
+      messages: cacheHistory([
         ...conversationHistory,
         { role: "user", content: message.trim() },
-      ],
+      ]),
     });
 
     if (!anthropicResponse.ok) {

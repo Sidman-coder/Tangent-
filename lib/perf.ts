@@ -61,9 +61,10 @@ export function perfCount(name: string, by = 1): void {
 }
 
 /** Records one Claude call (lib/ai/call.ts calls this): model, tokens, duration. */
-export function perfClaude(label: string, model: string, inTok: number, outTok: number, ms: number, status: number, cacheRead = 0): void {
+export function perfClaude(label: string, model: string, inTok: number, outTok: number, ms: number, status: number, cacheRead = 0, cacheWrite = 0): void {
   if (!perfEnabled()) return;
-  const cached = cacheRead > 0 ? ` (${cacheRead} cached)` : "";
+  const parts = [cacheRead > 0 ? `${cacheRead} cached` : "", cacheWrite > 0 ? `${cacheWrite} cache-written` : ""].filter(Boolean);
+  const cached = parts.length ? ` (${parts.join(", ")})` : "";
   console.log(`[perf] claude ${label}: ${model} | in ${inTok} tok${cached}, out ${outTok} tok | ${ms} ms | HTTP ${status}`);
   traces.getStore()?.claude.push({ label, model, inTok, outTok, ms, status });
 }

@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { perfClaude } from "@/lib/perf";
 import { isOwnerEmail } from "@/lib/auth/access";
 import { getRequestContext, type RequestContext } from "@/lib/request-context";
+import { enforceCacheRules } from "@/lib/ai/cache";
 
 // Every Claude call goes through callClaude(). It picks the model for the task
 // (lib/ai/models.ts), enforces the per-student daily budget, and records one
@@ -180,7 +181,13 @@ async function prepare(task: AiTask, request: ClaudeRequest, opts: CallOptions):
 
   const params = modelParams(task, { tier, format: opts.format as Record<string, unknown> | undefined });
   const { max_tokens, ...rest } = request;
-  const body = { ...rest, ...params, max_tokens: max_tokens ?? params.max_tokens } as Anthropic.MessageCreateParamsNonStreaming;
+  // Cloned: cache rules depend on the model, and callers reuse requests
+  // across models (FAST → SMART escalation).
+  const body = structuredClone({ ...rest, ...params, max_tokens: max_tokens ?? params.max_tokens }) as Anthropic.MessageCreateParamsNonStreaming;
+  const cache = enforceCacheRules(body as Parameters<typeof enforceCacheRules>[0], params.model);
+  if (cache.dropped > 0 && process.env.NODE_ENV !== "production") {
+    console.log(`[ai] ${task}: ${cache.dropped} cache breakpoint(s) below ${params.model}'s minimum, not sent`);
+  }
   return { cfg, userId, route, model: params.model, body };
 }
 
@@ -188,11 +195,12 @@ async function finish(task: AiTask, p: Exclude<Prepared, { blocked: ClaudeResult
   perfClaude(
     opts.label ?? task,
     message.model,
-    (message.usage.input_tokens ?? 0) + (message.usage.cache_read_input_tokens ?? 0),
+    (message.usage.input_tokens ?? 0) + (message.usage.cache_read_input_tokens ?? 0) + (message.usage.cache_creation_input_tokens ?? 0),
     message.usage.output_tokens ?? 0,
     durationMs,
     200,
     message.usage.cache_read_input_tokens ?? 0,
+    message.usage.cache_creation_input_tokens ?? 0,
   );
   await recordUsage({ userId: p.userId, feature: p.cfg.feature, model: p.model, usage: message.usage, durationMs, cacheTtl: p.cfg.cacheTtl, route: p.route });
   return { ok: true, message, model: p.model, degraded: p.route === "budget:fast" };

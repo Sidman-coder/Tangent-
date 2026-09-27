@@ -23,7 +23,9 @@ import { extractStructuredJson } from "@/lib/anthropic-json";
 import { generatePlan, isClearPlanRequest, planDates } from "@/lib/ai/plan";
 import { resolvePlanTitle } from "@/lib/plan-title";
 import { perfCount, perfSpan, withPerfTrace } from "@/lib/perf";
+import type Anthropic from "@anthropic-ai/sdk";
 import { callClaude, recordUsage } from "@/lib/ai/call";
+import { layeredSystem } from "@/lib/ai/cache";
 import { matchTask, routeCommand, ROUTES, type FastRoute } from "@/lib/ai/router";
 import { getRequestContext, setAiRoute } from "@/lib/request-context";
 import { formatTime12 } from "@/lib/dates";
@@ -229,12 +231,25 @@ function inferPlanKind(topic: string): TaskKind {
   return SIDE_EC_KEYWORDS.test(topic) ? "side-ec" : "academic-ec";
 }
 
-async function voiceSystemPrompt(tz: string, userContext?: string): Promise<string> {
-  const { date: today, year: currentYear } = localNow(tz);
+/** Voice command prompt in cache order (lib/ai/cache.ts): the playbook is the
+ *  same for every student; their memory and calendars follow; the date is last. */
+async function voiceSystemPrompt(tz: string, userContext?: string): Promise<Anthropic.TextBlockParam[]> {
   const calendars = await getCalendars();
   const calendarList = calendars.map((c) => `${c.id} (${c.name})`).join(", ");
+  const context = `${userContext ? `USER CONTEXT (what you know about this user from past interactions):
+${userContext}
 
-  return `TONE AND VOICE RULES — follow these exactly:
+Use this context to:
+- Schedule tasks at times that match their preferences
+- Reference their goals and commitments when relevant
+- Personalize suggestions based on their patterns
+- Never ask for information you already know from context
+
+` : ""}Current calendars: ${calendarList}`;
+  return layeredSystem({ playbook: VOICE_PLAYBOOK, context, volatile: promptDateContext(tz) });
+}
+
+const VOICE_PLAYBOOK = `TONE AND VOICE RULES — follow these exactly:
 - Write like a smart focused personal assistant, not like an AI chatbot
 - Never use filler phrases like "Certainly!", "Of course!", "Great question!", "Sure!", "Absolutely!"
 - Never start a response with "I"
@@ -243,20 +258,9 @@ async function voiceSystemPrompt(tz: string, userContext?: string): Promise<stri
 - When confirming a task was added say exactly what was added and when, nothing else
 - When summarizing information be precise and factual, not enthusiastic
 - Responses should feel like a text from a competent friend, not a customer service bot
-${userContext ? `
-USER CONTEXT (what you know about this user from past interactions):
-${userContext}
-
-Use this context to:
-- Schedule tasks at times that match their preferences
-- Reference their goals and commitments when relevant
-- Personalize suggestions based on their patterns
-- Never ask for information you already know from context
-` : ''}
 
 CALENDAR AWARENESS:
-The user has multiple calendars. Before adding any task you must determine which calendar it belongs to.
-Current calendars: ${calendarList}
+The user has multiple calendars (listed after these instructions). Before adding any task you must determine which calendar it belongs to.
 Default rules for calendar assignment:
 - Work related tasks (meetings, calls, projects, deadlines, client work) → use the work calendar
 - Personal tasks (gym, health, hobbies, family, errands) → use the personal calendar
@@ -269,7 +273,7 @@ When the user says "move tasks to X calendar" use the move_tasks action.
 When the user says "add this to my work calendar" or any named calendar use that calendar's id.
 When the user asks what calendars they have, use the get_calendars action.
 
-${promptDateContext(tz)}
+The student's local date and time are given at the very end. Resolve every relative date against them.
 
 --- RECURRING COMMAND (use this when user says "every", "each", "weekly", "daily", "monthly", "every Saturday", "every Monday", "every weekday", "every day", "every week", etc.) ---
 Return this exact JSON:
@@ -284,7 +288,7 @@ Examples:
 - "every day" → frequency:"daily", daysOfWeek:null
 - "every Monday and Wednesday" → frequency:"weekly", daysOfWeek:[1,3]
 - "every month on the 15th" → frequency:"monthly", daysOfWeek:null
-- If no end date specified, default endDate to end of current year (${currentYear}-12-31)
+- If no end date specified, default endDate to December 31 of the current year
 
 --- PLAN REQUEST (use this when user asks for a study plan, workout plan, project plan, weekly schedule, exam prep, or any multi-step goal) ---
 Return this exact JSON:
@@ -349,13 +353,12 @@ Return this exact JSON:
 Required fields: targetCalendarId (string — the id or exact name of the destination calendar). For move_tasks, reuse the "title" field as a keyword to match task titles, and "startDate"/"endDate" as an optional YYYY-MM-DD date range to filter by. Omit them entirely to match all tasks.
 
 Rules:
-- If no date mentioned use today (${today}). Default time: 09:00.
+- If no date mentioned use the student's local date (given at the end). Default time: 09:00.
 - Choose recurring vs single based on whether the user says a repeating word like "every" or "each".
 - Choose plan vs single based on whether the user wants a multi-step schedule (plan) or one specific task (single).
 - Use delete_all_tasks ONLY for explicit clear/wipe/remove-all commands, never for deleting a single task.
 - Use get_calendars when the user asks what calendars exist.
 - Use move_tasks when the user asks to move, reassign, or transfer tasks to a different calendar.`;
-}
 
 async function findTaskByTitle(title: string) {
   const tasks = await getAllTasks();

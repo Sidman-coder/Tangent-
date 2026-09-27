@@ -5,6 +5,7 @@ import { extractContextFacts } from "@/lib/context-extract";
 import { getUserTimezone } from "@/lib/store";
 import { promptDateContext } from "@/lib/time";
 import { callClaude, messageText } from "@/lib/ai/call";
+import { cacheHistory, withDateLast } from "@/lib/ai/cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,8 +13,8 @@ export const dynamic = "force-dynamic";
 /** "calendar" acts on the calendar; "plan" only talks a plan through. */
 type ChatMode = "plan" | "calendar";
 
-const PLAN_SYSTEM = (dateContext: string) => `You are TANGENT AI in Plan mode — a thinking partner for planning time.
-${dateContext}
+const PLAN_SYSTEM = `You are TANGENT AI in Plan mode — a thinking partner for planning time.
+The student's local date and time are given at the end of their latest message.
 In Plan mode you never add, move, or delete anything; you help the user work out what to do and when.
 - Ask at most one short clarifying question when something essential (dates, hours per week, deadline) is missing.
 - When you propose a schedule, list each session on its own line as "Day, date — time — what", 3 to 10 lines.
@@ -29,9 +30,11 @@ function conversationContext(messages: { role: string; content: string }[]): str
 }
 
 async function planReply(messages: { role: "user" | "assistant"; content: string }[]): Promise<string> {
+  // Static system, settled history cached, date last (lib/ai/cache.ts). The
+  // history breakpoint only takes effect once a long talk passes the minimum.
   const res = await callClaude("chatPlan", {
-    system: PLAN_SYSTEM(promptDateContext(await getUserTimezone())),
-    messages: messages.slice(-12),
+    system: PLAN_SYSTEM,
+    messages: withDateLast(cacheHistory(messages.slice(-12)), promptDateContext(await getUserTimezone())),
   });
   if (!res.ok) throw new Error(res.budgetExceeded ? res.error : `Anthropic error ${res.status}`);
   const text = messageText(res.message);
