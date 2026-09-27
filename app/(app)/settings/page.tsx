@@ -20,6 +20,7 @@ import {
   requestDesktopNotifPermission,
   setDesktopNotifSetting,
 } from "@/lib/desktop-notifications";
+import { getInAppPopupsEnabled, setInAppPopupsEnabled } from "@/lib/notification-popups";
 
 const FONT_MODE_PREVIEWS: Record<FontMode, { name: string; display: string }> = {
   formal: { name: "Formal", display: "'Libre Caslon Display', serif" },
@@ -41,6 +42,19 @@ export default function SettingsPage() {
   const [desktopNotifEnabled, setDesktopNotifEnabled] = useState(false);
   const [desktopNotifPermission, setDesktopNotifPermission] = useState<NotificationPermission | null>(null);
   const [desktopNotifSupported, setDesktopNotifSupported] = useState(true);
+  const [inAppPopups, setInAppPopups] = useState(true);
+  const accountEmail = state?.user.email ?? "";
+
+  useEffect(() => {
+    if (accountEmail) setInAppPopups(getInAppPopupsEnabled(accountEmail));
+  }, [accountEmail]);
+
+  const onToggleInAppPopups = () => {
+    if (!accountEmail) return;
+    const next = !inAppPopups;
+    setInAppPopupsEnabled(accountEmail, next);
+    setInAppPopups(next);
+  };
 
   useEffect(() => {
     if (!state) return;
@@ -204,7 +218,21 @@ export default function SettingsPage() {
           </section>
 
           <section id="notifications" className="settings-panel">
-            <div className="settings-panel-head"><div><h2>Notifications</h2><p>Get an OS notification for new alerts while a Tangent tab is open.</p></div></div>
+            <div className="settings-panel-head"><div><h2>Notifications</h2><p>Choose how new alerts reach you while a Tangent tab is open.</p></div></div>
+            <div className="settings-option-row">
+              <div><strong>In-app popups</strong><span>Show a short popup inside Tangent when a new notification arrives. Each one pops once.</span></div>
+              <button
+                type="button"
+                className={`toggle-switch${inAppPopups ? " on" : ""}`}
+                role="switch"
+                aria-checked={inAppPopups}
+                aria-label="Toggle in-app popups"
+                onClick={onToggleInAppPopups}
+                disabled={!accountEmail}
+              >
+                <span className="toggle-knob" />
+              </button>
+            </div>
             <div className="settings-option-row">
               <div><strong>Desktop notifications</strong><span>{desktopNotifHint}</span></div>
               <button

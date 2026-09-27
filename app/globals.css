@@ -8091,3 +8091,48 @@ textarea:focus {
   .canvas-guide-image-wrap { aspect-ratio: 4 / 3; }
   .canvas-guide-footer { padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
 }
+
+/* ── In-app notification popups (components/NotificationToasts.tsx) ── */
+.notif-toasts {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: min(340px, calc(100vw - 2rem));
+  pointer-events: none;
+}
+
+.notif-toast {
+  pointer-events: auto;
+  display: flex;
+  gap: 0.65rem;
+  padding: 0.85rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+  animation: notifToastIn 0.2s ease;
+}
+
+@keyframes notifToastIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (max-width: 720px) {
+  .notif-toasts {
+    top: calc(0.75rem + env(safe-area-inset-top, 0px));
+    bottom: auto;
+    left: 1rem;
+    right: 1rem;
+    width: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notif-toast { animation: none; }
+}

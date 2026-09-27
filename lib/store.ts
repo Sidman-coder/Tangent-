@@ -1237,6 +1237,38 @@ export async function dismissAllNotifications(): Promise<void> {
   if (error) fail("dismissAllNotifications", error);
 }
 
+const MAX_POPUP_CLAIM = MAX_NOTIFICATIONS;
+let warnedShownAtMissing = false;
+
+/** Marks notifications as popped and returns the ids this call claimed —
+ *  the ones that had never popped before (unread, live, own rows only). The
+ *  single conditional UPDATE makes it race-safe across tabs and devices.
+ *  Returns null when the shown_at migration hasn't been applied yet; the
+ *  browser then falls back to its own per-user record. */
+export async function claimNotificationPopups(ids: unknown[]): Promise<string[] | null> {
+  const valid = Array.from(new Set(ids.filter(isUuid))).slice(0, MAX_POPUP_CLAIM);
+  if (valid.length === 0) return [];
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("notifications")
+    .update({ shown_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .in("id", valid)
+    .is("shown_at", null)
+    .eq("read", false)
+    .eq("dismissed", false)
+    .select("id");
+  if (error) {
+    if (error.code === "42703" || error.code === "PGRST204" || /shown_at/.test(error.message)) {
+      if (!warnedShownAtMissing) console.warn("[store] claimNotificationPopups: notifications.shown_at missing — apply migration 20260927010000; browser fallback in use");
+      warnedShownAtMissing = true;
+      return null;
+    }
+    fail("claimNotificationPopups", error);
+  }
+  return ((data ?? []) as { id: string }[]).map((r) => r.id);
+}
+
 export async function getUnreadNotificationCount(): Promise<number> {
   const { db, userId } = ctx();
   const { count, error } = await db

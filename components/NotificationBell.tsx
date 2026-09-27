@@ -1,10 +1,12 @@
 "use client"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Sun, Lightbulb, AlertTriangle, Clock, Calendar, Bell, X, type LucideIcon } from "lucide-react"
 import { Notification } from "@/lib/types"
 import { notifyNewDesktopNotifications } from "@/lib/desktop-notifications"
-import { useUserTimezone } from "@/components/AppStateProvider"
+import { useAppState, useUserTimezone } from "@/components/AppStateProvider"
 import { getUserToday } from "@/lib/time"
+import { claimPopups, getInAppPopupsEnabled, planToasts, popupCandidates, type Toast } from "@/lib/notification-popups"
+import NotificationToasts from "@/components/NotificationToasts"
 
 type NotificationBellProps = {
   open?: boolean
@@ -13,6 +15,11 @@ type NotificationBellProps = {
 
 export default function NotificationBell({ open: openProp, onOpenChange }: NotificationBellProps = {}) {
   const tz = useUserTimezone()
+  const email = useAppState().state?.user.email ?? ""
+  const [toasts, setToasts] = useState<Toast[]>([])
+  // Ids already asked about in this tab, so each poll only claims new ones.
+  const askedRef = useRef<Set<string>>(new Set())
+  const lastFetchRef = useRef(0)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
@@ -27,6 +34,7 @@ export default function NotificationBell({ open: openProp, onOpenChange }: Notif
   }, [isControlled, onOpenChange, open])
 
   const fetchNotifications = useCallback(async () => {
+    lastFetchRef.current = Date.now()
     try {
       const r = await fetch("/api/notifications")
       const data = await r.json()
@@ -45,6 +53,56 @@ export default function NotificationBell({ open: openProp, onOpenChange }: Notif
     const interval = setInterval(fetchNotifications, 60000)
     return () => clearInterval(interval)
   }, [fetchNotifications])
+
+  // Refetch as soon as the tab comes back (not a second loop — one fetch per
+  // return, and never twice within 5 s since focus and visibility fire together).
+  useEffect(() => {
+    const onReturn = () => {
+      if (document.visibilityState !== "visible") return
+      if (Date.now() - lastFetchRef.current < 5000) return
+      void fetchNotifications()
+    }
+    window.addEventListener("focus", onReturn)
+    document.addEventListener("visibilitychange", onReturn)
+    return () => {
+      window.removeEventListener("focus", onReturn)
+      document.removeEventListener("visibilitychange", onReturn)
+    }
+  }, [fetchNotifications])
+
+  // In-app popups for notifications that have never popped (see
+  // lib/notification-popups.ts). Rides on the data the poll just fetched.
+  useEffect(() => {
+    if (!email) return
+    const fresh = popupCandidates(notifications).filter(n => !askedRef.current.has(n.id))
+    if (fresh.length === 0) return
+    fresh.forEach(n => askedRef.current.add(n.id))
+    const silent = open || !getInAppPopupsEnabled(email)
+    void claimPopups(fresh.map(n => n.id), email, async (ids) => {
+      const r = await fetch("/api/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "claim_popups", ids })
+      })
+      if (!r.ok) throw new Error("claim failed")
+      return r.json()
+    }).then(claimed => {
+      // Inbox open or popups off: claimed (so they never pop later) but not shown.
+      if (silent || claimed.length === 0) return
+      const ids = new Set(claimed)
+      // Oldest first so the newest ends up at the bottom of the stack.
+      const incoming = fresh.filter(n => ids.has(n.id)).reverse()
+      setToasts(current => planToasts(current, incoming))
+    }).catch(() => {
+      // Try again on the next poll.
+      fresh.forEach(n => askedRef.current.delete(n.id))
+    })
+  }, [notifications, email, open])
+
+  // Opening the inbox clears popups; everything is in the list anyway.
+  useEffect(() => {
+    if (open) setToasts([])
+  }, [open])
 
   // Run proactive check on mount
   useEffect(() => {
@@ -150,8 +208,16 @@ export default function NotificationBell({ open: openProp, onOpenChange }: Notif
     )
   }
 
+  const dismissToast = (key: string) => setToasts(current => current.filter(t => t.key !== key))
+
   return (
     <div className="notif-bell-wrapper">
+      <NotificationToasts
+        toasts={toasts}
+        onDismiss={dismissToast}
+        onAction={n => void handleReschedule(n)}
+        onOpenInbox={() => setOpen(true)}
+      />
       <button
         className="notif-bell-btn"
         onClick={() => setOpen(o => !o)}

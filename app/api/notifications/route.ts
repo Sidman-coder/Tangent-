@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getNotifications, markNotificationRead, dismissNotification, dismissAllNotifications, getUnreadNotificationCount } from "@/lib/store";
+import { getNotifications, markNotificationRead, dismissNotification, dismissAllNotifications, getUnreadNotificationCount, claimNotificationPopups } from "@/lib/store";
 import { withUser } from "@/lib/request-context";
 
 export const runtime = "nodejs";
@@ -24,6 +24,13 @@ export const POST = withUser(async (request: Request) => {
     if (body.action === "dismiss") {
       await dismissNotification(body.id);
       return NextResponse.json({ ok: true });
+    }
+
+    if (body.action === "claim_popups") {
+      // Which of these have never popped? Claimed ids are now marked shown.
+      // null = shown_at not migrated yet; the browser uses its own record.
+      const claimed = await claimNotificationPopups(Array.isArray(body.ids) ? body.ids : []);
+      return NextResponse.json({ ok: true, claimed });
     }
 
     if (body.action === "dismiss_all") {
