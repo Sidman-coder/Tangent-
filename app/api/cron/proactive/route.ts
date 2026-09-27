@@ -7,17 +7,16 @@ import { forEachCronUser } from "@/lib/cron-users";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Scheduled in vercel.json. Runs once per student (forEachCronUser), in that
-// student's timezone. Runs proactive-notification generation on a fixed
-// cadence so overdue-task and reschedule-offer notifications don't go stale for
+// Scheduled in vercel.json (daily, 15:00 UTC). Runs once per student
+// (forEachCronUser), in that student's timezone. Runs proactive-notification
+// generation on a fixed cadence so overdue-task and reschedule-offer notifications don't go stale for
 // days if the student never happens to load a page (the only other trigger for
 // this check — see app/api/proactive/route.ts).
 //
 // Also opportunistically polls for a pending Daily Brief batch (see
-// app/api/cron/daily-brief/route.ts). That route only runs once a day, so without
-// this, a batch submitted in the morning wouldn't get turned into a notification
-// until the following day's tick. This route runs more often, so it acts as the
-// poller that finalizes it the same day it was submitted.
+// app/api/cron/daily-brief/route.ts, 12:00 UTC). Without this, a batch submitted
+// by that route wouldn't become a notification until the following day's tick.
+// This route runs three hours later, so it finalizes the batch the same day.
 export async function GET(request: Request) {
   if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });

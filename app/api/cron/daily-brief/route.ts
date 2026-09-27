@@ -21,13 +21,15 @@ export const dynamic = "force-dynamic";
 //   1. If a batch from a previous tick is pending, try to finalize it first — this
 //      also makes manual testing straightforward (see below).
 //   2. If nothing is pending afterward, submit a fresh batch for today.
-// app/api/cron/proactive/route.ts also calls pollPendingBriefBatch() on its more
-// frequent schedule, so a submitted batch is typically finalized into a real
-// notification within hours, not a full day later.
+// app/api/cron/proactive/route.ts also calls pollPendingBriefBatch(). It runs
+// daily at 15:00 UTC, three hours after this route (12:00 UTC), so a batch
+// submitted here is usually finalized into a notification the same day.
 //
-// To test manually: GET this route once to submit a batch, then GET it again later
-// (or GET /api/cron/proactive, which polls too) once the batch has finished — check
-// status at https://console.anthropic.com or just retry after a few minutes.
+// To test manually (CRON_SECRET must be set; requests without
+// `Authorization: Bearer $CRON_SECRET` get 401): GET this route once to submit a
+// batch, then GET it again later (or GET /api/cron/proactive, which polls too)
+// once the batch has finished — check status at https://console.anthropic.com or
+// just retry after a few minutes.
 export async function GET(request: Request) {
   if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
