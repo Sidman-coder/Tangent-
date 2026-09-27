@@ -1,29 +1,16 @@
 # TANGENT setup
 
-This guide covers Groq, environment variables, the Next.js site, and the Raspberry Pi forwarder.
+This guide covers environment variables, the Next.js site, and the Raspberry Pi forwarder.
 
-## 1. Groq API key
+## 1. `.env.local` on your laptop
 
-1. Open [https://console.groq.com](https://console.groq.com) and sign in (or create an account).
-2. Go to **API Keys** and create a new key.
-3. Copy the key — you will paste it into `.env.local` on your laptop (never commit real keys to git).
+In the **project root** (same folder as `package.json`), create or edit `.env.local`. The full list of variables — which are secret, which are required, and which Vercel environments need them — lives in [docs/tangent/PROJECT.md → Environment variables](docs/tangent/PROJECT.md#environment-variables). At minimum you need the two `NEXT_PUBLIC_SUPABASE_*` values, `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY` and `ALLOWED_EMAILS`. Never commit real keys to git.
 
-## 2. `.env.local` on your laptop
-
-In the **project root** (same folder as `package.json`), create or edit `.env.local`:
-
-```env
-GROQ_API_KEY=YOUR_GROQ_API_KEY_HERE
-NEXT_PUBLIC_BASE_URL=http://localhost:3000
-```
-
-- Replace `YOUR_GROQ_API_KEY_HERE` with your real Groq key from console.groq.com.
-- For **local development**, keep `NEXT_PUBLIC_BASE_URL` as `http://localhost:3000`. Server routes use this URL when the chat handler calls `/api/voice` and when `/api/voice` calls `/api/tasks`, so it must match how you open the app in the browser.
-- If you deploy to a public host later, set `NEXT_PUBLIC_BASE_URL` to your site’s public origin (no trailing slash), e.g. `https://YOUR_PRODUCTION_DOMAIN_HERE`.
+`GROQ_API_KEY` and `NEXT_PUBLIC_BASE_URL` are no longer used; delete them if present.
 
 Restart `npm run dev` after changing `.env.local`.
 
-## 3. Laptop IP for the Raspberry Pi
+## 2. Laptop IP for the Raspberry Pi
 
 The Pi must POST to your laptop on the LAN (not `localhost` from the Pi’s point of view).
 
@@ -37,14 +24,14 @@ Under your active **Wi‑Fi** adapter, find **IPv4 Address** (e.g. `192.168.1.42
 
 Firewall: allow inbound TCP **3000** (or whatever port Next uses) from your home network if connections fail.
 
-## 4. Raspberry Pi server
+## 3. Raspberry Pi server
 
 1. Open `raspberry-pi-server.py` in the project root on your **laptop** (for editing), or copy the file to the Pi.
 2. Set `TANGENT_URL` to `http://YOUR_LAPTOP_IP_ADDRESS_HERE:3000/api/voice` using the IPv4 from ipconfig.
 3. On the Pi, replace the existing `server.py` with this file’s contents (or save as `server.py` if that is what your service runs).
 4. Install Flask and requests on the Pi if needed, e.g. `pip install flask requests`.
 
-## 5. Run the website (laptop)
+## 4. Run the website (laptop)
 
 From the project root:
 
@@ -55,7 +42,7 @@ npm run dev
 
 Open the URL shown in the terminal (usually `http://localhost:3000`).
 
-## 6. SSH into the Raspberry Pi and restart services
+## 5. SSH into the Raspberry Pi and restart services
 
 1. From your laptop: `ssh YOUR_PI_USERNAME_HERE@YOUR_PI_IP_ADDRESS_HERE` (use your Pi user and IP).
 2. After updating `server.py` (or `raspberry-pi-server.py` renamed to `server.py`), restart whatever runs Flask — for example:
@@ -66,8 +53,7 @@ Ensure the Pi can reach `http://YOUR_LAPTOP_IP:3000` while `npm run dev` is runn
 
 ## Quick checklist
 
-- [ ] `GROQ_API_KEY` set in `.env.local`
-- [ ] `NEXT_PUBLIC_BASE_URL` matches how you run the app (`http://localhost:3000` for dev)
+- [ ] Required variables from the PROJECT.md env table set in `.env.local`
 - [ ] `npm run dev` running on the laptop
 - [ ] Pi `TANGENT_URL` uses the laptop **LAN** IP, not `localhost`
 - [ ] Pi Flask server restarted after edits

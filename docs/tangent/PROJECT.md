@@ -1,6 +1,6 @@
 # TANGENT Project
 
-Last reconciled: 2026-09-26
+Last reconciled: 2026-09-27
 
 ## Identity
 
@@ -41,14 +41,12 @@ The repository is a Next.js 14 and TypeScript application. Current code and user
 
 ### AI and voice providers
 
-The codebase is transitional rather than single-provider:
+Verified against `feat/supabase` on 2026-09-27:
 
-- Anthropic Claude handles major reasoning and tool-use flows in the current application.
-- OpenAI helper code exists for command and chat parsing paths.
-- Groq supports an earlier Raspberry Pi voice-command path.
-- Deepgram transcription exists as an unconfigured browser-voice integration stub and requires configuration before it works.
+- Anthropic Claude is the only language-model provider in the web app: chat, voice commands, plan generation, the agent tool loop, context extraction, proactive notifications and the Daily Brief. The earlier OpenAI and Groq code paths are gone; the Raspberry Pi forwarder posts to `/api/voice`, which uses Claude.
+- Deepgram transcribes browser voice capture (`app/api/voice-browser`) and needs `DEEPGRAM_API_KEY`; without it the voice UI says voice isn't set up.
 
-Do not claim that any one provider exclusively powers all TANGENT intelligence without rechecking the current code.
+Recheck the code before restating provider claims externally; this section reflects the date above.
 
 ### Persistence and accounts
 
@@ -59,8 +57,45 @@ Status: in progress on `feat/supabase` (started 2026-09-26). Decisions below are
 - **Auth:** Supabase Auth with Google sign-in and magic-link email. **Invite-only:** only emails in `ALLOWED_EMAILS` may use the app, enforced server-side in the auth callback and middleware.
 - **Timezone:** each student's IANA timezone is stored on their profile (captured at onboarding, default `America/New_York`); cron jobs loop over students and use each one's timezone.
 - **Google (Gmail / Google Calendar) is owner-only for now:** those integrations read from env credentials tied to Sid's personal account, so they only run when the signed-in email matches `OWNER_EMAIL`; everyone else gets a "Google connection coming soon" response. **Future work:** per-student Google OAuth — a "Connect Google Calendar" button that stores each student's encrypted refresh token.
-- **Canvas:** the `.ics` Canvas Feed is the only Canvas integration. The legacy token-based Canvas API client (`lib/canvas.ts` and its three agent tools) is removed on `feat/supabase`; the agent answers Canvas/assignment questions with `get_canvas_deadlines`, which reads tasks imported by the feed (`source = 'canvas'`). `CANVAS_API_TOKEN` and `CANVAS_BASE_URL` are no longer used and can be deleted from env config. The feed URL embeds a private token and is never returned to the browser unmasked.
+- **Canvas:** the `.ics` Canvas Feed is the only Canvas integration. The legacy token-based Canvas API client (`lib/canvas.ts` and its three agent tools) is removed on `feat/supabase`; the agent answers Canvas/assignment questions with `get_canvas_deadlines`, which reads tasks imported by the feed (`source = 'canvas'`). The feed URL embeds a private token and is never returned to the browser unmasked.
 - **Pen → student linking (schema only, not wired):** `pen_devices` (`id`, `user_id`, `name`, `device_key_hash`, `created_at`, `last_seen_at`, `revoked_at`) maps a pen to its student. Intended flow: each pen holds a random device key; the pen upload server (planned for Railway) hashes the key it receives (SHA-256), looks up `device_key_hash` with the service role, and inserts tasks for that row's `user_id`. The raw key is never stored. Pairing UI and pen auth are out of scope for this migration; `/api/voice` requires a signed-in session like every other route, and `pi-poller.mjs` is deprecated.
+
+### Environment variables
+
+This is the complete list of variables the code reads on `feat/supabase`, checked by grepping every `process.env` read on 2026-09-27. Kinds:
+
+- **Secret:** server-only. Never put it in a `NEXT_PUBLIC_` name or in client code.
+- **Public:** inlined into the browser bundle, so it's safe to expose.
+- **Config:** not sensitive.
+
+Dev and Preview share the production Supabase project, so Supabase values and `CANVAS_FEED_KEY` must be identical everywhere.
+
+| Name | Kind | Required? | Vercel environments | Purpose |
+| --- | --- | --- | --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Public | Yes | Production, Preview | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public | Yes | Production, Preview | Browser/session client; RLS applies |
+| `SUPABASE_SERVICE_ROLE_KEY` | Secret | Yes (crons) | Production | Admin client, used only by cron jobs (`lib/cron-users.ts`, `runAsUser`); bypasses RLS |
+| `ALLOWED_EMAILS` | Config | Yes | Production, Preview | Invite list, comma-separated; empty means nobody can sign in (fails closed) |
+| `ANTHROPIC_API_KEY` | Secret | Yes | Production, Preview | All Claude calls |
+| `CRON_SECRET` | Secret | Yes | Production | Vercel sends it as `Authorization: Bearer …` to `/api/cron/*`; without it, cron routes reject every request |
+| `CANVAS_FEED_KEY` | Secret | Recommended | Production, Preview | 32-byte base64 key that encrypts stored Canvas feed URLs. Without it, feed URLs are stored in plaintext. Once rows are encrypted, losing it makes them unreadable. |
+| `CANVAS_ALLOWED_HOSTS` | Config | No | Production, Preview | Extra Canvas hostnames beyond the built-in `*.instructure.com` allow-list |
+| `DEEPGRAM_API_KEY` | Secret | No | Production, Preview | Browser voice transcription; voice capture is disabled without it |
+| `OWNER_EMAIL` | Config | No | Production, Preview | The one account allowed to use the env-based Google integrations |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN` | Secret | No | Production, Preview | Owner-only Gmail and Google Calendar access; currently unset |
+
+Set automatically or used only in tests (don't add these to Vercel):
+
+- `NODE_ENV` is set by Next.js and Vercel.
+- `TANGENT_FAKE_NOW` is a clock override for local tests only.
+
+Every variable in the table goes in `.env.local` for local development. You can omit `CRON_SECRET` locally unless you are testing crons. Without it, the cron routes return 401.
+
+These variables are obsolete; delete them from `.env.local` and from Vercel:
+
+- `CANVAS_API_TOKEN` and `CANVAS_BASE_URL`: the token-based Canvas client was removed.
+- `NEXT_PUBLIC_BASE_URL`: nothing reads it.
+- `GROQ_API_KEY` and `OPENAI_API_KEY`, if either is present: no Groq or OpenAI code remains.
 
 ## Current hardware state
 
