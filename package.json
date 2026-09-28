@@ -17,7 +17,7 @@
     "@supabase/supabase-js": "^2.117.2",
     "lucide-react": "^1.41.0",
     "motion": "^13.4.4",
-    "next": "^14.2.18",
+    "next": "^14.2.35",
     "node-ical": "^0.27.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
