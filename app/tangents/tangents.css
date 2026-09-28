@@ -1203,6 +1203,31 @@
   line-height: 1.55;
   max-width: 52ch;
 }
+/* The optional half of the intake, four fields on one panel. It can outgrow
+   the dialog on a short window, so it scrolls inside itself rather than
+   pushing the footer off-screen. */
+.tangents-intake-group {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: min(46vh, 380px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+
+.tangents-intake-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tangents-intake-field > span {
+  color: var(--path-ink-2);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
 .tangents-intake-input {
   width: 100%;
   padding: 11px 13px;

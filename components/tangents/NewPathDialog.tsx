@@ -39,15 +39,28 @@ type Props = {
 
 type FieldKey = Exclude<keyof PathDraft, "kind">;
 
-type Step = {
+/** One input inside a grouped step. */
+type Field = {
   key: FieldKey;
-  question: string;
-  help: string;
+  label: string;
   placeholder: string;
   multiline?: boolean;
-  optional?: boolean;
-  /** One-tap answers, for the questions where most people pick a common one. */
+  numeric?: boolean;
+  /** One-tap answers, for the fields where most people pick a common one. */
   chips?: string[];
+};
+
+type Step = {
+  question: string;
+  help: string;
+  optional?: boolean;
+  /** A step that asks one thing. */
+  key?: FieldKey;
+  placeholder?: string;
+  multiline?: boolean;
+  chips?: string[];
+  /** A step that asks several, all on one panel. */
+  fields?: Field[];
 };
 
 const KINDS: { value: PathGoalKind; label: string; hint: string; icon: typeof Target }[] = [
@@ -57,14 +70,39 @@ const KINDS: { value: PathGoalKind; label: string; hint: string; icon: typeof Ta
   { value: "other", label: "Something else", hint: "Anything with a clear finish line", icon: Target },
 ];
 
-const HOURS: Step = {
-  key: "hoursPerWeek",
-  question: "How many hours a week can you really give it?",
-  help: "Think of a normal week, not your best one. Every suggestion gets sized to fit this.",
-  placeholder: "5",
+/** The optional half of the intake, on one panel.
+ *
+ * These four were four more questions, asked one at a time, after the two that
+ * actually gate a useful path. That put six screens between picking a kind and
+ * seeing anything, and four of them could be skipped, so the common path was
+ * a person pressing "Skip this" four times. They are one panel now: still
+ * optional, still worded for the kind, but answerable in any order or not at
+ * all. The two questions a path cannot be built without stay one at a time.
+ */
+const REST = (labels: {
+  deadline: string;
+  deadlineEg: string;
+  standing: string;
+  standingEg: string;
+  constraints: string;
+  constraintsEg: string;
+}): Step => ({
+  question: "Anything else worth knowing?",
+  help: "All optional. Skip it and Tangent still builds the path; answering makes what it suggests fit you rather than fit anyone.",
   optional: true,
-  chips: ["2", "4", "6", "10"],
-};
+  fields: [
+    { key: "deadline", label: labels.deadline, placeholder: labels.deadlineEg },
+    {
+      key: "hoursPerWeek",
+      label: "Hours a week you can really give it",
+      placeholder: "5",
+      numeric: true,
+      chips: ["2", "4", "6", "10"],
+    },
+    { key: "standing", label: labels.standing, placeholder: labels.standingEg, multiline: true },
+    { key: "constraints", label: labels.constraints, placeholder: labels.constraintsEg, multiline: true },
+  ],
+});
 
 /** The questions, worded for each kind. Same six facts underneath. */
 const QUESTIONS: Record<PathGoalKind, { name: string; steps: Step[] }> = {
@@ -83,30 +121,14 @@ const QUESTIONS: Record<PathGoalKind, { name: string; steps: Step[] }> = {
         help: "Your grade, GPA, test scores, and the classes you are taking. Be honest; this is only for you.",
         placeholder: "Junior, 3.8 unweighted, SAT 1420, taking AP Calc BC",
       },
-      {
-        key: "deadline",
-        question: "When do you apply?",
-        help: "The date you actually submit by. A rough one is fine.",
-        placeholder: "Nov 1, 2027 (early action)",
-        optional: true,
-      },
-      HOURS,
-      {
-        key: "standing",
-        question: "What are you already doing that the school would care about?",
-        help: "One per line: clubs, jobs, projects, sports, awards. These become the first circle of your path.",
-        placeholder: "Robotics club, programming lead\nSummer research at the university lab\nVarsity tennis",
-        multiline: true,
-        optional: true,
-      },
-      {
-        key: "constraints",
-        question: "What limits what you can do?",
-        help: "Money, getting places, family, school rules. Tangent won't suggest anything you can't actually do.",
-        placeholder: "No car, can't pay for summer programmes, tennis season Aug to Nov",
-        multiline: true,
-        optional: true,
-      },
+      REST({
+        deadline: "When you apply",
+        deadlineEg: "Nov 1, 2027 (early action)",
+        standing: "What you already do that the school would care about",
+        standingEg: "Robotics club, programming lead\nSummer research at the university lab\nVarsity tennis",
+        constraints: "What limits what you can do",
+        constraintsEg: "No car, can't pay for summer programmes, tennis season Aug to Nov",
+      }),
     ],
   },
   career: {
@@ -124,30 +146,14 @@ const QUESTIONS: Record<PathGoalKind, { name: string; steps: Step[] }> = {
         help: "Experience, skills and anything you have built. Leave nothing out because it feels small.",
         placeholder: "One Python project on GitHub, part-time cashier, no resume yet",
       },
-      {
-        key: "deadline",
-        question: "When do you need it by?",
-        help: "When applications close, or when you want to start.",
-        placeholder: "Applications close Feb 2027",
-        optional: true,
-      },
-      HOURS,
-      {
-        key: "standing",
-        question: "What are you already doing that counts toward it?",
-        help: "One per line: projects, classes, clubs, jobs. These become the first circle of your path.",
-        placeholder: "Building a budgeting app\nCS club\nPart-time cashier",
-        multiline: true,
-        optional: true,
-      },
-      {
-        key: "constraints",
-        question: "What's in the way?",
-        help: "Location, time, money, no contacts yet. Tangent plans around it instead of ignoring it.",
-        placeholder: "Remote only, no referrals, school until 3pm",
-        multiline: true,
-        optional: true,
-      },
+      REST({
+        deadline: "When you need it by",
+        deadlineEg: "Applications close Feb 2027",
+        standing: "What you are already doing that counts toward it",
+        standingEg: "Building a budgeting app\nCS club\nPart-time cashier",
+        constraints: "What's in the way",
+        constraintsEg: "Remote only, no referrals, school until 3pm",
+      }),
     ],
   },
   skill: {
@@ -165,30 +171,14 @@ const QUESTIONS: Record<PathGoalKind, { name: string; steps: Step[] }> = {
         help: "Your current number or level, and how long you have been there.",
         placeholder: "1450 USCF, stuck for about a year",
       },
-      {
-        key: "deadline",
-        question: "By when?",
-        help: "A real date or a rough one. Both work.",
-        placeholder: "End of next summer",
-        optional: true,
-      },
-      HOURS,
-      {
-        key: "standing",
-        question: "How do you practise now?",
-        help: "One per line: classes, coaches, apps, books, routines. These become the first circle of your path.",
-        placeholder: "Weekly class\nRapid games on chess.com\nA chess book\nPuzzles",
-        multiline: true,
-        optional: true,
-      },
-      {
-        key: "constraints",
-        question: "What gets in the way of practising?",
-        help: "Money, time of year, equipment, anything. Tangent won't suggest what you can't do.",
-        placeholder: "No budget for a coach, exams in May",
-        multiline: true,
-        optional: true,
-      },
+      REST({
+        deadline: "By when",
+        deadlineEg: "End of next summer",
+        standing: "How you practise now",
+        standingEg: "Weekly class\nRapid games on chess.com\nA chess book\nPuzzles",
+        constraints: "What gets in the way of practising",
+        constraintsEg: "No budget for a coach, exams in May",
+      }),
     ],
   },
   other: {
@@ -206,30 +196,14 @@ const QUESTIONS: Record<PathGoalKind, { name: string; steps: Step[] }> = {
         help: "What exists today, and what doesn't yet.",
         placeholder: "8 demos recorded, nothing mixed, no cover art",
       },
-      {
-        key: "deadline",
-        question: "By when?",
-        help: "A real date or a rough one. Both work.",
-        placeholder: "Before next summer",
-        optional: true,
-      },
-      HOURS,
-      {
-        key: "standing",
-        question: "What have you already got going for it?",
-        help: "One per line: habits, tools, people, things in progress. These become the first circle of your path.",
-        placeholder: "Home recording setup\nA friend who mixes\nSongwriting every Sunday",
-        multiline: true,
-        optional: true,
-      },
-      {
-        key: "constraints",
-        question: "What's in the way?",
-        help: "Money, time, skills you don't have yet. Tangent plans around it.",
-        placeholder: "No budget for mastering, can't sing live",
-        multiline: true,
-        optional: true,
-      },
+      REST({
+        deadline: "By when",
+        deadlineEg: "Before next summer",
+        standing: "What you have already got going for it",
+        standingEg: "Home recording setup\nA friend who mixes\nSongwriting every Sunday",
+        constraints: "What's in the way",
+        constraintsEg: "No budget for mastering, can't sing live",
+      }),
     ],
   },
 };
@@ -265,7 +239,7 @@ export default function NewPathDialog({ onCancel, onCreate }: Props) {
 
   const step = stage >= 0 ? steps[stage] : null;
   const isLast = stage === steps.length - 1;
-  const value = step ? draft[step.key] : "";
+  const value = step?.key ? draft[step.key] : "";
 
   const set = (key: FieldKey, v: string) => setDraft((d) => ({ ...d, [key]: v }));
 
@@ -287,11 +261,13 @@ export default function NewPathDialog({ onCancel, onCreate }: Props) {
       setStage(0);
       return;
     }
-    if (step && !step.optional && !String(value).trim()) {
+    if (step?.key && !step.optional && !String(value).trim()) {
       setError(step.key === "title" ? "Give it a short name first." : "This one matters: every suggestion is judged against it.");
       return;
     }
-    if (step?.key === "hoursPerWeek" && String(value).trim() && !(Number(value) > 0)) {
+    const hours = draft.hoursPerWeek.trim();
+    const asksHours = step?.key === "hoursPerWeek" || step?.fields?.some((f) => f.key === "hoursPerWeek");
+    if (asksHours && hours && !(Number(hours) > 0)) {
       setError("Just a number of hours, like 5.");
       return;
     }
@@ -376,11 +352,51 @@ export default function NewPathDialog({ onCancel, onCreate }: Props) {
                 <>
                   <h2>{step.question}</h2>
                   <p>{step.help}</p>
-                  {step.multiline ? (
+                  {step.fields ? (
+                    <div className="tangents-intake-group">
+                      {step.fields.map((field, i) => (
+                        <label key={field.key} className="tangents-intake-field">
+                          <span>{field.label}</span>
+                          {field.multiline ? (
+                            <textarea
+                              className="tangents-intake-input is-area"
+                              value={String(draft[field.key])}
+                              onChange={(e) => set(field.key, e.target.value)}
+                              placeholder={field.placeholder}
+                              rows={3}
+                            />
+                          ) : (
+                            <input
+                              className="tangents-intake-input"
+                              value={String(draft[field.key])}
+                              onChange={(e) => set(field.key, e.target.value)}
+                              placeholder={field.placeholder}
+                              inputMode={field.numeric ? "numeric" : undefined}
+                              autoFocus={i === 0}
+                            />
+                          )}
+                          {field.chips && (
+                            <div className="tangents-intake-chips" role="group" aria-label={`Quick answers for ${field.label}`}>
+                              {field.chips.map((chip) => (
+                                <button
+                                  key={chip}
+                                  type="button"
+                                  className={`tangents-intake-chip${String(draft[field.key]) === chip ? " is-on" : ""}`}
+                                  onClick={() => set(field.key, chip)}
+                                >
+                                  {chip} h
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                  ) : step.multiline ? (
                     <textarea
                       className="tangents-intake-input is-area"
                       value={String(value)}
-                      onChange={(e) => set(step.key, e.target.value)}
+                      onChange={(e) => step.key && set(step.key, e.target.value)}
                       placeholder={step.placeholder}
                       rows={4}
                       autoFocus
@@ -389,7 +405,7 @@ export default function NewPathDialog({ onCancel, onCreate }: Props) {
                     <input
                       className="tangents-intake-input"
                       value={String(value)}
-                      onChange={(e) => set(step.key, e.target.value)}
+                      onChange={(e) => step.key && set(step.key, e.target.value)}
                       placeholder={step.placeholder}
                       inputMode={step.key === "hoursPerWeek" ? "numeric" : undefined}
                       onKeyDown={(e) => e.key === "Enter" && void next()}
@@ -403,7 +419,7 @@ export default function NewPathDialog({ onCancel, onCreate }: Props) {
                           key={chip}
                           type="button"
                           className={`tangents-intake-chip${String(value) === chip ? " is-on" : ""}`}
-                          onClick={() => set(step.key, chip)}
+                          onClick={() => step.key && set(step.key, chip)}
                         >
                           {chip} h
                         </button>
