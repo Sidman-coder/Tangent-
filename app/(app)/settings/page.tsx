@@ -9,9 +9,8 @@ import { CalendarSync } from "lucide-react";
 import type { AppState, CanvasFeedStatus } from "@/lib/types";
 import {
   type AppearanceMode,
-  type FontMode,
+  readTheme,
   setTheme,
-  setFontMode,
 } from "@/lib/theme";
 import {
   getDesktopNotifPermission,
@@ -21,11 +20,6 @@ import {
   setDesktopNotifSetting,
 } from "@/lib/desktop-notifications";
 import { getInAppPopupsEnabled, setInAppPopupsEnabled } from "@/lib/notification-popups";
-
-const FONT_MODE_PREVIEWS: Record<FontMode, { name: string; display: string }> = {
-  formal: { name: "Formal", display: "'Libre Caslon Display', serif" },
-  warm: { name: "Warm", display: "'Plus Jakarta Sans', sans-serif" },
-};
 
 export default function SettingsPage() {
   const { state, saveState, refresh } = useAppState();
@@ -37,8 +31,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [canvasGuideOpen, setCanvasGuideOpen] = useState(false);
 
-  const [appearance, setAppearance] = useState<AppearanceMode>("dark");
-  const [fontMode, setFontModeState] = useState<FontMode>("warm");
+  const [appearance, setAppearance] = useState<AppearanceMode>("light");
   const [desktopNotifEnabled, setDesktopNotifEnabled] = useState(false);
   const [desktopNotifPermission, setDesktopNotifPermission] = useState<NotificationPermission | null>(null);
   const [desktopNotifSupported, setDesktopNotifSupported] = useState(true);
@@ -72,10 +65,7 @@ export default function SettingsPage() {
   }, [canvasGuideOpen]);
 
   useEffect(() => {
-    const storedTheme = (localStorage.getItem("tangent-theme") as AppearanceMode | null) ?? "light";
-    setAppearance(storedTheme);
-    const storedFontMode = (localStorage.getItem("tangent-font-mode") as FontMode | null) ?? "warm";
-    setFontModeState(storedFontMode);
+    setAppearance(readTheme());
     setDesktopNotifSupported(isDesktopNotifSupported());
     setDesktopNotifPermission(getDesktopNotifPermission());
     setDesktopNotifEnabled(getDesktopNotifSetting());
@@ -86,12 +76,6 @@ export default function SettingsPage() {
     setAppearance(next);
     setTheme(next);
   };
-
-  const applyFontMode = (mode: FontMode) => {
-    setFontModeState(mode);
-    setFontMode(mode);
-  };
-
   const onToggleDesktopNotif = async () => {
     if (desktopNotifEnabled) {
       setDesktopNotifSetting(false);
@@ -164,7 +148,7 @@ export default function SettingsPage() {
 
   return (
     <div className="settings-page">
-      <PageHeader eyebrow="Workspace" title="Settings" description="Manage your profile and how Tangent feels." />
+      <PageHeader title="Settings" description="Manage your profile and how Tangent feels." />
 
       <div className="settings-layout">
         <nav className="settings-nav" aria-label="Settings sections">
@@ -201,19 +185,10 @@ export default function SettingsPage() {
           <section id="appearance" className="settings-panel">
             <div className="settings-panel-head"><div><h2>Appearance</h2><p>Choose a comfortable theme and reading style.</p></div></div>
             <div className="settings-option-row">
-              <div><strong>{appearance === "dark" ? "Dark mode" : "Light mode"}</strong><span>Switch workspace colors across every page.</span></div>
-              <button type="button" className={`toggle-switch${appearance === "light" ? " on" : ""}`} role="switch" aria-checked={appearance === "light"} aria-label="Toggle light mode" onClick={onToggleAppearance}>
+              <div><strong>Dark mode</strong><span>Switch workspace colors across every page.</span></div>
+              <button type="button" className={`toggle-switch${appearance === "dark" ? " on" : ""}`} role="switch" aria-checked={appearance === "dark"} aria-label="Dark mode" onClick={onToggleAppearance}>
                 <span className="toggle-knob" />
               </button>
-            </div>
-            <div className="settings-option-block">
-              <div><strong>Type style</strong><span>Pick the display face used for major headings.</span></div>
-              <div className="font-toggle-row">
-                {(Object.keys(FONT_MODE_PREVIEWS) as FontMode[]).map((mode) => {
-                  const preview = FONT_MODE_PREVIEWS[mode];
-                  return <button key={mode} type="button" className={`font-toggle-btn${fontMode === mode ? " is-active" : ""}`} onClick={() => applyFontMode(mode)} aria-pressed={fontMode === mode} style={{ fontFamily: preview.display }}>{preview.name}</button>;
-                })}
-              </div>
             </div>
           </section>
 

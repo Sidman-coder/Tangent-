@@ -9,6 +9,10 @@ import { cacheHistory, withDateLast } from "@/lib/ai/cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Calendar mode runs a multi-turn Claude tool loop; measured at ~48s in
+// production. With no maxDuration declared, the platform default killed it
+// partway through and the console blamed a missing API key.
+export const maxDuration = 60;
 
 /** "calendar" acts on the calendar; "plan" only talks a plan through. */
 type ChatMode = "plan" | "calendar";

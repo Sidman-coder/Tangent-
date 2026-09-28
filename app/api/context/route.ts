@@ -5,6 +5,8 @@ import { withUser } from "@/lib/request-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Extracts and compresses remembered context.
+export const maxDuration = 60;
 
 export const GET = withUser(async () => {
   return NextResponse.json({

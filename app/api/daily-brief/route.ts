@@ -14,6 +14,8 @@ import { callClaude } from "@/lib/ai/call";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Aggregates sources, then summarises them with Claude.
+export const maxDuration = 60;
 
 export const POST = withUser(async () => {
   try {

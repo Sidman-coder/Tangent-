@@ -25,6 +25,9 @@ import type {
   PendingBriefBatch,
   ChatMessage,
   ChatSession,
+  Path,
+  PathNode,
+  TangentStatus,
 } from "./types";
 
 export type { ChatMessage, ChatSession } from "./types";
@@ -91,10 +94,11 @@ type TaskRow = {
   resources: Task["resources"] | null;
   start_action: string | null;
   source: Task["source"] | null;
+  external_id: string | null;
 };
 
 const TASK_COLUMNS =
-  "id, title, date, time, completed, kind, calendar_id, plan_id, notes, recurring, resources, start_action, source";
+  "id, title, date, time, completed, kind, calendar_id, plan_id, notes, recurring, resources, start_action, source, external_id";
 
 function taskFromRow(r: TaskRow): Task {
   const t: Task = { id: r.id, title: r.title, date: r.date, time: r.time, completed: r.completed };
@@ -106,6 +110,7 @@ function taskFromRow(r: TaskRow): Task {
   if (r.resources) t.resources = r.resources;
   if (r.start_action !== null) t.startAction = r.start_action;
   if (r.source) t.source = r.source;
+  if (r.external_id !== null) t.externalId = r.external_id;
   return t;
 }
 
@@ -126,6 +131,7 @@ function taskPatchToRow(patch: Partial<Omit<Task, "id">>): Record<string, unknow
   if (has("resources")) row.resources = patch.resources ?? null;
   if (has("startAction")) row.start_action = patch.startAction ?? null;
   if (has("source")) row.source = patch.source ?? null;
+  if (has("externalId")) row.external_id = patch.externalId ?? null;
   return row;
 }
 
@@ -326,10 +332,16 @@ export async function addRecurringTask(
   const existing = await selectTasks("addRecurringTask", (q) =>
     q.gte("date", dates[0]).lte("date", dates[dates.length - 1]).eq("completed", false)
   );
+  // Weekly with no day picked means the day the series starts on (see
+  // expandRecurrence). Store that day so the task reads "Every Monday".
+  const daysOfWeek =
+    recurring.frequency === "weekly" && !recurring.daysOfWeek?.length
+      ? [new Date(`${task.date}T12:00:00Z`).getUTCDay()]
+      : recurring.daysOfWeek;
   const rec: RecurringConfig = {
     enabled: true,
     frequency: recurring.frequency,
-    daysOfWeek: recurring.daysOfWeek,
+    daysOfWeek,
     endDate: recurring.endDate,
     parentId,
   };
@@ -1717,6 +1729,7 @@ export async function resetUserData(): Promise<void> {
     "context_entries",
     "brief_configs",
     "canvas_feeds",
+    "paths", // path_nodes cascade
   ];
   for (const table of tables) {
     const { error } = await db.from(table).delete().eq("user_id", userId);
@@ -1741,4 +1754,296 @@ export async function resetUserData(): Promise<void> {
     context_updated_at: new Date().toISOString(),
   });
   console.log("[store] resetUserData: done");
+}
+
+// ─── Paths ───────────────────────────────────────────────────────────────────
+// Several goals, each with its own tree (paths + path_nodes). A node belongs
+// to exactly one Path via pathId; lib/path-layout.ts lays out one Path at a
+// time. The database cascades a deleted path or node to everything under it.
+
+export type PathSpace = { paths: Path[]; nodes: PathNode[] };
+
+type PathRow = {
+  id: string;
+  title: string;
+  kind: Path["kind"];
+  target: string;
+  current: string;
+  deadline: string | null;
+  hours_per_week: number | null;
+  constraints: string | null;
+  standing: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+const PATH_COLUMNS =
+  "id, title, kind, target, current, deadline, hours_per_week, constraints, standing, created_at, updated_at";
+
+function pathFromRow(r: PathRow): Path {
+  const p: Path = {
+    id: r.id,
+    title: r.title,
+    kind: r.kind,
+    target: r.target,
+    current: r.current,
+    createdAt: iso(r.created_at),
+    updatedAt: iso(r.updated_at),
+  };
+  if (r.deadline !== null) p.deadline = r.deadline;
+  if (r.hours_per_week !== null) p.hoursPerWeek = Number(r.hours_per_week);
+  if (r.constraints !== null) p.constraints = r.constraints;
+  if (r.standing !== null) p.standing = r.standing;
+  return p;
+}
+
+function pathPatchToRow(patch: Partial<Omit<Path, "id" | "createdAt">>): Record<string, unknown> {
+  const row: Record<string, unknown> = {};
+  const has = (k: keyof Path) => Object.prototype.hasOwnProperty.call(patch, k);
+  if (has("title") && patch.title != null) row.title = patch.title;
+  if (has("kind") && patch.kind != null) row.kind = patch.kind;
+  if (has("target")) row.target = patch.target ?? "";
+  if (has("current")) row.current = patch.current ?? "";
+  if (has("deadline")) row.deadline = patch.deadline ?? null;
+  if (has("hoursPerWeek")) row.hours_per_week = patch.hoursPerWeek ?? null;
+  if (has("constraints")) row.constraints = patch.constraints ?? null;
+  if (has("standing")) row.standing = patch.standing ?? null;
+  return row;
+}
+
+type PathNodeRow = {
+  id: string;
+  path_id: string;
+  parent_id: string | null;
+  kind: PathNode["kind"];
+  title: string;
+  detail: string | null;
+  rationale: string | null;
+  effort: string | null;
+  category: PathNode["category"] | null;
+  hours_per_week: number | null;
+  years: number | null;
+  status: TangentStatus;
+  origin: PathNode["origin"];
+  created_at: string;
+};
+
+const PATH_NODE_COLUMNS =
+  "id, path_id, parent_id, kind, title, detail, rationale, effort, category, hours_per_week, years, status, origin, created_at";
+
+function pathNodeFromRow(r: PathNodeRow): PathNode {
+  const n: PathNode = {
+    id: r.id,
+    pathId: r.path_id,
+    parentId: r.parent_id,
+    kind: r.kind,
+    title: r.title,
+    status: r.status,
+    origin: r.origin,
+    createdAt: iso(r.created_at),
+  };
+  if (r.detail !== null) n.detail = r.detail;
+  if (r.rationale !== null) n.rationale = r.rationale;
+  if (r.effort !== null) n.effort = r.effort;
+  if (r.category) n.category = r.category;
+  if (r.hours_per_week !== null) n.hoursPerWeek = Number(r.hours_per_week);
+  if (r.years !== null) n.years = Number(r.years);
+  return n;
+}
+
+function pathNodePatchToRow(patch: Partial<Omit<PathNode, "id" | "createdAt">>): Record<string, unknown> {
+  const row: Record<string, unknown> = {};
+  const has = (k: keyof PathNode) => Object.prototype.hasOwnProperty.call(patch, k);
+  if (has("pathId") && isUuid(patch.pathId)) row.path_id = patch.pathId;
+  if (has("parentId")) row.parent_id = isUuid(patch.parentId) ? patch.parentId : null;
+  if (has("kind") && patch.kind != null) row.kind = patch.kind;
+  if (has("title") && patch.title != null) row.title = patch.title;
+  if (has("detail")) row.detail = patch.detail ?? null;
+  if (has("rationale")) row.rationale = patch.rationale ?? null;
+  if (has("effort")) row.effort = patch.effort ?? null;
+  if (has("category")) row.category = patch.category ?? null;
+  if (has("hoursPerWeek")) row.hours_per_week = patch.hoursPerWeek ?? null;
+  if (has("years")) row.years = patch.years ?? null;
+  if (has("status") && patch.status != null) row.status = patch.status;
+  if (has("origin") && patch.origin != null) row.origin = patch.origin;
+  return row;
+}
+
+async function selectPathNodes(where: string, pathId?: string): Promise<PathNode[]> {
+  const { db, userId } = ctx();
+  const rows = await selectAll<PathNodeRow>(where, (from, to) => {
+    let q = db.from("path_nodes").select(PATH_NODE_COLUMNS).eq("user_id", userId);
+    if (pathId) q = q.eq("path_id", pathId);
+    return q.order("created_at", { ascending: true }).order("id", { ascending: true }).range(from, to);
+  });
+  return rows.map(pathNodeFromRow);
+}
+
+export async function getPathSpace(): Promise<PathSpace> {
+  const { db, userId } = ctx();
+  const [pathsRes, nodes] = await Promise.all([
+    db.from("paths").select(PATH_COLUMNS).eq("user_id", userId).order("created_at", { ascending: true }),
+    selectPathNodes("getPathSpace"),
+  ]);
+  if (pathsRes.error) fail("getPathSpace", pathsRes.error);
+  return { paths: ((pathsRes.data ?? []) as PathRow[]).map(pathFromRow), nodes };
+}
+
+/** One Path and only its own nodes. What the deep view loads. */
+export async function getPath(pathId: string): Promise<{ path: Path; nodes: PathNode[] } | null> {
+  if (!isUuid(pathId)) return null;
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("paths").select(PATH_COLUMNS).eq("user_id", userId).eq("id", pathId).maybeSingle();
+  if (error) fail("getPath", error);
+  if (!data) return null;
+  return { path: pathFromRow(data as PathRow), nodes: await selectPathNodes("getPath", pathId) };
+}
+
+export async function createPath(input: Omit<Path, "id" | "createdAt" | "updatedAt">): Promise<Path> {
+  const { db, userId } = ctx();
+  const row = { user_id: userId, target: "", current: "", ...pathPatchToRow(input) };
+  const { data, error } = await db.from("paths").insert(row).select(PATH_COLUMNS).single();
+  if (error) fail("createPath", error);
+  return pathFromRow(data as PathRow);
+}
+
+export async function updatePath(id: string, patch: Partial<Omit<Path, "id" | "createdAt">>): Promise<Path | null> {
+  if (!isUuid(id)) return null;
+  const { db, userId } = ctx();
+  const row = pathPatchToRow(patch);
+  // Touch the row even for an empty patch, so updatedAt still moves.
+  if (Object.keys(row).length === 0) row.updated_at = new Date().toISOString();
+  const { data, error } = await db
+    .from("paths")
+    .update(row)
+    .eq("user_id", userId)
+    .eq("id", id)
+    .select(PATH_COLUMNS)
+    .maybeSingle();
+  if (error) fail("updatePath", error);
+  return data ? pathFromRow(data as PathRow) : null;
+}
+
+/** Removes a Path and every node in it. */
+export async function removePath(id: string): Promise<boolean> {
+  if (!isUuid(id)) return false;
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("paths").delete().eq("user_id", userId).eq("id", id).select("id");
+  if (error) fail("removePath", error);
+  return (data ?? []).length > 0;
+}
+
+export async function getPathNode(id: string): Promise<PathNode | null> {
+  if (!isUuid(id)) return null;
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("path_nodes")
+    .select(PATH_NODE_COLUMNS)
+    .eq("user_id", userId)
+    .eq("id", id)
+    .maybeSingle();
+  if (error) fail("getPathNode", error);
+  return data ? pathNodeFromRow(data as PathNodeRow) : null;
+}
+
+/** The chain from a node up to the root of its Path. Gives Claude the context
+ *  that a node four levels deep is still, ultimately, about one goal. */
+export async function pathAncestry(id: string): Promise<PathNode[]> {
+  const start = await getPathNode(id);
+  if (!start) return [];
+  const nodes = await selectPathNodes("pathAncestry", start.pathId);
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const chain: PathNode[] = [];
+  let cursor: PathNode | undefined = byId.get(id) ?? start;
+  let guard = 0;
+  while (cursor && guard++ < 32) {
+    chain.unshift(cursor);
+    cursor = cursor.parentId ? byId.get(cursor.parentId) : undefined;
+  }
+  return chain;
+}
+
+type NewPathNode = Omit<PathNode, "id" | "createdAt" | "status"> & { status?: TangentStatus };
+
+function newPathNodeRow(userId: string, input: NewPathNode): Record<string, unknown> {
+  return {
+    user_id: userId,
+    ...pathNodePatchToRow({
+      ...input,
+      status: input.status ?? (input.kind === "idea" ? "suggested" : "accepted"),
+    }),
+  };
+}
+
+export async function addPathNode(input: NewPathNode): Promise<PathNode> {
+  const [node] = await addPathNodes([input]);
+  return node;
+}
+
+export async function addPathNodes(items: NewPathNode[]): Promise<PathNode[]> {
+  if (items.length === 0) return [];
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("path_nodes")
+    .insert(items.map((item) => newPathNodeRow(userId, item)))
+    .select(PATH_NODE_COLUMNS);
+  if (error) fail("addPathNodes", error);
+  // Inserted rows come back in insert order.
+  return (data as PathNodeRow[]).map(pathNodeFromRow);
+}
+
+export async function updatePathNode(
+  id: string,
+  patch: Partial<Omit<PathNode, "id" | "createdAt">>
+): Promise<PathNode | null> {
+  if (!isUuid(id)) return null;
+  const row = pathNodePatchToRow(patch);
+  if (Object.keys(row).length === 0) return getPathNode(id);
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("path_nodes")
+    .update(row)
+    .eq("user_id", userId)
+    .eq("id", id)
+    .select(PATH_NODE_COLUMNS)
+    .maybeSingle();
+  if (error) fail("updatePathNode", error);
+  return data ? pathNodeFromRow(data as PathNodeRow) : null;
+}
+
+/** Removes a node and everything that grew from it. Returns how many went. */
+export async function removePathNode(id: string): Promise<number> {
+  const node = await getPathNode(id);
+  if (!node) return 0;
+  // The parent_id foreign key cascades; count the subtree first for the caller.
+  const nodes = await selectPathNodes("removePathNode", node.pathId);
+  const doomed = new Set<string>([id]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const n of nodes) {
+      if (n.parentId && doomed.has(n.parentId) && !doomed.has(n.id)) {
+        doomed.add(n.id);
+        grew = true;
+      }
+    }
+  }
+  const { db, userId } = ctx();
+  const { error } = await db.from("path_nodes").delete().eq("user_id", userId).eq("id", id);
+  if (error) fail("removePathNode", error);
+  return doomed.size;
+}
+
+/** Clears a node's un-acted-on suggestions so regenerating doesn't pile up
+ *  duplicates. Anything you kept is left alone. */
+export async function clearSuggestions(parentId: string): Promise<void> {
+  if (!isUuid(parentId)) return;
+  const { db, userId } = ctx();
+  const { error } = await db
+    .from("path_nodes")
+    .delete()
+    .eq("user_id", userId)
+    .eq("parent_id", parentId)
+    .eq("status", "suggested");
+  if (error) fail("clearSuggestions", error);
 }

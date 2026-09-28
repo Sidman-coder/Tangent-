@@ -48,7 +48,7 @@ export function isAllowedCanvasHost(hostname: string): boolean {
 /** Checks the link's shape (not DNS). `firstHop` also requires the feed path. */
 export function parseCanvasFeedUrl(raw: string, firstHop = true): URL {
   let text = raw.trim();
-  if (/^webcal:\/\//i.test(text)) text = "https://" + text.slice("webcal://".length);
+  text = text.replace(/^webcals?:\/\//i, "https://");
   let url: URL;
   try {
     url = new URL(text);

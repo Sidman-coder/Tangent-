@@ -434,7 +434,6 @@ async function executeTool(name: string, input: Record<string, unknown>, request
       if (!title) return { data: { error: "Missing title" } };
       const date = typeof input.date === "string" && input.date ? input.date : today;
       const time = typeof input.time === "string" && input.time ? input.time : "09:00";
-      const displayTitle = time !== "09:00" ? `${title} (${time})` : title;
       const notes = typeof input.notes === "string" ? input.notes.trim() || undefined : undefined;
       const startAction = typeof input.startAction === "string" ? input.startAction.trim() || undefined : undefined;
       const rawResources = Array.isArray(input.resources)
@@ -445,7 +444,9 @@ async function executeTool(name: string, input: Record<string, unknown>, request
         : undefined;
       const resources = rawResources && rawResources.length > 0 ? rawResources : undefined;
       const calendarId = await resolveCalendarId(typeof input.calendarId === "string" ? input.calendarId : undefined);
-      const task = await addTask({ title: displayTitle, date, time, completed: false, calendarId, notes, startAction, resources });
+      // See the note in voice-handler: task.time is rendered on its own, so
+      // the title must not repeat it.
+      const task = await addTask({ title, date, time, completed: false, calendarId, notes, startAction, resources });
       if (task.wasDuplicate) {
         return { data: { ok: true, task, skipped: true, message: `Skipped 1 duplicate (already have "${task.title}" around ${task.time}).` }, action: "add_task", task };
       }

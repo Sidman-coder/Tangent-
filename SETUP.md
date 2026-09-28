@@ -57,3 +57,9 @@ Ensure the Pi can reach `http://YOUR_LAPTOP_IP:3000` while `npm run dev` is runn
 - [ ] `npm run dev` running on the laptop
 - [ ] Pi `TANGENT_URL` uses the laptop **LAN** IP, not `localhost`
 - [ ] Pi Flask server restarted after edits
+
+## Path and the Anthropic key
+
+`/path` drafts branches with `ANTHROPIC_API_KEY`. Without it, `/api/path`
+returns 503 with a readable message and the rest of the page still works — you
+can add anchors and write your own branches by hand.

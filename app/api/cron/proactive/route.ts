@@ -6,6 +6,8 @@ import { forEachCronUser } from "@/lib/cron-users";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Loops over every student.
+export const maxDuration = 60;
 
 // Scheduled in vercel.json (daily, 15:00 UTC). Runs once per student
 // (forEachCronUser), in that student's timezone. Runs proactive-notification

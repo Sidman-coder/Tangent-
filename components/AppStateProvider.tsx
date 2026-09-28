@@ -40,11 +40,22 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Poll every 2000ms so all pages stay in sync automatically
+  // Poll so all pages stay in sync. A hidden tab doesn't poll: with every request
+  // now loading the workspace from shared storage, background tabs were paying for
+  // reads nobody was looking at. Refreshes immediately on becoming visible again.
   useEffect(() => {
     void refresh();
-    const id = setInterval(() => void refresh(), 2000);
-    return () => clearInterval(id);
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") void refresh();
+    }, 4000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [refresh]);
 
   const saveState = useCallback(async (next: AppState) => {

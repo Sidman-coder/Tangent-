@@ -29,10 +29,11 @@ export default function MonthRhythm({
     <m.section variants={riseIn} className="dash-card month-rhythm" aria-labelledby="month-rhythm-title">
       <div className="today-section-heading dash-card-heading">
         <div>
-          <span className="today-section-label">Monthly rhythm</span>
-          <h2 id="month-rhythm-title">{monthName}</h2>
+          <h2 id="month-rhythm-title">Monthly rhythm</h2>
         </div>
         <span className="month-rhythm-legend" aria-hidden="true">
+          {monthName}
+          <span className="month-rhythm-legend-sep">·</span>
           Less
           <i className="level-0" /><i className="level-1" /><i className="level-2" /><i className="level-3" />
           More
@@ -56,7 +57,11 @@ export default function MonthRhythm({
               onClick={() => router.push(`/calendar?date=${key}`)}
               aria-label={label}
               title={label}
-              tabIndex={outside ? -1 : undefined}
+              // Leading and trailing days belong to the neighbouring month. They
+              // were only taken out of the tab order, so a screen reader still
+              // read five days that aren't part of this grid.
+              disabled={outside}
+              aria-hidden={outside || undefined}
               {...press}
               whileHover={{ scale: 1.14 }}
             >

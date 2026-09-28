@@ -4,6 +4,8 @@ import { withUser } from "@/lib/request-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Asks Claude for replacement slots.
+export const maxDuration = 60;
 
 export const POST = withUser(async (request: Request) => {
   const body = await request.json();

@@ -54,6 +54,7 @@ export default function AddTaskModal({ initialDate, initialTime, initialCalendar
   const [time, setTime] = useState(initialTime ?? "09:00");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Recurring
   const [recurringEnabled, setRecurringEnabled] = useState(false);
@@ -94,17 +95,19 @@ export default function AddTaskModal({ initialDate, initialTime, initialCalendar
   const handleSubmit = async () => {
     if (!title.trim()) return;
     setSubmitting(true);
+    setError(null);
 
+    // Every one of these used to be fire-and-forget: the response was never
+    // checked, so a failed request still closed the modal and reported success,
+    // and the task simply didn't exist. Failures now keep the modal open and say
+    // what happened.
     try {
       if (recurringEnabled) {
-        // Validate weekly needs at least one day selected
         if (frequency === "weekly" && daysOfWeek.length === 0) {
-          alert("Please select at least one day of the week.");
-          setSubmitting(false);
+          setError("Pick at least one day of the week.");
           return;
         }
-        console.log("[AddTaskModal] Submitting recurring task:", title, frequency, daysOfWeek, date, endDate);
-        await fetch("/api/tasks", {
+        const res = await fetch("/api/tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -119,8 +122,16 @@ export default function AddTaskModal({ initialDate, initialTime, initialCalendar
             notes: notes.trim() || undefined,
           }),
         });
+        const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; count?: number } | null;
+        if (!res.ok || data?.ok === false) {
+          setError(data?.error ?? `Couldn't add the task (${res.status}).`);
+          return;
+        }
+        if (data?.count === 0) {
+          setError("That repeat rule produced no dates. Check the day and end date.");
+          return;
+        }
       } else {
-        console.log("[AddTaskModal] Submitting single task:", title, date, time);
         const res = await fetch("/api/tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -133,9 +144,18 @@ export default function AddTaskModal({ initialDate, initialTime, initialCalendar
             notes: notes.trim() || undefined,
           }),
         });
-        const data = (await res.json().catch(() => null)) as { wasDuplicate?: boolean } | null;
+        const data = (await res.json().catch(() => null)) as
+          | { ok?: boolean; error?: string; wasDuplicate?: boolean }
+          | null;
+        if (!res.ok || data?.ok === false) {
+          setError(data?.error ?? `Couldn't add the task (${res.status}).`);
+          return;
+        }
         if (data?.wasDuplicate) onDuplicate?.();
       }
+    } catch {
+      setError("Couldn't reach the server. Check your connection and try again.");
+      return;
     } finally {
       setSubmitting(false);
     }
@@ -246,6 +266,12 @@ export default function AddTaskModal({ initialDate, initialTime, initialCalendar
                   ? "Select at least one day"
                   : "No occurrences in range"}
             </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="form-error" role="alert">
+            {error}
           </div>
         )}
 

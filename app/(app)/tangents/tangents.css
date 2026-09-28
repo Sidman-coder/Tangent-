@@ -1,0 +1,1675 @@
+/* Path: the observatory.
+ *
+ * This is the one surface in Tangent that sets its own ground. Everywhere else
+ * is paper; here the tree has to sit in something, and glow needs dark to glow
+ * against. The tokens below are scoped to .path-page, so nothing leaks into the
+ * rest of the app, and they are identical in light and dark mode on purpose:
+ * the instrument looks the same whatever the room is doing.
+ *
+ * Green belongs to tangents and to nothing else on this page. It is semantic,
+ * not a second brand colour: if it is green, it is an idea branching off.
+ */
+
+.tangents-root,
+.path-page {
+  --path-void: #0a0812;
+  --path-void-2: #151127;
+  --path-edge: rgba(190, 176, 245, 0.16);
+  --path-edge-strong: rgba(190, 176, 245, 0.34);
+  --path-ink: #efeafc;
+  --path-ink-2: rgba(226, 217, 252, 0.62);
+  --path-work: #b3a5f0;
+  --path-goal: #9a88ef;
+  --path-idea: #3ed08a;
+  --path-idea-soft: rgba(62, 208, 138, 0.16);
+  --path-panel: rgba(21, 17, 37, 0.97);
+  --path-radius: 16px;
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  /* Tangents replaces the window: there is no app chrome above it.
+     dvh, never vh, because of the iOS address bar. */
+  min-height: 100dvh;
+  background: radial-gradient(120% 100% at 50% 0%, var(--path-void-2) 0%, var(--path-void) 62%);
+  color: var(--path-ink);
+  /* clip, not hidden. The world layer is far larger than the viewport, which
+     makes an overflow:hidden box a scroll container: still scrollable
+     programmatically, and the browser does exactly that when a node button
+     takes focus. That silently shifted the whole stage out of alignment.
+     overflow:clip creates no scroll container at all. */
+  overflow: clip;
+}
+
+/* ─── Stage ─────────────────────────────────────────────────────────────── */
+
+.path-stage {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  cursor: grab;
+  touch-action: none;
+}
+.path-stage.is-dragging {
+  cursor: grabbing;
+}
+
+.path-ambient {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* A zero-size anchor pinned to the centre of the stage. Children are placed at
+   their world coordinates and the whole layer is moved and scaled about this
+   origin, so world (0,0) is the middle of the screen when the camera is home. */
+.path-world {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.path-geometry {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.path-labels {
+  position: absolute;
+  inset: 0;
+}
+
+/* ─── Geometry ──────────────────────────────────────────────────────────── */
+
+.path-ring {
+  fill: none;
+  stroke: var(--path-edge);
+  stroke-width: 1.25;
+  transition: stroke 0.4s ease, opacity 0.4s ease;
+}
+.path-ring.is-dim {
+  opacity: 0.3;
+}
+
+.path-spoke {
+  stroke: var(--path-edge);
+  stroke-width: 1;
+  stroke-dasharray: 2 7;
+  opacity: 0.5;
+  transition: opacity 0.4s ease;
+}
+.path-spoke.is-dim {
+  opacity: 0.12;
+}
+
+.path-tangent-line {
+  stroke: var(--path-idea);
+  stroke-width: 1.5;
+  opacity: 0.55;
+  transition: opacity 0.4s ease, stroke-width 0.3s ease;
+}
+/* A branch that is only a suggestion is drawn, not committed. */
+.path-tangent.is-suggested .path-tangent-line {
+  stroke-dasharray: 5 6;
+  opacity: 0.4;
+}
+.path-tangent.is-kept .path-tangent-line {
+  opacity: 0.8;
+  stroke-width: 2;
+}
+.path-tangent.is-focused .path-tangent-line {
+  opacity: 1;
+  stroke-width: 2.5;
+}
+.path-tangent.is-done .path-tangent-line {
+  stroke: var(--path-work);
+  opacity: 0.45;
+}
+.path-tangent.is-dim .path-tangent-line,
+.path-tangent.is-dim .path-touch {
+  opacity: 0.12;
+}
+
+/* The point of tangency. The whole drawing turns on it, so it is drawn. */
+.path-touch {
+  fill: var(--path-idea);
+  opacity: 0.9;
+  transition: opacity 0.4s ease;
+}
+
+.path-tangent-pulse {
+  stroke: #ffffff;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 10 260;
+  opacity: 0.75;
+  animation: path-pulse 2.6s linear infinite;
+}
+@keyframes path-pulse {
+  from { stroke-dashoffset: 270; }
+  to { stroke-dashoffset: 0; }
+}
+
+/* ─── Nodes ─────────────────────────────────────────────────────────────── */
+
+.path-point {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+/* Labels hold a constant size on screen by undoing the world's zoom. The camera
+   publishes --path-zoom on the stage, so one custom-property write rescales
+   every label at once, with no per-node subscription. */
+.path-point-inner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  /* Constant size while zoomed in; when zoomed out, labels give way a little
+     (down to 72%) so a wide view is not a wall of cards. */
+  transform: scale(calc(clamp(0.72, var(--path-zoom, 1), 1) / var(--path-zoom, 1)));
+}
+
+.path-goal-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: max-content;
+  padding: 14px 22px;
+  border: 1px solid var(--path-edge-strong);
+  border-radius: var(--path-radius);
+  background: rgba(20, 16, 38, 0.72);
+  backdrop-filter: blur(10px);
+  color: var(--path-ink);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.3s ease, transform 0.3s ease;
+}
+.path-goal-node:hover,
+.path-goal-node.is-focused {
+  border-color: var(--path-goal);
+}
+.path-goal-name {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.path-goal-focus {
+  font-size: 12px;
+  color: var(--path-ink-2);
+}
+
+.path-work {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  padding: 7px 13px 7px 9px;
+  border: 1px solid var(--path-edge);
+  border-radius: 999px;
+  background: #1a1630;
+  backdrop-filter: blur(8px);
+  color: var(--path-ink);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.25s ease, background 0.25s ease, opacity 0.4s ease;
+}
+.path-work:hover {
+  border-color: var(--path-work);
+  background: rgba(38, 31, 66, 0.92);
+}
+.path-work.is-focused {
+  border-color: var(--path-work);
+  box-shadow: 0 0 0 3px rgba(179, 165, 240, 0.16);
+}
+.path-work.is-dim {
+  opacity: 0.28;
+}
+.path-work-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--path-work);
+  flex: none;
+}
+
+.path-idea {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: stretch;
+  /* Absolutely positioned inside a zero-size anchor, so it needs an intrinsic
+     width: without this it shrink-wraps to the longest word and every card
+     becomes a column of single words. */
+  width: max-content;
+  max-width: 216px;
+  border: 1px solid rgba(62, 208, 138, 0.38);
+  border-radius: 12px;
+  /* Opaque: when two branches end close together the cards stack cleanly
+     instead of their words bleeding through each other. */
+  background: #0f1f1a;
+  backdrop-filter: blur(8px);
+  overflow: hidden;
+  transition: border-color 0.25s ease, opacity 0.4s ease, box-shadow 0.25s ease;
+}
+.path-idea:hover {
+  border-color: var(--path-idea);
+}
+.path-idea.is-focused {
+  border-color: var(--path-idea);
+  box-shadow: 0 0 0 3px var(--path-idea-soft);
+}
+.path-idea.is-suggested {
+  border-style: dashed;
+}
+.path-idea.is-done {
+  border-color: var(--path-edge);
+  background: rgba(24, 20, 44, 0.86);
+}
+.path-idea.is-dim {
+  opacity: 0.26;
+}
+.path-idea-body {
+  padding: 9px 12px;
+  border: 0;
+  background: none;
+  color: var(--path-ink);
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+.path-idea-grow {
+  flex: none;
+  width: 30px;
+  border: 0;
+  border-left: 1px solid rgba(62, 208, 138, 0.26);
+  background: rgba(62, 208, 138, 0.1);
+  color: var(--path-idea);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+.path-idea-grow:hover {
+  background: rgba(62, 208, 138, 0.22);
+}
+
+/* ─── Controls ──────────────────────────────────────────────────────────── */
+
+/* Two floating bars, after the canvas-toolbar pattern: one for what you can do
+   to the path, one for how you are looking at it. Each is a single grouped
+   surface rather than a scatter of loose round buttons. */
+.path-dock,
+.path-zoombar {
+  position: absolute;
+  bottom: 20px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--path-edge-strong);
+  border-radius: 14px;
+  background: var(--path-panel);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.path-dock {
+  left: 50%;
+  transform: translateX(-50%);
+}
+.path-zoombar {
+  left: 20px;
+}
+
+.path-dock-btn,
+.path-zoombar-btn,
+.path-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--path-ink);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+.path-zoombar-btn {
+  width: 34px;
+  padding: 0;
+  color: var(--path-ink-2);
+}
+.path-dock-btn:hover,
+.path-zoombar-btn:hover {
+  background: rgba(190, 176, 245, 0.12);
+  color: var(--path-ink);
+}
+.path-dock-btn:focus-visible,
+.path-zoombar-btn:focus-visible,
+.path-chip:focus-visible {
+  outline: 2px solid var(--path-goal);
+  outline-offset: 1px;
+}
+.path-dock-btn.is-accent {
+  color: var(--path-idea);
+}
+.path-dock-btn.is-accent:hover {
+  background: var(--path-idea-soft);
+}
+.path-dock-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.path-dock-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 6px 3px;
+  background: var(--path-edge);
+}
+.path-zoombar-value {
+  min-width: 46px;
+  color: var(--path-ink-2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+/* The one standalone chip left: "New path" in the Tangents bar. */
+.path-chip {
+  border: 1px solid var(--path-edge-strong);
+  border-radius: 999px;
+  background: var(--path-panel);
+  padding: 0 14px;
+}
+.path-chip:hover {
+  border-color: var(--path-goal);
+}
+
+/* ─── Inspector ─────────────────────────────────────────────────────────── */
+
+.path-inspector {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  /* Hugs its content instead of stretching to the floor with nothing in it. */
+  max-height: calc(100% - 36px);
+  width: min(360px, calc(100% - 36px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid var(--path-edge-strong);
+  border-radius: var(--path-radius);
+  background: var(--path-panel);
+  backdrop-filter: blur(18px);
+  box-shadow: -24px 0 60px rgba(6, 4, 14, 0.5);
+  overflow-y: auto;
+  z-index: 3;
+}
+
+.path-inspector-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.path-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.path-crumbs button {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--path-ink-2);
+  font-family: var(--font-body);
+  font-size: 12px;
+  cursor: pointer;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.path-crumbs button:hover {
+  color: var(--path-ink);
+}
+.path-crumbs button + button::before {
+  content: "/";
+  margin-right: 4px;
+  color: var(--path-edge-strong);
+}
+.path-inspector-close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--path-edge);
+  border-radius: 8px;
+  background: none;
+  color: var(--path-ink-2);
+  cursor: pointer;
+}
+.path-inspector-close:hover {
+  color: var(--path-ink);
+  border-color: var(--path-edge-strong);
+}
+
+.path-inspector-kind {
+  margin: 0;
+  color: var(--path-idea);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.path-inspector-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+}
+.path-inspector-body {
+  margin: 0;
+  color: var(--path-ink-2);
+  font-size: 13.5px;
+  line-height: 1.55;
+  max-width: 60ch;
+}
+
+.path-facts {
+  display: grid;
+  gap: 8px;
+  margin: 2px 0 0;
+  padding: 12px;
+  border: 1px solid var(--path-edge);
+  border-radius: 12px;
+}
+.path-facts div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.path-facts dt {
+  color: var(--path-ink-2);
+  font-size: 12px;
+}
+.path-facts dd {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.path-inspector-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 12px;
+}
+.path-inspector-note {
+  margin: 0;
+  color: var(--path-ink-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.path-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 13px;
+  border: 1px solid var(--path-edge-strong);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--path-ink);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.12s ease;
+}
+.path-btn:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+.path-btn:active {
+  transform: translateY(1px);
+}
+/* Primary is the app's accent, as it is everywhere else in Tangent. Green
+   stays reserved for branches, so it never has to mean "the main button". */
+.path-btn.is-primary {
+  background: var(--path-work);
+  border-color: var(--path-work);
+  color: #17132a;
+  font-weight: 600;
+}
+.path-btn.is-primary:hover {
+  background: #c4b9f5;
+  border-color: #c4b9f5;
+}
+.path-btn.is-accent {
+  border-color: rgba(62, 208, 138, 0.45);
+  color: var(--path-idea);
+}
+.path-btn.is-quiet {
+  border-color: transparent;
+  color: var(--path-ink-2);
+}
+.path-btn.is-quiet:hover {
+  color: var(--path-ink);
+}
+.path-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* ─── Forms, empty and loading ──────────────────────────────────────────── */
+
+.path-form {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  width: min(560px, calc(100% - 36px));
+  padding: 20px;
+  border: 1px solid var(--path-edge-strong);
+  border-radius: var(--path-radius);
+  background: var(--path-panel);
+  backdrop-filter: blur(18px);
+  z-index: 4;
+}
+.path-form h2 {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+}
+.path-form-wide {
+  grid-column: 1 / -1;
+}
+.path-form label,
+.path-setup label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.path-form label span,
+.path-setup label span {
+  color: var(--path-ink-2);
+  font-size: 12px;
+}
+.path-form input,
+.path-form select,
+.path-setup input {
+  height: 38px;
+  padding: 0 11px;
+  border: 1px solid var(--path-edge-strong);
+  border-radius: 10px;
+  background: rgba(10, 8, 18, 0.6);
+  color: var(--path-ink);
+  font-family: var(--font-body);
+  font-size: 13.5px;
+}
+.path-form input::placeholder,
+.path-setup input::placeholder {
+  color: rgba(226, 217, 252, 0.45);
+}
+.path-form input:focus-visible,
+.path-form select:focus-visible,
+.path-setup input:focus-visible {
+  outline: 2px solid var(--path-goal);
+  outline-offset: 1px;
+}
+.path-form-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #ff8f8f;
+  font-size: 12.5px;
+}
+.path-form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.path-page.is-setup,
+.path-page.is-loading {
+  align-items: center;
+  justify-content: center;
+}
+.path-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(440px, calc(100% - 36px));
+  padding: 28px;
+  border: 1px solid var(--path-edge-strong);
+  border-radius: var(--path-radius);
+  background: var(--path-panel);
+  backdrop-filter: blur(18px);
+}
+.path-setup h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 25px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.path-setup p {
+  margin: 0;
+  color: var(--path-ink-2);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.path-empty {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  transform: translateX(-50%);
+  width: min(420px, calc(100% - 36px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 22px;
+  border: 1px solid var(--path-edge);
+  border-radius: var(--path-radius);
+  background: rgba(20, 16, 38, 0.8);
+  backdrop-filter: blur(14px);
+  text-align: center;
+  z-index: 2;
+}
+.path-empty h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+}
+.path-empty p {
+  margin: 0;
+  color: var(--path-ink-2);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* The loading state is the drawing's own shape, not a spinner. */
+.path-skeleton {
+  position: relative;
+  width: 180px;
+  height: 180px;
+}
+.path-skeleton-ring {
+  position: absolute;
+  inset: 22%;
+  border: 1px solid var(--path-edge);
+  border-radius: 50%;
+  animation: path-breathe 2.4s ease-in-out infinite;
+}
+.path-skeleton-ring.is-outer {
+  inset: 0;
+  border-color: var(--path-edge-strong);
+  animation-delay: 0.3s;
+}
+@keyframes path-breathe {
+  0%, 100% { opacity: 0.25; transform: scale(0.97); }
+  50% { opacity: 0.7; transform: scale(1); }
+}
+.path-loading-note {
+  margin-top: 16px;
+  color: var(--path-ink-2);
+  font-size: 13px;
+}
+
+.path-error {
+  margin: 0;
+  color: #ff8f8f;
+  font-size: 13px;
+}
+.path-error.is-floating {
+  position: absolute;
+  left: 50%;
+  top: 18px;
+  transform: translateX(-50%);
+  padding: 9px 14px;
+  border: 1px solid rgba(255, 143, 143, 0.4);
+  border-radius: 10px;
+  background: var(--path-panel);
+  backdrop-filter: blur(12px);
+  z-index: 5;
+}
+
+/* ─── Narrow screens ────────────────────────────────────────────────────── */
+
+@media (max-width: 860px) {
+  .path-inspector {
+    top: auto;
+    right: 12px;
+    left: 12px;
+    bottom: 12px;
+    width: auto;
+    max-height: 56%;
+  }
+  .path-zoombar {
+    left: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+  /* On a phone the dock gets its own full-width row above the zoom bar, and
+     scrolls sideways rather than wrapping. */
+  .path-dock {
+    left: 12px;
+    right: 12px;
+    transform: none;
+    bottom: calc(64px + env(safe-area-inset-bottom));
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .path-dock::-webkit-scrollbar {
+    display: none;
+  }
+  .path-form {
+    grid-template-columns: 1fr 1fr;
+    bottom: 12px;
+  }
+}
+
+/* ─── Reduced motion ────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .path-tangent-pulse,
+  .path-skeleton-ring {
+    animation: none;
+  }
+  .path-ring,
+  .path-spoke,
+  .path-tangent-line,
+  .path-work,
+  .path-idea,
+  .path-btn {
+    transition: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TANGENTS — the mode: its own window, its own bar, and the field of paths
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.tangents-root {
+  display: flex;
+  flex-direction: column;
+}
+.tangents-root.is-centred {
+  align-items: center;
+  justify-content: center;
+}
+
+.tangents-bar {
+  position: relative;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+}
+/* Over the drawing rather than above it: the canvas runs full height behind. */
+.tangents-bar.is-over {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+}
+.tangents-bar.is-over > * {
+  pointer-events: auto;
+}
+.tangents-bar h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-align: center;
+  color: var(--path-ink);
+}
+.tangents-bar-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.tangents-bar-meta {
+  color: var(--path-ink-2);
+  font-size: 12px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tangents-bar .path-chip {
+  justify-self: end;
+}
+
+.tangents-back {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px 7px 10px;
+  border: 1px solid var(--path-edge);
+  border-radius: 999px;
+  color: var(--path-ink-2);
+  font-family: var(--font-body);
+  font-size: 13px;
+  text-decoration: none;
+  transition: color 0.18s ease, border-color 0.18s ease;
+}
+.tangents-back:hover {
+  color: var(--path-ink);
+  border-color: var(--path-edge-strong);
+}
+
+/* The gallery is exactly one window tall: the field scales to fit it rather
+   than scrolling, and the phone list scrolls inside it. */
+.tangents-root.is-gallery {
+  height: 100dvh;
+  min-height: 0;
+}
+
+.tangents-space {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 4px 20px 28px;
+}
+
+.tangents-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+}
+
+.tangents-fit {
+  position: relative;
+  flex: none;
+}
+
+.tangents-field {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+
+/* The orbit the paths sit on, and you at its centre. Drawn faintly: it is
+   structure, not decoration. */
+.tangents-orbit-line {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+}
+.tangents-orbit-line circle {
+  fill: none;
+  stroke-width: 1;
+}
+/* Drawn in as a solid line, then handed over to a dashed orbit that drifts
+   round very slowly: alive, never busy. */
+.tangents-orbit-draw {
+  stroke: rgba(190, 176, 245, 0.5);
+}
+.tangents-orbit-dash {
+  stroke: var(--path-edge-strong);
+  stroke-dasharray: 2 7;
+  animation: tangents-drift 60s linear infinite;
+}
+@keyframes tangents-drift {
+  to { stroke-dashoffset: -540; }
+}
+.tangents-hub {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: var(--path-ink-2);
+  font-size: 12px;
+  pointer-events: none;
+}
+.tangents-hub-mark {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border: 1px solid var(--path-edge);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(154, 136, 239, 0.16), rgba(10, 8, 18, 0.2) 70%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.tangents-orbit {
+  position: absolute;
+  /* The standalone translate property, not transform: the entrance animation
+     writes transform, and when this lived there it was silently replaced, so
+     every disc sat half its size down and to the right of its point. */
+  translate: -50% -50%;
+}
+
+/* A flat disc with a thin ring, not a lit ball. The ring carries the progress,
+   so the one decorative thing on it is also the only informative thing. */
+.tangents-sphere {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 172px;
+  padding: 10px;
+  border-radius: var(--path-radius);
+  color: var(--path-ink);
+  text-decoration: none;
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.tangents-disc {
+  flex: none;
+  overflow: visible;
+}
+.tangents-sphere-ring {
+  /* Filled with the ground, so the orbit passes behind the disc, not through it. */
+  fill: rgba(12, 10, 22, 0.92);
+  stroke: var(--path-edge-strong);
+  stroke-width: 1.25;
+  transition: stroke 0.22s ease;
+}
+.tangents-sphere-arc {
+  fill: none;
+  stroke: var(--path-idea);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  /* Start the arc at the top rather than at three o'clock. */
+  transform: rotate(-90deg);
+  transform-origin: center;
+}
+.tangents-sphere-core {
+  fill: var(--path-goal);
+  opacity: 0.85;
+  transition: opacity 0.22s ease, r 0.22s ease;
+}
+.tangents-disc-wrap {
+  display: block;
+  will-change: transform;
+}
+/* A soft ring of light that only exists while the disc is the one you are on. */
+.tangents-sphere-halo {
+  fill: none;
+  stroke: var(--path-goal);
+  stroke-width: 8;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.tangents-sphere:hover .tangents-sphere-halo,
+.tangents-sphere:focus-visible .tangents-sphere-halo {
+  opacity: 0.12;
+}
+/* Looking at one path quiets the rest, as focusing a node does inside one. */
+.tangents-field:has(.tangents-sphere:hover) .tangents-sphere:not(:hover) {
+  opacity: 0.5;
+}
+.tangents-sphere {
+  transition: opacity 0.25s ease;
+}
+.tangents-sphere-label {
+  will-change: transform;
+  /* A quiet plate under the words, so the orbit runs behind them. */
+  padding: 6px 12px 7px;
+  border-radius: 12px;
+  background: rgba(12, 10, 22, 0.72);
+  backdrop-filter: blur(6px);
+}
+.tangents-sphere:hover .tangents-sphere-ring {
+  stroke: var(--path-goal);
+}
+.tangents-sphere:hover .tangents-sphere-core {
+  opacity: 1;
+}
+.tangents-sphere:focus-visible {
+  outline: 2px solid var(--path-goal);
+  outline-offset: 3px;
+}
+.tangents-sphere-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  text-align: center;
+}
+.tangents-sphere-label strong {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.tangents-sphere-label span {
+  color: var(--path-ink-2);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+.tangents-sphere-when {
+  color: var(--path-idea);
+}
+
+.tangents-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 420px;
+  padding: 30px;
+  text-align: center;
+}
+.tangents-empty-mark {
+  display: grid;
+  place-items: center;
+  width: 88px;
+  height: 88px;
+  margin-bottom: 6px;
+  border: 1px dashed var(--path-edge-strong);
+  border-radius: 50%;
+}
+.tangents-empty h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.tangents-empty p {
+  margin: 0;
+  color: var(--path-ink-2);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+/* ─── Intake ────────────────────────────────────────────────────────────── */
+
+.tangents-intake-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(6, 4, 14, 0.62);
+  backdrop-filter: blur(6px);
+}
+
+.tangents-intake {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(520px, 100%);
+  padding: 22px;
+  border: 1px solid var(--path-edge-strong);
+  border-radius: var(--path-radius);
+  background: var(--path-panel);
+  box-shadow: 0 30px 80px rgba(4, 2, 10, 0.6);
+}
+.tangents-intake-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.tangents-intake-step {
+  color: var(--path-ink-2);
+  font-family: var(--font-body);
+  font-size: 12.5px;
+}
+.tangents-intake-progress {
+  display: flex;
+  gap: 4px;
+}
+.tangents-intake-progress span {
+  flex: 1;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--path-edge);
+  transition: background 0.3s ease;
+}
+.tangents-intake-progress span.is-done {
+  background: var(--path-idea);
+}
+.tangents-intake-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 188px;
+}
+.tangents-intake-body h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+.tangents-intake-body > p {
+  margin: 0 0 4px;
+  color: var(--path-ink-2);
+  font-size: 13px;
+  line-height: 1.55;
+  max-width: 52ch;
+}
+/* The optional half of the intake, four fields on one panel. It can outgrow
+   the dialog on a short window, so it scrolls inside itself rather than
+   pushing the footer off-screen. */
+.tangents-intake-group {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: min(46vh, 380px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+
+.tangents-intake-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tangents-intake-field > span {
+  color: var(--path-ink-2);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.tangents-intake-input {
+  width: 100%;
+  padding: 11px 13px;
+  border: 1px solid var(--path-edge-strong);
+  border-radius: 10px;
+  background: rgba(10, 8, 18, 0.6);
+  color: var(--path-ink);
+  font-family: var(--font-body);
+  font-size: 14.5px;
+  resize: vertical;
+}
+.tangents-intake-input.is-area {
+  line-height: 1.5;
+}
+.tangents-intake-input::placeholder {
+  color: rgba(226, 217, 252, 0.4);
+}
+.tangents-intake-input:focus-visible {
+  outline: 2px solid var(--path-goal);
+  outline-offset: 1px;
+}
+.tangents-kinds {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 4px;
+}
+.tangents-kind {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 14px 14px 13px;
+  border: 1px solid var(--path-edge);
+  border-radius: 10px;
+  background: none;
+  color: var(--path-ink);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+.tangents-kind:hover {
+  border-color: var(--path-edge-strong);
+}
+.tangents-kind.is-on {
+  border-color: var(--path-goal);
+  background: rgba(154, 136, 239, 0.12);
+}
+.tangents-kind:hover .tangents-kind-icon {
+  transform: translateY(-1px) rotate(-4deg);
+}
+.tangents-kind-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  border: 1px solid var(--path-edge);
+  background: rgba(154, 136, 239, 0.1);
+  color: var(--path-work);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* One-tap answers under a question. */
+.tangents-intake-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+.tangents-intake-chip {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--path-edge-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--path-ink-2);
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.tangents-intake-chip:hover {
+  color: var(--path-ink);
+  border-color: var(--path-goal);
+}
+.tangents-intake-chip.is-on {
+  color: #17132a;
+  background: var(--path-work);
+  border-color: var(--path-work);
+}
+.tangents-kind strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.tangents-kind span {
+  color: var(--path-ink-2);
+  font-size: 11.5px;
+}
+.tangents-intake-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.tangents-intake-skip {
+  align-self: center;
+  border: 0;
+  background: none;
+  color: var(--path-ink-2);
+  font-family: var(--font-body);
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.tangents-intake-skip:hover {
+  color: var(--path-ink);
+}
+
+/* ─── Phone list ────────────────────────────────────────────────────────── */
+
+.tangents-list {
+  align-self: start;
+  width: 100%;
+  max-width: 520px;
+  margin: 0;
+  padding: 4px 0 24px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tangents-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--path-edge);
+  border-radius: var(--path-radius);
+  background: rgba(21, 17, 37, 0.6);
+  color: var(--path-ink);
+  text-decoration: none;
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+.tangents-row:hover,
+.tangents-row:focus-visible {
+  border-color: var(--path-edge-strong);
+  background: rgba(21, 17, 37, 0.9);
+}
+.tangents-row:focus-visible {
+  outline: 2px solid var(--path-goal);
+  outline-offset: 2px;
+}
+.tangents-row-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tangents-row-copy strong {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tangents-row-copy span {
+  color: var(--path-ink-2);
+  font-size: 12px;
+}
+.tangents-row-copy .tangents-sphere-when {
+  color: var(--path-idea);
+}
+.tangents-row-chevron {
+  flex: none;
+  color: var(--path-ink-2);
+}
+
+@media (max-width: 640px) {
+  .tangents-bar {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 12px;
+  }
+  .tangents-bar h1 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tangents-back {
+    padding: 7px 9px;
+  }
+  .tangents-back-label {
+    display: none;
+  }
+  .tangents-bar-meta {
+    display: none;
+  }
+  .tangents-space {
+    padding: 4px 12px 16px;
+  }
+  .tangents-kinds {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ─── Fields on the dark ground ─────────────────────────────────────────────
+   globals.css styles every input with a triple :not() selector, which outranks
+   the single-class rules above, so fields here came out as light-theme boxes
+   on the dark panel. This matches that specificity, scoped to Tangents. */
+.tangents-root input:not([type="checkbox"]):not([type="date"]):not([type="time"]),
+.tangents-root select,
+.tangents-root textarea {
+  border-color: var(--path-edge-strong);
+  background: rgba(10, 8, 18, 0.6);
+  color: var(--path-ink);
+}
+.tangents-root input:not([type="checkbox"]):not([type="date"]):not([type="time"]):focus,
+.tangents-root select:focus,
+.tangents-root textarea:focus {
+  border-color: var(--path-goal);
+  box-shadow: 0 0 0 3px rgba(179, 165, 240, 0.18);
+}
+.tangents-root input::placeholder,
+.tangents-root textarea::placeholder {
+  color: rgba(226, 217, 252, 0.36);
+}
+.tangents-root select option {
+  background: #151127;
+  color: var(--path-ink);
+}
+
+/* ─── Stage layers ─────────────────────────────────────────────────────────── */
+/* The dust covers the whole window, not just the padded stage, so the field
+   has no visible box around it. */
+.tangents-stage > .path-ambient {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
+.tangents-stage > .tangents-fit,
+.tangents-stage > .tangents-list {
+  position: relative;
+  z-index: 1;
+}
+
+/* The way into a path: its dark widens out of the disc you pressed. */
+.tangents-portal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background:
+    radial-gradient(60vmax 60vmax at var(--px) var(--py), var(--path-void-2), var(--path-void) 70%);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tangents-orbit-dash {
+    animation: none;
+  }
+}
+
+/* ─── Branch filter ──────────────────────────────────────────────────────────
+   A segmented control with one pill that slides between options. */
+.path-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.path-filter-btn {
+  position: relative;
+  height: 30px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--path-ink-2);
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  isolation: isolate;
+  transition: color 0.16s ease;
+}
+.path-filter-btn:hover,
+.path-filter-btn.is-on {
+  color: var(--path-ink);
+}
+.path-filter-btn:focus-visible {
+  outline: 2px solid var(--path-goal);
+  outline-offset: 1px;
+}
+.path-filter-pill {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: rgba(190, 176, 245, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(190, 176, 245, 0.24);
+}
+.path-filter-label {
+  position: relative;
+}
+
+/* Branches the filter is not showing: still there, so the tree does not jump,
+   but faint and out of the way of the pointer. */
+.path-tangent.is-filtered .path-tangent-line,
+.path-tangent.is-filtered .path-touch {
+  opacity: 0.08;
+}
+.path-idea.is-filtered {
+  opacity: 0.16;
+  pointer-events: none;
+}
+
+/* Whatever you are on, or pointing at, comes to the front of any overlap. */
+.path-point:has(.is-focused),
+.path-point:hover,
+.path-point:focus-within {
+  z-index: 3;
+}
+.path-point:has(.is-dim) {
+  z-index: 0;
+}
+
+/* The empty field sits in the same dust as a full one. */
+.tangents-empty > .path-ambient {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+.tangents-empty {
+  position: relative;
+  z-index: 0;
+}
+
+/* ─── Member labels sit outside their circle ─────────────────────────────────
+   Pushed out along the radius by half their own size plus a gap, so the pill's
+   inner edge meets the ring instead of its middle sitting on it. */
+.path-point.is-member .path-work {
+  transform: translate(
+    calc(-50% + var(--ax, 0) * 50% + var(--ax, 0) * 10px),
+    calc(-50% + var(--ay, 0) * 50% + var(--ay, 0) * 8px)
+  );
+}
+/* The dot marks the exact point on the ring, so it is drawn there. */
+.path-point.is-member::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--path-work);
+  box-shadow: 0 0 0 3px rgba(179, 165, 240, 0.18);
+}
+
+/* ─── Idea cards: a short title, two lines at most ─────────────────────────── */
+.path-idea-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ─── Level of detail ────────────────────────────────────────────────────────
+   Far out, an idea is a dot on the end of its tangent; its words come back as
+   you zoom in, or when it is the one you picked. */
+.path-stage[data-lod="far"] .path-idea:not(.is-focused):not(.is-live) {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border-radius: 50%;
+  border-color: var(--path-idea);
+  background: var(--path-idea-soft);
+}
+.path-stage[data-lod="far"] .path-idea:not(.is-focused):not(.is-live) .path-idea-body {
+  position: absolute;
+  inset: -8px;
+  padding: 0;
+  font-size: 0;
+  color: transparent;
+  background: transparent;
+}
+.path-stage[data-lod="far"] .path-idea:not(.is-focused):not(.is-live) .path-idea-grow {
+  display: none;
+}
+.path-point.is-member .path-work-dot {
+  display: none;
+}
+.path-point.is-member .path-work {
+  padding-left: 13px;
+}
+
+/* ─── Inspector: a drafted branch in labelled parts ───────────────────────── */
+.path-inspector-body.is-lead {
+  color: var(--path-ink);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.path-inspector-part {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 11px 12px;
+  border: 1px solid var(--path-edge);
+  border-radius: 12px;
+  background: rgba(10, 8, 18, 0.35);
+}
+.path-inspector-part h3 {
+  margin: 0;
+  color: var(--path-ink-2);
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.path-inspector-part p {
+  margin: 0;
+  color: var(--path-ink);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.path-inspector-part.is-step {
+  border-color: rgba(62, 208, 138, 0.3);
+  background: var(--path-idea-soft);
+}
+
+.tangents-portal-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 61;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}

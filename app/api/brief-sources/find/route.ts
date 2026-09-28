@@ -4,6 +4,8 @@ import { withUser } from "@/lib/request-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Fetches and classifies candidate feeds.
+export const maxDuration = 60;
 
 export const POST = withUser(async (req: Request) => {
   try {

@@ -7,7 +7,6 @@ import type { Task } from "@/lib/types";
 import { formatTime12 } from "@/lib/dates";
 import { press, riseIn, rowPresence, spring } from "@/lib/motion";
 import { describeReason, type UrgencySummary } from "@/lib/urgency";
-import UrgencyHero from "./UrgencyHero";
 import { urgencyRgbVar } from "./urgency-palette";
 
 const VISIBLE_LIMIT = 5;
@@ -80,10 +79,12 @@ export default function AttentionSection({
       aria-labelledby="attention-title"
     >
       <div className="attention-body">
-        <span className="today-section-label attention-label">
-          {clear ? "All clear" : "Needs attention"}
-          {!clear && <span className="attention-count">{urgency.items.length}</span>}
-        </span>
+        {!clear && (
+          <span className="today-section-label attention-label">
+            Needs attention
+            <span className="attention-count">{urgency.items.length}</span>
+          </span>
+        )}
 
         <AnimatePresence mode="wait" initial={false}>
           <m.div
@@ -175,7 +176,6 @@ export default function AttentionSection({
         </div>
       </div>
 
-      <UrgencyHero score={urgency.score} />
     </m.section>
   );
 }

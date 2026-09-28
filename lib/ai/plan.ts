@@ -247,7 +247,8 @@ Return a title (2 to 6 words, specific to the goal, e.g. "Chess Tactics Fundamen
       const phases = (Array.isArray(json.phases) ? json.phases : [])
         .map((p) => (p && typeof p === "object" ? (p as Record<string, unknown>) : {}))
         .map((p) => ({ name: clip(p.name, 60), goal: clip(p.goal, 200) }));
-      if (!title || phases.length === 0) throw new Error("empty outline");
+      // A blank title is fine: callers fall back to the student's words (resolvePlanTitle).
+      if (phases.length === 0) throw new Error("empty outline");
       // Pad or trim to the phase count the server chose.
       const fixed = sizes.map((_, i) => phases[i] ?? { name: `Part ${i + 1}`, goal: phases[phases.length - 1].goal });
       return { title, phases: fixed };

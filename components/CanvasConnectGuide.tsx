@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Link2, X } from "lucide-react";
 import Button from "@/components/ui/Button";
+import { useAppState } from "@/components/AppStateProvider";
 
 const STEPS = [
   {
@@ -78,6 +79,9 @@ export default function CanvasConnectGuide({ open, onClose }: { open: boolean; o
     setError("");
   }, [open]);
 
+  const { refresh } = useAppState();
+  const [imported, setImported] = useState<{ added: number; updated: number; total: number } | null>(null);
+
   const connect = async () => {
     const value = icsUrl.trim();
     if (!value) {
@@ -91,11 +95,16 @@ export default function CanvasConnectGuide({ open, onClose }: { open: boolean; o
       const response = await fetch("/api/canvas/connect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ icsUrl: value }),
+        // Due times are converted into this zone; the server runs on UTC.
+        body: JSON.stringify({ icsUrl: value, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
       });
-      const data = await response.json().catch(() => null) as { error?: string } | null;
+      const data = await response.json().catch(() => null) as { error?: string; added?: number; updated?: number; total?: number } | null;
       if (!response.ok) throw new Error(data?.error || "Canvas could not be connected. Check the link and try again.");
+      setImported({ added: data?.added ?? 0, updated: data?.updated ?? 0, total: data?.total ?? 0 });
       setStatus("success");
+      // Pull the new assignments in now. Without this the calendar stayed
+      // empty until a reload, which read as "Canvas didn't work".
+      void refresh();
     } catch (reason) {
       setStatus("error");
       setError(reason instanceof Error ? reason.message : "Canvas could not be connected. Check the link and try again.");
@@ -135,7 +144,11 @@ export default function CanvasConnectGuide({ open, onClose }: { open: boolean; o
           <div className="canvas-guide-success" role="status">
             <span aria-hidden="true"><CheckCircle2 size={28} /></span>
             <h3>Canvas connected</h3>
-            <p>Connected — your assignments will appear on your calendar.</p>
+            <p>
+              {imported && imported.total > 0
+                ? `${imported.added + imported.updated} assignment${imported.added + imported.updated === 1 ? "" : "s"} from the last three weeks onward are on your calendar now. New ones sync automatically.`
+                : "Connected. Nothing is due from the last three weeks onward yet; new assignments will sync automatically."}
+            </p>
             <Button variant="primary" onClick={onClose}>Done</Button>
           </div>
         ) : (

@@ -5,6 +5,8 @@ import { forEachCronUser } from "@/lib/cron-users";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Loops over every student.
+export const maxDuration = 60;
 
 // Scheduled in vercel.json (once daily). Runs once per student (forEachCronUser),
 // each with their own tasks, context, brief config and pending batch. This is the real "Daily Brief" feature —

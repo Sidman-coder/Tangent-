@@ -73,6 +73,10 @@ export const AI_TASKS = {
   briefSources: { feature: "brief", tier: "FAST", maxTokens: 500, cacheTtl: "5m" },
   /** Proactive notification copy. */
   proactive: { feature: "notif", tier: "FAST", maxTokens: 400 },
+  /** Tangents: three branches off one node of a Path (app/api/path). SMART with
+   *  thinking off, like plan generation; "tangent" is a heavy feature, so it is
+   *  blocked rather than downgraded once the daily budget is spent. */
+  pathBranches: { feature: "tangent", tier: "SMART", maxTokens: 1500, thinking: "disabled" },
   /** Durable-fact extraction from a chat turn. */
   contextExtract: { feature: "context", tier: "FAST", maxTokens: 300 },
   /** Compress the context file once it grows past 40 entries. */

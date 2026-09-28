@@ -7,7 +7,7 @@
 // created (thin left bar plus a swatch that opens the task's calendar).
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Check, MoreHorizontal, PanelRightClose, Pencil, Pin, PinOff, Plus, Search, Trash2, X } from "lucide-react";
+import { Check, MessageSquarePlus, MoreHorizontal, PanelRightClose, Pencil, Pin, PinOff, Plus, Search, Trash2, X } from "lucide-react";
 import type { ChatSession } from "@/lib/types";
 import type { AppState } from "@/lib/types";
 import { resolveChatTask, type ChatTask } from "@/components/console/chatTask";
@@ -282,7 +282,13 @@ export default function ChatSidebar({
         {loading && sessions.length === 0 ? (
           <div className="tg-side-empty" role="status">Loading chats…</div>
         ) : sessions.length === 0 ? (
-          <div className="tg-side-empty">You haven’t started any chats yet.</div>
+          <div className="tg-side-empty">
+            <span className="tg-side-empty-icon" aria-hidden="true">
+              <MessageSquarePlus size={16} strokeWidth={1.8} />
+            </span>
+            <strong>No chats yet</strong>
+            <span>Ask something on the left. Each conversation is saved here so you can pick it up later.</span>
+          </div>
         ) : empty ? (
           <div className="tg-side-empty">No chats match “{query.trim()}”.</div>
         ) : (

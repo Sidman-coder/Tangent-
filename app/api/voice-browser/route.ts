@@ -5,6 +5,8 @@ import { withUser } from "@/lib/request-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Browser voice path runs the same tool loop.
+export const maxDuration = 60;
 
 export const POST = withUser(async (req: Request) => {
   try {

@@ -42,13 +42,12 @@ export default function WeekAhead({ tasks, now, insight }: { tasks: Task[]; now:
     <m.section variants={riseIn} className="dash-card week-ahead" aria-labelledby="week-ahead-title">
       <div className="today-section-heading dash-card-heading">
         <div>
-          <span className="today-section-label">Next 7 days</span>
           <h2 id="week-ahead-title">Week ahead</h2>
         </div>
-        <span>{total} open task{total === 1 ? "" : "s"}</span>
+        {total > 0 && <span>{total} open task{total === 1 ? "" : "s"}</span>}
       </div>
 
-      <div className="week-ahead-bars">
+      <div className={`week-ahead-bars${total === 0 ? " is-empty" : ""}`}>
         {days.map((day, index) => {
           const isToday = index === 0;
           const isPeak = day.open > 0 && day === busiest;

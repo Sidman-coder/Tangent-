@@ -1,66 +1,39 @@
 "use client";
 
 import { browserTimezone, zoneAbbreviation } from "@/lib/time";
+import StorageStatus from "@/components/StorageStatus";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { m } from "motion/react";
+import { pageEnter, spring } from "@/lib/motion";
 import {
   CalendarDays,
-  CalendarSync,
-  CheckSquare2,
   Home,
   LogOut,
+  Spline,
+  ArrowUpRight,
   MessageSquareText,
-  Plus,
   Search,
   Settings,
-  Sparkles,
 } from "lucide-react";
 import NotificationBell from "./NotificationBell";
 import CommandPalette from "./CommandPalette";
 import FirstRun from "./FirstRun";
-import CanvasConnectGuide from "./CanvasConnectGuide";
-import VoiceCaptureFab from "./VoiceCaptureFab";
+import TangentLogo from "@/components/TangentLogo";
 import DesktopNotifPrompt from "./DesktopNotifPrompt";
 import { useAppState } from "./AppStateProvider";
 
+// Three places you work, plus settings. Tasks used to be its own page; it only
+// ever showed today, which Today already does, and everything else about a task
+// belongs on the day it falls on. Tangents is deliberately not in this list: it
+// is a mode, not a page, and it gets its own door at the bottom of the rail.
 const NAV_LINKS = [
-  {
-    href: "/",
-    label: "Today",
-    icon: Home,
-  },
-  {
-    href: "/tasks",
-    label: "Tasks",
-    icon: CheckSquare2,
-  },
-  {
-    href: "/calendar",
-    label: "Calendar",
-    icon: CalendarDays,
-  },
-  {
-    href: "/ai",
-    label: "Tangent AI",
-    icon: MessageSquareText,
-  },
+  { href: "/", label: "Today", icon: Home },
+  { href: "/calendar", label: "Calendar", icon: CalendarDays },
+  { href: "/ai", label: "Tangent AI", icon: MessageSquareText },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
-
-const PAGE_TITLES: Record<string, string> = {
-  "/": "Today",
-  "/calendar": "Calendar",
-  "/tasks": "Tasks",
-  "/ai": "Tangent AI",
-  "/settings": "Settings",
-};
-
-function pageTitleFor(pathname: string): string {
-  if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname];
-  const base = "/" + pathname.split("/")[1];
-  return PAGE_TITLES[base] ?? "TANGENT";
-}
 
 /** "9:30 PM EDT" in the student's own timezone (profiles.timezone). */
 function clockFor(d: Date, timeZone: string): string {
@@ -73,14 +46,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [clock, setClock] = useState<string | null>(null);
   const { state, refresh } = useAppState();
+  const refreshState = refresh;
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [canvasGuideOpen, setCanvasGuideOpen] = useState(false);
-  const title = pageTitleFor(pathname);
   const tz = state?.user.timezone ?? browserTimezone();
-  const today = new Date().toLocaleDateString(undefined, { timeZone: tz, weekday: "short", month: "short", day: "numeric" });
+  const [today, setToday] = useState<string | null>(null);
 
   useEffect(() => {
-    const update = () => setClock(clockFor(new Date(), tz));
+    const update = () => {
+      const now = new Date();
+      setClock(clockFor(now, tz));
+      setToday(now.toLocaleDateString("en-US", { timeZone: tz, weekday: "short", month: "short", day: "numeric" }));
+    };
     update();
     const id = setInterval(update, 60000);
     return () => clearInterval(id);
@@ -93,29 +69,57 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loaded && !onboardedAt) setShowOnboarding(true);
   }, [loaded, onboardedAt]);
-  const profileInitial = state?.user.displayName?.trim().charAt(0).toUpperCase() || "T";
+
+  // Canvas used to update only when someone pressed a button, so a connected
+  // feed went stale immediately. This asks the server to re-sync if it has been
+  // more than six hours; the server no-ops otherwise, and a daily cron covers
+  // anyone who never opens the app.
+  useEffect(() => {
+    const tz = encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    void fetch(`/api/canvas/connect?ifStale=6&tz=${tz}`)
+      .then((res) => res.json())
+      .then((data: { added?: number; updated?: number }) => {
+        // A re-sync that brought anything in should show it without a reload.
+        if ((data.added ?? 0) + (data.updated ?? 0) > 0) void refreshState();
+      })
+      .catch(() => {});
+    // Once, on load: re-running on every refresh identity change would re-sync
+    // in a loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Name comes from the student's profile (profiles.display_name).
+  const profileName = state?.user.displayName?.trim() ?? "";
+  const profileInitial = (profileName || "T").charAt(0).toUpperCase();
 
   const openPalette = () => window.dispatchEvent(new Event("tangent:open-palette"));
 
+  // Tangents takes over the window. Returning children bare rather than hiding
+  // the chrome with CSS keeps the rail and topbar out of the tree entirely, so
+  // nothing in them can catch a pointer or a tab stop over the canvas.
+  if (pathname.startsWith("/tangents")) {
+    return (
+      // Opacity only: a lift or blur here would move the goal card off the
+      // spot the field's portal delivered it to.
+      <m.div
+        key={pathname}
+        className="tangents-route"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1, transition: { duration: 0.22 } }}
+      >
+        {children}
+      </m.div>
+    );
+  }
+
   return (
     <div className="shell">
+      <a href="#main-content" className="skip-link">Skip to main content</a>
       <aside className="rail" aria-label="Primary navigation">
         <Link href="/" className="rail-logo" aria-label="Tangent home">
-          <span className="rail-logo-mark" aria-hidden="true">T</span>
+          <TangentLogo />
           <span className="rail-logo-word">Tangent</span>
         </Link>
-
-        <button
-          type="button"
-          className="rail-capture-btn"
-          title="Ask TANGENT (⌘K)"
-          aria-label="Ask TANGENT"
-          onClick={openPalette}
-        >
-          <span className="rail-capture-icon"><Sparkles size={18} strokeWidth={1.75} /></span>
-          <span className="rail-capture-label">Capture</span>
-          <kbd className="rail-capture-key">⌘K</kbd>
-        </button>
 
         <nav className="rail-nav" aria-label="Primary">
           {NAV_LINKS.map(({ href, label, icon: Icon }) => {
@@ -128,6 +132,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 aria-current={active ? "page" : undefined}
                 aria-label={label}
               >
+                {/* One pill, shared across every row: it glides to the page you
+                    open instead of blinking off here and on there. */}
+                {active && (
+                  <m.span
+                    layoutId="rail-active"
+                    className="rail-active-pill"
+                    transition={{ ...spring.layout, visualDuration: 0.4, bounce: 0.18 }}
+                    aria-hidden="true"
+                  />
+                )}
                 <Icon size={19} strokeWidth={1.8} aria-hidden="true" />
                 <span className="rail-btn-label">{label}</span>
                 <span className="rail-tooltip">{label}</span>
@@ -138,12 +152,30 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         <div className="rail-spacer" />
 
+        {/* Tangents is a mode, not a page, so its entry is deliberately unlike
+            a nav row: its own block, its own surface, and it leaves the app
+            behind when you take it. */}
+        <Link href="/tangents" className="rail-tangents" aria-label="Work on your tangents">
+          <svg className="rail-orbit" viewBox="0 0 34 34" aria-hidden="true">
+            <circle className="rail-orbit-ring" cx="17" cy="17" r="13" />
+            <circle className="rail-orbit-core" cx="17" cy="17" r="3.5" />
+            <g className="rail-orbit-spin">
+              <circle className="rail-orbit-dot" cx="17" cy="4" r="2.6" />
+            </g>
+          </svg>
+          <span className="rail-tangents-copy">
+            <strong>Work on your</strong>
+            <span>tangents</span>
+          </span>
+          <ArrowUpRight size={15} className="rail-tangents-arrow" aria-hidden="true" />
+        </Link>
+
         <div className="rail-footer">
           <Link href="/settings" className="rail-profile" aria-label="Open account settings">
             <span className="rail-profile-avatar" aria-hidden="true">{profileInitial}</span>
             <span className="rail-profile-copy">
-              <strong>My workspace</strong>
-              <span>Student plan</span>
+              <strong>{profileName || "Your workspace"}</strong>
+              <span>Settings</span>
             </span>
           </Link>
           <form action="/auth/signout" method="post">
@@ -157,13 +189,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className="shell-main">
         <header className="topbar">
-          <div className="topbar-context">
-            <span className="topbar-eyebrow">Workspace</span>
-            <span className="topbar-title">{title}</span>
-          </div>
           <div className="topbar-right">
+            <StorageStatus />
             <span className="topbar-datetime">
-              <span className="topbar-date">{today}</span>
+              {today && <span className="topbar-date">{today}</span>}
               {clock && (
                 <>
                   <span className="topbar-date-sep" aria-hidden="true">·</span>
@@ -176,20 +205,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <span>Search</span>
               <kbd>⌘K</kbd>
             </button>
-            <button type="button" className="topbar-new-task" onClick={openPalette}>
-              <Plus size={16} strokeWidth={2} aria-hidden="true" />
-              <span>New task</span>
-            </button>
-            <button
-              type="button"
-              className="topbar-canvas-connect"
-              onClick={() => setCanvasGuideOpen(true)}
-              aria-label="Connect Canvas calendar"
-              title="Connect Canvas calendar"
-            >
-              <CalendarSync size={16} strokeWidth={1.8} aria-hidden="true" />
-              <span>Connect Canvas</span>
-            </button>
             <NotificationBell open={notifOpen} onOpenChange={setNotifOpen} />
             <Link href="/settings" className="topbar-avatar" aria-label="Open account settings">
               {profileInitial}
@@ -198,12 +213,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         <div className="shell-content">
-          <div className="content-inner">{children}</div>
+          <m.div key={pathname} className="content-inner" {...pageEnter}>
+            {children}
+          </m.div>
         </div>
       </div>
 
       <nav className="mobile-nav" aria-label="Primary mobile navigation">
-        {NAV_LINKS.map(({ href, label, icon: Icon }) => {
+        {[...NAV_LINKS.slice(0, 3), { href: "/tangents", label: "Tangents", icon: Spline }, NAV_LINKS[3]].map(({ href, label, icon: Icon }) => {
           const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
           return (
             <Link
@@ -220,9 +237,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </nav>
 
       <CommandPalette />
-      <CanvasConnectGuide open={canvasGuideOpen} onClose={() => setCanvasGuideOpen(false)} />
-      {/* The AI console has its own mic in the composer; the FAB would cover Send. */}
-      {pathname !== "/ai" && <VoiceCaptureFab />}
       {!showOnboarding && <DesktopNotifPrompt />}
 
       {showOnboarding && <FirstRun

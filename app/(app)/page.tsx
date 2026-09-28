@@ -4,12 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
-import { Plus } from "lucide-react";
+import { MessageSquareText, Plus } from "lucide-react";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { localNow, wallClockNow } from "@/lib/time";
 import ActionReceipt from "@/components/ActionReceipt";
-import MonthRhythm from "@/components/MonthRhythm";
+import TaskChatModal from "@/components/TaskChatModal";
 import AttentionSection, { type AttentionReceipt } from "@/components/dashboard/AttentionSection";
+import MonthRhythm from "@/components/MonthRhythm";
 import WeekAhead from "@/components/dashboard/WeekAhead";
 import Button from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
@@ -19,6 +20,7 @@ import { toYMD } from "@/lib/dates";
 import { getGreeting } from "@/lib/greetings";
 import { riseIn, rowPresence, spring, staggerChildren } from "@/lib/motion";
 import { getSchedulePulse } from "@/lib/schedule-insights";
+import { canAskForHelp } from "@/lib/task-help";
 import { taskColor } from "@/lib/task-colors";
 import { getUrgency, tracksCompletion } from "@/lib/urgency";
 
@@ -60,6 +62,9 @@ export default function DashboardPage() {
   const [overrides, setOverrides] = useState<Record<string, Override>>({});
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<AttentionReceipt | null>(null);
+  // The task assistant already existed end to end — component, /api/task-chat,
+  // and per-task history in the store — but nothing ever opened it.
+  const [helpTask, setHelpTask] = useState<Task | null>(null);
   const receiptSeq = useRef(0);
 
   // "Starts in 40 min" and "missed earlier today" drift, so keep the clock live.
@@ -248,7 +253,6 @@ export default function DashboardPage() {
     <m.div className="today-page" variants={staggerChildren} initial="hidden" animate="show">
       <m.div variants={riseIn}>
         <PageHeader
-          eyebrow="Your day"
           title={greeting || "Today"}
           description={
             <span className="today-date-line">
@@ -276,7 +280,7 @@ export default function DashboardPage() {
         onComplete={completeFromAttention}
         onTomorrow={moveToTomorrow}
         onOpen={(task) => router.push(`/calendar?date=${task.date}`)}
-        onSeeAll={() => router.push("/tasks")}
+        onSeeAll={() => router.push(`/calendar?date=${today}`)}
       />
 
       <aside className="today-insights" aria-label="Schedule context">
@@ -287,7 +291,6 @@ export default function DashboardPage() {
       <m.section variants={riseIn} className="today-dayline" aria-labelledby="today-dayline-title">
         <div className="today-section-heading">
           <div>
-            <span className="today-section-label">Today</span>
             <h2 id="today-dayline-title">{todayInAttention > 0 ? "The rest of today" : "Your day"}</h2>
           </div>
           <span>
@@ -306,6 +309,19 @@ export default function DashboardPage() {
                     kindColor={colorForTask(task)}
                     onComplete={tracksCompletion(task) ? () => void setCompleted(task, !task.completed) : undefined}
                     onOpen={() => router.push(`/calendar?date=${task.date}`)}
+                    actions={
+                      canAskForHelp(task) ? (
+                        <button
+                          type="button"
+                          className="ui-task-help"
+                          onClick={() => setHelpTask(task)}
+                          aria-label={`Get help with ${task.title}`}
+                        >
+                          <MessageSquareText size={13} aria-hidden="true" />
+                          <span>Help</span>
+                        </button>
+                      ) : undefined
+                    }
                   />
                 </m.div>
               ))}
@@ -313,11 +329,12 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="today-empty-line">
-            <p>{todayInAttention > 0 ? "Nothing else is scheduled today." : "Nothing is scheduled for today."}</p>
-            <Button variant="secondary" size="sm" onClick={openCapture}>Add a task</Button>
+            <p>{todayInAttention > 0 ? "Nothing else is scheduled today." : "Nothing scheduled yet."}</p>
           </div>
         )}
       </m.section>
+
+      {helpTask && <TaskChatModal task={helpTask} onClose={() => setHelpTask(null)} />}
 
       {recentActions.length > 0 && (
         <m.details variants={riseIn} className="today-recent">

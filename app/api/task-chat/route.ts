@@ -6,6 +6,8 @@ import { cacheHistory } from "@/lib/ai/cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// One Claude call plus task context.
+export const maxDuration = 60;
 
 export const GET = withUser(async (req: Request) => {
   const { searchParams } = new URL(req.url);

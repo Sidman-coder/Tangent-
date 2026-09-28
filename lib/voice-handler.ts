@@ -421,9 +421,9 @@ async function runFastRoute(route: FastRoute, text: string, today: string): Prom
   }
 
   if (route.op === "add") {
-    const displayTitle = route.time !== "09:00" ? `${route.title} (${route.time})` : route.title;
     const calendarId = await resolveCalendarId(inferCalendarId(route.title));
-    const task = await addTask({ title: displayTitle, date: route.date, time: route.time, completed: false, calendarId });
+    // Same rule as the AI path below: task.time is rendered on its own.
+    const task = await addTask({ title: route.title, date: route.date, time: route.time, completed: false, calendarId });
     if (task.wasDuplicate) {
       return done({ action: "add_task", task, response: `Skipped 1 duplicate (already have "${task.title}" around ${task.time}).`, state: await getAppState() });
     }
@@ -1094,7 +1094,6 @@ async function handleVoiceTextInner(
         await addVoiceLog({ text, response: "No title provided", action, ok: false });
         return NextResponse.json({ ok: false, error: "No title in AI response" }, { status: 422 });
       }
-      const displayTitle = time && time !== "09:00" ? `${title} (${time})` : title;
       const notes = (cmd.notes as string | undefined)?.trim() || undefined;
       const startAction = (cmd.startAction as string | undefined)?.trim() || undefined;
       const rawResources = Array.isArray(cmd.resources)
@@ -1105,7 +1104,10 @@ async function handleVoiceTextInner(
         : undefined;
       const resources = rawResources && rawResources.length > 0 ? rawResources : undefined;
       const calendarId = await resolveCalendarId(typeof cmd.calendarId === "string" ? cmd.calendarId : undefined);
-      const task = await addTask({ title: displayTitle, date, time, completed: false, calendarId, notes, startAction, resources });
+      // The title is the title. Every surface renders task.time next to it
+      // (TaskRow, the Today hero, the calendar day panel), so folding the time
+      // into the title printed it twice: "Study math (15:00)  3:00 PM".
+      const task = await addTask({ title, date, time, completed: false, calendarId, notes, startAction, resources });
       if (task.wasDuplicate) {
         const dupResponse = `Skipped 1 duplicate (already have "${task.title}" around ${task.time}).`;
         console.log("[api/voice] add_task skipped duplicate:", task.id, task.title);

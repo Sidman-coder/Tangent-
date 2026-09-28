@@ -100,26 +100,19 @@
   border: 0;
   border-radius: 999px;
   background: var(--accent);
-  color: #fff;
+  /* The accent's own ink, not white: in dark mode the accent is a light
+     lavender and white text on it was close to unreadable. */
+  color: var(--accent-ink);
   font: 600 13px/1 var(--font-body);
   white-space: nowrap;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgb(from var(--accent) r g b / 0.28);
+  box-shadow: 0 2px 8px rgb(from var(--accent) r g b / 0.2);
   transition: transform 0.25s var(--tg-spring), box-shadow 0.25s ease;
-}
-
-.tg-brief-pill::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.35) 50%, transparent 70%);
-  transform: translateX(-120%);
-  pointer-events: none;
 }
 
 .tg-brief-pill:hover {
   transform: translateY(-1px);
-  box-shadow: 0 8px 22px rgb(from var(--accent) r g b / 0.36);
+  box-shadow: 0 6px 16px rgb(from var(--accent) r g b / 0.26);
 }
 
 .tg-brief-pill:hover::after {
@@ -132,8 +125,8 @@
 
 .tg-brief-pill-when {
   padding-left: 8px;
-  border-left: 1px solid rgba(255, 255, 255, 0.3);
-  color: rgba(255, 255, 255, 0.78);
+  border-left: 1px solid rgb(from var(--accent-ink) r g b / 0.3);
+  color: rgb(from var(--accent-ink) r g b / 0.75);
   font-weight: 500;
 }
 
@@ -164,24 +157,18 @@
   padding: 24px 24px 10vh;
 }
 
+.tg-main {
+  position: relative;
+  isolation: isolate;
+}
+
 .tg-hero > * {
   flex-shrink: 0;
 }
 
 /* Notion: a small line-art mark in an outlined circle above the heading. */
-.tg-hero-mark {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  margin-bottom: 18px;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  background: var(--surface);
-  color: var(--text);
-}
 
-/* Gemini: two-tone greeting — name line in ink, question in gray. No gradient. */
+/* The hero asks one question, in ink. The greeting lives on Today, once. */
 .tg-hero-title {
   display: flex;
   flex-direction: column;
@@ -193,21 +180,12 @@
   line-height: 1.12;
 }
 
-.tg-hero-hello {
+
+.tg-hero-ask {
   color: var(--text);
 }
 
-.tg-hero-ask {
-  color: var(--text-3);
-}
-
 /* Linear: "Get started" label + outlined cards (icon, title, one-line detail). */
-.tg-examples-label {
-  margin: 22px 2px 8px;
-  color: var(--text-2);
-  font: 500 12.5px/1 var(--font-body);
-}
-
 .tg-examples {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -808,12 +786,47 @@
 }
 
 .tg-side-empty {
-  margin: 0 2px;
-  padding: 14px 12px;
-  border: 1px dashed var(--line-strong);
-  border-radius: 8px;
-  color: var(--text-3);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 4px 2px 0;
+  padding: 16px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent-soft) 45%, transparent);
+  color: var(--text-2);
   font: 400 12.5px/1.45 var(--font-body);
+}
+.tg-side-empty strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+.tg-side-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--accent);
+}
+.tg-composer-hint {
+  margin: 8px 2px 0;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+.tg-composer-hint kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
 }
 
 .tg-chat-list {
@@ -1489,39 +1502,6 @@
   box-shadow: 0 0 0 4px rgb(from var(--text) r g b / 0.05), 0 8px 28px rgba(20, 20, 24, 0.08);
 }
 
-@property --tg-angle {
-  syntax: "<angle>";
-  inherits: false;
-  initial-value: 0deg;
-}
-
-.tg-composer.is-calendar::before {
-  content: "";
-  position: absolute;
-  inset: -1px;
-  padding: 1.5px;
-  border-radius: inherit;
-  background: conic-gradient(
-    from var(--tg-angle),
-    transparent 0deg,
-    var(--accent) 60deg,
-    #c084fc 110deg,
-    transparent 170deg,
-    transparent 360deg
-  );
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.35s ease;
-  animation: tg-spin 3.2s linear infinite;
-}
-
-.tg-composer.is-calendar:focus-within::before,
-.tg-composer.is-calendar.has-text::before {
-  opacity: 1;
-}
 
 .tg-icon-btn {
   transition: background 0.15s ease, color 0.15s ease, transform 0.25s var(--tg-spring);
@@ -1532,7 +1512,6 @@
 }
 
 /* ── Accent marks, bubbles and plan call-to-action ──────────────────────────── */
-.tg-hero-mark,
 .tg-msg-mark {
   color: var(--accent);
 }
@@ -1620,49 +1599,6 @@
   animation-delay: 0.45s;
 }
 
-/* ── Fluid background: a quiet grid and drifting accent light behind the hero ─ */
-.tg-main {
-  position: relative;
-  isolation: isolate;
-}
-
-.tg-main:has(> .tg-hero)::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background-image:
-    linear-gradient(rgb(from var(--text) r g b / 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(from var(--text) r g b / 0.045) 1px, transparent 1px);
-  background-size: 36px 36px;
-  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 42%, #000 20%, transparent 75%);
-  mask-image: radial-gradient(ellipse 70% 60% at 50% 42%, #000 20%, transparent 75%);
-  pointer-events: none;
-  animation: tg-fade 1.2s ease both;
-}
-
-.tg-main:has(> .tg-hero)::after {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  left: 50%;
-  top: 38%;
-  width: min(620px, 80%);
-  aspect-ratio: 1.4;
-  border-radius: 42% 58% 63% 37% / 45% 40% 60% 55%;
-  background:
-    radial-gradient(circle at 30% 40%, rgb(from var(--accent) r g b / 0.2), transparent 60%),
-    radial-gradient(circle at 72% 60%, rgba(192, 132, 252, 0.16), transparent 58%);
-  filter: blur(48px);
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-  animation: tg-blob 18s ease-in-out infinite alternate;
-}
-
-.tg-console.is-plan .tg-main:has(> .tg-hero)::after {
-  opacity: 0.55;
-}
-
 /* ── Motion ─────────────────────────────────────────────────────────────────── */
 /* Hero: pieces rise into place one after another. */
 .tg-hero > * {
@@ -1675,9 +1611,6 @@
 .tg-hero > :nth-child(5) { animation-delay: 240ms; }
 .tg-hero > :nth-child(6) { animation-delay: 300ms; }
 
-.tg-hero-mark {
-  animation: tg-rise 0.7s var(--tg-ease-out) both, tg-float 5s ease-in-out 0.8s infinite;
-}
 
 .tg-hero-ask {
   animation: tg-swap 0.5s var(--tg-ease-out) both;
@@ -1728,18 +1661,10 @@
 .tg-turn.is-fresh:not(.is-pending) .tg-meta-chip:nth-child(2) { animation-delay: 60ms; }
 .tg-turn.is-fresh:not(.is-pending) .tg-meta-chip:nth-child(3) { animation-delay: 120ms; }
 
-/* The step being worked on shimmers. */
+/* The step being worked on is simply the one in the accent color. */
 .tg-steps li:last-child {
-  background: linear-gradient(90deg, var(--text-2) 0%, var(--text-2) 35%, var(--accent) 50%, var(--text-2) 65%, var(--text-2) 100%);
-  background-size: 250% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation-name: tg-step-in, tg-shimmer;
-  animation-duration: 0.35s, 1.8s;
-  animation-timing-function: ease, linear;
-  animation-iteration-count: 1, infinite;
-  animation-fill-mode: forwards, none;
+  color: var(--accent);
+  animation: tg-step-in 0.35s ease forwards;
 }
 
 .tg-msg-mark.is-working {
@@ -1811,10 +1736,6 @@
   to { opacity: 1; filter: none; }
 }
 
-@keyframes tg-shimmer {
-  from { background-position: 100% 0; }
-  to { background-position: -150% 0; }
-}
 
 @keyframes tg-side-in {
   from { opacity: 0; transform: translateX(14px); }
@@ -1847,24 +1768,11 @@
   70%, 100% { box-shadow: 0 0 0 6px rgb(from var(--accent) r g b / 0); }
 }
 
-@keyframes tg-spin {
-  to { --tg-angle: 360deg; }
-}
 
 @keyframes tg-spin-plain {
   to { transform: rotate(360deg); }
 }
 
-@keyframes tg-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
-}
-
-@keyframes tg-blob {
-  0% { border-radius: 42% 58% 63% 37% / 45% 40% 60% 55%; transform: translate(-50%, -50%) rotate(0deg) scale(1); }
-  50% { border-radius: 60% 40% 38% 62% / 55% 62% 38% 45%; transform: translate(-46%, -54%) rotate(40deg) scale(1.08); }
-  100% { border-radius: 38% 62% 50% 50% / 62% 38% 55% 45%; transform: translate(-54%, -47%) rotate(-25deg) scale(0.96); }
-}
 
 @keyframes tg-check {
   0% { transform: scale(0); clip-path: inset(0 100% 0 0 round 50%); }
@@ -1934,4 +1842,253 @@
   .tg-msg-user {
     max-width: 88%;
   }
+}
+
+.tg-hero > :nth-child(7) { animation-delay: 360ms; }
+
+/* Suggestions arrive one after another rather than as a block. */
+.tg-examples > .tg-example {
+  animation: tg-fade-up 0.45s var(--tg-ease-out) both;
+}
+.tg-examples > .tg-example:nth-child(1) { animation-delay: 380ms; }
+.tg-examples > .tg-example:nth-child(2) { animation-delay: 430ms; }
+.tg-examples > .tg-example:nth-child(3) { animation-delay: 480ms; }
+.tg-examples > .tg-example:nth-child(4) { animation-delay: 530ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-examples > .tg-example {
+    animation: none;
+  }
+}
+
+/* ── Overhaul: a centred, lit empty state ──────────────────────────────────────
+   The hero is centred on a soft accent glow with a faint dot field; the mark
+   sits in an orb whose ring slowly turns; the question is one big line; the
+   day's next task is a live strip; the composer gets a moving gradient edge
+   while you type; suggestions are one row of chips. */
+@property --tg-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.tg-main::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 45% at 50% 30%, rgb(from var(--accent) r g b / 0.10), transparent 70%),
+    radial-gradient(circle at 1px 1px, rgb(from var(--text) r g b / 0.07) 1px, transparent 0) 0 0 / 22px 22px;
+  -webkit-mask-image: radial-gradient(70% 60% at 50% 35%, #000 30%, transparent 80%);
+  mask-image: radial-gradient(70% 60% at 50% 35%, #000 30%, transparent 80%);
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+.tg-main:has(.tg-hero)::before { opacity: 1; }
+
+.tg-hero {
+  align-items: center;
+  text-align: center;
+  max-width: calc(var(--tg-measure) + 48px);
+  padding-bottom: 8vh;
+}
+
+.tg-orb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  z-index: 0;
+  margin-bottom: 18px;
+  border-radius: 50%;
+  color: var(--accent);
+  box-shadow: 0 10px 30px rgb(from var(--accent) r g b / 0.22);
+}
+.tg-orb::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  z-index: -1;
+  border-radius: 50%;
+  background: conic-gradient(from var(--tg-angle), var(--accent), var(--highlight), rgb(from var(--accent) r g b / 0.15), var(--accent));
+  animation: tg-spin 6s linear infinite;
+}
+.tg-orb::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--surface);
+  z-index: -1;
+}
+.tg-orb > span { display: grid; animation: tg-float 4.5s ease-in-out infinite; }
+
+@keyframes tg-spin { to { --tg-angle: 360deg; } }
+@keyframes tg-float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-2px) rotate(-4deg); }
+}
+
+.tg-hero-greeting {
+  margin: 0 0 6px;
+  color: var(--text-2);
+  font: 500 15px/1.3 var(--font-body);
+}
+
+.tg-hero-title {
+  align-items: center;
+  margin: 0 0 18px;
+  font-size: clamp(28px, 3.6vw, 40px);
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+
+.tg-next {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  margin: 0 0 22px;
+  padding: 6px 10px 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  color: var(--text-2);
+  font: 500 12.5px/1.3 var(--font-body);
+  text-decoration: none;
+  transition: border-color 0.18s ease, box-shadow 0.25s ease, transform 0.3s var(--tg-spring);
+}
+a.tg-next:hover {
+  border-color: var(--accent-line);
+  box-shadow: 0 6px 18px rgb(from var(--accent) r g b / 0.12);
+  transform: translateY(-1px);
+}
+.tg-next.is-clear { padding-right: 14px; }
+.tg-next-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: tg-pulse 2.4s ease-out infinite;
+}
+.tg-next-label {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.tg-next-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tg-next-time {
+  flex: none;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.tg-next-more {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+.tg-next-go {
+  flex: none;
+  color: var(--text-3);
+  transition: transform 0.3s var(--tg-spring), color 0.2s ease;
+}
+a.tg-next:hover .tg-next-go { color: var(--accent); transform: translate(2px, -2px); }
+
+/* Composer: a gradient edge that runs while the box has focus. */
+.tg-composer-glow {
+  position: relative;
+  width: 100%;
+  border-radius: 18px;
+  text-align: left;
+}
+.tg-composer-glow::before {
+  content: "";
+  position: absolute;
+  inset: -1.5px;
+  border-radius: 17.5px;
+  background: conic-gradient(from var(--tg-angle), transparent 0deg, var(--accent) 60deg, var(--highlight) 120deg, transparent 200deg, transparent 360deg);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  animation: tg-spin 3.2s linear infinite;
+  pointer-events: none;
+}
+.tg-composer-glow:focus-within::before { opacity: 1; }
+.tg-composer-glow .tg-composer {
+  position: relative;
+  border-radius: 16px;
+}
+.tg-console .tg-composer-glow .tg-composer:focus-within {
+  border-color: transparent;
+}
+
+.tg-composer-hint {
+  width: 100%;
+  margin-top: 10px;
+  text-align: center;
+}
+
+.tg-examples {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 22px;
+}
+.tg-example {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  color: var(--text-2);
+}
+.tg-example svg { color: var(--text-3); }
+.tg-example-title {
+  color: var(--text);
+  font: 500 13px/1.2 var(--font-body);
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .tg-hero-title { font-size: 27px; }
+  .tg-examples { justify-content: flex-start; flex-wrap: nowrap; width: 100%; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+  .tg-examples::-webkit-scrollbar { display: none; }
+  .tg-hero .tg-composer-hint { display: none; }
+  .tg-next-more { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-orb::before,
+  .tg-orb > span,
+  .tg-composer-glow::before { animation: none; }
+}
+
+/* The global textarea:focus ring outranks .tg-composer-input; the composer
+   draws its own focus edge, so the textarea itself stays bare. */
+.tg-console textarea.tg-composer-input:focus,
+.tg-console textarea.tg-composer-input:focus-visible {
+  outline: none;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
 }

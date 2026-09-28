@@ -4,6 +4,8 @@ import { withUser } from "@/lib/request-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Generates proactive notifications.
+export const maxDuration = 60;
 
 // Called on page load (NotificationBell.tsx) so a visit refreshes proactive
 // notifications immediately. app/api/cron/proactive/route.ts calls the same

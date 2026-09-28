@@ -24,10 +24,12 @@ import {
   type VoiceTranscriptDetail,
 } from "@/hooks/useVoiceCapture";
 import type { ChatSession } from "@/lib/types";
-import { ArrowLeft, CalendarClock, CalendarRange, MessageSquare, Newspaper, PanelRightOpen, Sun, Timer } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, CalendarClock, CalendarRange, History, MessageSquare, Newspaper, Sun, Timer } from "lucide-react";
+import Link from "next/link";
 import PenMark from "@/components/console/PenMark";
 import BriefPanel, { CADENCE_LABEL, type BriefSummary } from "@/components/console/BriefPanel";
 import { formatTime12 } from "@/lib/dates";
+import { tracksCompletion } from "@/lib/urgency";
 import "./console.css";
 
 type ConsoleMode = "chat" | "brief";
@@ -44,9 +46,29 @@ const SUGGESTIONS = [
   { icon: CalendarClock, text: "Move overdue tasks", detail: "Find new slots for anything that slipped" },
 ] as const;
 
-function greetingFor(hour: number, name: string): string {
-  const part = hour >= 5 && hour < 12 ? "Morning" : hour >= 12 && hour < 17 ? "Afternoon" : "Evening";
-  return name ? `${part}, ${name}.` : `Good ${part.toLowerCase()}.`;
+function partOfDay(hour: number): string {
+  if (hour >= 5 && hour < 12) return "Good morning";
+  if (hour >= 12 && hour < 17) return "Good afternoon";
+  if (hour >= 17 && hour < 21) return "Good evening";
+  return "Still going";
+}
+
+/** Turns a fetch/route failure into something true and actionable. */
+function describeFailure(message: string): string {
+  const lower = message.toLowerCase();
+  if (lower.includes("timeout") || lower.includes("504") || lower.includes("aborted")) {
+    return "That took too long and was cut off. Calendar mode does several rounds of research before it answers — try a narrower request, or ask again.";
+  }
+  if (lower.includes("anthropic_api_key") || lower.includes("401")) {
+    return "The server has no Anthropic API key configured, so it can't reach Claude.";
+  }
+  if (lower.includes("429") || lower.includes("rate")) {
+    return "Claude is rate-limited right now. Wait a moment and try again.";
+  }
+  if (lower.includes("failed to fetch") || lower.includes("networkerror")) {
+    return "Couldn't reach the server. Check your connection and try again.";
+  }
+  return `Something went wrong: ${message}`;
 }
 
 /** Persists the active chat session id across navigation/refresh within the same
@@ -82,7 +104,6 @@ export default function AiPage() {
   const [saveWarning, setSaveWarning] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [brief, setBrief] = useState<BriefSummary | null>(null);
-  const [greeting, setGreeting] = useState("");
   const [chatsOpen, setChatsOpen] = useState(false);
   const [chatsHidden, setChatsHidden] = useState(false);
   const [chatMode, setChatMode] = useState<ChatMode>("calendar");
@@ -102,23 +123,31 @@ export default function AiPage() {
     writeStored(CHATS_HIDDEN_KEY, hidden ? "1" : null);
   }, []);
 
-  // "3 tasks left today · next: Chem review at 3:00 PM" under the greeting.
-  const todayLine = useMemo(() => {
-    if (!state) return "";
-    const { date: today, time: now } = localNow(tz);
+  // What's next today, shown under the question so the assistant opens with
+  // the student's actual day rather than a blank box. "Today" and "now" are the
+  // student's own timezone, not the browser's or the server's.
+  const today = useMemo(() => {
+    if (!state) return null;
+    const { date: ymd, time: now } = localNow(tz);
+    // Counts what Today counts. This used to filter on `!completed` alone, so
+    // it swept in School Blocks and commitments — scheduled things that never
+    // get ticked off — and reported a bigger number than the dashboard for the
+    // same day. Canvas assignments still count: they arrive with source
+    // "canvas", which tracksCompletion lets through.
     const open = state.tasks
-      .filter((t) => t.date === today && !t.completed)
+      .filter((t) => t.date === ymd && !t.completed && tracksCompletion(t))
       .sort((a, b) => (a.time || "99").localeCompare(b.time || "99"));
-    if (open.length === 0) return "Your calendar is clear today.";
-    const next = open.find((t) => t.time && t.time >= now);
-    const count = `${open.length} task${open.length === 1 ? "" : "s"} left today`;
-    return next ? `${count} · next: ${next.title} at ${formatTime12(next.time)}` : count;
+    const next = open.find((t) => t.time && t.time >= now) ?? null;
+    return { left: open.length, next };
   }, [state, tz]);
 
+  // The name comes from the student's profile (Supabase), not localStorage.
   const firstName = state?.user.displayName?.trim().split(/\s+/)[0] ?? "";
+  const [greeting, setGreeting] = useState("");
   useEffect(() => {
-    setGreeting(greetingFor(localNow(tz).hour, firstName));
+    setGreeting(`${partOfDay(localNow(tz).hour)}${firstName ? `, ${firstName}` : ""}`);
   }, [firstName, tz]);
+
   const [turns, setTurns] = useState<Turn[]>([]);
   const [pendingRequest, setPendingRequest] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -375,7 +404,8 @@ export default function AiPage() {
       await linkAction(sessionId, data.actionId);
       await refresh();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Error");
+      const message = e instanceof Error ? e.message : "Error";
+      setErr(message);
       setTurns((prev) => [
         ...prev,
         {
@@ -383,7 +413,9 @@ export default function AiPage() {
           request: userText,
           tools: [],
           sourcesChecked: [],
-          response: "Something went wrong. Check that ANTHROPIC_API_KEY is set in .env.local.",
+          // Say what actually failed. This used to blame a missing API key for
+          // every error, including the timeout that is the usual cause.
+          response: describeFailure(message),
         },
       ]);
     } finally {
@@ -478,6 +510,10 @@ export default function AiPage() {
     }
   }, [activeSessionId, refresh, linkAction, saveMessage]);
 
+  // An empty history panel is a quarter of the screen saying "nothing here",
+  // so it only appears once there is a chat to go back to.
+  const sidebarHidden = chatsHidden || sessions.length === 0;
+
   const composer = (
     <Composer
       value={input}
@@ -495,7 +531,7 @@ export default function AiPage() {
   );
 
   return (
-    <div className={`tg-console is-${chatMode}${chatsHidden ? " chats-hidden" : ""}`}>
+    <div className={`tg-console is-${chatMode}${sidebarHidden ? " chats-hidden" : ""}`}>
       <section className="tg-main" aria-label="Tangent assistant">
         <header className="tg-main-head">
           {mode === "brief" ? (
@@ -509,9 +545,6 @@ export default function AiPage() {
           ) : (
             <div className="tg-head-title">
               <h1 className="tg-main-title">Tangent AI</h1>
-              <span key={chatMode} className={`tg-mode-badge is-${chatMode}`}>
-                {chatMode === "calendar" ? "Calendar mode" : "Plan mode"}
-              </span>
             </div>
           )}
           <div className="tg-head-actions">
@@ -527,7 +560,7 @@ export default function AiPage() {
                 <span className="tg-brief-pill-when">{brief ? briefWhen(brief) : "Set up"}</span>
               </button>
             )}
-            {chatsHidden && (
+            {sidebarHidden && sessions.length > 0 && (
               <button
                 type="button"
                 className="tg-icon-btn tg-chats-show"
@@ -535,7 +568,7 @@ export default function AiPage() {
                 title="Show chats"
                 onClick={() => setHidden(false)}
               >
-                <PanelRightOpen size={17} strokeWidth={1.8} />
+                <History size={17} strokeWidth={1.8} />
               </button>
             )}
             <button
@@ -560,31 +593,53 @@ export default function AiPage() {
           </div>
         ) : turns.length === 0 && !busy ? (
           <div className="tg-hero">
-            <PenMark className="tg-hero-mark" size={26} />
+            <div className="tg-orb" aria-hidden="true">
+              <PenMark size={26} />
+            </div>
+            {greeting && <p className="tg-hero-greeting">{greeting}</p>}
             <h2 className="tg-hero-title">
-              <span className="tg-hero-hello">{greeting || " "}</span>
               <span key={chatMode} className="tg-hero-ask">
                 {chatMode === "calendar" ? "What should go on your calendar?" : "What would you like to plan?"}
               </span>
             </h2>
-            {todayLine && <p className="tg-hero-today">{todayLine}</p>}
+            {today && (
+              today.next ? (
+                <Link href={`/calendar?date=${today.next.date}`} className="tg-next">
+                  <span className="tg-next-dot" aria-hidden="true" />
+                  <span className="tg-next-label">Next up</span>
+                  <span className="tg-next-title">{today.next.title}</span>
+                  <span className="tg-next-time">{formatTime12(today.next.time)}</span>
+                  {today.left > 1 && <span className="tg-next-more">+{today.left - 1} today</span>}
+                  <ArrowUpRight size={14} strokeWidth={2} aria-hidden="true" className="tg-next-go" />
+                </Link>
+              ) : (
+                <p className="tg-next is-clear">
+                  <span className="tg-next-dot" aria-hidden="true" />
+                  {today.left > 0
+                    ? `${today.left} task${today.left === 1 ? "" : "s"} left today, nothing else timed`
+                    : "Your calendar is clear today"}
+                </p>
+              )
+            )}
             {err && <p className="tg-error" role="alert">{err}</p>}
-            {composer}
-            <p className="tg-examples-label">Try asking</p>
-            <div className="tg-examples">
+            <div className="tg-composer-glow">{composer}</div>
+            <p className="tg-composer-hint">
+              <kbd>Enter</kbd> to send · <kbd>Shift</kbd> + <kbd>Enter</kbd> for a new line
+            </p>
+            <div className="tg-examples" aria-label="Try asking">
               {SUGGESTIONS.map(({ icon: Icon, text, detail }) => (
                 <button
                   key={text}
                   type="button"
                   className="tg-example"
+                  title={detail}
                   onClick={() => {
                     setInput(text);
                     inputRef.current?.focus();
                   }}
                 >
-                  <Icon size={16} strokeWidth={1.7} aria-hidden="true" />
+                  <Icon size={15} strokeWidth={1.8} aria-hidden="true" />
                   <span className="tg-example-title">{text}</span>
-                  <span className="tg-example-detail">{detail}</span>
                 </button>
               ))}
             </div>
@@ -604,7 +659,7 @@ export default function AiPage() {
             <div className="tg-dock">
               {err && <p className="tg-error" role="alert">{err}</p>}
               {saveWarning && <p className="tg-error" role="alert">{saveWarning}</p>}
-              {composer}
+              <div className="tg-composer-glow">{composer}</div>
               <p className="tg-dock-hint">
                 {chatMode === "calendar"
                   ? "Calendar mode adds and changes tasks. You’ll always see what changed."
@@ -614,7 +669,7 @@ export default function AiPage() {
           </>
         )}
       </section>
-      {(!chatsHidden || chatsOpen) && (
+      {(!sidebarHidden || chatsOpen) && (
         <ChatSidebar
           sessions={sessions}
           loading={!sessionsLoaded}
