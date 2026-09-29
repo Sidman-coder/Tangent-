@@ -22,6 +22,9 @@
   --path-goal: #9a88ef;
   --path-idea: #3ed08a;
   --path-idea-soft: rgba(62, 208, 138, 0.16);
+  /* Only ever means "this destroys something". Nothing decorative is this colour. */
+  --path-danger: #f2707f;
+  --path-danger-soft: rgba(242, 112, 127, 0.14);
   --path-panel: rgba(21, 17, 37, 0.97);
   --path-radius: 16px;
 
@@ -589,6 +592,18 @@
 }
 .path-btn.is-quiet:hover {
   color: var(--path-ink);
+}
+/* Outlined rather than filled: the destructive button should be legible as the
+   destructive one without being the brightest thing in the dialog. */
+.path-btn.is-danger {
+  border-color: rgba(242, 112, 127, 0.45);
+  background: var(--path-danger-soft);
+  color: var(--path-danger);
+  font-weight: 600;
+}
+.path-btn.is-danger:hover {
+  border-color: var(--path-danger);
+  background: rgba(242, 112, 127, 0.22);
 }
 .path-btn:disabled {
   opacity: 0.55;
@@ -1347,6 +1362,65 @@
 }
 .tangents-intake-skip:hover {
   color: var(--path-ink);
+}
+
+/* ─── Confirm ───────────────────────────────────────────────────────────── */
+
+/* Narrower than the intake sheet: one question, two answers, nothing to scan.
+   Shares the intake scrim so the two dialogs sit in the same dark. */
+.tangents-confirm {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(380px, 100%);
+  padding: 22px;
+  border: 1px solid var(--path-edge-strong);
+  border-radius: var(--path-radius);
+  background: var(--path-panel);
+  box-shadow: 0 30px 80px rgba(4, 2, 10, 0.6);
+}
+.tangents-confirm-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: var(--path-danger-soft);
+  color: var(--path-danger);
+}
+.tangents-confirm h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+.tangents-confirm p {
+  margin: 0;
+  color: var(--path-ink-2);
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.tangents-confirm p strong {
+  color: var(--path-ink);
+  font-weight: 600;
+}
+.tangents-confirm-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/* The way in, in the path's own header. Quiet until pointed at. */
+.path-chip.is-danger:hover {
+  border-color: rgba(242, 112, 127, 0.45);
+  color: var(--path-danger);
 }
 
 /* ─── Phone list ────────────────────────────────────────────────────────── */

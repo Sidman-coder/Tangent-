@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+import { ArrowLeft, Trash2 } from "lucide-react";
 import PathScene from "@/components/path/PathScene";
 import PathInspector from "@/components/path/PathInspector";
 import PathWorkForm from "@/components/path/PathWorkForm";
+import DeletePathDialog from "@/components/tangents/DeletePathDialog";
 import type { Path, PathNode } from "@/lib/types";
 import { pathMeta } from "@/lib/path-format";
 import "../tangents.css";
@@ -24,6 +25,7 @@ async function post(body: Record<string, unknown>): Promise<Record<string, unkno
 
 export default function PathDeepView() {
   const params = useParams<{ pathId: string }>();
+  const router = useRouter();
   const pathId = params?.pathId;
 
   const [path, setPath] = useState<Path | null>(null);
@@ -35,6 +37,8 @@ export default function PathDeepView() {
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [formParent, setFormParent] = useState<{ parentId: string | null } | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const fitRef = useRef<(() => void) | null>(null);
   const registerFit = useCallback((fn: () => void) => {
@@ -88,6 +92,22 @@ export default function PathDeepView() {
     [run]
   );
 
+  // Its own handler rather than run(): run() reloads the path afterwards, and
+  // after a delete there is nothing left to load. Straight back to the field.
+  const remove = useCallback(async () => {
+    if (!path) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      await post({ action: "deletePath", id: path.id });
+      router.replace("/tangents");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't delete this path.");
+      setConfirmingDelete(false);
+      setDeleting(false);
+    }
+  }, [path, router]);
+
   const toggleExpand = useCallback(
     (id: string) => {
       const opening = !expanded.has(id);
@@ -132,6 +152,16 @@ export default function PathDeepView() {
     }
     return chain;
   }, [focused, nodes]);
+
+  // What the confirm dialog names as the loss. Dismissed branches are left out:
+  // they go too, but nobody counts something they already said no to.
+  const counts = useMemo(() => {
+    const live = nodes.filter((n) => n.status !== "dismissed");
+    return {
+      work: live.filter((n) => n.kind === "work").length,
+      ideas: live.filter((n) => n.kind === "idea").length,
+    };
+  }, [nodes]);
 
   const childCount = useMemo(
     () => (focused ? nodes.filter((n) => n.parentId === focused.id && n.status !== "dismissed").length : 0),
@@ -179,6 +209,17 @@ export default function PathDeepView() {
           <h1>{path.title}</h1>
           {pathMeta(path) && <span className="tangents-bar-meta">{pathMeta(path)}</span>}
         </div>
+        {/* Deleting a path belongs where you can see what you are deleting, not
+            on the field of discs. Fills the bar's empty third column. */}
+        <button
+          type="button"
+          className="path-chip is-danger"
+          onClick={() => setConfirmingDelete(true)}
+          aria-label="Delete this path"
+          title="Delete this path"
+        >
+          <Trash2 size={15} aria-hidden="true" />
+        </button>
       </header>
 
       <PathScene
@@ -240,6 +281,16 @@ export default function PathDeepView() {
             }
             return Boolean(data);
           }}
+        />
+      )}
+
+      {confirmingDelete && (
+        <DeletePathDialog
+          path={path}
+          counts={counts}
+          busy={deleting}
+          onCancel={() => setConfirmingDelete(false)}
+          onConfirm={() => void remove()}
         />
       )}
 

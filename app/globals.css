@@ -28,8 +28,13 @@
   /* Soft-container tokens: the sunken fill and the two edges that give it
      depth. Both themes define all three, so nothing here is a literal. */
   --neu-fill:  #f0eef6;
-  --neu-dark:  var(--neu-dark);
-  --neu-light: var(--neu-light);
+  /* These were `var(--neu-dark)` / `var(--neu-light)` — self-references, which
+     CSS treats as invalid at computed-value time. Both resolved to nothing, so
+     every rule built on them (--shadow-lg and all six inset containers) was
+     dropped and the whole soft-container system rendered flat in light mode.
+     Dark mode was unaffected: it defines its own pair below. */
+  --neu-dark:  rgba(26, 23, 32, 0.10);
+  --neu-light: rgba(255, 255, 255, 0.85);
   --shadow-sm: 0 1px 2px rgba(26,23,32,0.04);
   --shadow-md: 0 2px 8px rgba(26,23,32,0.05),
                0 1px 2px rgba(26,23,32,0.03);
@@ -3974,13 +3979,17 @@ textarea:focus {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 6px 6px 14px rgba(91, 61, 240, 0.3), -4px -4px 12px rgba(255, 255, 255, 0.65);
+  /* Was rgba(91,61,240) — the electric violet the brand dropped in September —
+     against a hardcoded white edge that only worked on the light theme. Both
+     now come from the palette, so this follows the accent and reads on either
+     ground, exactly like .neu-btn-primary above. */
+  box-shadow: 6px 6px 14px rgb(from var(--accent) r g b / 0.30), -4px -4px 12px var(--neu-light);
   transition: box-shadow 0.18s ease, transform 0.18s ease, opacity 0.15s ease;
 }
 
 .console-send-pill:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 8px 8px 18px rgba(91, 61, 240, 0.38), -5px -5px 14px rgba(255, 255, 255, 0.7);
+  box-shadow: 8px 8px 18px rgb(from var(--accent) r g b / 0.38), -5px -5px 14px var(--neu-light);
 }
 
 .console-send-pill:active:not(:disabled) {
