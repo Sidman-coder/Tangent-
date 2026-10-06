@@ -24,12 +24,29 @@ import {
   type VoiceTranscriptDetail,
 } from "@/hooks/useVoiceCapture";
 import type { ChatSession } from "@/lib/types";
-import { ArrowLeft, ArrowUpRight, CalendarClock, CalendarRange, History, MessageSquare, Newspaper, Sun, Timer } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowUpRight,
+  BookOpen,
+  CalendarClock,
+  CalendarRange,
+  Flag,
+  Hammer,
+  History,
+  ListChecks,
+  MessageSquare,
+  Newspaper,
+  Repeat,
+  Sun,
+  Timer,
+  type LucideIcon,
+} from "lucide-react";
 import Link from "next/link";
 import PenMark from "@/components/console/PenMark";
 import BriefPanel, { CADENCE_LABEL, type BriefSummary } from "@/components/console/BriefPanel";
 import { formatTime12 } from "@/lib/dates";
 import { tracksCompletion } from "@/lib/urgency";
+import { aiFirstSuggestion, prefsOf, type AiSuggestionKey } from "@/lib/personalize";
 import "./console.css";
 
 type ConsoleMode = "chat" | "brief";
@@ -45,6 +62,23 @@ const SUGGESTIONS = [
   { icon: Timer, text: "What fits in 30 minutes?", detail: "Quick tasks for a short gap" },
   { icon: CalendarClock, text: "Move overdue tasks", detail: "Find new slots for anything that slipped" },
 ] as const;
+
+const SUGGESTION_ICON: Partial<Record<AiSuggestionKey, LucideIcon>> = {
+  study: BookOpen,
+  project: Hammer,
+  practice: Repeat,
+  prepare: Flag,
+  organize: ListChecks,
+};
+
+/** What the student said they're working toward leads the list; the rest stay
+ *  as they were. Still four cards, and none of them sends on its own. */
+function suggestionsFor(workingToward: unknown): { icon: LucideIcon; text: string; detail: string }[] {
+  const first = aiFirstSuggestion(prefsOf({ workingToward }));
+  const base = SUGGESTIONS.map((s) => ({ icon: s.icon as LucideIcon, text: s.text as string, detail: s.detail as string }));
+  if (!first) return base;
+  return [{ icon: SUGGESTION_ICON[first.key] ?? Sun, text: first.text, detail: first.detail }, ...base.slice(0, 3)];
+}
 
 function partOfDay(hour: number): string {
   if (hour >= 5 && hour < 12) return "Good morning";
@@ -95,6 +129,8 @@ function writeStored(key: string, value: string | null) {
 
 export default function AiPage() {
   const { state, refresh } = useAppState();
+  const workingToward = state?.user?.workingToward;
+  const suggestions = useMemo(() => suggestionsFor(workingToward), [workingToward]);
   const tz = useUserTimezone();
 
   const [mode, setMode] = useState<ConsoleMode>("chat");
@@ -627,7 +663,7 @@ export default function AiPage() {
               <kbd>Enter</kbd> to send · <kbd>Shift</kbd> + <kbd>Enter</kbd> for a new line
             </p>
             <div className="tg-examples" aria-label="Try asking">
-              {SUGGESTIONS.map(({ icon: Icon, text, detail }) => (
+              {suggestions.map(({ icon: Icon, text, detail }) => (
                 <button
                   key={text}
                   type="button"

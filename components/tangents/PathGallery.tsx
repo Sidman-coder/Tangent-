@@ -8,6 +8,7 @@ import { ChevronRight, Plus } from "lucide-react";
 import TangentLogo from "@/components/TangentLogo";
 import PathAmbient from "@/components/path/PathAmbient";
 import { formatDeadline } from "@/lib/path-format";
+import { DEFAULT_PATHS_EMPTY, type PathsEmptyCopy } from "@/lib/personalize";
 import type { Path } from "@/lib/types";
 
 // Every path you are running, as a field of discs in orbit around you.
@@ -36,6 +37,8 @@ export type PathWithCounts = Path & {
 type Props = {
   paths: PathWithCounts[];
   onNew: () => void;
+  /** Empty-state copy, tuned by onboarding; the original words by default. */
+  empty?: PathsEmptyCopy;
 };
 
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
@@ -180,7 +183,7 @@ function Sphere({
   );
 }
 
-export default function PathGallery({ paths, onNew }: Props) {
+export default function PathGallery({ paths, onNew, empty = DEFAULT_PATHS_EMPTY }: Props) {
   const router = useRouter();
   const reduced = useReducedMotion() ?? false;
   const stageRef = useRef<HTMLDivElement>(null);
@@ -252,14 +255,11 @@ export default function PathGallery({ paths, onNew }: Props) {
         >
           <TangentLogo variant="mark" size={56} />
         </m.span>
-        <h2>Nothing in orbit yet</h2>
-        <p>
-          A path is one thing you are trying to reach: a university place, a job, a rating, a body of work.
-          Tangent branches off what you already have to get you there.
-        </p>
+        <h2>{empty.title}</h2>
+        <p>{empty.body}</p>
         <button type="button" className="path-btn is-primary" onClick={onNew}>
           <Plus size={15} aria-hidden="true" />
-          Start your first path
+          {empty.cta}
         </button>
       </div>
     );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import Link from "next/link";
 import { m, useReducedMotion } from "motion/react";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { wallClockNow } from "@/lib/time";
@@ -10,6 +11,7 @@ import SidePeek from "@/components/ui/SidePeek";
 import { handleResourceClick } from "@/lib/task-utils";
 import { toYMD, formatTime12 } from "@/lib/dates";
 import { taskColor } from "@/lib/task-colors";
+import { initialCalendarView, prefsOf } from "@/lib/personalize";
 import type { Plan, Task } from "@/lib/types";
 import { X, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil } from "lucide-react";
 import WeekView from "@/components/calendar/WeekView";
@@ -176,13 +178,19 @@ export default function CalendarPage() {
     : [];
 
   // Remember the chosen view; first visit gets the week grid on wide screens
-  // and the agenda list on phones, where seven columns can't breathe.
+  // and the agenda list on phones, where seven columns can't breathe. A
+  // student who asked to see "This week" first gets the week grid until they
+  // pick a view themselves (lib/personalize.ts initialCalendarView).
+  const profileLoaded = state !== null;
+  const dayView = state?.user.dayView ?? null;
   useEffect(() => {
+    if (!profileLoaded) return;
     let saved: string | null = null;
     try { saved = window.localStorage.getItem(VIEW_KEY); } catch { /* storage blocked */ }
-    if (saved === "week" || saved === "month" || saved === "agenda") setView(saved);
-    else setView(window.matchMedia("(max-width: 720px)").matches ? "agenda" : "week");
-  }, []);
+    const savedView = saved === "week" || saved === "month" || saved === "agenda" ? saved : null;
+    const narrow = window.matchMedia("(max-width: 720px)").matches;
+    setView(initialCalendarView(prefsOf({ dayView }), savedView, narrow));
+  }, [profileLoaded, dayView]);
 
   const chooseView = (next: CalView) => {
     setView(next);
@@ -616,6 +624,15 @@ export default function CalendarPage() {
                         >
                           {plan.title}
                         </button>
+                      )}
+                      {t.pathOrigin && (
+                        <Link
+                          href={`/tangents/${t.pathOrigin.pathId}`}
+                          className="path-origin-link"
+                          title={t.pathOrigin.nodeTitle}
+                        >
+                          From your {t.pathOrigin.pathTitle} path
+                        </Link>
                       )}
                       {t.notes && (
                         <div className="calendar-modal-task-desc">

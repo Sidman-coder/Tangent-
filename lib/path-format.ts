@@ -24,3 +24,21 @@ export function pathMeta(path: { deadline?: string; hoursPerWeek?: number }): st
   ].filter(Boolean);
   return parts.length ? parts.join(" · ") : null;
 }
+
+/** Drafted branches store "summary\n\nFirst step: ..." in a node's detail.
+ *  The one place that reads that format back. */
+export function splitNodeDetail(detail: string | undefined): { summary: string; firstStep: string } {
+  const [summary = "", firstStep = ""] = (detail ?? "").split(/\n\nFirst step:\s*/);
+  return { summary: summary.trim(), firstStep: firstStep.trim() };
+}
+
+/** A first step shortened to fit as a task title: whole words, no trailing
+ *  punctuation, an ellipsis only when something was cut. */
+export function stepTitle(text: string, max = 60): string {
+  const t = text.trim().replace(/\s+/g, " ").replace(/[.\s]+$/, "");
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max - 1);
+  const space = cut.lastIndexOf(" ");
+  const words = space >= max * 0.6 ? cut.slice(0, space) : cut;
+  return `${words.replace(/[\s,;:.–-]+$/, "")}…`;
+}

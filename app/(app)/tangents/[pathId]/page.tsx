@@ -8,7 +8,7 @@ import PathScene from "@/components/path/PathScene";
 import PathInspector from "@/components/path/PathInspector";
 import PathWorkForm from "@/components/path/PathWorkForm";
 import DeletePathDialog from "@/components/tangents/DeletePathDialog";
-import type { Path, PathNode } from "@/lib/types";
+import type { Path, PathNode, PathNodeSchedule } from "@/lib/types";
 import { pathMeta } from "@/lib/path-format";
 import "../tangents.css";
 
@@ -30,6 +30,8 @@ export default function PathDeepView() {
 
   const [path, setPath] = useState<Path | null>(null);
   const [nodes, setNodes] = useState<PathNode[]>([]);
+  const [scheduled, setScheduled] = useState<Record<string, PathNodeSchedule>>({});
+  const [justKept, setJustKept] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -50,9 +52,14 @@ export default function PathDeepView() {
     try {
       const res = await fetch(`/api/path?pathId=${encodeURIComponent(pathId)}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`Couldn't load this path (${res.status})`);
-      const data = (await res.json()) as { path: Path; nodes: PathNode[] };
+      const data = (await res.json()) as {
+        path: Path;
+        nodes: PathNode[];
+        scheduled?: Record<string, PathNodeSchedule>;
+      };
       setPath(data.path);
       setNodes(data.nodes ?? []);
+      setScheduled(data.scheduled ?? {});
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't load this path.");
@@ -123,6 +130,12 @@ export default function PathDeepView() {
   );
 
   const focused = useMemo(() => nodes.find((n) => n.id === focusedId) ?? null, [focusedId, nodes]);
+
+  // The time picker opens by itself only right after "Keep this", not every
+  // time you come back to that branch.
+  useEffect(() => {
+    setJustKept(null);
+  }, [focusedId]);
 
   // Tidy: keep open only the circles on the way to what you are looking at,
   // then frame what is left. The clutter control for a tree that has grown.
@@ -253,9 +266,16 @@ export default function PathDeepView() {
         ancestry={ancestry}
         childCount={childCount}
         busy={busyId === focusedId}
+        schedule={focused ? scheduled[focused.id] : undefined}
+        justKept={!!focused && justKept === focused.id}
+        onScheduleChanged={load}
         onClose={() => setFocusedId(null)}
         onGenerate={(id) => void generate(id)}
-        onStatus={(id, status) => void run({ action: "setStatus", id, status }, id)}
+        onStatus={async (id, status) => {
+          const data = await run({ action: "setStatus", id, status }, id);
+          // Keeping a branch is its own step; the time picker follows it.
+          setJustKept(data && status === "accepted" ? id : null);
+        }}
         onAddWork={(parentId) => setFormParent({ parentId })}
         onRemove={(id) => {
           setFocusedId(null);

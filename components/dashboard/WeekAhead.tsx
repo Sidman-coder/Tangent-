@@ -14,7 +14,18 @@ const DAY_LETTER = ["S", "M", "T", "W", "T", "F", "S"];
 
 /** Rolling seven days from today — on a Friday, "this week" should still
  *  show the weekend and Monday, not four days that already happened. */
-export default function WeekAhead({ tasks, now, insight }: { tasks: Task[]; now: Date; insight: ScheduleInsight }) {
+export default function WeekAhead({
+  tasks,
+  now,
+  insight,
+  openWeekLink = false,
+}: {
+  tasks: Task[];
+  now: Date;
+  insight: ScheduleInsight;
+  /** "Open week" in the heading, for students who asked to see the week first. */
+  openWeekLink?: boolean;
+}) {
   const router = useRouter();
 
   const days = useMemo(
@@ -44,7 +55,14 @@ export default function WeekAhead({ tasks, now, insight }: { tasks: Task[]; now:
         <div>
           <h2 id="week-ahead-title">Week ahead</h2>
         </div>
-        {total > 0 && <span>{total} open task{total === 1 ? "" : "s"}</span>}
+        <span className="week-ahead-meta">
+          {total > 0 && <span>{total} open task{total === 1 ? "" : "s"}</span>}
+          {openWeekLink && (
+            <button type="button" className="week-ahead-link week-ahead-open" onClick={() => router.push(`/calendar?date=${toYMD(now)}`)}>
+              Open week <ArrowRight size={12} aria-hidden="true" />
+            </button>
+          )}
+        </span>
       </div>
 
       <div className={`week-ahead-bars${total === 0 ? " is-empty" : ""}`}>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppState } from "@/components/AppStateProvider";
 import ActionReceipt from "@/components/ActionReceipt";
@@ -11,20 +11,9 @@ import {
   type OpenPaletteDetail,
 } from "@/hooks/useVoiceCapture";
 import { Check } from "lucide-react";
+import { captureCopy, prefsOf, type CaptureQuickAction } from "@/lib/personalize";
 
-type QuickAction = {
-  label: string;
-  kind: "prefill" | "ask" | "navigate";
-  value: string;
-};
-
-const QUICK_ACTIONS: QuickAction[] = [
-  { label: "Add a task", kind: "prefill", value: "Add a task: " },
-  { label: "Create a plan", kind: "prefill", value: "Create a plan for " },
-  { label: "What's on today?", kind: "ask", value: "What's on today?" },
-  { label: "Summarize my email", kind: "ask", value: "Summarize my email" },
-  { label: "Go to calendar", kind: "navigate", value: "/calendar" },
-];
+type QuickAction = CaptureQuickAction;
 
 function cleanReply(text: string): string {
   if (!text) return "Done! Your request has been processed.";
@@ -43,7 +32,15 @@ function isFormField(el: EventTarget | null): boolean {
 
 export default function CommandPalette() {
   const router = useRouter();
-  const { refresh } = useAppState();
+  const { state, refresh } = useAppState();
+  // Onboarding answers tune the first quick action and the placeholder; with
+  // no answers these are the palette's original defaults.
+  const slipPoint = state?.user?.slipPoint;
+  const helpFocus = state?.user?.helpFocus;
+  const { placeholder, quickActions: QUICK_ACTIONS } = useMemo(
+    () => captureCopy(prefsOf({ slipPoint, helpFocus })),
+    [slipPoint, helpFocus]
+  );
 
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
@@ -225,7 +222,7 @@ export default function CommandPalette() {
         void submitAsk(value);
       }
     },
-    [value, highlighted, closePalette, runQuickAction, submitAsk]
+    [value, highlighted, closePalette, runQuickAction, submitAsk, QUICK_ACTIONS]
   );
 
   // Hold Space (400ms) to start voice recording, when no form field is focused and the palette is closed.
@@ -298,7 +295,7 @@ export default function CommandPalette() {
               value={value}
               onChange={(e) => { setValue(e.target.value); setHighlighted(0); }}
               onKeyDown={onInputKeyDown}
-              placeholder="Add a task, ask a question…"
+              placeholder={placeholder}
               aria-label="Command"
               disabled={busy}
             />

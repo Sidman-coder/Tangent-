@@ -1,7 +1,10 @@
 import "server-only";
 import { getRequestContext, requestMemo, forgetMemo } from "./request-context";
 import { DEFAULT_TIMEZONE, isValidTimezone } from "./dates";
-import { expandRecurrence, getUserToday, weekRange } from "./time";
+import { addDaysYMD, expandRecurrence, getUserToday, weekRange } from "./time";
+import { preferencesFrom } from "./onboarding";
+import type { OnboardingPreferences, OnboardingSubmission, PreferencesPatch, SchoolHours } from "./onboarding";
+import { SCHOOL_SERIES_WEEKS, planSchoolReplace, schoolHoursFromTasks } from "./school-block";
 import { decryptFeedUrl, encryptFeedUrl, maskCanvasFeedUrl as maskFeedUrl } from "./canvas-feed-security";
 import type {
   Task,
@@ -95,10 +98,11 @@ type TaskRow = {
   start_action: string | null;
   source: Task["source"] | null;
   external_id: string | null;
+  path_node_id: string | null;
 };
 
 const TASK_COLUMNS =
-  "id, title, date, time, completed, kind, calendar_id, plan_id, notes, recurring, resources, start_action, source, external_id";
+  "id, title, date, time, completed, kind, calendar_id, plan_id, notes, recurring, resources, start_action, source, external_id, path_node_id";
 
 function taskFromRow(r: TaskRow): Task {
   const t: Task = { id: r.id, title: r.title, date: r.date, time: r.time, completed: r.completed };
@@ -111,11 +115,14 @@ function taskFromRow(r: TaskRow): Task {
   if (r.start_action !== null) t.startAction = r.start_action;
   if (r.source) t.source = r.source;
   if (r.external_id !== null) t.externalId = r.external_id;
+  if (r.path_node_id !== null) t.pathNodeId = r.path_node_id;
   return t;
 }
 
 /** Maps a Task patch to column values. A key that is present but undefined
- *  clears the column, matching the old Object.assign behaviour. */
+ *  clears the column, matching the old Object.assign behaviour. pathNodeId is
+ *  deliberately absent: only addPathTask sets the link (and restoreTasks puts
+ *  it back), so no ordinary edit, copy or AI-written task can change it. */
 function taskPatchToRow(patch: Partial<Omit<Task, "id">>): Record<string, unknown> {
   const row: Record<string, unknown> = {};
   const has = (k: keyof Task) => Object.prototype.hasOwnProperty.call(patch, k);
@@ -176,7 +183,9 @@ async function deleteTaskIds(where: string, ids: string[]): Promise<number> {
 }
 
 /** Re-inserts full task objects (undo of a delete) with their original ids.
- *  A task whose plan no longer exists comes back without the plan link. */
+ *  A task whose plan or Path node no longer exists comes back without that
+ *  link. So does an open path step whose node has since been given another
+ *  open step: the database allows one open step per node. */
 async function restoreTasks(tasks: Task[]): Promise<void> {
   const { db, userId } = ctx();
   const valid = tasks.filter((t) => isUuid(t.id));
@@ -188,11 +197,32 @@ async function restoreTasks(tasks: Task[]): Promise<void> {
     if (error) fail("restoreTasks", error);
     livePlans = new Set((data ?? []).map((p: { id: string }) => p.id));
   }
+  const nodeIds = Array.from(new Set(valid.map((t) => t.pathNodeId).filter(isUuid)));
+  let liveNodes = new Set<string>();
+  const takenNodes = new Set<string>();
+  if (nodeIds.length) {
+    const [nodes, open] = await Promise.all([
+      db.from("path_nodes").select("id").eq("user_id", userId).in("id", nodeIds),
+      db.from("tasks").select("path_node_id").eq("user_id", userId).eq("completed", false).in("path_node_id", nodeIds),
+    ]);
+    if (nodes.error) fail("restoreTasks", nodes.error);
+    if (open.error) fail("restoreTasks", open.error);
+    liveNodes = new Set((nodes.data ?? []).map((n: { id: string }) => n.id));
+    for (const r of (open.data ?? []) as { path_node_id: string }[]) takenNodes.add(r.path_node_id);
+  }
+  const pathNodeFor = (t: Omit<Task, "id">): string | null => {
+    if (!t.pathNodeId || !liveNodes.has(t.pathNodeId)) return null;
+    if (t.completed) return t.pathNodeId;
+    if (takenNodes.has(t.pathNodeId)) return null;
+    takenNodes.add(t.pathNodeId);
+    return t.pathNodeId;
+  };
   const rows = valid.map(({ id, ...rest }) => ({
     ...newTaskRow(userId, rest),
     id,
     completed: !!rest.completed,
     plan_id: rest.planId && livePlans.has(rest.planId) ? rest.planId : null,
+    path_node_id: pathNodeFor(rest),
   }));
   for (let i = 0; i < rows.length; i += 500) {
     const { error } = await db.from("tasks").upsert(rows.slice(i, i + 500), { onConflict: "id", ignoreDuplicates: true });
@@ -263,6 +293,59 @@ export async function addTask(task: Omit<Task, "id">): Promise<Task & { wasDupli
   return created;
 }
 
+type DbError = { code?: string; message: string };
+
+/** The partial unique index that allows one open step per Path node. */
+function isActivePathStepConflict(error: DbError): boolean {
+  return error.code === "23505" && error.message.includes("tasks_path_node_active_idx");
+}
+
+/** Creates the scheduled first step of a Path node, linked to it. Unlike
+ *  addTask there is no near-duplicate matching: the student picked this exact
+ *  step and time, so handing back some other similar task would be wrong. The
+ *  database allows one open step per node; if one already exists (a double
+ *  click, another tab) this returns "already_scheduled" instead of throwing. */
+export async function addPathTask(
+  task: Omit<Task, "id" | "pathNodeId" | "pathOrigin">,
+  pathNodeId: string
+): Promise<{ task: Task } | { error: "already_scheduled" | "no_node" }> {
+  if (!isUuid(pathNodeId)) return { error: "no_node" };
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("tasks")
+    .insert({ ...newTaskRow(userId, task), path_node_id: pathNodeId })
+    .select(TASK_COLUMNS)
+    .single();
+  if (error) {
+    if (isActivePathStepConflict(error)) return { error: "already_scheduled" };
+    // Foreign key: the node is gone (or was never this student's).
+    if ((error as DbError).code === "23503") return { error: "no_node" };
+    fail("addPathTask", error);
+  }
+  const created = taskFromRow(data as TaskRow);
+  console.log("[store] addPathTask:", created.id, created.title, created.date, created.time, "node", pathNodeId);
+  return { task: created };
+}
+
+/** Every task that came from the given Path nodes, completed ones included.
+ *  A node's scheduled state on the Path view is derived from these. */
+export async function getPathNodeTasks(nodeIds: string[]): Promise<Task[]> {
+  const ids = nodeIds.filter(isUuid);
+  const out: Task[] = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200);
+    out.push(...(await selectTasks("getPathNodeTasks", (q) => q.in("path_node_id", chunk))));
+  }
+  return out;
+}
+
+/** Tasks dated within [start, end], for finding open times. */
+export async function getTasksBetween(start: string, end: string): Promise<Task[]> {
+  const ymd = /^\d{4}-\d{2}-\d{2}$/;
+  if (!ymd.test(start) || !ymd.test(end)) return [];
+  return selectTasks("getTasksBetween", (q) => q.gte("date", start).lte("date", end));
+}
+
 export async function completeTask(id: string): Promise<Task | null> {
   const task = await updateTask(id, { completed: true });
   if (!task) console.log("[store] completeTask: not found", id);
@@ -296,13 +379,16 @@ export async function updateTask(id: string, patch: Partial<Omit<Task, "id">>): 
   const row = taskPatchToRow(patch);
   if (Object.keys(row).length === 0) return getTask(id);
   const { db, userId } = ctx();
-  const { data, error } = await db
-    .from("tasks")
-    .update(row)
-    .eq("user_id", userId)
-    .eq("id", id)
-    .select(TASK_COLUMNS)
-    .maybeSingle();
+  const run = (r: Record<string, unknown>) =>
+    db.from("tasks").update(r).eq("user_id", userId).eq("id", id).select(TASK_COLUMNS).maybeSingle();
+  let { data, error } = await run(row);
+  // Reopening an old path step while its node already has another open step
+  // would break the one-open-step rule. The reopened task stays, as an
+  // ordinary task without the link.
+  if (error && isActivePathStepConflict(error)) {
+    console.log("[store] updateTask: reopened path step unlinked, node already has an open step", id);
+    ({ data, error } = await run({ ...row, path_node_id: null }));
+  }
   if (error) fail("updateTask", error);
   if (!data) {
     console.log("[store] updateTask: not found", id);
@@ -587,14 +673,34 @@ type ProfileRow = {
   context_summary: string;
   context_interactions: number;
   context_updated_at: string;
+  // Onboarding answers (migration 20260929000000). Absent on a database the
+  // migration hasn't reached yet; see getProfileRow.
+  help_focus?: string | null;
+  slip_point?: string | null;
+  day_view?: string | null;
+  working_toward?: string | null;
+  starting_intent?: string | null;
 };
 
-const PROFILE_COLUMNS =
+const LEGACY_PROFILE_COLUMNS =
   "display_name, email, is_high_school, onboarded_at, timezone, weekly_plan, last_voice_command, last_voice_response, context_summary, context_interactions, context_updated_at";
+const PROFILE_COLUMNS = `${LEGACY_PROFILE_COLUMNS}, help_focus, slip_point, day_view, working_toward, starting_intent`;
+
+/** Postgres "undefined_column": the onboarding migration isn't applied yet. */
+function isMissingColumn(error: { code?: string; message: string }): boolean {
+  return error.code === "42703" || /column .* does not exist/i.test(error.message);
+}
 
 async function getProfileRow(where: string): Promise<ProfileRow> {
   const { db, userId } = ctx();
-  const { data, error } = await db.from("profiles").select(PROFILE_COLUMNS).eq("user_id", userId).maybeSingle();
+  let { data, error } = await db.from("profiles").select(PROFILE_COLUMNS).eq("user_id", userId).maybeSingle();
+  // The migration must ship before this code, but if it hasn't, reading the
+  // profile should not take the whole app down: answers read as unanswered
+  // (default behavior) and only saving them fails.
+  if (error && isMissingColumn(error)) {
+    console.warn("[store] profiles is missing the onboarding columns; apply migration 20260929000000");
+    ({ data, error } = await db.from("profiles").select(LEGACY_PROFILE_COLUMNS).eq("user_id", userId).maybeSingle());
+  }
   if (error) fail(where, error);
   if (!data) throw new Error(`[store] ${where}: no profile for this student`);
   return data as ProfileRow;
@@ -614,7 +720,24 @@ function userFromRow(r: ProfileRow): UserProfile {
     isHighSchool: r.is_high_school,
     onboardedAt: r.onboarded_at ? iso(r.onboarded_at) : null,
     timezone: isValidTimezone(r.timezone) ? r.timezone : DEFAULT_TIMEZONE,
+    ...preferencesFrom({
+      helpFocus: r.help_focus,
+      slipPoint: r.slip_point,
+      dayView: r.day_view,
+      workingToward: r.working_toward,
+      startingIntent: r.starting_intent,
+    }),
   };
+}
+
+function preferencesToRow(prefs: Partial<OnboardingPreferences>): Record<string, unknown> {
+  const row: Record<string, unknown> = {};
+  if ("helpFocus" in prefs) row.help_focus = prefs.helpFocus ?? null;
+  if ("slipPoint" in prefs) row.slip_point = prefs.slipPoint ?? null;
+  if ("dayView" in prefs) row.day_view = prefs.dayView ?? null;
+  if ("workingToward" in prefs) row.working_toward = prefs.workingToward ?? null;
+  if ("startingIntent" in prefs) row.starting_intent = prefs.startingIntent ?? null;
+  return row;
 }
 
 /** Saves the editable profile fields. The email comes from the sign-in account
@@ -630,19 +753,55 @@ export async function setWeeklyPlan(items: string[]): Promise<void> {
   await updateProfile("setWeeklyPlan", { weekly_plan: items.filter((i) => typeof i === "string") });
 }
 
-/** Marks onboarding done and records the answers from the first-run flow. */
-export async function completeOnboarding(answers: {
-  displayName?: string;
-  isHighSchool?: boolean | null;
-  timezone?: string;
-}): Promise<UserProfile> {
-  const row: Record<string, unknown> = { onboarded_at: new Date().toISOString() };
+/** Marks onboarding done and saves every answer in one go: the profile
+ *  preferences and the School block. Safe to run any number of times (Redo
+ *  setup): the School block is replaced, never added to. */
+export async function completeOnboarding(answers: OnboardingSubmission): Promise<UserProfile> {
+  const timezone = isValidTimezone(answers.timezone) ? answers.timezone : DEFAULT_TIMEZONE;
+  // School first: if it fails, onboarding stays open and can simply be retried.
+  await replaceSchoolBlock(answers.school, timezone);
+  const row: Record<string, unknown> = {
+    onboarded_at: new Date().toISOString(),
+    timezone,
+    ...preferencesToRow(answers.preferences),
+  };
   if (typeof answers.displayName === "string" && answers.displayName.trim()) row.display_name = answers.displayName.trim().slice(0, 100);
-  if (typeof answers.isHighSchool === "boolean") row.is_high_school = answers.isHighSchool;
-  row.timezone = isValidTimezone(answers.timezone) ? answers.timezone : DEFAULT_TIMEZONE;
   await updateProfile("completeOnboarding", row);
-  console.log("[store] completeOnboarding — timezone:", row.timezone);
+  console.log("[store] completeOnboarding — timezone:", timezone, "| school block:", answers.school ? "set" : "none");
   return userFromRow(await getProfileRow("completeOnboarding"));
+}
+
+/** Changes some onboarding answers without re-running setup (Settings, and
+ *  clearing the starting intent once the student has used or dismissed it). */
+export async function updatePreferences(patch: PreferencesPatch): Promise<UserProfile> {
+  const row = preferencesToRow(patch);
+  if (Object.keys(row).length) await updateProfile("updatePreferences", row);
+  return userFromRow(await getProfileRow("updatePreferences"));
+}
+
+/** Leaves exactly one onboarding School series describing `hours`, or none
+ *  when the student skipped school hours. Every earlier onboarding series is
+ *  removed first, which is what makes repeated setup idempotent. Canvas
+ *  items, one-off "school" tasks and anything else are never touched. */
+export async function replaceSchoolBlock(hours: SchoolHours | null, timezone: string): Promise<void> {
+  const { db, userId } = ctx();
+  const recurring = await selectTasks("replaceSchoolBlock", (q) =>
+    q.not("recurring_parent_id", "is", null).eq("kind", "school")
+  );
+  const today = getUserToday(timezone);
+  const plan = planSchoolReplace(recurring, hours, today, addDaysYMD(today, SCHOOL_SERIES_WEEKS * 7));
+  const stale = plan.deleteSeries;
+  if (stale.length) {
+    const { data, error } = await db
+      .from("tasks")
+      .delete()
+      .eq("user_id", userId)
+      .in("recurring_parent_id", stale)
+      .select("id");
+    if (error) fail("replaceSchoolBlock", error);
+    console.log("[store] replaceSchoolBlock — removed series:", stale.length, "| rows:", data?.length ?? 0);
+  }
+  if (plan.add) await addRecurringTask(plan.add.task, plan.add.recurring);
 }
 
 /** "Restart onboarding": the first-run flow shows again on next load. */
@@ -1038,16 +1197,41 @@ export async function getAppState(): Promise<AppState> {
     getAllPlans(),
     getProfileRow("getAppState"),
   ]);
+  await attachPathOrigins(tasks);
   return {
     tasks,
     calendars,
     events: [],
-    user: userFromRow(profile),
+    user: { ...userFromRow(profile), schoolHours: schoolHoursFromTasks(tasks) },
     weeklyPlan: [...(profile.weekly_plan ?? [])],
     lastVoiceCommand: profile.last_voice_command,
     lastVoiceResponse: profile.last_voice_response,
     plans,
   };
+}
+
+/** Adds "From your X path" display data to tasks linked to a Path node. One
+ *  round trip, and none at all when no task is linked. */
+async function attachPathOrigins(tasks: Task[]): Promise<void> {
+  const nodeIds = Array.from(new Set(tasks.map((t) => t.pathNodeId).filter(isUuid)));
+  if (nodeIds.length === 0) return;
+  const { db, userId } = ctx();
+  const [nodes, paths] = await Promise.all([
+    db.from("path_nodes").select("id, title, path_id").eq("user_id", userId).in("id", nodeIds),
+    db.from("paths").select("id, title").eq("user_id", userId),
+  ]);
+  if (nodes.error) fail("attachPathOrigins", nodes.error);
+  if (paths.error) fail("attachPathOrigins", paths.error);
+  const pathTitle = new Map(((paths.data ?? []) as { id: string; title: string }[]).map((p) => [p.id, p.title]));
+  const origins = new Map<string, NonNullable<Task["pathOrigin"]>>();
+  for (const n of (nodes.data ?? []) as { id: string; title: string; path_id: string }[]) {
+    const title = pathTitle.get(n.path_id);
+    if (title) origins.set(n.id, { pathId: n.path_id, pathTitle: title, nodeTitle: n.title });
+  }
+  for (const t of tasks) {
+    const origin = t.pathNodeId ? origins.get(t.pathNodeId) : undefined;
+    if (origin) t.pathOrigin = origin;
+  }
 }
 
 export async function getState(): Promise<AppState> {
@@ -1746,6 +1930,11 @@ export async function resetUserData(): Promise<void> {
   await updateProfile("resetUserData", {
     onboarded_at: null,
     is_high_school: null,
+    help_focus: null,
+    slip_point: null,
+    day_view: null,
+    working_toward: null,
+    starting_intent: null,
     weekly_plan: [],
     last_voice_command: null,
     last_voice_response: null,
