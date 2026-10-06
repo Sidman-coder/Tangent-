@@ -1,0 +1,915 @@
+{
+  "version": 1,
+  "reference_date": "2026-10-05",
+  "timezone": "America/New_York",
+  "cases": [
+    {
+      "id": "icf-add-checkpoints",
+      "text": "add 2 checkpoints to my iCF prep before friday",
+      "source": "typed",
+      "note": "The plan exists; casing differs. Must add to it, never create a second plan.",
+      "seed": {
+        "plans": [
+          {
+            "id": "11111111-1111-4111-8111-000000000001",
+            "title": "ICF Prep"
+          }
+        ],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000005",
+            "title": "ICF checkpoint 1: outline",
+            "date": "2026-10-07",
+            "time": "18:00",
+            "planId": "11111111-1111-4111-8111-000000000001"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000006",
+            "title": "ICF checkpoint 2: draft",
+            "date": "2026-10-09",
+            "time": "18:00",
+            "planId": "11111111-1111-4111-8111-000000000001"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "add_to_plan",
+        "target_plan": "ICF Prep",
+        "min_ops": 2,
+        "max_ops": 2,
+        "must_not": [
+          "create_plan"
+        ]
+      }
+    },
+    {
+      "id": "icf-add-checkpoints-voice",
+      "text": "add two checkpoints to my eye see eff prep",
+      "source": "voice",
+      "note": "Voice transcription of the case above: 'eye see eff' is ICF.",
+      "seed": {
+        "plans": [
+          {
+            "id": "11111111-1111-4111-8111-000000000001",
+            "title": "ICF Prep"
+          }
+        ],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000005",
+            "title": "ICF checkpoint 1: outline",
+            "date": "2026-10-07",
+            "time": "18:00",
+            "planId": "11111111-1111-4111-8111-000000000001"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000006",
+            "title": "ICF checkpoint 2: draft",
+            "date": "2026-10-09",
+            "time": "18:00",
+            "planId": "11111111-1111-4111-8111-000000000001"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "add_to_plan",
+        "target_plan": "ICF Prep",
+        "min_ops": 2,
+        "max_ops": 2,
+        "must_not": [
+          "create_plan"
+        ]
+      }
+    },
+    {
+      "id": "test-next-week",
+      "text": "I have a test next week",
+      "source": "typed",
+      "note": "One task, not a 7-day plan.",
+      "seed": {
+        "plans": [],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000001",
+            "title": "Math homework",
+            "date": "2026-10-05",
+            "time": "16:00"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "add_task",
+        "target_plan": null,
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan"
+        ]
+      }
+    },
+    {
+      "id": "done-math-hw",
+      "text": "done with math hw",
+      "source": "typed",
+      "no_ai": true,
+      "note": "Code fast path in lib/ai/router.ts; no AI call.",
+      "seed": {
+        "plans": [],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000001",
+            "title": "Math homework",
+            "date": "2026-10-05",
+            "time": "16:00"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000002",
+            "title": "Chem lab report",
+            "date": "2026-10-06",
+            "time": "19:00"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "complete_task",
+        "target_plan": null,
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan",
+          "add_task",
+          "delete_task"
+        ]
+      }
+    },
+    {
+      "id": "sat-new-plan",
+      "text": "help me study for the SAT in 3 weeks",
+      "source": "typed",
+      "seed": {
+        "plans": [],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000001",
+            "title": "Math homework",
+            "date": "2026-10-05",
+            "time": "16:00"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "new_plan",
+        "target_plan": "NEW",
+        "min_ops": 4,
+        "max_ops": 30
+      }
+    },
+    {
+      "id": "icf-question",
+      "text": "what should I do for my ICF project?",
+      "source": "typed",
+      "note": "Advice in chat; nothing changes on the calendar.",
+      "seed": {
+        "plans": [
+          {
+            "id": "11111111-1111-4111-8111-000000000001",
+            "title": "ICF Prep"
+          }
+        ],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000005",
+            "title": "ICF checkpoint 1: outline",
+            "date": "2026-10-07",
+            "time": "18:00",
+            "planId": "11111111-1111-4111-8111-000000000001"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000006",
+            "title": "ICF checkpoint 2: draft",
+            "date": "2026-10-09",
+            "time": "18:00",
+            "planId": "11111111-1111-4111-8111-000000000001"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "question",
+        "target_plan": null,
+        "min_ops": 0,
+        "max_ops": 0
+      }
+    },
+    {
+      "id": "ambiguous-move-it",
+      "text": "move it to tomorrow",
+      "source": "typed",
+      "note": "No way to tell which task; ask the student.",
+      "seed": {
+        "plans": [],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000001",
+            "title": "Math homework",
+            "date": "2026-10-05",
+            "time": "16:00"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000002",
+            "title": "Chem lab report",
+            "date": "2026-10-06",
+            "time": "19:00"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000003",
+            "title": "Bio quiz review",
+            "date": "2026-10-07",
+            "time": "17:00"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "clarify",
+        "target_plan": null,
+        "min_ops": 0,
+        "max_ops": 0
+      }
+    },
+    {
+      "id": "ambiguous-which-prep",
+      "text": "add another session to my prep",
+      "source": "typed",
+      "note": "Two plans end in 'Prep'; ask which one.",
+      "seed": {
+        "plans": [
+          {
+            "id": "11111111-1111-4111-8111-000000000001",
+            "title": "ICF Prep"
+          },
+          {
+            "id": "11111111-1111-4111-8111-000000000002",
+            "title": "SAT Prep"
+          }
+        ],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000005",
+            "title": "ICF checkpoint 1: outline",
+            "date": "2026-10-07",
+            "time": "18:00",
+            "planId": "11111111-1111-4111-8111-000000000001"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000007",
+            "title": "SAT practice test",
+            "date": "2026-10-10",
+            "time": "09:00",
+            "planId": "11111111-1111-4111-8111-000000000002"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "clarify",
+        "target_plan": null,
+        "min_ops": 0,
+        "max_ops": 0
+      }
+    },
+    {
+      "id": "dentist-tomorrow",
+      "text": "dentist tomorrow at 3pm",
+      "source": "typed",
+      "no_ai": true,
+      "note": "Code fast path in lib/ai/router.ts; no AI call.",
+      "seed": {
+        "plans": [],
+        "tasks": []
+      },
+      "expected": {
+        "intent": "add_task",
+        "target_plan": null,
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan"
+        ]
+      }
+    },
+    {
+      "id": "chem-lab-done",
+      "text": "finished my chem lab report",
+      "source": "typed",
+      "seed": {
+        "plans": [],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000002",
+            "title": "Chem lab report",
+            "date": "2026-10-06",
+            "time": "19:00"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000003",
+            "title": "Bio quiz review",
+            "date": "2026-10-07",
+            "time": "17:00"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "complete_task",
+        "target_plan": null,
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan",
+          "add_task",
+          "delete_task"
+        ]
+      }
+    },
+    {
+      "id": "move-bio-review",
+      "text": "move bio quiz review to thursday at 5",
+      "source": "typed",
+      "seed": {
+        "plans": [],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000003",
+            "title": "Bio quiz review",
+            "date": "2026-10-07",
+            "time": "17:00"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000004",
+            "title": "Robotics meeting",
+            "date": "2026-10-08",
+            "time": "15:30"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "change_task",
+        "target_plan": null,
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan",
+          "add_task",
+          "delete_task"
+        ]
+      }
+    },
+    {
+      "id": "cancel-robotics",
+      "text": "cancel robotics meeting this week",
+      "source": "typed",
+      "seed": {
+        "plans": [],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000004",
+            "title": "Robotics meeting",
+            "date": "2026-10-08",
+            "time": "15:30"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000001",
+            "title": "Math homework",
+            "date": "2026-10-05",
+            "time": "16:00"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "delete_task",
+        "target_plan": null,
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan",
+          "add_task"
+        ]
+      }
+    },
+    {
+      "id": "rename-icf-plan",
+      "text": "rename my ICF prep plan to ICF Final Push",
+      "source": "typed",
+      "seed": {
+        "plans": [
+          {
+            "id": "11111111-1111-4111-8111-000000000001",
+            "title": "ICF Prep"
+          }
+        ],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000005",
+            "title": "ICF checkpoint 1: outline",
+            "date": "2026-10-07",
+            "time": "18:00",
+            "planId": "11111111-1111-4111-8111-000000000001"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000006",
+            "title": "ICF checkpoint 2: draft",
+            "date": "2026-10-09",
+            "time": "18:00",
+            "planId": "11111111-1111-4111-8111-000000000001"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "change_plan",
+        "target_plan": "ICF Prep",
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan",
+          "add_task",
+          "delete_task"
+        ]
+      }
+    },
+    {
+      "id": "workout-two-weeks",
+      "text": "make me a 2 week workout routine",
+      "source": "typed",
+      "seed": {
+        "plans": [],
+        "tasks": []
+      },
+      "expected": {
+        "intent": "new_plan",
+        "target_plan": "NEW",
+        "min_ops": 4,
+        "max_ops": 20
+      }
+    },
+    {
+      "id": "chem-final-plan",
+      "text": "chem final in 10 days, help me prepare",
+      "source": "typed",
+      "seed": {
+        "plans": [],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000002",
+            "title": "Chem lab report",
+            "date": "2026-10-06",
+            "time": "19:00"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "new_plan",
+        "target_plan": "NEW",
+        "min_ops": 3,
+        "max_ops": 15
+      }
+    },
+    {
+      "id": "push-icf-back",
+      "text": "push my ICF checkpoints back two days",
+      "source": "typed",
+      "seed": {
+        "plans": [
+          {
+            "id": "11111111-1111-4111-8111-000000000001",
+            "title": "ICF Prep"
+          }
+        ],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000005",
+            "title": "ICF checkpoint 1: outline",
+            "date": "2026-10-07",
+            "time": "18:00",
+            "planId": "11111111-1111-4111-8111-000000000001"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000006",
+            "title": "ICF checkpoint 2: draft",
+            "date": "2026-10-09",
+            "time": "18:00",
+            "planId": "11111111-1111-4111-8111-000000000001"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "change_plan",
+        "target_plan": "ICF Prep",
+        "min_ops": 2,
+        "max_ops": 2,
+        "must_not": [
+          "create_plan",
+          "add_task",
+          "delete_task"
+        ]
+      }
+    },
+    {
+      "id": "icf-mock-interview",
+      "text": "add a mock interview to ICF prep on saturday",
+      "source": "typed",
+      "seed": {
+        "plans": [
+          {
+            "id": "11111111-1111-4111-8111-000000000001",
+            "title": "ICF Prep"
+          }
+        ],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000005",
+            "title": "ICF checkpoint 1: outline",
+            "date": "2026-10-07",
+            "time": "18:00",
+            "planId": "11111111-1111-4111-8111-000000000001"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000006",
+            "title": "ICF checkpoint 2: draft",
+            "date": "2026-10-09",
+            "time": "18:00",
+            "planId": "11111111-1111-4111-8111-000000000001"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "add_to_plan",
+        "target_plan": "ICF Prep",
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan"
+        ]
+      }
+    },
+    {
+      "id": "voice-email-teacher",
+      "text": "remind me to email mister patel tomorrow morning",
+      "source": "voice",
+      "seed": {
+        "plans": [],
+        "tasks": []
+      },
+      "expected": {
+        "intent": "add_task",
+        "target_plan": null,
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan"
+        ]
+      }
+    },
+    {
+      "id": "due-this-week",
+      "text": "what's due this week",
+      "source": "typed",
+      "no_ai": true,
+      "note": "Answered from the calendar by the code fast path.",
+      "seed": {
+        "plans": [
+          {
+            "id": "11111111-1111-4111-8111-000000000001",
+            "title": "ICF Prep"
+          },
+          {
+            "id": "11111111-1111-4111-8111-000000000002",
+            "title": "SAT Prep"
+          }
+        ],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000001",
+            "title": "Math homework",
+            "date": "2026-10-05",
+            "time": "16:00"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000002",
+            "title": "Chem lab report",
+            "date": "2026-10-06",
+            "time": "19:00"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000003",
+            "title": "Bio quiz review",
+            "date": "2026-10-07",
+            "time": "17:00"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000004",
+            "title": "Robotics meeting",
+            "date": "2026-10-08",
+            "time": "15:30"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000005",
+            "title": "ICF checkpoint 1: outline",
+            "date": "2026-10-07",
+            "time": "18:00",
+            "planId": "11111111-1111-4111-8111-000000000001"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000006",
+            "title": "ICF checkpoint 2: draft",
+            "date": "2026-10-09",
+            "time": "18:00",
+            "planId": "11111111-1111-4111-8111-000000000001"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000007",
+            "title": "SAT practice test",
+            "date": "2026-10-10",
+            "time": "09:00",
+            "planId": "11111111-1111-4111-8111-000000000002"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "question",
+        "target_plan": null,
+        "min_ops": 0,
+        "max_ops": 0
+      }
+    },
+    {
+      "id": "calc-and-essay",
+      "text": "calc test friday and english essay due monday",
+      "source": "typed",
+      "seed": {
+        "plans": [],
+        "tasks": []
+      },
+      "expected": {
+        "intent": "add_task",
+        "target_plan": null,
+        "min_ops": 2,
+        "max_ops": 2,
+        "must_not": [
+          "create_plan"
+        ]
+      }
+    },
+    {
+      "id": "sat-question",
+      "text": "how many practice tests should I take before the SAT?",
+      "source": "typed",
+      "seed": {
+        "plans": [
+          {
+            "id": "11111111-1111-4111-8111-000000000002",
+            "title": "SAT Prep"
+          }
+        ],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000007",
+            "title": "SAT practice test",
+            "date": "2026-10-10",
+            "time": "09:00",
+            "planId": "11111111-1111-4111-8111-000000000002"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "question",
+        "target_plan": null,
+        "min_ops": 0,
+        "max_ops": 0
+      }
+    },
+    {
+      "id": "bio-quiz-study",
+      "text": "study for bio quiz wednesday",
+      "source": "typed",
+      "note": "A single study block, not a plan.",
+      "seed": {
+        "plans": [],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000001",
+            "title": "Math homework",
+            "date": "2026-10-05",
+            "time": "16:00"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "add_task",
+        "target_plan": null,
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan"
+        ]
+      }
+    },
+    {
+      "id": "voice-sat-sessions",
+      "text": "add two sat sessions this weekend",
+      "source": "voice",
+      "seed": {
+        "plans": [
+          {
+            "id": "11111111-1111-4111-8111-000000000002",
+            "title": "SAT Prep"
+          }
+        ],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000007",
+            "title": "SAT practice test",
+            "date": "2026-10-10",
+            "time": "09:00",
+            "planId": "11111111-1111-4111-8111-000000000002"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "add_to_plan",
+        "target_plan": "SAT Prep",
+        "min_ops": 2,
+        "max_ops": 2,
+        "must_not": [
+          "create_plan"
+        ]
+      }
+    },
+    {
+      "id": "guitar-month",
+      "text": "plan a month of guitar practice",
+      "source": "typed",
+      "seed": {
+        "plans": [],
+        "tasks": []
+      },
+      "expected": {
+        "intent": "new_plan",
+        "target_plan": "NEW",
+        "min_ops": 4,
+        "max_ops": 31
+      }
+    },
+    {
+      "id": "remove-last-icf-checkpoint",
+      "text": "remove the last ICF checkpoint",
+      "source": "typed",
+      "seed": {
+        "plans": [
+          {
+            "id": "11111111-1111-4111-8111-000000000001",
+            "title": "ICF Prep"
+          }
+        ],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000005",
+            "title": "ICF checkpoint 1: outline",
+            "date": "2026-10-07",
+            "time": "18:00",
+            "planId": "11111111-1111-4111-8111-000000000001"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000006",
+            "title": "ICF checkpoint 2: draft",
+            "date": "2026-10-09",
+            "time": "18:00",
+            "planId": "11111111-1111-4111-8111-000000000001"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "delete_task",
+        "target_plan": "ICF Prep",
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan",
+          "add_task"
+        ]
+      }
+    },
+    {
+      "id": "pack-cleats",
+      "text": "pack cleats tonight",
+      "source": "voice",
+      "seed": {
+        "plans": [],
+        "tasks": []
+      },
+      "expected": {
+        "intent": "add_task",
+        "target_plan": null,
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan"
+        ]
+      }
+    },
+    {
+      "id": "common-app-sunday",
+      "text": "add finish common app activities list on sunday",
+      "source": "typed",
+      "seed": {
+        "plans": [],
+        "tasks": []
+      },
+      "expected": {
+        "intent": "add_task",
+        "target_plan": null,
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan"
+        ]
+      }
+    },
+    {
+      "id": "math-tutoring",
+      "text": "math tutoring at 6pm thursday",
+      "source": "typed",
+      "seed": {
+        "plans": [],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000001",
+            "title": "Math homework",
+            "date": "2026-10-05",
+            "time": "16:00"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "add_task",
+        "target_plan": null,
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan"
+        ]
+      }
+    },
+    {
+      "id": "ap-bio-plan",
+      "text": "build me a study plan for the AP Bio exam in May",
+      "source": "typed",
+      "seed": {
+        "plans": [],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000003",
+            "title": "Bio quiz review",
+            "date": "2026-10-07",
+            "time": "17:00"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "new_plan",
+        "target_plan": "NEW",
+        "min_ops": 5,
+        "max_ops": 40
+      }
+    },
+    {
+      "id": "move-dentist",
+      "text": "move my dentist appointment to friday",
+      "source": "voice",
+      "seed": {
+        "plans": [],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000008",
+            "title": "Dentist appointment",
+            "date": "2026-10-07",
+            "time": "15:00"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000003",
+            "title": "Bio quiz review",
+            "date": "2026-10-07",
+            "time": "17:00"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "change_task",
+        "target_plan": null,
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan",
+          "add_task",
+          "delete_task"
+        ]
+      }
+    }
+  ]
+}

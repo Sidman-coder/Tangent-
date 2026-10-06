@@ -31,7 +31,10 @@ import type {
   Path,
   PathNode,
   TangentStatus,
+  BatchUndoStep,
 } from "./types";
+import { parseChangeSet } from "./pipeline/changeset";
+import type { ChangeSet, ChangeSetStatus } from "./pipeline/changeset";
 
 export type { ChatMessage, ChatSession } from "./types";
 
@@ -924,6 +927,27 @@ export async function deletePlan(planId: string): Promise<boolean> {
   return true;
 }
 
+/** Changes a plan's title, description or task list. Used by Pipeline V2
+ *  (lib/pipeline/apply.ts) and to put a plan back on undo. */
+export async function updatePlan(
+  planId: string,
+  patch: { title?: string; description?: string; taskIds?: string[]; taskCount?: number }
+): Promise<Plan | null> {
+  if (!isUuid(planId)) return null;
+  const row: Record<string, unknown> = {};
+  if (patch.title != null) row.title = patch.title;
+  if (patch.description != null) row.description = patch.description;
+  if (patch.taskIds) row.task_ids = patch.taskIds.filter(isUuid);
+  if (patch.taskCount != null) row.task_count = patch.taskCount;
+  const { db, userId } = ctx();
+  const query = db.from("plans");
+  const { data, error } = await (Object.keys(row).length
+    ? query.update(row).eq("user_id", userId).eq("id", planId).select("*").maybeSingle()
+    : query.select("*").eq("user_id", userId).eq("id", planId).maybeSingle());
+  if (error) fail("updatePlan", error);
+  return data ? planFromRow(data as PlanRow) : null;
+}
+
 // ─── Task chat functions ──────────────────────────────────────────────────────
 
 const MAX_MESSAGES = 200;
@@ -1681,6 +1705,42 @@ async function applyUndo(record: ActionRecord): Promise<void> {
       if (r) await updateTask(r.taskId, { date: r.fromDate, time: r.fromTime });
       break;
     }
+    case "apply_changeset": {
+      if (!snap.batch) break;
+      await undoBatchSteps(snap.batch.steps);
+      await markChangeSet(snap.batch.changeSetId, "undone", { from: "confirmed" });
+      break;
+    }
+  }
+}
+
+/** Reverses a Pipeline V2 batch: the steps run last-first. Also used by
+ *  lib/pipeline/apply.ts to roll back a ChangeSet that failed partway. */
+export async function undoBatchSteps(steps: BatchUndoStep[]): Promise<void> {
+  for (const step of [...steps].reverse()) {
+    switch (step.type) {
+      case "delete_tasks":
+        await deleteTaskIds("undoBatchSteps", step.taskIds);
+        break;
+      case "delete_plan":
+        await deletePlan(step.planId);
+        break;
+      case "restore_tasks":
+        await restoreTasks(step.tasks);
+        break;
+      case "restore_task_fields":
+        // null clears a column (taskPatchToRow maps null and undefined alike).
+        await updateTask(step.taskId, step.fields as Partial<Omit<Task, "id">>);
+        break;
+      case "restore_plan":
+        await updatePlan(step.planId, {
+          title: step.title,
+          description: step.description,
+          taskIds: step.taskIds,
+          taskCount: step.taskCount,
+        });
+        break;
+    }
   }
 }
 
@@ -1753,6 +1813,137 @@ export async function resolvePendingConfirmation(id: string): Promise<boolean> {
   const { data, error } = await db.from("pending_confirmations").delete().eq("user_id", userId).eq("id", id).select("id");
   if (error) fail("resolvePendingConfirmation", error);
   return (data?.length ?? 0) > 0;
+}
+
+// ─── Pipeline V2 change sets (lib/pipeline/changeset.ts) ─────────────────────
+
+const CHANGE_SET_COLUMNS =
+  "id, user_id, source, request_text, summary, intent, target_plan_id, ops, assumptions, status, created_at, confirmed_at, action_id";
+
+type ChangeSetRow = {
+  id: string;
+  user_id: string;
+  source: ChangeSet["source"];
+  request_text: string;
+  summary: string;
+  intent: ChangeSet["intent"];
+  target_plan_id: string | null;
+  ops: ChangeSet["ops"] | null;
+  assumptions: string[] | null;
+  status: ChangeSetStatus;
+  created_at: string;
+  confirmed_at: string | null;
+  action_id: string | null;
+};
+
+function changeSetFromRow(r: ChangeSetRow): ChangeSet {
+  return {
+    id: r.id,
+    user_id: r.user_id,
+    source: r.source,
+    request_text: r.request_text,
+    summary: r.summary,
+    intent: r.intent,
+    target_plan_id: r.target_plan_id,
+    ops: r.ops ?? [],
+    assumptions: r.assumptions ?? [],
+    status: r.status,
+    created_at: iso(r.created_at),
+    confirmed_at: r.confirmed_at ? iso(r.confirmed_at) : null,
+    action_id: r.action_id,
+  };
+}
+
+/**
+ * Saves a draft ChangeSet for the current student. The id is the idempotency
+ * key: saving the same id again updates it only while it is still a draft
+ * (an edited preview) and otherwise returns the stored one unchanged.
+ * Throws if the ChangeSet is invalid, not a draft, or for another student.
+ */
+export async function saveChangeSet(input: ChangeSet): Promise<ChangeSet> {
+  const parsed = parseChangeSet(input);
+  if (!parsed.ok) throw new Error(`[store] saveChangeSet: invalid ChangeSet: ${parsed.error}`);
+  const cs = parsed.changeSet;
+  const { db, userId } = ctx();
+  if (cs.user_id !== userId) throw new Error("[store] saveChangeSet: ChangeSet belongs to another student");
+  if (cs.status !== "draft") throw new Error("[store] saveChangeSet: only drafts can be saved");
+
+  const content = {
+    source: cs.source,
+    request_text: cs.request_text,
+    summary: cs.summary,
+    intent: cs.intent,
+    target_plan_id: cs.target_plan_id,
+    ops: cs.ops,
+    assumptions: cs.assumptions,
+  };
+  const { data, error } = await db
+    .from("change_sets")
+    .insert({ id: cs.id, user_id: userId, status: "draft", created_at: cs.created_at, ...content })
+    .select(CHANGE_SET_COLUMNS)
+    .single();
+  if (!error) return changeSetFromRow(data as ChangeSetRow);
+  if ((error as DbError).code !== "23505") fail("saveChangeSet", error);
+
+  // Already saved: update in place while it is still a draft.
+  const { data: updated, error: updateError } = await db
+    .from("change_sets")
+    .update(content)
+    .eq("user_id", userId)
+    .eq("id", cs.id)
+    .eq("status", "draft")
+    .select(CHANGE_SET_COLUMNS)
+    .maybeSingle();
+  if (updateError) fail("saveChangeSet", updateError);
+  if (updated) return changeSetFromRow(updated as ChangeSetRow);
+  const existing = await getChangeSet(cs.id);
+  if (!existing) throw new Error("[store] saveChangeSet: id is taken");
+  return existing;
+}
+
+export async function getChangeSet(id: string): Promise<ChangeSet | null> {
+  if (!isUuid(id)) return null;
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("change_sets")
+    .select(CHANGE_SET_COLUMNS)
+    .eq("user_id", userId)
+    .eq("id", id)
+    .maybeSingle();
+  if (error) fail("getChangeSet", error);
+  return data ? changeSetFromRow(data as ChangeSetRow) : null;
+}
+
+/**
+ * Moves a ChangeSet to `status`. With `from`, only a ChangeSet currently in
+ * that status (or one of them) changes, so this doubles as an atomic claim:
+ * of two racing confirms, only one gets true. Confirming stamps confirmed_at;
+ * going back to draft clears it. `actionId` records the undo entry.
+ */
+export async function markChangeSet(
+  id: string,
+  status: ChangeSetStatus,
+  opts: { from?: ChangeSetStatus | ChangeSetStatus[]; actionId?: string | null } = {}
+): Promise<boolean> {
+  if (!isUuid(id)) return false;
+  const { db, userId } = ctx();
+  const row: Record<string, unknown> = { status };
+  if (status === "confirmed") row.confirmed_at = new Date().toISOString();
+  if (status === "draft") {
+    row.confirmed_at = null;
+    row.action_id = null;
+  }
+  if (opts.actionId !== undefined) row.action_id = isUuid(opts.actionId) ? opts.actionId : null;
+  let q = db.from("change_sets").update(row).eq("user_id", userId).eq("id", id);
+  if (opts.from !== undefined) {
+    const from = Array.isArray(opts.from) ? opts.from : [opts.from];
+    q = from.length === 1 ? q.eq("status", from[0]) : q.in("status", from);
+  }
+  const { data, error } = await q.select("id");
+  if (error) fail("markChangeSet", error);
+  const changed = (data?.length ?? 0) > 0;
+  if (changed) console.log("[store] markChangeSet:", id, "→", status);
+  return changed;
 }
 
 // ─── Daily Brief config ───────────────────────────────────────────────────────
