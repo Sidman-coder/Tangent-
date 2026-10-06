@@ -35,6 +35,11 @@ export type PathDraft = {
 type Props = {
   onCancel: () => void;
   onCreate: (draft: PathDraft) => Promise<boolean>;
+  /** The student's own words from Home ("Make it a Path"). Fills the goal,
+   *  and the name when it is short enough to be one. Still editable. */
+  initialTitle?: string | null;
+  /** A kind suggested by onboarding. Shown selected; the student confirms. */
+  initialKind?: PathGoalKind | null;
 };
 
 type FieldKey = Exclude<keyof PathDraft, "kind">;
@@ -215,11 +220,15 @@ const NAME_STEP = (placeholder: string): Step => ({
   placeholder,
 });
 
-export default function NewPathDialog({ onCancel, onCreate }: Props) {
+/** Short enough to be a name on the drawing's card. */
+const NAME_MAX = 40;
+
+export default function NewPathDialog({ onCancel, onCreate, initialTitle, initialKind }: Props) {
+  const seed = initialTitle?.trim() ?? "";
   const [draft, setDraft] = useState<PathDraft>({
-    title: "",
-    kind: "other",
-    target: "",
+    title: seed.length <= NAME_MAX ? seed : "",
+    kind: initialKind ?? "other",
+    target: seed,
     current: "",
     deadline: "",
     hoursPerWeek: "",
@@ -228,7 +237,7 @@ export default function NewPathDialog({ onCancel, onCreate }: Props) {
   });
   // -1 is choosing the kind; 0 is the name; then the kind's own questions.
   const [stage, setStage] = useState(-1);
-  const [picked, setPicked] = useState(false);
+  const [picked, setPicked] = useState(Boolean(initialKind));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -447,7 +456,7 @@ export default function NewPathDialog({ onCancel, onCreate }: Props) {
             <ArrowLeft size={15} aria-hidden="true" />
             {stage <= -1 ? "Cancel" : "Back"}
           </button>
-          {stage >= 0 && (
+          {(stage >= 0 || picked) && (
             <button type="button" className="path-btn is-primary" onClick={() => void next()} disabled={submitting}>
               {submitting ? "Creating" : isLast ? "Create the path" : "Next"}
               {!isLast && <ArrowRight size={15} aria-hidden="true" />}

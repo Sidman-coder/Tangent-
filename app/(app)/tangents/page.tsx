@@ -8,6 +8,9 @@ import PathGallery from "@/components/tangents/PathGallery";
 import type { PathWithCounts } from "@/components/tangents/PathGallery";
 import NewPathDialog from "@/components/tangents/NewPathDialog";
 import type { PathDraft } from "@/components/tangents/NewPathDialog";
+import { useAppState } from "@/components/AppStateProvider";
+import { takeNewPathTitle } from "@/lib/path-handoff";
+import { initialPathKind, pathsEmptyCopy, prefsOf } from "@/lib/personalize";
 import "./tangents.css";
 
 export default function TangentsPage() {
@@ -15,6 +18,19 @@ export default function TangentsPage() {
   const [paths, setPaths] = useState<PathWithCounts[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [seedTitle, setSeedTitle] = useState<string | null>(null);
+  const { state } = useAppState();
+  const prefs = prefsOf(state?.user);
+
+  // /tangents?new=1 comes from Home: open the dialog, with the student's
+  // starting point if they chose "Make it a Path", then drop the flag so a
+  // reload doesn't reopen it.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("new") !== "1") return;
+    setSeedTitle(takeNewPathTitle());
+    setCreating(true);
+    router.replace("/tangents");
+  }, [router]);
 
   const load = useCallback(async () => {
     try {
@@ -72,7 +88,7 @@ export default function TangentsPage() {
             <span className="path-skeleton-ring is-outer" />
           </div>
         ) : (
-          <PathGallery paths={paths} onNew={() => setCreating(true)} />
+          <PathGallery paths={paths} onNew={() => setCreating(true)} empty={pathsEmptyCopy(prefs)} />
         )}
       </div>
 
@@ -82,7 +98,17 @@ export default function TangentsPage() {
         </p>
       )}
 
-      {creating && <NewPathDialog onCancel={() => setCreating(false)} onCreate={create} />}
+      {creating && (
+        <NewPathDialog
+          onCancel={() => {
+            setCreating(false);
+            setSeedTitle(null);
+          }}
+          onCreate={create}
+          initialTitle={seedTitle}
+          initialKind={initialPathKind(prefs)}
+        />
+      )}
     </div>
   );
 }

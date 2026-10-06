@@ -1,3 +1,5 @@
+import type { DayView, HelpFocus, SchoolHours, SlipPoint, WorkingToward } from "./onboarding";
+
 export type TaskKind = "school" | "academic-ec" | "side-ec" | "personal" | "commitment";
 
 export type RecurringConfig = {
@@ -35,7 +37,26 @@ export type Task = {
   /** The event's UID in its source feed. Lets a re-sync move or rename the task
    *  it already made instead of adding a second copy. */
   externalId?: string;
+  /** The Path node this task is the scheduled first step of. Set only when the
+   *  step is scheduled from a Path (lib/store.ts addPathTask); normal task
+   *  edits never change it. */
+  pathNodeId?: string;
+  /** Read-only, filled in by getAppState for display: which Path it came from. */
+  pathOrigin?: TaskPathOrigin;
 };
+
+export type TaskPathOrigin = { pathId: string; pathTitle: string; nodeTitle: string };
+
+/** A node's scheduled first step as the Path view sees it, derived from the
+ *  tasks linked to it. `active` is the open one (at most one, enforced by the
+ *  database); `lastDone` the most recent completed one. */
+export type PathNodeSchedule = {
+  active?: { taskId: string; date: string; time: string; missed: boolean };
+  lastDone?: { taskId: string; date: string; time: string };
+};
+
+/** One suggested open time for a first step, in the student's timezone. */
+export type SuggestedSlot = { date: string; time: string; afterSchool: boolean };
 
 export type Plan = {
   id: string;
@@ -77,6 +98,16 @@ export type UserProfile = {
   onboardedAt?: string | null;
   /** IANA timezone captured from the browser at onboarding. */
   timezone?: string;
+  /** Onboarding answers (lib/onboarding.ts). null or missing means "not
+   *  answered", and lib/personalize.ts keeps the default behavior. */
+  helpFocus?: HelpFocus | null;
+  slipPoint?: SlipPoint | null;
+  dayView?: DayView | null;
+  workingToward?: WorkingToward | null;
+  /** The one thing the student wanted to start on; cleared once acted on. */
+  startingIntent?: string | null;
+  /** Read-only, derived from the onboarding School series in getAppState. */
+  schoolHours?: SchoolHours | null;
 };
 
 export type VoiceLogEntry = {

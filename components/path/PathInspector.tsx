@@ -2,7 +2,9 @@
 
 import { AnimatePresence, m } from "motion/react";
 import { Check, Plus, Sparkles, Trash2, X } from "lucide-react";
-import type { Path, PathNode } from "@/lib/types";
+import type { Path, PathNode, PathNodeSchedule } from "@/lib/types";
+import { splitNodeDetail } from "@/lib/path-format";
+import PathStepScheduler from "./PathStepScheduler";
 
 // The panel beside the drawing.
 //
@@ -17,6 +19,11 @@ type Props = {
   ancestry: PathNode[];
   childCount: number;
   busy: boolean;
+  /** The node's first step on the calendar, derived from its linked tasks. */
+  schedule: PathNodeSchedule | undefined;
+  /** Just kept: open the time picker straight away. */
+  justKept: boolean;
+  onScheduleChanged: () => Promise<void> | void;
   onClose: () => void;
   onGenerate: (id: string) => void;
   onStatus: (id: string, status: PathNode["status"]) => void;
@@ -38,6 +45,9 @@ export default function PathInspector({
   ancestry,
   childCount,
   busy,
+  schedule,
+  justKept,
+  onScheduleChanged,
   onClose,
   onGenerate,
   onStatus,
@@ -89,7 +99,7 @@ export default function PathInspector({
               substance lives here, in labelled parts. Drafted branches store
               "summary\n\nFirst step: ..." in detail. */}
           {(() => {
-            const [summary, firstStep] = (node.detail ?? "").split(/\n\nFirst step:\s*/);
+            const { summary, firstStep } = splitNodeDetail(node.detail);
             return (
               <>
                 {summary && <p className="path-inspector-body is-lead">{summary}</p>}
@@ -108,6 +118,8 @@ export default function PathInspector({
               </>
             );
           })()}
+
+          <PathStepScheduler node={node} schedule={schedule} autoOpen={justKept} onChanged={onScheduleChanged} />
 
           {(node.effort || node.hoursPerWeek || node.years) && (
             <dl className="path-facts">

@@ -20,6 +20,8 @@ import {
   setDesktopNotifSetting,
 } from "@/lib/desktop-notifications";
 import { getInAppPopupsEnabled, setInAppPopupsEnabled } from "@/lib/notification-popups";
+import { DAY_VIEW_OPTIONS, HELP_FOCUS_OPTIONS, formatSchoolHours } from "@/lib/onboarding";
+import { prefsOf } from "@/lib/personalize";
 
 export default function SettingsPage() {
   const { state, saveState, refresh } = useAppState();
@@ -99,10 +101,34 @@ export default function SettingsPage() {
       ? "Blocked in your browser. Allow notifications for this site to turn it back on."
       : "Reuses the alerts already shown in the bell — no extra data is fetched. Only fires while a Tangent tab is open.";
 
+  const prefs = prefsOf(state?.user);
+  const [prefMsg, setPrefMsg] = useState<string | null>(null);
+  const [redoing, setRedoing] = useState(false);
+
+  // One answer at a time; the rest of the profile is untouched.
+  const onChangePreference = async (key: "helpFocus" | "dayView", value: string) => {
+    setPrefMsg(null);
+    const res = await fetch("/api/onboarding", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [key]: value || null }),
+    }).catch(() => null);
+    if (!res?.ok) {
+      setPrefMsg("Couldn't save that. Try again.");
+      return;
+    }
+    await refresh();
+    setPrefMsg("Saved.");
+  };
+
+  // Setup opens again with every answer prefilled. School hours are replaced,
+  // never added to, so finishing it twice leaves one School block.
   const onRestartOnboarding = async () => {
+    setRedoing(true);
     const res = await fetch("/api/onboarding", { method: "DELETE" }).catch(() => null);
     if (!res?.ok) {
-      setMsg("Could not restart setup.");
+      setRedoing(false);
+      setPrefMsg("Could not restart setup.");
       return;
     }
     window.location.reload();
@@ -156,7 +182,7 @@ export default function SettingsPage() {
           <a href="#appearance">Appearance</a>
           <a href="#notifications">Notifications</a>
           <a href="#integrations">Integrations</a>
-          <a href="#onboarding">Onboarding</a>
+          <a href="#your-tangent">Your Tangent</a>
           <a href="#account">Account</a>
         </nav>
 
@@ -241,11 +267,55 @@ export default function SettingsPage() {
             </div>
           </section>
 
-          <section id="onboarding" className="settings-panel">
-            <div className="settings-option-row">
-              <div><strong>Restart onboarding</strong><span>Revisit the setup questions.</span></div>
-              <Button variant="secondary" onClick={() => void onRestartOnboarding()}>Restart setup</Button>
+          <section id="your-tangent" className="settings-panel">
+            <div className="settings-panel-head">
+              <div><h2>Your Tangent</h2><p>Your answers from setup. Change one here, or go through setup again.</p></div>
             </div>
+            <div className="settings-option-row">
+              <div><strong>What Tangent helps with</strong><span>Shapes the examples you see and what Home shows.</span></div>
+              <select
+                className="settings-select"
+                aria-label="What Tangent helps with"
+                value={prefs.helpFocus ?? ""}
+                onChange={(e) => void onChangePreference("helpFocus", e.target.value)}
+                disabled={!state}
+              >
+                {!prefs.helpFocus && <option value="">Not set</option>}
+                {HELP_FOCUS_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="settings-option-row">
+              <div><strong>Starting view</strong><span>What Home puts first. Nothing is hidden either way.</span></div>
+              <select
+                className="settings-select"
+                aria-label="Starting view"
+                value={prefs.dayView ?? ""}
+                onChange={(e) => void onChangePreference("dayView", e.target.value)}
+                disabled={!state}
+              >
+                {!prefs.dayView && <option value="">Not set</option>}
+                {DAY_VIEW_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="settings-option-row">
+              <div>
+                <strong>School hours</strong>
+                <span>{state?.user.schoolHours ? formatSchoolHours(state.user.schoolHours) : "Not set. Add them by going through setup again."}</span>
+              </div>
+            </div>
+            <div className="settings-option-row">
+              <div><strong>Canvas</strong><span>{canvasFeed ? "Connected" : "Not connected"}</span></div>
+              <Button variant="secondary" onClick={() => setCanvasGuideOpen(true)}>{canvasFeed ? "Reconnect" : "Connect Canvas"}</Button>
+            </div>
+            <div className="settings-option-row">
+              <div><strong>Redo setup</strong><span>Go through the questions again with your answers filled in.</span></div>
+              <Button variant="secondary" loading={redoing} loadingLabel="Opening…" onClick={() => void onRestartOnboarding()}>Redo setup</Button>
+            </div>
+            {prefMsg && <p className="settings-status" role="status">{prefMsg}</p>}
           </section>
 
           <section id="account" className="settings-panel">

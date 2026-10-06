@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { Check, Repeat2 } from "lucide-react";
@@ -81,6 +82,11 @@ export default function TaskRow({
             {task.kind && <span className="ui-task-kind-label">{KIND_LABEL[task.kind] ?? task.kind.replaceAll("-", " ")}</span>}
             {task.recurring?.enabled && (
               <span className="ui-task-recurring"><Repeat2 size={12} aria-hidden="true" /> Recurring</span>
+            )}
+            {task.pathOrigin && (
+              <Link href={`/tangents/${task.pathOrigin.pathId}`} className="path-origin-link" title={task.pathOrigin.nodeTitle}>
+                From your {task.pathOrigin.pathTitle} path
+              </Link>
             )}
           </div>
         </div>

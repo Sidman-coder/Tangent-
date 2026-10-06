@@ -4,22 +4,38 @@ import { z } from "zod";
 import {
   addPathNode,
   addPathNodes,
+  addPathTask,
   clearSuggestions,
   createPath,
+  getAllCalendars,
   getPath,
   getPathNode,
+  getPathNodeTasks,
   getPathSpace,
+  getTasksBetween,
   getUserTimezone,
   pathAncestry,
+  recordAction,
   removePath,
   removePathNode,
   updatePath,
   updatePathNode,
+  updateTask,
 } from "@/lib/store";
-import type { AnchorKind, Path, PathGoalKind, PathNode, TangentStatus } from "@/lib/types";
+import type {
+  AnchorKind,
+  Path,
+  PathGoalKind,
+  PathNode,
+  PathNodeSchedule,
+  TangentStatus,
+  TaskKind,
+} from "@/lib/types";
 import { withUser } from "@/lib/request-context";
 import { callClaude, messageText } from "@/lib/ai/call";
-import { getUserToday } from "@/lib/time";
+import { addDaysYMD, getUserToday, localNow } from "@/lib/time";
+import { isBeforeNow, suggestSlots, toMinutes } from "@/lib/schedule-slots";
+import { splitNodeDetail, stepTitle } from "@/lib/path-format";
 
 export const dynamic = "force-dynamic";
 // Claude drafts three branches per node.
@@ -146,6 +162,33 @@ function num(v: unknown): number | undefined {
   return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
+/** How far ahead a first step can be put on the calendar. */
+const SCHEDULE_MAX_DAYS = 365;
+
+function isRealDate(ymd: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(ymd) && addDaysYMD(ymd, 0) === ymd;
+}
+
+/** Each idea node's scheduled state, derived from the tasks linked to it:
+ *  never stored on the node, so it cannot drift from the calendar. */
+async function nodeSchedules(nodes: PathNode[], tz: string): Promise<Record<string, PathNodeSchedule>> {
+  const ideaIds = nodes.filter((n) => n.kind === "idea").map((n) => n.id);
+  if (ideaIds.length === 0) return {};
+  const tasks = await getPathNodeTasks(ideaIds);
+  const now = localNow(tz);
+  const out: Record<string, PathNodeSchedule> = {};
+  for (const t of tasks) {
+    if (!t.pathNodeId) continue;
+    const entry = (out[t.pathNodeId] ??= {});
+    if (!t.completed) {
+      entry.active = { taskId: t.id, date: t.date, time: t.time, missed: isBeforeNow(t.date, t.time, now) };
+    } else if (!entry.lastDone || `${t.date} ${t.time}` > `${entry.lastDone.date} ${entry.lastDone.time}`) {
+      entry.lastDone = { taskId: t.id, date: t.date, time: t.time };
+    }
+  }
+  return out;
+}
+
 export const GET = withUser(async (req: Request) => {
   const pathId = new URL(req.url).searchParams.get("pathId");
   if (!pathId) {
@@ -169,7 +212,8 @@ export const GET = withUser(async (req: Request) => {
 
   const found = await getPath(pathId);
   if (!found) return NextResponse.json({ error: "No such path." }, { status: 404 });
-  return NextResponse.json(found);
+  const scheduled = await nodeSchedules(found.nodes, await getUserTimezone());
+  return NextResponse.json({ ...found, scheduled });
 });
 
 export const POST = withUser(async (req: Request) => {
@@ -296,6 +340,107 @@ export const POST = withUser(async (req: Request) => {
     const updated = await updatePathNode(str(body.id), { status: status as TangentStatus });
     if (!updated) return NextResponse.json({ error: "No such node." }, { status: 404 });
     return NextResponse.json({ node: updated });
+  }
+
+  // ─── A kept branch's first step, on the calendar ───────────────────────────
+  // Keeping a branch (setStatus accepted) and scheduling it are separate steps:
+  // only a kept idea can be scheduled, and nothing here changes the node.
+
+  if (action === "suggestTimes" || action === "scheduleStep") {
+    const node = await getPathNode(str(body.nodeId));
+    if (!node) return NextResponse.json({ error: "This branch no longer exists." }, { status: 404 });
+    if (node.kind !== "idea" || node.status !== "accepted") {
+      return NextResponse.json({ error: "Keep this branch first." }, { status: 409 });
+    }
+    const tz = await getUserTimezone();
+    const now = localNow(tz);
+
+    if (action === "suggestTimes") {
+      const tasks = await getTasksBetween(now.date, addDaysYMD(now.date, 7));
+      return NextResponse.json({ slots: suggestSlots(tasks, now) });
+    }
+
+    const date = str(body.date);
+    const time = str(body.time);
+    if (!isRealDate(date) || toMinutes(time) === null || !/^\d{2}:\d{2}$/.test(time)) {
+      return NextResponse.json({ error: "Pick a day and a time." }, { status: 400 });
+    }
+    if (isBeforeNow(date, time, now)) {
+      return NextResponse.json({ error: "That time has already passed." }, { status: 400 });
+    }
+    if (date > addDaysYMD(now.date, SCHEDULE_MAX_DAYS)) {
+      return NextResponse.json({ error: "Pick a time within the next year." }, { status: 400 });
+    }
+
+    const owning = await getPath(node.pathId);
+    if (!owning) return NextResponse.json({ error: "No such path." }, { status: 404 });
+
+    // A step that is still open blocks another. If its time has passed
+    // ("Missed"), putting it on the calendar again moves that same task
+    // rather than leaving a stale copy behind.
+    const open = (await getPathNodeTasks([node.id])).find((t) => !t.completed);
+    if (open) {
+      if (!isBeforeNow(open.date, open.time, now)) {
+        return NextResponse.json({ error: "Already on your calendar", code: "already_scheduled" }, { status: 409 });
+      }
+      const moved = await updateTask(open.id, { date, time });
+      if (!moved) return NextResponse.json({ error: "Already on your calendar", code: "already_scheduled" }, { status: 409 });
+      let movedActionId: string | null = null;
+      try {
+        const record = await recordAction(
+          "reschedule_task",
+          `Moved "${moved.title}" from your ${owning.path.title} path`,
+          { rescheduled: { taskId: open.id, fromDate: open.date, fromTime: open.time } }
+        );
+        movedActionId = record.id;
+      } catch (err) {
+        console.error("[api/path] scheduleStep: receipt not recorded", err);
+      }
+      return NextResponse.json({ task: moved, actionId: movedActionId });
+    }
+
+    const college = owning.path.kind === "college";
+    const calendars = new Set((await getAllCalendars()).map((c) => c.id));
+    const calendarId =
+      college && calendars.has("cal_study") ? "cal_study" : calendars.has("cal_personal") ? "cal_personal" : null;
+    const kind: TaskKind = college ? "academic-ec" : "personal";
+
+    const { firstStep } = splitNodeDetail(node.detail);
+    const step = firstStep || node.title;
+    const result = await addPathTask(
+      {
+        title: stepTitle(step),
+        date,
+        time,
+        completed: false,
+        kind,
+        calendarId,
+        startAction: step,
+        ...(node.rationale ? { notes: node.rationale } : {}),
+      },
+      node.id
+    );
+    if ("error" in result) {
+      if (result.error === "already_scheduled") {
+        return NextResponse.json({ error: "Already on your calendar", code: "already_scheduled" }, { status: 409 });
+      }
+      return NextResponse.json({ error: "This branch no longer exists." }, { status: 404 });
+    }
+
+    // The same receipt and undo every other added task gets. If the receipt
+    // cannot be written the task is still real, just without the inline undo.
+    let actionId: string | null = null;
+    try {
+      const record = await recordAction(
+        "add_task",
+        `Scheduled "${result.task.title}" from your ${owning.path.title} path`,
+        { addedTaskIds: [result.task.id] }
+      );
+      actionId = record.id;
+    } catch (err) {
+      console.error("[api/path] scheduleStep: receipt not recorded", err);
+    }
+    return NextResponse.json({ task: result.task, actionId });
   }
 
   if (action === "removeNode") {

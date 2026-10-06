@@ -1747,3 +1747,113 @@
   height: 0;
   pointer-events: none;
 }
+
+/* ─── A kept branch's first step, on the calendar ───────────────────────── */
+
+.path-step {
+  gap: 8px;
+}
+.path-step-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+.path-inspector-part .path-step-status.is-on {
+  color: var(--path-idea);
+}
+.path-inspector-part .path-step-status.is-missed {
+  color: var(--path-danger);
+}
+.path-inspector-part .path-step-status.is-done {
+  color: var(--path-ink-2);
+}
+.path-step .action-receipt {
+  color: var(--path-idea);
+  font-size: 13px;
+  font-weight: 500;
+}
+.path-step-link {
+  align-self: flex-start;
+  color: var(--path-ink-2);
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.path-step-link:hover {
+  color: var(--path-ink);
+}
+.path-step-offer {
+  align-self: flex-start;
+}
+.path-step-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.path-inspector-part .path-step-hint {
+  color: var(--path-ink-2);
+  font-size: 12px;
+}
+.path-step-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.path-step-chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-height: 40px;
+  padding: 6px 12px;
+  border: 1px solid rgba(62, 208, 138, 0.45);
+  border-radius: 10px;
+  background: var(--path-idea-soft);
+  color: var(--path-ink);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.12s ease;
+}
+.path-step-chip small {
+  color: var(--path-ink-2);
+  font-size: 11px;
+  font-weight: 500;
+}
+.path-step-chip:hover:not(:disabled) {
+  border-color: var(--path-idea);
+}
+.path-step-chip:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.path-step-chip:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.path-step-custom {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.path-step-custom input {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--path-edge-strong);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--path-ink);
+  color-scheme: dark;
+  font-family: var(--font-body);
+  font-size: 13px;
+}
+.path-step-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.path-inspector-part .path-step-error {
+  color: var(--path-danger);
+  font-size: 12px;
+}

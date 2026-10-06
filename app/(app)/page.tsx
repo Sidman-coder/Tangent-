@@ -12,6 +12,7 @@ import TaskChatModal from "@/components/TaskChatModal";
 import AttentionSection, { type AttentionReceipt } from "@/components/dashboard/AttentionSection";
 import MonthRhythm from "@/components/MonthRhythm";
 import WeekAhead from "@/components/dashboard/WeekAhead";
+import { CanvasCard, PathsCard, StartingIntentCard } from "@/components/dashboard/HomeCards";
 import Button from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
 import TaskRow from "@/components/ui/TaskRow";
@@ -19,6 +20,7 @@ import type { ActionRecord, Task } from "@/lib/types";
 import { toYMD } from "@/lib/dates";
 import { getGreeting } from "@/lib/greetings";
 import { riseIn, rowPresence, spring, staggerChildren } from "@/lib/motion";
+import { homeLayout, prefsOf, type HomeSection } from "@/lib/personalize";
 import { getSchedulePulse } from "@/lib/schedule-insights";
 import { canAskForHelp } from "@/lib/task-help";
 import { taskColor } from "@/lib/task-colors";
@@ -233,6 +235,15 @@ export default function DashboardPage() {
   );
 
   const openCapture = () => window.dispatchEvent(new Event("tangent:open-palette"));
+
+  // Onboarding answers only reorder and add; with none, this is DEFAULT_HOME.
+  const user = state?.user;
+  const prefs = useMemo(() => prefsOf(user), [user]);
+  const layout = useMemo(() => homeLayout(prefs), [prefs]);
+  const startingIntent = prefs.startingIntent;
+  // The Canvas nudge is for students who went through the new onboarding;
+  // the starting point takes the slot while it's there.
+  const showCanvasCard = Boolean(user?.email && prefs.helpFocus && !startingIntent);
   const dateLabel = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(now);
 
   if (loading && !state) {
@@ -270,69 +281,101 @@ export default function DashboardPage() {
 
       {error && <p className="today-inline-error" role="status">Your schedule could not refresh. Showing the latest available view.</p>}
 
-      <AttentionSection
-        urgency={urgency}
-        today={today}
-        nextTask={nextTask}
-        colorForTask={colorForTask}
-        busyTaskId={busyTaskId}
-        receipt={receipt}
-        onComplete={completeFromAttention}
-        onTomorrow={moveToTomorrow}
-        onOpen={(task) => router.push(`/calendar?date=${task.date}`)}
-        onSeeAll={() => router.push(`/calendar?date=${today}`)}
-      />
+      {startingIntent ? (
+        <StartingIntentCard intent={startingIntent} onCleared={() => void refresh()} />
+      ) : (
+        showCanvasCard && user && <CanvasCard email={user.email} />
+      )}
 
-      <aside className="today-insights" aria-label="Schedule context">
-        <WeekAhead tasks={tasks} now={now} insight={insight} />
-        <MonthRhythm tasks={tasks} year={now.getFullYear()} monthIndex={now.getMonth()} today={today} />
-      </aside>
+      {layout.pathsCard === "top" && <PathsCard prefs={prefs} />}
 
-      <m.section variants={riseIn} className="today-dayline" aria-labelledby="today-dayline-title">
-        <div className="today-section-heading">
-          <div>
-            <h2 id="today-dayline-title">{todayInAttention > 0 ? "The rest of today" : "Your day"}</h2>
-          </div>
-          <span>
-            {dayRemaining} left
-            {todayInAttention > 0 && <> · {todayInAttention} above</>}
-          </span>
-        </div>
+      {layout.order.map((section: HomeSection) => {
+        switch (section) {
+          case "attention":
+            return (
+              <AttentionSection
+                key="attention"
+                urgency={urgency}
+                today={today}
+                nextTask={nextTask}
+                colorForTask={colorForTask}
+                busyTaskId={busyTaskId}
+                receipt={receipt}
+                onComplete={completeFromAttention}
+                onTomorrow={moveToTomorrow}
+                onOpen={(task) => router.push(`/calendar?date=${task.date}`)}
+                onSeeAll={() => router.push(`/calendar?date=${today}`)}
+              />
+            );
+          case "insights":
+            return (
+              <aside key="insights" className="today-insights" aria-label="Schedule context">
+                <WeekAhead tasks={tasks} now={now} insight={insight} openWeekLink={layout.openWeekLink} />
+                <MonthRhythm tasks={tasks} year={now.getFullYear()} monthIndex={now.getMonth()} today={today} />
+              </aside>
+            );
+          case "dayline":
+            return (
+              <m.section
+                key="dayline"
+                variants={riseIn}
+                className={`today-dayline${layout.order[0] === "dayline" ? " is-lead" : ""}`}
+                aria-labelledby="today-dayline-title"
+              >
+                <div className="today-section-heading">
+                  <div>
+                    <h2 id="today-dayline-title">{todayInAttention > 0 ? "The rest of today" : "Your day"}</h2>
+                  </div>
+                  <span>
+                    {dayRemaining} left
+                    {todayInAttention > 0 && <> · {todayInAttention} above</>}
+                  </span>
+                </div>
 
-        {dayline.length > 0 ? (
-          <div className="today-dayline-list">
-            <AnimatePresence initial={false}>
-              {dayline.map((task) => (
-                <m.div key={task.id} layout="position" transition={spring.layout} {...rowPresence}>
-                  <TaskRow
-                    task={task}
-                    kindColor={colorForTask(task)}
-                    onComplete={tracksCompletion(task) ? () => void setCompleted(task, !task.completed) : undefined}
-                    onOpen={() => router.push(`/calendar?date=${task.date}`)}
-                    actions={
-                      canAskForHelp(task) ? (
-                        <button
-                          type="button"
-                          className="ui-task-help"
-                          onClick={() => setHelpTask(task)}
-                          aria-label={`Get help with ${task.title}`}
-                        >
-                          <MessageSquareText size={13} aria-hidden="true" />
-                          <span>Help</span>
+                {dayline.length > 0 ? (
+                  <div className="today-dayline-list">
+                    <AnimatePresence initial={false}>
+                      {dayline.map((task) => (
+                        <m.div key={task.id} layout="position" transition={spring.layout} {...rowPresence}>
+                          <TaskRow
+                            task={task}
+                            kindColor={colorForTask(task)}
+                            onComplete={tracksCompletion(task) ? () => void setCompleted(task, !task.completed) : undefined}
+                            onOpen={() => router.push(`/calendar?date=${task.date}`)}
+                            actions={
+                              canAskForHelp(task) ? (
+                                <button
+                                  type="button"
+                                  className="ui-task-help"
+                                  onClick={() => setHelpTask(task)}
+                                  aria-label={`Get help with ${task.title}`}
+                                >
+                                  <MessageSquareText size={13} aria-hidden="true" />
+                                  <span>Help</span>
+                                </button>
+                              ) : undefined
+                            }
+                          />
+                        </m.div>
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                ) : (
+                  <div className="today-empty-line">
+                    <p>
+                      {todayInAttention > 0 ? "Nothing else is scheduled today." : layout.todayEmpty}
+                      {todayInAttention === 0 && layout.todayEmptyAction && (
+                        <button type="button" className="today-empty-action" onClick={openCapture}>
+                          {layout.todayEmptyAction}
                         </button>
-                      ) : undefined
-                    }
-                  />
-                </m.div>
-              ))}
-            </AnimatePresence>
-          </div>
-        ) : (
-          <div className="today-empty-line">
-            <p>{todayInAttention > 0 ? "Nothing else is scheduled today." : "Nothing scheduled yet."}</p>
-          </div>
-        )}
-      </m.section>
+                      )}
+                    </p>
+                  </div>
+                )}
+              </m.section>
+            );
+        }
+      })}
 
       {helpTask && <TaskChatModal task={helpTask} onClose={() => setHelpTask(null)} />}
 
