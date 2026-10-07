@@ -56,7 +56,17 @@ Add `TANGENT_PIPELINE_V2=true` to `.env.local` and restart `npm run dev`.
 7. "done with math hw" is still instant, with Undo.
 8. Supabase: `select status, count(*) from change_sets group by status;` shows draft, confirmed, discarded and undone rows.
 9. Supabase: `select type, count(*) from events group by type;` shows changeset_drafted, preview_shown, changeset_confirmed and the rest.
-10. Run `npm run eval:pipeline`. It asks before spending money. Save the results table. **Expected failures for now:** the iCF cases and "I have a test next week" (Prompt 3 fixes these).
+10. Run `npm run eval:pipeline`. It asks before spending money. Save the results table. **Expected failures for now:** the iCF cases and "I have a test next week" (Prompt 3 fixes these). Most "add to an existing plan" and "change a task" cases also fail for now, because only new plans and new tasks are drafted so far, and they carry no target plan.
+11. **Eval account (once, before step 10).** Make a dedicated account with a Gmail "+eval" address, e.g. `yourname+eval@gmail.com` (mail still reaches your inbox). Add it to `ALLOWED_EMAILS`, otherwise sign-in is refused. Sign in once so its profile row exists. Find its id in Supabase (`select user_id from profiles where email like '%+eval%';`) and put `TANGENT_EVAL_USER_ID=<that id>` in `.env.local`. The eval **deletes every task and plan on that account** before each case, and refuses to run on an address without "+eval".
+12. `npm run eval:pipeline -- --check` runs with no database and no AI. It validates the fixtures, prints the cost estimate and says "Check OK".
+13. Quick add from the box ("add dentist tomorrow 3pm") is still **instant with Undo**, with no preview card. Supabase: `select props from events where type='request_received' order by occurred_at desc limit 5;` shows `route: fast:add, fast: true`.
+14. On the preview card: **Edit** lets you remove a line (×) and change a task's date or time; the preview updates and Confirm saves the edited version. Removing a plan's last task is refused ("Discard instead").
+15. Keyboard: with the card focused, **Enter** confirms and **Esc** discards.
+16. The same request from the **command palette** (Ctrl+K) shows the preview card there, and Confirm / Undo work the same.
+17. The **pen** (voice from the device) still writes directly, with no preview card. Drafting is only for typed requests in the app.
+18. After a confirm whose tasks were all duplicates, the card says "Already on your calendar · nothing new added" and offers no Undo.
+19. Known gap: reloading a chat drops an unconfirmed preview card. The draft stays in `change_sets` with status `draft` and nothing is on the calendar.
+20. Flag OFF again (remove the line, restart): no preview cards anywhere, and `POST /api/changesets/<any id>/confirm` returns **404**.
 
 ## E. Flag ON: Prompt 2 (one box, no mode switch)
 

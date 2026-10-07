@@ -1,7 +1,8 @@
 // Pipeline V2: applies a confirmed ChangeSet to the student's calendar.
 //
 // Kept apart from changeset.ts because it talks to the store (server-only),
-// while changeset.ts stays pure for unit tests. Not wired into any route yet.
+// while changeset.ts stays pure for unit tests. Called by
+// app/api/changesets/[id]/confirm when the student confirms a preview.
 
 import "server-only";
 import {
@@ -48,6 +49,8 @@ function newTask(op: AddTaskOp): Omit<Task, "id" | "planId"> {
   if (op.kind !== undefined) t.kind = op.kind;
   if (op.calendarId !== undefined) t.calendarId = op.calendarId;
   if (op.notes !== undefined) t.notes = op.notes;
+  if (op.startAction !== undefined) t.startAction = op.startAction;
+  if (op.resources !== undefined) t.resources = op.resources;
   return t;
 }
 

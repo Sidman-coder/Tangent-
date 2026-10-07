@@ -1,5 +1,8 @@
 // Shared shape and helpers for AI console turns (one request + one reply).
 
+import type { ChangeSet } from "@/lib/pipeline/changeset";
+import type { PreviewPayload } from "@/lib/pipeline/draft";
+
 export type Turn = {
   id: string;
   request: string;
@@ -13,6 +16,8 @@ export type Turn = {
   planDraft?: boolean;
   /** Just arrived this session — its reply animates in word by word. */
   fresh?: boolean;
+  /** Pipeline V2: a drafted change waiting for Confirm (components/PreviewCard). */
+  draft?: { changeSet: ChangeSet; preview: PreviewPayload };
 };
 
 /** A plan being generated: its title as soon as the outline is back, then
@@ -118,6 +123,8 @@ export function toolsForAction(action: string | null | undefined): string[] {
       return ["Planner", "Tasks"];
     case "confirm_required":
       return ["Confirmation"];
+    case "preview":
+      return ["Preview"];
     case "plan_reply":
       return ["Plan mode"];
     case "error":

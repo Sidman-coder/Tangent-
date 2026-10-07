@@ -4,6 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppState } from "@/components/AppStateProvider";
 import ActionReceipt from "@/components/ActionReceipt";
+import PreviewCard from "@/components/PreviewCard";
+import type { ChangeSet } from "@/lib/pipeline/changeset";
+import type { PreviewPayload } from "@/lib/pipeline/draft";
 import {
   OPEN_PALETTE_EVENT,
   routeVoiceTranscript,
@@ -49,6 +52,15 @@ export default function CommandPalette() {
   const [toast, setToast] = useState<string | null>(null);
   const [receiptId, setReceiptId] = useState<string | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<{ id: string; message: string } | null>(null);
+  /** Pipeline V2 (flag on only): a drafted change waiting for Confirm. */
+  const [draft, setDraft] = useState<{ changeSet: ChangeSet; preview: PreviewPayload } | null>(null);
+  const draftTimer = useRef<number | null>(null);
+
+  /** Hide the settled card after a while; long enough to press Undo. */
+  const onDraftSettled = useCallback((phase: string) => {
+    if (draftTimer.current !== null) clearTimeout(draftTimer.current);
+    draftTimer.current = window.setTimeout(() => setDraft(null), phase === "confirmed" ? 8000 : 2500);
+  }, []);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const openRef = useRef(open);
@@ -125,8 +137,17 @@ export default function CommandPalette() {
           action?: string;
           actionId?: string;
           pending?: { id: string; kind: string; message: string };
+          changeSet?: ChangeSet;
+          preview?: PreviewPayload;
         };
         if (!res.ok || !data.ok) throw new Error(data.error || "Request failed");
+        if (data.action === "preview" && data.changeSet && data.preview) {
+          if (draftTimer.current !== null) clearTimeout(draftTimer.current);
+          setReceiptId(null);
+          setToast(null);
+          setDraft({ changeSet: data.changeSet, preview: data.preview });
+          return;
+        }
         if (data.action === "confirm_required" && data.pending) {
           setReceiptId(null);
           setPendingConfirm({ id: data.pending.id, message: data.pending.message });
@@ -350,7 +371,19 @@ export default function CommandPalette() {
         </div>
       )}
 
-      {toast && !pendingConfirm && (
+      {draft && !pendingConfirm && (
+        <PreviewCard
+          key={draft.changeSet.id}
+          className="is-floating"
+          changeSet={draft.changeSet}
+          preview={draft.preview}
+          onChanged={() => void refresh()}
+          onSettled={onDraftSettled}
+          autoFocus
+        />
+      )}
+
+      {toast && !pendingConfirm && !draft && (
         <div className="command-toast" role="status">
           {receiptId ? (
             <ActionReceipt

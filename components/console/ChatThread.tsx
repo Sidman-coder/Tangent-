@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowDown, CalendarPlus } from "lucide-react";
 import ActionReceipt from "@/components/ActionReceipt";
+import PreviewCard from "@/components/PreviewCard";
 import PenMark from "@/components/console/PenMark";
 import type { ChatMode, PlanProgressView, Turn } from "@/components/console/turns";
 import { formatTime12 } from "@/lib/dates";
@@ -168,6 +169,14 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
                         </button>
                         <span>Switches to Calendar mode and adds this plan.</span>
                       </div>
+                    )}
+                    {t.draft && (
+                      <PreviewCard
+                        changeSet={t.draft.changeSet}
+                        preview={t.draft.preview}
+                        onChanged={onUndone}
+                        autoFocus={t.fresh}
+                      />
                     )}
                     {t.actionId && t.actionLabel && (
                       <ActionReceipt actionId={t.actionId} label={t.actionLabel} onUndone={onUndone} />

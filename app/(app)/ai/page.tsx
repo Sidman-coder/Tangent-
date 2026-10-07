@@ -18,6 +18,8 @@ import {
   type Turn,
 } from "@/components/console/turns";
 import ModeSwitch from "@/components/console/ModeSwitch";
+import type { ChangeSet } from "@/lib/pipeline/changeset";
+import type { PreviewPayload } from "@/lib/pipeline/draft";
 import {
   VOICE_TRANSCRIPT_EVENT,
   type VoiceCaptureStatus,
@@ -379,6 +381,8 @@ export default function AiPage() {
         recurringCount?: number;
         sourcesChecked?: string[];
         pending?: { id: string; kind: string; message: string };
+        changeSet?: ChangeSet;
+        preview?: PreviewPayload;
       };
       if (!res.ok || !data.ok) throw new Error(data.error || "Request failed");
 
@@ -425,6 +429,8 @@ export default function AiPage() {
           response: reply,
           actionId: data.actionId,
           actionLabel: notif ?? undefined,
+          // Pipeline V2 (flag on only): nothing is saved until the card's Confirm.
+          draft: action === "preview" && data.changeSet && data.preview ? { changeSet: data.changeSet, preview: data.preview } : undefined,
         },
       ]);
 

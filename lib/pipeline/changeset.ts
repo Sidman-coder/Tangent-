@@ -51,6 +51,9 @@ export const AddTaskOp = z
     calendarId: z.string().min(1).max(64).optional(),
     notes: Notes.optional(),
     kind: Kind.optional(),
+    /** The first concrete step, as the plan generator writes it. */
+    startAction: z.string().trim().min(1).max(300).optional(),
+    resources: z.array(z.strictObject({ label: z.string().trim().min(1).max(200), url: z.url().max(2000) })).max(10).optional(),
     /** An existing plan to add to. */
     plan_id: Id.optional(),
     /** A plan created by a create_plan op earlier in this ChangeSet. */

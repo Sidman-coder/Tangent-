@@ -29,6 +29,10 @@ import { layeredSystem } from "@/lib/ai/cache";
 import { matchTask, routeCommand, ROUTES, type FastRoute } from "@/lib/ai/router";
 import { getRequestContext, setAiRoute } from "@/lib/request-context";
 import { formatTime12 } from "@/lib/dates";
+import { TANGENT_PIPELINE_V2 } from "@/lib/pipeline/flags";
+import { logEvent } from "@/lib/pipeline/events";
+import { respondWithDraft } from "@/lib/pipeline/drafting";
+import { planOps, taskOp } from "@/lib/pipeline/draft";
 
 const RESOURCE_ITEM_SCHEMA = {
   type: "object",
@@ -398,6 +402,8 @@ async function runFastRoute(route: FastRoute, text: string, today: string): Prom
   const done = async (body: Record<string, unknown>) => {
     // Zero-cost ai_usage row so routing distribution can be reported next to model calls.
     void recordUsage({ userId: getRequestContext().userId, feature: "router", model: "none", usage: {}, durationMs: 0, route: `fast:${route.op}` });
+    // Pipeline V2: fast paths stay instant (with undo); they are only counted.
+    if (TANGENT_PIPELINE_V2) logEvent("request_received", { route: `fast:${route.op}`, fast: true });
     await addVoiceLog({ text, response: String(body.response ?? ""), action: String(body.action), ok: true });
     console.log("[router] fast path:", route.op);
     return NextResponse.json({ ok: true, ...body });
@@ -487,6 +493,10 @@ export type VoiceOptions = {
   context?: string;
   /** Called as the plan outline and each task arrive. Nothing is saved until the end. */
   onProgress?: (event: PlanProgress) => void;
+  /** The caller can show a preview card (/api/chat). With TANGENT_PIPELINE_V2
+   *  on, AI-generated tasks and plans are then saved as a draft ChangeSet
+   *  instead of being written; the student confirms them. Ignored when off. */
+  preview?: boolean;
 };
 
 /**
@@ -511,6 +521,11 @@ async function handleVoiceTextInner(
     opts.context
       ? `${t}\n\nEarlier in this conversation (use it for what "it", "that", or "this plan" refers to):\n${opts.context}`
       : t;
+  // Pipeline V2 (lib/pipeline). Neither does anything when the flag is off.
+  const drafting = TANGENT_PIPELINE_V2 && opts.preview === true;
+  const received = (route: string) => {
+    if (TANGENT_PIPELINE_V2) logEvent("request_received", { route, fast: false, source: opts.preview ? "typed" : "voice", reentry: !!opts.forcePlan });
+  };
   try {
     const tz = await getUserTimezone();
     const local = localNow(tz);
@@ -520,6 +535,7 @@ async function handleVoiceTextInner(
     const lowerText = text.toLowerCase().trim();
     if (/clear|clean|wipe|empty|delete all|remove all|reset|start fresh|start over/.test(lowerText)) {
       console.log("[api/voice] Clear schedule detected — requesting confirmation");
+      received("clear");
       return await requestClearConfirmation(text);
     }
 
@@ -528,6 +544,7 @@ async function handleVoiceTextInner(
     console.log("[intent] classified as:", classifiedIntent, "for:", text);
 
     if (classifiedIntent === "recurring_commitment") {
+      received("recurring");
       const activityName = extractActivityName(text);
       const extractedDays = extractDaysOfWeek(text);
       const daysOfWeek = extractedDays.length > 0 ? extractedDays : [1, 2, 3, 4, 5];
@@ -583,6 +600,7 @@ async function handleVoiceTextInner(
     // Gmail / Canvas commands — routed through a genuine multi-turn Claude tool-use loop
     // so Claude can read real inbox/assignment data, then act using add_task / create_plan.
     if (needsAgentTools(text)) {
+      received("agent");
       routeAs(ROUTES.smart);
       console.log("[api/voice] Detected Gmail/Canvas/Calendar command — running agent tool loop");
       try {
@@ -629,12 +647,14 @@ async function handleVoiceTextInner(
     const isPlanRequest = opts.forcePlan || classifiedIntent === "goal_plan" || isClearPlanRequest(text) || /plan|study|workout|routine|schedule|prepare|curriculum|course|week|month|learn|guide/i.test(text);
 
     if (isPlanRequest) {
+      received("plan");
       routeAs(ROUTES.smart);
       console.log("[api/voice] Detected plan request — using two-step approach");
 
       // FIX 2 — Extract date range from user text
       let startDate = today;
       let endDate = addDaysYMD(today, 7);
+      let rangeGiven = false;
 
       const monthMap: Record<string, number> = {
         january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
@@ -705,10 +725,12 @@ async function handleVoiceTextInner(
       if (foundDates.length >= 2) {
         startDate = ymdFromParts(local.year, foundDates[0].month, foundDates[0].day);
         endDate = ymdFromParts(local.year, foundDates[1].month, foundDates[1].day);
+        rangeGiven = true;
         console.log("[api/voice] Extracted date range from text:", startDate, "to", endDate);
       } else if (foundDates.length === 1) {
         startDate = today;
         endDate = ymdFromParts(local.year, foundDates[0].month, foundDates[0].day);
+        rangeGiven = true;
         console.log("[api/voice] Extracted end date only:", endDate);
       }
 
@@ -730,6 +752,7 @@ async function handleVoiceTextInner(
         if (pattern.test(lowerForDate)) {
           endDate = addDaysYMD(today, days - 1);
           startDate = today;
+          rangeGiven = true;
           console.log("[api/voice] Duration word matched — days:", days, "| endDate:", endDate);
           break;
         }
@@ -756,6 +779,35 @@ async function handleVoiceTextInner(
         const planKind = inferPlanKind(text);
         const calendarIds = new Map<string, string>();
         for (const id of Array.from(new Set(generated.tasks.map((t) => t.calendarId)))) calendarIds.set(id, await resolveCalendarId(id));
+        if (drafting) {
+          // Pipeline V2: the same tasks, saved as a draft for the student to confirm.
+          const planTitle = resolvePlanTitle(generated.title, text);
+          const assumptions = [`Spread from ${friendlyWhen(startDate, undefined, today)} to ${friendlyWhen(endDate, undefined, today)}`];
+          if (!rangeGiven) assumptions.push("Assumed about a week since no timeframe was given");
+          return await respondWithDraft(
+            {
+              source: "typed",
+              requestText: text,
+              summary: "New plan",
+              intent: "new_plan",
+              ops: planOps(
+                planTitle,
+                generated.tasks.map((t) => ({
+                  title: t.title,
+                  date: t.date,
+                  time: t.time,
+                  kind: planKind,
+                  calendarId: calendarIds.get(t.calendarId) ?? "cal_all",
+                  notes: t.notes || undefined,
+                  startAction: t.startAction || undefined,
+                  resources: t.resources,
+                }))
+              ),
+              assumptions,
+            },
+            { text, today, route: "plan" }
+          );
+        }
         // One insert for every task, with plan_id already set (store.addPlanWithTasks).
         const { plan, tasks: created, skippedDuplicates } = await perfSpan(`plan: insert ${generated.tasks.length} tasks`, () =>
           addPlanWithTasks(
@@ -799,6 +851,19 @@ async function handleVoiceTextInner(
 
       // Fallback: add as a single generic task if plan generation failed
       console.log("[api/voice] Plan generation failed — adding as single task");
+      if (drafting) {
+        return await respondWithDraft(
+          {
+            source: "typed",
+            requestText: text,
+            summary: "Add a task",
+            intent: "add_task",
+            ops: [taskOp({ title: text.substring(0, 50), date: today, time: "09:00", kind: inferPlanKind(text), notes: "Plan requested: " + text })],
+            assumptions: ["A full plan couldn't be made, so this is a single task", "Assumed today at 9:00 AM"],
+          },
+          { text, today, route: "plan_fallback" }
+        );
+      }
       const fallbackTask = await addTask({
         title: text.substring(0, 50),
         date: today,
@@ -826,6 +891,7 @@ async function handleVoiceTextInner(
     }
 
     // ── Standard single-task / recurring path ─────────────────────────────────
+    received("standard");
     console.log("[api/voice] Calling Anthropic API...");
     routeAs(ROUTES.fast);
     const userContext = await getContextAsString();
@@ -865,6 +931,19 @@ async function handleVoiceTextInner(
             if (cmd.action === "add_task" && typeof cmd.title === "string" && cmd.title) {
               const retryDate = singleRelativeDay(text, tz) ?? (typeof cmd.date === "string" ? cmd.date : today);
               const retryTime = typeof cmd.time === "string" ? cmd.time : "09:00";
+              if (drafting) {
+                return await respondWithDraft(
+                  {
+                    source: "typed",
+                    requestText: text,
+                    summary: "Add a task",
+                    intent: "add_task",
+                    ops: [taskOp({ title: cmd.title, date: retryDate, time: retryTime, notes: "Added after retry: " + text.substring(0, 100) })],
+                    assumptions: typeof cmd.time === "string" ? [] : ["Assumed 9:00 AM since no time was given"],
+                  },
+                  { text, today, route: "standard_retry" }
+                );
+              }
               const task = await addTask({
                 title: cmd.title,
                 date: retryDate,
@@ -1104,6 +1183,22 @@ async function handleVoiceTextInner(
         : undefined;
       const resources = rawResources && rawResources.length > 0 ? rawResources : undefined;
       const calendarId = await resolveCalendarId(typeof cmd.calendarId === "string" ? cmd.calendarId : undefined);
+      if (drafting) {
+        return await respondWithDraft(
+          {
+            source: "typed",
+            requestText: text,
+            summary: "Add a task",
+            intent: "add_task",
+            ops: [taskOp({ title, date, time, calendarId, notes, startAction, resources })],
+            assumptions: [
+              ...(cmd.time === undefined ? ["Assumed 9:00 AM since no time was given"] : []),
+              ...(!hintedDate && !aiDate ? ["Assumed today since no day was given"] : []),
+            ],
+          },
+          { text, today, route: "standard" }
+        );
+      }
       // The title is the title. Every surface renders task.time next to it
       // (TaskRow, the Today hero, the calendar day panel), so folding the time
       // into the title printed it twice: "Study math (15:00)  3:00 PM".

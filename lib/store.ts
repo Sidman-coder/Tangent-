@@ -281,6 +281,14 @@ function findDuplicateIn(candidates: Task[], task: Omit<Task, "id">): Task | und
   );
 }
 
+/** Titles of the given tasks that addTask would skip as duplicates of the
+ *  student's open tasks today. Read-only; the preview shows it before confirm. */
+export async function likelyDuplicateTitles(tasks: ReadonlyArray<Omit<Task, "id">>): Promise<string[]> {
+  if (tasks.length === 0) return [];
+  const open = (await getAllTasks()).filter((t) => !t.completed);
+  return tasks.filter((t) => findDuplicateIn(open, t)).map((t) => t.title);
+}
+
 export async function addTask(task: Omit<Task, "id">): Promise<Task & { wasDuplicate?: boolean }> {
   const { db, userId } = ctx();
   const sameDay = await selectTasks("addTask", (q) => q.eq("date", task.date).eq("completed", false));

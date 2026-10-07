@@ -3771,6 +3771,191 @@ textarea:focus {
   color: var(--red);
 }
 
+/* ── Preview card (Pipeline V2: AI changes wait for Confirm) ──────────────────── */
+
+.preview-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--accent-line, var(--line-strong));
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  outline: none;
+}
+
+.preview-card:focus-visible {
+  box-shadow: 0 0 0 2px var(--focus, var(--accent));
+}
+
+.preview-card.is-done {
+  padding: 10px 14px;
+  border-color: var(--line);
+}
+
+.preview-card-kicker {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.preview-card-title {
+  margin: 0;
+  font-weight: 600;
+  font-size: 14.5px;
+  overflow-wrap: anywhere;
+}
+
+.preview-card-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.preview-card-lines li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  line-height: 1.45;
+}
+
+.preview-card-line {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.preview-card-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.preview-card-edit input {
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.preview-card-remove {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.preview-card-remove:hover:not(:disabled) {
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.preview-card-assumptions {
+  margin: 0;
+  padding-left: 16px;
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+
+.preview-card-note,
+.preview-card-muted {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 12.5px;
+}
+
+.preview-card-error {
+  margin: 0;
+  color: var(--red);
+  font-size: 12.5px;
+}
+
+.preview-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.preview-card-btn {
+  height: 30px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text);
+  font: 600 12.5px/1 var(--font-body);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.preview-card-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.preview-card-btn.is-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.preview-card-btn.is-primary:hover:not(:disabled) {
+  background: var(--accent-hover, var(--accent));
+}
+
+.preview-card-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.preview-card-keys {
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+
+@media (max-width: 520px) {
+  .preview-card-keys {
+    display: none;
+  }
+}
+
+/* In the palette the card floats like the confirm toast. */
+.preview-card.is-floating {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 320;
+  width: min(460px, calc(100vw - 32px));
+  margin: 0;
+  background: var(--elev-3);
+  box-shadow: 0 12px 32px rgba(20, 15, 30, 0.12);
+}
+
 /* ── Confirm toast (gated actions) ───────────────────────────────────────────── */
 
 .confirm-toast {

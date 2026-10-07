@@ -82,9 +82,11 @@ async function calendarReply(
   let voiceSourcesChecked: string[] | undefined;
   let voicePlan: { id: string; title: string; taskCount: number; color: string } | undefined;
   let voiceCount: number | undefined;
+  let voiceChangeSet: unknown;
+  let voicePreview: unknown;
   try {
     console.log("[api/chat] Calling voice pipeline:", userText);
-    const voiceRes = await handleVoiceText(userText, { context: conversationContext(messages), onProgress });
+    const voiceRes = await handleVoiceText(userText, { context: conversationContext(messages), onProgress, preview: true });
     const voiceData = (await voiceRes.json()) as {
       response?: string;
       action?: string;
@@ -95,6 +97,8 @@ async function calendarReply(
       sourcesChecked?: string[];
       plan?: { id: string; title: string; taskCount: number; color: string };
       count?: number;
+      changeSet?: unknown;
+      preview?: unknown;
     };
     console.log("[api/chat] Voice pipeline result:", JSON.stringify(voiceData).slice(0, 300));
     voiceResponse = voiceData.response ?? "";
@@ -106,6 +110,8 @@ async function calendarReply(
     voicePlan = voiceData.plan;
     voiceCount = voiceData.count;
     voiceSourcesChecked = voiceData.sourcesChecked;
+    voiceChangeSet = voiceData.changeSet;
+    voicePreview = voiceData.preview;
   } catch (err) {
     console.error("[api/chat] Voice pipeline error:", err);
   }
@@ -115,6 +121,17 @@ async function calendarReply(
       message: voiceResponse.trim(),
       action: voiceAction,
       pending: voicePending,
+      ok: true,
+    };
+  }
+
+  // Pipeline V2 (flag on only): a draft to preview; nothing was saved yet.
+  if (voiceOk && voiceAction === "preview" && voiceChangeSet) {
+    return {
+      message: voiceResponse.trim(),
+      action: voiceAction,
+      changeSet: voiceChangeSet,
+      preview: voicePreview,
       ok: true,
     };
   }
