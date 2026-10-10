@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getUserContext, getContextAsString, removeContextEntry } from "@/lib/store";
+import { addContextEntry, getUserContext, getContextAsString, removeContextEntry } from "@/lib/store";
 import { extractContextFacts } from "@/lib/context-extract";
 import { withUser } from "@/lib/request-context";
 
@@ -19,6 +19,13 @@ export const POST = withUser(async (request: Request) => {
   try {
     const body = await request.json();
 
+    // "What Tangent knows" in Settings: the student adds a fact themselves.
+    if (body.action === "remember") {
+      const fact = String(body.fact ?? "").trim().slice(0, 300);
+      if (!fact) return NextResponse.json({ ok: false, error: "fact is required" }, { status: 400 });
+      const entry = await addContextEntry({ category: "general", fact, source: "manual" });
+      return NextResponse.json({ ok: true, entry });
+    }
     if (body.action === "forget") {
       const removed = await removeContextEntry(String(body.id ?? ""));
       return NextResponse.json({ ok: removed }, { status: removed ? 200 : 404 });

@@ -5,6 +5,7 @@ import { useAppState } from "@/components/AppStateProvider";
 import Button from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
 import CanvasConnectGuide from "@/components/CanvasConnectGuide";
+import WhatTangentKnows from "@/components/settings/WhatTangentKnows";
 import { CalendarSync } from "lucide-react";
 import type { AppState, CanvasFeedStatus } from "@/lib/types";
 import {
@@ -207,6 +208,7 @@ export default function SettingsPage() {
           <a href="#notifications">Notifications</a>
           <a href="#integrations">Integrations</a>
           <a href="#your-tangent">Your Tangent</a>
+          <a href="#what-tangent-knows">What Tangent knows</a>
           <a href="#account">Account</a>
         </nav>
 
@@ -371,6 +373,8 @@ export default function SettingsPage() {
             {prefMsg && <p className="settings-status" role="status">{prefMsg}</p>}
             {capMsg && <p className="settings-status" role="status">{capMsg}</p>}
           </section>
+
+          <WhatTangentKnows />
 
           <section id="account" className="settings-panel">
             <div className="settings-option-row">

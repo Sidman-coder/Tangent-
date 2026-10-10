@@ -10,7 +10,6 @@ import { localNow, wallClockNow } from "@/lib/time";
 import ActionReceipt from "@/components/ActionReceipt";
 import TaskChatModal from "@/components/TaskChatModal";
 import AttentionSection, { type AttentionReceipt } from "@/components/dashboard/AttentionSection";
-import MonthRhythm from "@/components/MonthRhythm";
 import WeekAhead from "@/components/dashboard/WeekAhead";
 import { CanvasCard, PathsCard, StartingIntentCard } from "@/components/dashboard/HomeCards";
 import Button from "@/components/ui/Button";
@@ -318,7 +317,6 @@ export default function DashboardPage() {
             return (
               <aside key="insights" className="today-insights" aria-label="Schedule context">
                 <WeekAhead tasks={tasks} now={now} insight={insight} openWeekLink={layout.openWeekLink} />
-                <MonthRhythm tasks={tasks} year={now.getFullYear()} monthIndex={now.getMonth()} today={today} />
               </aside>
             );
           case "dayline":
@@ -334,8 +332,7 @@ export default function DashboardPage() {
                     <h2 id="today-dayline-title">{todayInAttention > 0 ? "The rest of today" : "Your day"}</h2>
                   </div>
                   <span>
-                    {dayRemaining} left
-                    {todayInAttention > 0 && <> · {todayInAttention} above</>}
+                    {dayRemaining > 0 ? `${dayRemaining} left` : ""}
                   </span>
                 </div>
 

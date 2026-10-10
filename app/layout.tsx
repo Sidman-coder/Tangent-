@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
-import "@fontsource-variable/bricolage-grotesque/opsz.css";
-import "@fontsource-variable/figtree";
-import "@fontsource/ibm-plex-mono/400.css";
-import "@fontsource/ibm-plex-mono/500.css";
+// Type is the platform's own (SF Pro on Apple devices) — see the Apple pass at
+// the end of globals.css — so no web fonts are downloaded.
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -20,13 +18,13 @@ export const metadata: Metadata = {
 //
 // An unset preference still resolves to light, matching setTheme's default;
 // this only removes the flash, it does not change which theme you get.
-const THEME_BOOTSTRAP = `(function(){try{var t=localStorage.getItem("tangent-theme");t=t==="dark"?"dark":"light";var r=document.documentElement;r.setAttribute("data-theme",t);var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",t==="dark"?"#13111d":"#f5f3fa");}catch(e){document.documentElement.setAttribute("data-theme","light");}})();`;
+const THEME_BOOTSTRAP = `(function(){try{var t=localStorage.getItem("tangent-theme");t=t==="dark"?"dark":"light";var r=document.documentElement;r.setAttribute("data-theme",t);var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",t==="dark"?"#000000":"#f5f5f7");}catch(e){document.documentElement.setAttribute("data-theme","light");}})();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" data-theme="light" suppressHydrationWarning>
       <head>
-        <meta name="theme-color" content="#f5f3fa" />
+        <meta name="theme-color" content="#f5f5f7" />
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
       </head>
       <body>
