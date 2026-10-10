@@ -8,6 +8,7 @@ import "@/components/get-to-know-you.css";
 
 import { useEffect, useState } from "react";
 import { GET_TO_KNOW_DONE_EVENT, GET_TO_KNOW_EVENT } from "@/components/GetToKnowYou";
+import { TOUR_DONE_KEY } from "@/components/FeatureTour";
 
 const DISMISS_KEY = "tangent-gtk-nudge-dismissed";
 const ENOUGH_FACTS = 4;
@@ -17,10 +18,13 @@ export default function GetToKnowNudge() {
 
   useEffect(() => {
     let dismissed = false;
+    let toured = false;
     try {
       dismissed = window.localStorage.getItem(DISMISS_KEY) === "1";
+      toured = window.localStorage.getItem(TOUR_DONE_KEY) === "1";
     } catch {}
-    if (dismissed) return;
+    // One nudge at a time on Today: the tour's comes first.
+    if (dismissed || !toured) return;
     const check = () =>
       void fetch("/api/context", { cache: "no-store" })
         .then((r) => r.json())

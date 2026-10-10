@@ -134,6 +134,12 @@ export default function GetToKnowYou() {
     setOpen(false);
     void refresh();
     window.dispatchEvent(new Event(GET_TO_KNOW_DONE_EVENT));
+    // First time through: the tour follows, so they see where it all lives.
+    let toured = true;
+    try {
+      toured = window.localStorage.getItem("tangent-tour-done") === "1";
+    } catch {}
+    if (!toured) window.setTimeout(() => window.dispatchEvent(new Event("tangent:tour")), 400);
   }, [refresh]);
 
   useEffect(() => {

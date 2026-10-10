@@ -367,6 +367,10 @@ export default function SettingsPage() {
               </select>
             </div>
             <div className="settings-option-row">
+              <div><strong>Take the tour</strong><span>A two-minute walk through everything Tangent does.</span></div>
+              <Button variant="secondary" onClick={() => window.dispatchEvent(new Event("tangent:tour"))}>Start tour</Button>
+            </div>
+            <div className="settings-option-row">
               <div><strong>Redo setup</strong><span>Go through the questions again with your answers filled in.</span></div>
               <Button variant="secondary" loading={redoing} loadingLabel="Opening…" onClick={() => void onRestartOnboarding()}>Redo setup</Button>
             </div>

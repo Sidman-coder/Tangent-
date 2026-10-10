@@ -1,0 +1,136 @@
+/* The Tangent tour (components/FeatureTour.tsx): a dimmed page with a
+   rounded window onto the real control, and one card of explanation. */
+
+.tour-root {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+}
+
+.tour-scrim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.tour-blocker {
+  position: absolute;
+  inset: 0;
+}
+
+.tour-ring {
+  position: absolute;
+  border-radius: 14px;
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 0.9), 0 0 0 6px rgb(from var(--accent) r g b / 0.35);
+  pointer-events: none;
+}
+
+.tour-card {
+  position: absolute;
+  z-index: 1;
+  padding: 18px 18px 14px;
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 18px 48px -12px rgb(0 0 0 / 0.4);
+  outline: none;
+}
+
+.tour-count {
+  margin: 0 0 6px;
+  color: var(--text-3);
+  font: 600 11.5px/1 var(--font-body);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.tour-card h2 {
+  margin: 0 0 6px;
+  color: var(--text);
+  font: 650 17px/1.3 var(--font-body);
+  letter-spacing: -0.01em;
+}
+
+.tour-body {
+  margin: 0 0 14px;
+  color: var(--text-2);
+  font: 450 14px/1.5 var(--font-body);
+}
+
+.tour-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tour-spacer {
+  flex: 1;
+}
+
+.tour-primary,
+.tour-secondary {
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font: 600 13px/1 var(--font-body);
+  cursor: pointer;
+  transition: transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.tour-primary {
+  border: 0;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.tour-secondary {
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--text);
+}
+
+.tour-primary:active,
+.tour-secondary:active {
+  transform: scale(0.97);
+}
+
+.tour-quiet {
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: 550 13px/1 var(--font-body);
+  cursor: pointer;
+}
+
+/* Today's one-time "take the tour" line, and the Settings button. */
+.tour-nudge {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.tour-nudge > div {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+.tour-nudge strong {
+  color: var(--text);
+  font: 600 14.5px/1.3 var(--font-body);
+}
+.tour-nudge span {
+  color: var(--text-2);
+  font: 450 13px/1.4 var(--font-body);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-primary,
+  .tour-secondary {
+    transition: none;
+  }
+}
