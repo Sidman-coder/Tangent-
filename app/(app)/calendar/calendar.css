@@ -224,6 +224,18 @@
 
 /* ── Week ──────────────────────────────────────────────────────────────── */
 
+/* The time grid scrolls, so its scrollbar narrows it; the header and Due
+   rows reserve the same gutter so every column lines up. */
+.calendar-page .wk-scroll,
+.calendar-page .wk-head,
+.wk-due {
+  scrollbar-gutter: stable;
+}
+
+.calendar-page .wk-head {
+  overflow-y: hidden;
+}
+
 .calendar-page .wk-day-head {
   align-items: center;
   padding: 8px 4px;
