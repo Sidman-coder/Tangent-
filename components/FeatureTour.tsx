@@ -18,6 +18,15 @@ import "./feature-tour.css";
 
 export const TOUR_EVENT = "tangent:tour";
 export const TOUR_DONE_KEY = "tangent-tour-done";
+/** Set for as long as the tour runs, so pages it revisits don't offer it again. */
+export const TOUR_ACTIVE_KEY = "tangent-tour-active";
+
+function setActive(on: boolean) {
+  try {
+    if (on) window.sessionStorage.setItem(TOUR_ACTIVE_KEY, "1");
+    else window.sessionStorage.removeItem(TOUR_ACTIVE_KEY);
+  } catch {}
+}
 
 type Step = {
   route: string;
@@ -131,6 +140,7 @@ export default function FeatureTour() {
   const end = useCallback(() => {
     setIndex(null);
     setRect(null);
+    setActive(false);
     try {
       window.localStorage.setItem(TOUR_DONE_KEY, "1");
     } catch {}
@@ -138,6 +148,7 @@ export default function FeatureTour() {
 
   useEffect(() => {
     const start = () => {
+      setActive(true);
       setReady(false);
       setIndex(0);
     };

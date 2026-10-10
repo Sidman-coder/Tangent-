@@ -4,7 +4,7 @@
 // now): there's a lot in Tangent, and this is the two-minute way to see it.
 
 import { useEffect, useState } from "react";
-import { TOUR_DONE_KEY, TOUR_EVENT } from "@/components/FeatureTour";
+import { TOUR_ACTIVE_KEY, TOUR_DONE_KEY, TOUR_EVENT } from "@/components/FeatureTour";
 import "@/components/feature-tour.css";
 import "@/components/get-to-know-you.css";
 
@@ -12,7 +12,7 @@ export default function TourNudge() {
   const [show, setShow] = useState(false);
   useEffect(() => {
     try {
-      setShow(window.localStorage.getItem(TOUR_DONE_KEY) !== "1");
+      setShow(window.localStorage.getItem(TOUR_DONE_KEY) !== "1" && window.sessionStorage.getItem(TOUR_ACTIVE_KEY) !== "1");
     } catch {}
     // However the tour starts, the offer is done.
     const hide = () => setShow(false);
