@@ -5,6 +5,7 @@ import TangentLogo from "@/components/TangentLogo";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Task } from "@/lib/types";
 import { X } from "lucide-react";
+import TaskTitle from "@/components/ui/TaskTitle";
 
 const KIND_COLOR = {
   school: "var(--kind-school)",
@@ -91,7 +92,7 @@ export default function TaskChatModal({ task, onClose }: { task: Task; onClose: 
         <div className="task-chat-header">
           <div className="task-chat-title">
             <span className="priority-dot" style={{ background: kindColor }} />
-            <span>{task.title}</span>
+            <span><TaskTitle task={task} /></span>
           </div>
           <div className="task-chat-label">AI Task Assistant</div>
           <button className="modal-close" onClick={onClose} aria-label="Close"><X size={16} strokeWidth={1.75} /></button>

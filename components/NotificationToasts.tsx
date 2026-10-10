@@ -4,6 +4,7 @@ import { createPortal } from "react-dom"
 import { Sun, Lightbulb, AlertTriangle, Clock, Calendar, Bell, X, type LucideIcon } from "lucide-react"
 import type { Notification } from "@/lib/types"
 import { POPUP_AUTO_DISMISS_MS, type Toast } from "@/lib/notification-popups"
+import { humanizeTimestamps } from "@/lib/humanize"
 
 type Props = {
   toasts: Toast[]
@@ -104,8 +105,8 @@ function ToastCard({ toast, onDismiss, onAction, onOpenInbox }: { toast: Toast }
     <div className={`notif-toast surface-record notif-item--${n.type}`} role="status" onMouseEnter={pause} onMouseLeave={resume} onFocus={pause} onBlur={resume} onKeyDown={onKeyDown}>
       <div className="notif-item-icon"><Icon size={18} strokeWidth={1.75} /></div>
       <div className="notif-item-content">
-        <div className="notif-item-title">{n.title}</div>
-        <div className="notif-item-body">{n.body}</div>
+        <div className="notif-item-title">{humanizeTimestamps(n.title)}</div>
+        <div className="notif-item-body">{humanizeTimestamps(n.body)}</div>
         <button
           className="notif-item-action"
           onClick={() => {

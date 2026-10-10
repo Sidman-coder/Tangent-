@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation"
 import { QUESTIONS_EVENT } from "@/lib/questions-client"
 import { claimPopups, getInAppPopupsEnabled, planToasts, popupCandidates, type Toast } from "@/lib/notification-popups"
 import NotificationToasts from "@/components/NotificationToasts"
+import { humanizeTimestamps } from "@/lib/humanize"
 
 type NotificationBellProps = {
   open?: boolean
@@ -184,8 +185,8 @@ export default function NotificationBell({ open: openProp, onOpenChange }: Notif
     >
       <div className="notif-item-icon"><Icon size={18} strokeWidth={1.75} /></div>
       <div className="notif-item-content">
-        <div className="notif-item-title">{n.title}</div>
-        <div className="notif-item-body">{n.body}</div>
+        <div className="notif-item-title">{humanizeTimestamps(n.title)}</div>
+        <div className="notif-item-body">{humanizeTimestamps(n.body)}</div>
         {n.actionLabel && (
           <button
             className="notif-item-action"

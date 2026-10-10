@@ -6,6 +6,7 @@ import { m, useReducedMotion } from "motion/react";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { wallClockNow } from "@/lib/time";
 import AddTaskModal from "@/components/AddTaskModal";
+import ActionReceipt from "@/components/ActionReceipt";
 import Button from "@/components/ui/Button";
 import SidePeek from "@/components/ui/SidePeek";
 import { handleResourceClick } from "@/lib/task-utils";
@@ -19,6 +20,7 @@ import type { Plan, Task } from "@/lib/types";
 import { X, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil } from "lucide-react";
 import WeekView from "@/components/calendar/WeekView";
 import AgendaView from "@/components/calendar/AgendaView";
+import TaskTitle from "@/components/ui/TaskTitle";
 
 type CalView = "week" | "month" | "agenda";
 const VIEWS: { id: CalView; label: string }[] = [
@@ -141,6 +143,10 @@ export default function CalendarPage() {
   const [weekStart, setWeekStart] = useState(() => startOfWeek(now));
   const [agendaStart, setAgendaStart] = useState(() => new Date(now.getFullYear(), now.getMonth(), now.getDate()));
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  // Clicking one event opens just that event; clicking the date opens the day.
+  const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
+  const [removed, setRemoved] = useState<{ actionId: string; title: string } | null>(null);
+  const [openNotes, setOpenNotes] = useState<Set<string>>(new Set());
   const [showAddModal, setShowAddModal] = useState(false);
   const [addModalDate, setAddModalDate] = useState(todayYmd);
   const [addModalTime, setAddModalTime] = useState<string | undefined>(undefined);
@@ -176,9 +182,11 @@ export default function CalendarPage() {
     return tasks.filter((t) => t.date === ymd);
   }, [state, activeCal, planFilter]);
 
-  const selectedDayTasks = selectedDay
+  const wholeDayTasks = selectedDay
     ? tasksForDay(selectedDay).slice().sort((a, b) => a.time.localeCompare(b.time))
     : [];
+  const focusTask = focusTaskId ? wholeDayTasks.find((t) => t.id === focusTaskId) ?? null : null;
+  const selectedDayTasks = focusTask ? [focusTask] : wholeDayTasks;
 
   // Remember the chosen view; first visit gets the week grid on wide screens
   // and the agenda list on phones, where seven columns can't breathe. A
@@ -274,11 +282,14 @@ export default function CalendarPage() {
       setRecurDeleteTarget({ taskId: t.id, parentId: t.recurring.parentId, title: t.title });
     } else {
       void (async () => {
-        await fetch("/api/tasks", {
+        const res = await fetch("/api/tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "delete_task", id: t.id }),
         });
+        const data = (await res.json().catch(() => ({}))) as { actionId?: string };
+        if (data.actionId) setRemoved({ actionId: data.actionId, title: t.title });
+        if (focusTaskId === t.id) setFocusTaskId(null);
         await refresh();
       })();
     }
@@ -301,7 +312,7 @@ export default function CalendarPage() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      setSelectedDay(null); setShowAddModal(false); setRecurDeleteTarget(null); setRecurEditTarget(null);
+      setSelectedDay(null); setFocusTaskId(null); setRemoved(null); setShowAddModal(false); setRecurDeleteTarget(null); setRecurEditTarget(null);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -426,8 +437,9 @@ export default function CalendarPage() {
             days={weekDays}
             todayYmd={todayYmd}
             tasksForDay={tasksForDay}
+            onOpenTask={(ymd, id) => { setSelectedDay(ymd); setFocusTaskId(id); }}
             colorFor={(t) => getKindColor(t.kind)}
-            onOpenDay={setSelectedDay}
+            onOpenDay={(d) => { setFocusTaskId(null); setSelectedDay(d); }}
             onAddAt={(ymd, time) => openAddAt(ymd, time)}
             toYMD={toYMD}
           />
@@ -441,7 +453,7 @@ export default function CalendarPage() {
             todayYmd={todayYmd}
             tasksForDay={tasksForDay}
             colorFor={(t) => getKindColor(t.kind)}
-            onOpenDay={setSelectedDay}
+            onOpenDay={(d) => { setFocusTaskId(null); setSelectedDay(d); }}
             onToggle={(id) => void toggleTask(id)}
             onAdd={(ymd) => openAddAt(ymd)}
             toYMD={toYMD}
@@ -485,7 +497,11 @@ export default function CalendarPage() {
                   <button
                     type="button"
                     className="cal-day"
-                    onClick={() => inMonth && setSelectedDay(ymd === selectedDay ? null : ymd)}
+                    onClick={() => {
+                      if (!inMonth) return;
+                      setFocusTaskId(null);
+                      setSelectedDay(ymd === selectedDay && !focusTaskId ? null : ymd);
+                    }}
                     aria-label={`${d.toDateString()}${dayTasks.length ? `, ${dayTasks.length} tasks` : ""}`}
                     disabled={!inMonth}
                   >
@@ -501,9 +517,15 @@ export default function CalendarPage() {
                               key={t.id}
                               className={`cal-event${t.completed ? " is-done" : ""}${deadline ? " is-deadline" : ""}`}
                               style={{ "--chip": getKindColor(t.kind) } as React.CSSProperties}
+                              onClick={(e) => {
+                                // The event, not the whole day.
+                                e.stopPropagation();
+                                setSelectedDay(ymd);
+                                setFocusTaskId(t.id);
+                              }}
                             >
                               <span className="cal-event-dot" aria-hidden="true" />
-                              <span className="cal-event-title">{t.title}</span>
+                              <span className="cal-event-title"><TaskTitle task={t} chip={false} /></span>
                               {!deadline && t.time && <span className="cal-event-time">{shortTime(t.time)}</span>}
                             </span>
                           );
@@ -536,7 +558,7 @@ export default function CalendarPage() {
       </div>
 
       {selectedDay && (
-        <SidePeek open titleId="calendar-day-title" onClose={() => setSelectedDay(null)}>
+        <SidePeek open titleId="calendar-day-title" onClose={() => { setSelectedDay(null); setFocusTaskId(null); setRemoved(null); }}>
           <div className="calendar-peek-content">
             <div className="calendar-modal-header">
               <span className="calendar-peek-kicker">Selected day</span>
@@ -546,10 +568,28 @@ export default function CalendarPage() {
               {/* The count only. An empty day is announced once, by the
                   empty state below — it used to say "No tasks for this day."
                   here and "Nothing scheduled yet." directly underneath. */}
-              {selectedDayTasks.length > 0 && (
-                <p className="calendar-modal-subhead">
-                  {selectedDayTasks.length} task{selectedDayTasks.length !== 1 ? "s" : ""}
-                </p>
+              {focusTask ? (
+                <button type="button" className="calendar-see-day" onClick={() => setFocusTaskId(null)}>
+                  See the whole day ({wholeDayTasks.length})
+                </button>
+              ) : (
+                selectedDayTasks.length > 0 && (
+                  <p className="calendar-modal-subhead">
+                    {selectedDayTasks.length} task{selectedDayTasks.length !== 1 ? "s" : ""}
+                  </p>
+                )
+              )}
+              {removed && (
+                <div className="calendar-removed">
+                  <ActionReceipt
+                    actionId={removed.actionId}
+                    label={`Removed “${removed.title}”`}
+                    onUndone={() => {
+                      setRemoved(null);
+                      void refresh();
+                    }}
+                  />
+                </div>
               )}
             </div>
 
@@ -577,7 +617,7 @@ export default function CalendarPage() {
                             onChange={() => void toggleTask(t.id)}
                             aria-label={`Mark ${t.title} complete`}
                           />
-                          <span className={`calendar-modal-task-title${t.completed ? " done" : ""}`}>{t.title}</span>
+                          <span className={`calendar-modal-task-title${t.completed ? " done" : ""}`}><TaskTitle task={t} /></span>
                           {t.recurring?.enabled && (
                             <span className="recurring-badge" title={freq || "Recurring"}><Repeat size={12} strokeWidth={1.75} /></span>
                           )}
@@ -606,7 +646,23 @@ export default function CalendarPage() {
                       )}
                       {t.notes && (
                         <div className="calendar-modal-task-desc">
-                          {t.notes}
+                          <p className={`calendar-task-notes${openNotes.has(t.id) ? " is-open" : ""}`}>{t.notes}</p>
+                          {t.notes.length > 140 && (
+                            <button
+                              type="button"
+                              className="calendar-task-more"
+                              onClick={() =>
+                                setOpenNotes((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(t.id)) next.delete(t.id);
+                                  else next.add(t.id);
+                                  return next;
+                                })
+                              }
+                            >
+                              {openNotes.has(t.id) ? "Show less" : "Show more"}
+                            </button>
+                          )}
                           {t.resources && t.resources.length > 0 && (
                             <div className="resource-links-section">
                               {t.resources.map((r, i) => (
@@ -630,12 +686,12 @@ export default function CalendarPage() {
                           </button>
                         ) : null}
                         <button
+                          type="button"
+                          className="calendar-task-remove"
                           onClick={() => handleDeleteTask(t)}
-                          style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: "0.85rem", padding: "0 0.25rem", lineHeight: 1, flexShrink: 0 }}
-                          aria-label={`Delete ${t.title}`}
-                          title="Delete task"
+                          aria-label={`Remove ${t.title}`}
                         >
-                          <X size={16} strokeWidth={1.75} />
+                          Remove
                         </button>
                       </div>
                     </div>

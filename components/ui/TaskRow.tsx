@@ -6,6 +6,7 @@ import { Check, Repeat2 } from "lucide-react";
 import { press, spring } from "@/lib/motion";
 import type { Task } from "@/lib/types";
 import { formatTime12 } from "@/lib/dates";
+import TaskTitle from "@/components/ui/TaskTitle";
 
 const KIND_LABEL: Record<string, string> = {
   school: "School",
@@ -84,11 +85,11 @@ export default function TaskRow({
         <div className="ui-task-copy">
           {onOpen ? (
             <button type="button" className="ui-task-title-button" onClick={onOpen}>
-              {task.title}
+              <TaskTitle task={task} />
               {questionDot}
             </button>
           ) : (
-            <span className="ui-task-title">{task.title}{questionDot}</span>
+            <span className="ui-task-title"><TaskTitle task={task} />{questionDot}</span>
           )}
           <div className="ui-task-meta">
             <time dateTime={`${task.date}T${task.time}`}>

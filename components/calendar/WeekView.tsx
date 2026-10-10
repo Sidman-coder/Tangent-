@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { m, useReducedMotion } from "motion/react";
 import type { Task } from "@/lib/types";
+import TaskTitle from "@/components/ui/TaskTitle";
 
 // The week as a time grid: seven day columns, hours down the side, each task a
 // block at its time. This is the view people now expect from a calendar - you
@@ -21,6 +22,8 @@ type Props = {
   days: Date[];
   todayYmd: string;
   tasksForDay: (ymd: string) => Task[];
+  /** One event clicked: open just it (the day header opens the whole day). */
+  onOpenTask?: (ymd: string, taskId: string) => void;
   colorFor: (task: Task) => string;
   onOpenDay: (ymd: string) => void;
   onAddAt: (ymd: string, time: string) => void;
@@ -76,7 +79,7 @@ function lanes(tasks: Task[]): { task: Task; lane: number; of: number }[] {
   return placed;
 }
 
-export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpenDay, onAddAt, toYMD }: Props) {
+export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpenDay, onOpenTask, onAddAt, toYMD }: Props) {
   const reduced = useReducedMotion() ?? false;
   const scrollRef = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(() => new Date());
@@ -136,10 +139,10 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
                     type="button"
                     className={`wk-due-item${t.completed ? " is-done" : ""}`}
                     style={{ "--block": colorFor(t) } as React.CSSProperties}
-                    onClick={() => onOpenDay(ymd)}
+                    onClick={() => (onOpenTask ? onOpenTask(ymd, t.id) : onOpenDay(ymd))}
                     title={t.title}
                   >
-                    <span className="wk-due-title">{t.title}</span>
+                    <span className="wk-due-title"><TaskTitle task={t} chip={false} /></span>
                   </button>
                 ))}
               </div>
@@ -195,13 +198,13 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
                           "--block": color,
                         } as React.CSSProperties
                       }
-                      onClick={() => onOpenDay(ymd)}
+                      onClick={() => (onOpenTask ? onOpenTask(ymd, task.id) : onOpenDay(ymd))}
                       initial={reduced ? false : { opacity: 0, y: 6, scale: 0.98 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       transition={{ type: "spring", visualDuration: 0.35, bounce: 0.15, delay: Math.min(col * 0.03 + i * 0.02, 0.3) }}
                       title={`${time12(task.time)} ${task.title}`}
                     >
-                      <span className="wk-block-title">{task.title}</span>
+                      <span className="wk-block-title"><TaskTitle task={task} chip={false} /></span>
                       <span className="wk-block-time">{time12(task.time)}</span>
                     </m.button>
                   );

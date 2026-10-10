@@ -8,6 +8,7 @@ import { formatTime12 } from "@/lib/dates";
 import { press, riseIn, rowPresence, spring } from "@/lib/motion";
 import { describeReason, type UrgencySummary } from "@/lib/urgency";
 import { urgencyRgbVar } from "./urgency-palette";
+import TaskTitle from "@/components/ui/TaskTitle";
 
 const VISIBLE_LIMIT = 5;
 
@@ -127,7 +128,7 @@ export default function AttentionSection({
                     <span className="attention-kind" style={{ background: colorForTask(task) }} aria-hidden="true" />
                     <div className="attention-copy">
                       <button type="button" className="attention-task-title" onClick={() => onOpen(task)}>
-                        {task.title}
+                        <TaskTitle task={task} />
                       </button>
                       <span className="attention-meta">
                         {day ? `${day} · ` : ""}{formatTime12(task.time)}

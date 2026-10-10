@@ -58,11 +58,13 @@ function briefWhen(b: BriefSummary): string {
 }
 
 // Linear-style starter cards: fill the composer, never send on their own.
+// Each card also picks the mode its question needs: talking a plan through
+// happens in Plan mode, changing the calendar in Calendar mode.
 const SUGGESTIONS = [
-  { icon: CalendarRange, text: "Plan my week", detail: "Spread this week’s work across your free time" },
-  { icon: Sun, text: "What's on today?", detail: "Today’s tasks and events, in order" },
-  { icon: Timer, text: "What fits in 30 minutes?", detail: "Quick tasks for a short gap" },
-  { icon: CalendarClock, text: "Move overdue tasks", detail: "Find new slots for anything that slipped" },
+  { icon: CalendarRange, text: "Plan my week", detail: "Spread this week’s work across your free time", mode: "plan" },
+  { icon: Sun, text: "What's on today?", detail: "Today’s tasks and events, in order", mode: "calendar" },
+  { icon: Timer, text: "What fits in 30 minutes?", detail: "Quick tasks for a short gap", mode: "plan" },
+  { icon: CalendarClock, text: "Move overdue tasks", detail: "Find new slots for anything that slipped", mode: "calendar" },
 ] as const;
 
 const SUGGESTION_ICON: Partial<Record<AiSuggestionKey, LucideIcon>> = {
@@ -75,11 +77,11 @@ const SUGGESTION_ICON: Partial<Record<AiSuggestionKey, LucideIcon>> = {
 
 /** What the student said they're working toward leads the list; the rest stay
  *  as they were. Still four cards, and none of them sends on its own. */
-function suggestionsFor(workingToward: unknown): { icon: LucideIcon; text: string; detail: string }[] {
+function suggestionsFor(workingToward: unknown): { icon: LucideIcon; text: string; detail: string; mode: ChatMode }[] {
   const first = aiFirstSuggestion(prefsOf({ workingToward }));
-  const base = SUGGESTIONS.map((s) => ({ icon: s.icon as LucideIcon, text: s.text as string, detail: s.detail as string }));
+  const base = SUGGESTIONS.map((s) => ({ icon: s.icon as LucideIcon, text: s.text as string, detail: s.detail as string, mode: s.mode as ChatMode }));
   if (!first) return base;
-  return [{ icon: SUGGESTION_ICON[first.key] ?? Sun, text: first.text, detail: first.detail }, ...base.slice(0, 3)];
+  return [{ icon: SUGGESTION_ICON[first.key] ?? Sun, text: first.text, detail: first.detail, mode: "plan" as ChatMode }, ...base.slice(0, 3)];
 }
 
 function partOfDay(hour: number): string {
@@ -454,7 +456,8 @@ export default function AiPage() {
         {
           id: crypto.randomUUID(),
           fresh: true,
-          planDraft: action === "plan_reply",
+          // A reply that only asks a question isn't a plan to add yet.
+          planDraft: action === "plan_reply" && !/\?\s*$/.test(reply.trim()),
           request: userText,
           tools: toolsForAction(action),
           sourcesChecked: data.sourcesChecked ?? [],
@@ -725,13 +728,14 @@ export default function AiPage() {
               <kbd>Enter</kbd> to send · <kbd>Shift</kbd> + <kbd>Enter</kbd> for a new line
             </p>
             <div className="tg-examples" aria-label="Try asking">
-              {suggestions.map(({ icon: Icon, text, detail }) => (
+              {suggestions.map(({ icon: Icon, text, detail, mode }) => (
                 <button
                   key={text}
                   type="button"
                   className="tg-example"
                   title={detail}
                   onClick={() => {
+                    changeMode(mode);
                     setInput(text);
                     inputRef.current?.focus();
                   }}

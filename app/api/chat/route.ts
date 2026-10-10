@@ -27,7 +27,8 @@ type ChatMode = "plan" | "calendar";
 const PLAN_SYSTEM = `You are TANGENT AI in Plan mode — a thinking partner for planning time.
 The student's local date and time are given at the end of their latest message.
 In Plan mode you never add, move, or delete anything; you help the user work out what to do and when.
-- Ask at most one short clarifying question when something essential (dates, hours per week, deadline) is missing.
+- Use the student context below: their real overdue work, this week's tasks, deadlines, capacity and goals. Plan from it directly.
+- Ask at most one short clarifying question, and only for something essential the context doesn't already answer.
 - When you propose a schedule, list each session on its own line as "Day, date — time — what", 3 to 10 lines.
 - Keep it under 150 words. Plain text only: no markdown headings, bold, tables, JSON, or code fences. Simple "- " bullets are fine.
 - End a proposed schedule with: "Switch to Calendar and say \"add this plan\" to put it on your calendar."`;
@@ -43,8 +44,17 @@ function conversationContext(messages: { role: string; content: string }[]): str
 async function planReply(messages: { role: "user" | "assistant"; content: string }[]): Promise<string> {
   // Static system, settled history cached, date last (lib/ai/cache.ts). The
   // history breakpoint only takes effect once a long talk passes the minimum.
+  // Plan mode used to know nothing about the student: "plan my week" with ten
+  // overdue items asked them what they needed to do. It now gets the same
+  // picture every other AI step does (lib/ai/student-context.ts).
+  const picture = await buildStudentContext().then((c) => c.text).catch(() => "");
   const res = await callClaude("chatPlan", {
-    system: PLAN_SYSTEM,
+    system: picture
+      ? [
+          { type: "text" as const, text: PLAN_SYSTEM },
+          { type: "text" as const, text: `STUDENT CONTEXT — their real schedule, work and goals. Start from this; never ask for anything it already answers:\n${picture}` },
+        ]
+      : PLAN_SYSTEM,
     messages: withDateLast(cacheHistory(messages.slice(-12)), promptDateContext(await getUserTimezone())),
   });
   if (!res.ok) throw new Error(res.budgetExceeded ? res.error : `Anthropic error ${res.status}`);
@@ -107,6 +117,7 @@ async function saveQuickCapture(quick: QuickCapture): Promise<Record<string, unk
     message: `Added ${task.title} for ${day} at ${formatTime12(task.time)}.${placed.note ? ` ${placed.note}` : ""}`,
     actionId: record.id,
     taskId: task.id,
+    taskDate: task.date,
     quick: true,
     suggestion: await reliefSuggestion(),
   };
@@ -148,6 +159,7 @@ async function calendarReply(
   let voicePlan: { id: string; title: string; taskCount: number; color: string } | undefined;
   let voiceCount: number | undefined;
   let voiceTaskId: string | undefined;
+  let voiceTaskDate: string | undefined;
   try {
     console.log("[api/chat] Calling voice pipeline:", userText);
     const voiceRes = await handleVoiceText(userText, { context: conversationContext(messages), onProgress, ...project });
@@ -161,7 +173,7 @@ async function calendarReply(
       sourcesChecked?: string[];
       plan?: { id: string; title: string; taskCount: number; color: string };
       count?: number;
-      task?: { id?: string };
+      task?: { id?: string; date?: string };
     };
     console.log("[api/chat] Voice pipeline result:", JSON.stringify(voiceData).slice(0, 300));
     voiceResponse = voiceData.response ?? "";
@@ -173,6 +185,7 @@ async function calendarReply(
     voicePlan = voiceData.plan;
     voiceCount = voiceData.count;
     voiceTaskId = voiceData.task?.id;
+    voiceTaskDate = voiceData.task?.date;
     voiceSourcesChecked = voiceData.sourcesChecked;
   } catch (err) {
     console.error("[api/chat] Voice pipeline error:", err);
@@ -199,6 +212,7 @@ async function calendarReply(
       suggestion,
       // So the client can ask for follow-up questions about it (/api/questions).
       taskId: voiceAction === "add_task" ? voiceTaskId : undefined,
+      taskDate: voiceAction === "add_task" ? voiceTaskDate : undefined,
       action: voiceAction,
       actionId: voiceActionId,
       sourcesChecked: voiceSourcesChecked,

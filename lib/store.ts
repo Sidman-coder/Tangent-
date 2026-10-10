@@ -1496,7 +1496,32 @@ export async function addNotification(notif: Omit<Notification, "id" | "timestam
     }
   }
 
+  // One per (task, type) per day — and one per type per day for alerts about
+  // no single task — even after it was dismissed. The proactive check runs on
+  // page loads, so without this a dismissed alert came back as a new row
+  // (and a new popup) on the very next page.
+  // Tangent's questions are exempt: each set is its own conversation.
   const { db, userId } = ctx();
+  const isQuestions = (notif.actionData as { kind?: string } | undefined)?.kind === "questions";
+  if (!isQuestions && notif.type !== "daily_brief") {
+    let recent = db
+      .from("notifications")
+      .select(NOTIFICATION_COLUMNS)
+      .eq("user_id", userId)
+      .eq("type", notif.type)
+      .gte("created_at", new Date(Date.now() - 20 * 60 * 60 * 1000).toISOString())
+      .order("created_at", { ascending: false })
+      .limit(1);
+    recent = taskId ? recent.eq("task_id", taskId) : recent.is("task_id", null);
+    const { data: same, error: sameError } = await recent;
+    if (sameError) fail("addNotification", sameError);
+    if (same && same.length > 0) {
+      console.log("[store] Notification deduped (today):", notif.type, taskId ?? "(no task)");
+      return notificationFromRow(same[0] as NotificationRow);
+    }
+  }
+
+
   const { data, error } = await db
     .from("notifications")
     .insert({

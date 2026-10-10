@@ -35,6 +35,8 @@ export default function SettingsPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [canvasFeed, setCanvasFeed] = useState<CanvasFeedStatus | null>(null);
+  // Unknown until the status call answers: showing "Not connected" first was wrong for connected students.
+  const [canvasLoaded, setCanvasLoaded] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -84,7 +86,8 @@ export default function SettingsPage() {
     fetch("/api/canvas/status", { cache: "no-store" })
       .then((r) => r.json())
       .then((data: { ok?: boolean; feed?: CanvasFeedStatus | null }) => setCanvasFeed(data.ok ? data.feed ?? null : null))
-      .catch(() => setCanvasFeed(null));
+      .catch(() => setCanvasFeed(null))
+      .finally(() => setCanvasLoaded(true));
   }, [canvasGuideOpen]);
 
   useEffect(() => {
@@ -278,13 +281,15 @@ export default function SettingsPage() {
                 <div>
                   <strong>Canvas calendar</strong>
                   <span>
-                    {canvasFeed
+                    {!canvasLoaded
+                      ? <span className="settings-skeleton" aria-label="Checking Canvas" />
+                      : canvasFeed
                       ? `Connected · ${canvasFeed.maskedUrl}${canvasFeed.lastSyncedAt ? ` · ${canvasFeed.lastSyncCount} items last sync` : ""}`
                       : "Bring assignments and due dates into your Tangent calendar."}
                   </span>
                 </div>
               </div>
-              <Button variant="primary" onClick={() => setCanvasGuideOpen(true)}>{canvasFeed ? "Reconnect Canvas" : "Connect Canvas"}</Button>
+              <Button variant="primary" onClick={() => setCanvasGuideOpen(true)} disabled={!canvasLoaded}>{canvasFeed ? "Reconnect Canvas" : "Connect Canvas"}</Button>
             </div>
           </section>
 
@@ -358,10 +363,6 @@ export default function SettingsPage() {
                   <option key={m} value={m}>{formatMinutes(m)}</option>
                 ))}
               </select>
-            </div>
-            <div className="settings-option-row">
-              <div><strong>Canvas</strong><span>{canvasFeed ? "Connected" : "Not connected"}</span></div>
-              <Button variant="secondary" onClick={() => setCanvasGuideOpen(true)}>{canvasFeed ? "Reconnect" : "Connect Canvas"}</Button>
             </div>
             <div className="settings-option-row">
               <div><strong>Redo setup</strong><span>Go through the questions again with your answers filled in.</span></div>

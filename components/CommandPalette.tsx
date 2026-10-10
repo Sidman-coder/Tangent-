@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppState } from "@/components/AppStateProvider";
+import Link from "next/link";
 import { generateQuestions } from "@/lib/questions-client";
 import ActionReceipt from "@/components/ActionReceipt";
 import {
@@ -48,6 +49,8 @@ export default function CommandPalette() {
   const [highlighted, setHighlighted] = useState(0);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // Where the thing just created lives, so the confirmation can link to it.
+  const [toastLink, setToastLink] = useState<{ href: string; label: string } | null>(null);
   const [receiptId, setReceiptId] = useState<string | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<{ id: string; message: string } | null>(null);
 
@@ -101,7 +104,7 @@ export default function CommandPalette() {
 
   const showToast = useCallback((text: string) => {
     setToast(text);
-    window.setTimeout(() => setToast(null), 5000);
+    window.setTimeout(() => setToast((t) => (t === text ? null : t)), 6000);
   }, []);
 
   const submitAsk = useCallback(
@@ -110,6 +113,10 @@ export default function CommandPalette() {
       if (!trimmed || busy) return;
       setBusy(true);
       closePalette();
+      // Never close silently: say it's working until the result replaces this.
+      setReceiptId(null);
+      setToastLink(null);
+      setToast("Saving…");
       try {
         const res = await fetch("/api/chat", {
           method: "POST",
@@ -126,6 +133,8 @@ export default function CommandPalette() {
           action?: string;
           actionId?: string;
           taskId?: string;
+          taskDate?: string;
+          projectId?: string;
           quick?: boolean;
           pending?: { id: string; kind: string; message: string };
         };
@@ -137,6 +146,7 @@ export default function CommandPalette() {
         }
         const raw = data.message ?? data.reply ?? data.response ?? data.text ?? "";
         setReceiptId(data.actionId ?? null);
+        setToastLink(data.taskDate ? { href: `/calendar?date=${data.taskDate}`, label: "View" } : data.projectId ? { href: `/projects/${data.projectId}`, label: "Open project" } : null);
         showToast(cleanReply(typeof raw === "string" ? raw : ""));
         await refresh();
         if (data.taskId) void generateQuestions(data.taskId, trimmed, data.quick === true).then(() => refresh());
@@ -319,7 +329,7 @@ export default function CommandPalette() {
                   </button>
                 ))
               ) : (
-                <div className="cmdk-hint">Press Enter to ask TANGENT</div>
+                <div className="cmdk-hint">Press Enter to ask Tangent</div>
               )}
             </div>
           </div>
@@ -368,8 +378,13 @@ export default function CommandPalette() {
             />
           ) : (
             <span onClick={() => setToast(null)} style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
-              <Check size={18} strokeWidth={1.75} /> {toast}
+              {busy ? <span className="voice-pill-spinner" aria-hidden="true" /> : <Check size={18} strokeWidth={1.75} />} {toast}
             </span>
+          )}
+          {toastLink && !busy && (
+            <Link href={toastLink.href} className="command-toast-link" onClick={() => setToast(null)}>
+              {toastLink.label} →
+            </Link>
           )}
         </div>
       )}

@@ -10,6 +10,7 @@ import {
   deleteRecurringTask,
   updateRecurringTask,
   getUserTimezone,
+  recordAction,
 } from "@/lib/store";
 import { getUserToday } from "@/lib/time";
 import type { TaskKind } from "@/lib/types";
@@ -89,10 +90,14 @@ export const POST = withUser(async (req: Request) => {
       if (!body.id) {
         return NextResponse.json({ ok: false, error: "id is required" }, { status: 400 });
       }
+      // Snapshot first so the calendar's "Remove" can be undone (same undo
+      // record the confirmed voice delete uses).
+      const before = await updateTask(body.id, {});
       const removed = await deleteTask(body.id);
       if (!removed) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
+      const record = before ? await recordAction("delete_task", `Removed "${before.title}"`, { removedTasks: [before] }) : null;
       console.log("[api/tasks] delete_task success:", body.id);
-      return NextResponse.json({ ok: true, state: await getAppState() });
+      return NextResponse.json({ ok: true, actionId: record?.id, state: await getAppState() });
     }
 
     if (action === "toggle_task") {

@@ -8,6 +8,8 @@
 // Both paths publish through publishDailyBrief so there's one notification-creation
 // path, not two, and the Bell only ever shows one pinned "daily_brief" per day.
 
+import { tracksCompletion } from "@/lib/urgency";
+import { isSchoolBlock } from "@/lib/schedule-slots";
 import {
   addNotification,
   getAllTasks,
@@ -67,7 +69,7 @@ const DAILY_BRIEF_BATCH_CUSTOM_ID = "daily-brief";
 
 const DAILY_BRIEF_SYSTEM_PROMPT = `Generate a concise daily brief for the user. Sound like a smart personal assistant, not a chatbot. Be specific to their actual schedule and to the external source material below, if any. No filler phrases. Direct and useful.
 
-The greeting is one sentence referencing something specific about their day. The summary is 2 to 3 sentences covering what matters most today, weaving in relevant source material if any was provided. topPriority is the single most important thing to focus on. suggestion is one specific time-based suggestion based on their schedule and preferences. overdueAlert mentions overdue items only if there are any, otherwise null.`;
+The greeting is one sentence referencing something specific about their day. The summary is 2 to 3 sentences covering what matters most today, weaving in relevant source material if any was provided. topPriority is the single most important thing to focus on. suggestion is one specific time-based suggestion based on their schedule and preferences. overdueAlert mentions overdue items only if there are any, otherwise null; when it gives a number, use exactly the Overdue count given.`;
 
 async function buildBriefContext(): Promise<string> {
   const tasks = await getAllTasks();
@@ -78,9 +80,12 @@ async function buildBriefContext(): Promise<string> {
   const today = getUserToday(timeZone, now);
   const tomorrow = addDaysYMD(getUserToday(timeZone, now), 1);
 
-  const todayTasks = tasks.filter((t) => t.date === today);
-  const tomorrowTasks = tasks.filter((t) => t.date === tomorrow);
-  const overdueTasks = tasks.filter((t) => !t.completed && t.date < today);
+  // The School block is the timetable, not a task: it made "0 of 2 complete".
+  const todayTasks = tasks.filter((t) => t.date === today && !isSchoolBlock(t));
+  const tomorrowTasks = tasks.filter((t) => t.date === tomorrow && !isSchoolBlock(t));
+  // Same overdue rule as Today and every widget (lib/urgency.ts), so the brief
+  // never says "seven overdue" while Home says five.
+  const overdueTasks = tasks.filter((t) => !t.completed && t.date < today && tracksCompletion(t));
   const completedToday = todayTasks.filter((t) => t.completed);
 
   // Deterministic + cheap source gathering (zero or low AI cost) via the existing,

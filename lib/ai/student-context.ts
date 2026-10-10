@@ -9,12 +9,14 @@ import "server-only";
 import { getAllTasks, getContextAsString, getPathGoals } from "@/lib/store";
 import { describeLoad, formatMinutes } from "@/lib/load";
 import { schoolHoursFromTasks } from "@/lib/school-block";
+import { isSchoolBlock } from "@/lib/schedule-slots";
 import { studentCapacity, studentNow } from "@/lib/spacing";
 import { addDaysYMD } from "@/lib/time";
 import { formatTime12 } from "@/lib/dates";
 
 const LOOKAHEAD_DAYS = 14;
 const MAX_DEADLINES = 15;
+const MAX_LISTED = 25;
 
 export type StudentContext = {
   /** Prompt-ready text, sections separated by blank lines. */
@@ -60,6 +62,31 @@ export async function buildStudentContext(): Promise<StudentContext> {
     .slice(0, MAX_DEADLINES);
   if (due.length > 0) {
     sections.push(`COMING UP FOR SCHOOL:\n${due.map((t) => `- ${t.date}: ${t.title}`).join("\n")}`);
+  }
+
+  // The actual work: what's overdue and what's open this week, so "plan my
+  // week" starts from their real list instead of asking what's on it.
+  const work = tasks.filter((t) => !t.completed && !isSchoolBlock(t));
+  const overdue = work.filter((t) => t.date < now.date).sort((a, b) => a.date.localeCompare(b.date));
+  if (overdue.length > 0) {
+    sections.push(
+      `OVERDUE (${overdue.length}):\n${overdue
+        .slice(0, MAX_LISTED)
+        .map((t) => `- ${t.date}: ${t.title}`)
+        .join("\n")}${overdue.length > MAX_LISTED ? `\n- …and ${overdue.length - MAX_LISTED} more` : ""}`
+    );
+  }
+  const weekEnd = addDaysYMD(now.date, 6);
+  const week = work
+    .filter((t) => t.date >= now.date && t.date <= weekEnd)
+    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+  if (week.length > 0) {
+    sections.push(
+      `OPEN THIS WEEK (${week.length}):\n${week
+        .slice(0, MAX_LISTED)
+        .map((t) => `- ${t.date}${t.time && t.time !== "23:59" ? ` ${t.time}` : ""}: ${t.title}${t.source === "canvas" ? " (due)" : ""}`)
+        .join("\n")}`
+    );
   }
 
   if (goals.length > 0) {

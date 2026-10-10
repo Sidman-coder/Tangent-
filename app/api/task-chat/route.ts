@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getTaskChat, addTaskChatMessage, getAllTasks } from "@/lib/store";
 import { withUser } from "@/lib/request-context";
 import { callClaude, messageText } from "@/lib/ai/call";
+import { buildStudentContext } from "@/lib/ai/student-context";
 import { cacheHistory } from "@/lib/ai/cache";
 
 export const runtime = "nodejs";
@@ -69,7 +70,10 @@ Be specific, practical, and actionable.
 Keep responses concise and under 100 words unless the user asks for more detail.
 Do not modify any other tasks or the main schedule.
 Focus only on helping with this specific task.
-Do not output JSON. Respond only in plain conversational text.`;
+Do not output JSON. Respond only in plain conversational text.
+Use what you know about the student (below): their classes, deadlines, workload and goals. Don't ask for anything it already tells you.`;
+    // "Explain more" should know the student, not just the task.
+    const picture = await buildStudentContext().then((c) => c.text).catch(() => "");
 
     const conversationHistory = chatHistory.map((msg) => ({
       role: msg.role as "user" | "assistant",
@@ -79,7 +83,7 @@ Do not output JSON. Respond only in plain conversational text.`;
     console.log("[api/task-chat] Calling Anthropic with", conversationHistory.length + 1, "messages...");
 
     const anthropicResponse = await callClaude("taskChat", {
-      system: systemPrompt,
+      system: picture ? `${systemPrompt}\n\nSTUDENT CONTEXT:\n${picture}` : systemPrompt,
       // Settled history cached (lib/ai/cache.ts); takes effect once a long chat passes the minimum.
       messages: cacheHistory([
         ...conversationHistory,

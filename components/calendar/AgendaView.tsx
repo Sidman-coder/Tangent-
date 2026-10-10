@@ -3,6 +3,7 @@
 import { m, useReducedMotion } from "motion/react";
 import { CalendarPlus, Check } from "lucide-react";
 import type { Task } from "@/lib/types";
+import TaskTitle from "@/components/ui/TaskTitle";
 
 // What's coming, as a list: every day in the range that has anything on it,
 // with its tasks in time order. The fastest way to answer "what do I have this
@@ -81,7 +82,7 @@ export default function AgendaView({ days, todayYmd, tasksForDay, colorFor, onOp
                   </button>
                   <span className="ag-time">{time12(t.time)}</span>
                   <button type="button" className="ag-title" onClick={() => onOpenDay(ymd)}>
-                    {t.title}
+                    <TaskTitle task={t} />
                   </button>
                 </li>
               ))}
