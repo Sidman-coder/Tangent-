@@ -4,6 +4,7 @@ import {
   createChatSession,
   getChatSession,
   addChatSessionMessage,
+  replaceLastAssistantMessage,
   renameChatSession,
   deleteChatSession,
   linkChatSession,
@@ -33,6 +34,8 @@ export const POST = withUser(async (req: Request) => {
       title?: string;
       role?: string;
       content?: string;
+      /** replace_last_assistant: the saved text to swap out. */
+      from?: string;
       actionId?: string;
       taskIds?: string[];
       planId?: string | null;
@@ -54,6 +57,15 @@ export const POST = withUser(async (req: Request) => {
       const msg = await addChatSessionMessage(sessionId, role as "user" | "assistant", content.trim());
       if (!msg) return NextResponse.json({ ok: false, error: "Session not found" }, { status: 404 });
       return NextResponse.json({ ok: true, message: msg });
+    }
+
+    if (action === "replace_last_assistant") {
+      const { sessionId, from, content } = body;
+      if (!sessionId || !from?.trim() || !content?.trim()) {
+        return NextResponse.json({ ok: false, error: "Missing sessionId, from, or content" }, { status: 400 });
+      }
+      const replaced = await replaceLastAssistantMessage(sessionId, from.trim(), content.trim());
+      return NextResponse.json({ ok: true, replaced });
     }
 
     if (action === "rename") {

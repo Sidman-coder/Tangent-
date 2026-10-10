@@ -884,10 +884,14 @@ export async function addPlan(plan: Omit<Plan, "id" | "createdAt" | "color">): P
  *  plan's date range, the plan row, ONE bulk insert of the tasks with plan_id
  *  already set, then the plan's task list. Replaces addTask ×N + addPlan +
  *  updateTask ×N. Tasks that duplicate an existing open task are skipped (the
- *  same rule as addTask) and reported, so undo never deletes a pre-existing task. */
+ *  same rule as addTask) and reported, so undo never deletes a pre-existing task.
+ *  The optional hooks report each row as soon as it exists, so a caller that
+ *  rolls back (lib/pipeline/apply-core.ts) can undo them even if a later step
+ *  in here fails. */
 export async function addPlanWithTasks(
   plan: { title: string; description?: string },
-  tasks: Omit<Task, "id" | "planId">[]
+  tasks: Omit<Task, "id" | "planId">[],
+  hooks: { onPlanCreated?: (planId: string) => void; onTasksInserted?: (tasks: Task[]) => void } = {}
 ): Promise<{ plan: Plan; tasks: Task[]; skippedDuplicates: number }> {
   const { db, userId } = ctx();
   const dates = tasks.map((t) => t.date).sort();
@@ -903,6 +907,7 @@ export async function addPlanWithTasks(
   }
 
   const created = await addPlan({ title: plan.title, description: plan.description ?? "", taskIds: [], taskCount: 0 });
+  hooks.onPlanCreated?.(created.id);
   const inserted: Task[] = [];
   for (let i = 0; i < fresh.length; i += 500) {
     const rows = fresh.slice(i, i + 500).map((t) => newTaskRow(userId, { ...t, planId: created.id }));
@@ -912,7 +917,9 @@ export async function addPlanWithTasks(
       await deletePlan(created.id).catch(() => {});
       fail("addPlanWithTasks", error);
     }
-    inserted.push(...(data as TaskRow[]).map(taskFromRow));
+    const batch = (data as TaskRow[]).map(taskFromRow);
+    inserted.push(...batch);
+    hooks.onTasksInserted?.(batch);
   }
   const taskIds = inserted.map((t) => t.id);
   const { error: linkError } = await db
@@ -1158,6 +1165,37 @@ export async function addChatSessionMessage(sessionId: string, role: "user" | "a
   if (error) fail("addChatSessionMessage", error);
   await trimThread("chat_messages", "session_id", sessionId);
   return messageFromRow(data as MessageRow);
+}
+
+/** Pipeline V2 "Just talking": swaps the saved preview summary for the chat
+ *  reply, so the turn keeps one assistant message. Only the session's newest
+ *  message is changed, and only if it is that assistant text; returns false
+ *  otherwise (nothing is written). */
+export async function replaceLastAssistantMessage(sessionId: string, from: string, to: string): Promise<boolean> {
+  const row = await getSessionRow(sessionId);
+  if (!row) return false;
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("chat_messages")
+    .select("id, role, content")
+    .eq("user_id", userId)
+    .eq("session_id", sessionId)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) fail("replaceLastAssistantMessage", error);
+  const last = data as { id: string; role: string; content: string } | null;
+  if (!last || last.role !== "assistant" || last.content !== from) return false;
+  const { data: updated, error: updateError } = await db
+    .from("chat_messages")
+    .update({ content: to })
+    .eq("user_id", userId)
+    .eq("id", last.id)
+    .eq("content", from)
+    .select("id");
+  if (updateError) fail("replaceLastAssistantMessage", updateError);
+  return (updated?.length ?? 0) > 0;
 }
 
 export async function renameChatSession(sessionId: string, title: string): Promise<boolean> {
@@ -1628,6 +1666,17 @@ export async function recordAction(
   return record;
 }
 
+/** Removes an undo entry whose changes were rolled back (Pipeline V2 apply),
+ *  so no stray Undo survives. If the delete fails, marks it not undoable. */
+export async function retireAction(id: string): Promise<void> {
+  if (!isUuid(id)) return;
+  const { db, userId } = ctx();
+  const { error } = await db.from("action_records").delete().eq("user_id", userId).eq("id", id);
+  if (!error) return;
+  const { error: updateError } = await db.from("action_records").update({ undoable: false }).eq("user_id", userId).eq("id", id);
+  if (updateError) fail("retireAction", updateError);
+}
+
 async function findActionRecord(id: string): Promise<ActionRecord | null> {
   if (!isUuid(id)) return null;
   const { db, userId } = ctx();
@@ -1826,7 +1875,7 @@ export async function resolvePendingConfirmation(id: string): Promise<boolean> {
 // ─── Pipeline V2 change sets (lib/pipeline/changeset.ts) ─────────────────────
 
 const CHANGE_SET_COLUMNS =
-  "id, user_id, source, request_text, summary, intent, target_plan_id, ops, assumptions, status, created_at, confirmed_at, action_id";
+  "id, user_id, source, request_text, summary, intent, target_plan_id, ops, assumptions, status, created_at, confirmed_at, action_id, applied_at";
 
 type ChangeSetRow = {
   id: string;
@@ -1842,6 +1891,7 @@ type ChangeSetRow = {
   created_at: string;
   confirmed_at: string | null;
   action_id: string | null;
+  applied_at: string | null;
 };
 
 function changeSetFromRow(r: ChangeSetRow): ChangeSet {
@@ -1859,6 +1909,7 @@ function changeSetFromRow(r: ChangeSetRow): ChangeSet {
     created_at: iso(r.created_at),
     confirmed_at: r.confirmed_at ? iso(r.confirmed_at) : null,
     action_id: r.action_id,
+    applied_at: r.applied_at ? iso(r.applied_at) : null,
   };
 }
 
@@ -1926,12 +1977,14 @@ export async function getChangeSet(id: string): Promise<ChangeSet | null> {
  * Moves a ChangeSet to `status`. With `from`, only a ChangeSet currently in
  * that status (or one of them) changes, so this doubles as an atomic claim:
  * of two racing confirms, only one gets true. Confirming stamps confirmed_at;
- * going back to draft clears it. `actionId` records the undo entry.
+ * going back to draft clears it. `actionId` records the undo entry and
+ * `applied` stamps applied_at (apply finished, with or without an undo entry).
+ * The change_sets_guard trigger refuses any other status change.
  */
 export async function markChangeSet(
   id: string,
   status: ChangeSetStatus,
-  opts: { from?: ChangeSetStatus | ChangeSetStatus[]; actionId?: string | null } = {}
+  opts: { from?: ChangeSetStatus | ChangeSetStatus[]; actionId?: string | null; applied?: boolean } = {}
 ): Promise<boolean> {
   if (!isUuid(id)) return false;
   const { db, userId } = ctx();
@@ -1940,7 +1993,9 @@ export async function markChangeSet(
   if (status === "draft") {
     row.confirmed_at = null;
     row.action_id = null;
+    row.applied_at = null;
   }
+  if (opts.applied) row.applied_at = new Date().toISOString();
   if (opts.actionId !== undefined) row.action_id = isUuid(opts.actionId) ? opts.actionId : null;
   let q = db.from("change_sets").update(row).eq("user_id", userId).eq("id", id);
   if (opts.from !== undefined) {

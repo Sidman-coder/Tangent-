@@ -480,38 +480,66 @@ export default function AiPage() {
     }
   }, [input, busy, chatMode, activeSessionId, turns, refresh, linkAction, loadSessions, saveMessage]);
 
+  /** Turns whose "Add to calendar" draft is in flight (one request each). */
+  const draftingPlans = useRef(new Set<string>());
+
   /** Plan-mode draft → Calendar: flip the mode and ask for it to be added. */
   const addPlanToCalendar = useCallback(
     (turnId: string) => {
-      setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, planDraft: false } : t)));
       // Pipeline V2: draft the plan exactly as shown; saved only on Confirm.
+      // The button stays until the draft exists, so a failure can be retried.
       const shown = turns.find((t) => t.id === turnId);
       if (v2 && shown) {
-        void draftShownPlan(shown.response, shown.request).then((r) =>
-          "error" in r ? setErr(r.error) : setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, draft: r } : t)))
-        );
+        if (draftingPlans.current.has(turnId)) return;
+        draftingPlans.current.add(turnId);
+        setErr(null);
+        void draftShownPlan(shown.response, shown.request)
+          .then((r) =>
+            "error" in r
+              ? setErr(r.error)
+              : setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, planDraft: false, draft: r } : t)))
+          )
+          .finally(() => draftingPlans.current.delete(turnId));
         return;
       }
+      setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, planDraft: false } : t)));
       changeMode("calendar");
       void send("Add this plan to my calendar", "calendar");
     },
     [changeMode, send, turns, v2]
   );
 
-  /** Pipeline V2 "Just talking, don't add": answer the turn conversationally. */
+  /** Pipeline V2 "Just talking, don't add": answer the turn conversationally.
+   *  The saved preview summary is replaced by the reply (not followed by a
+   *  second assistant message), and sending waits until it is done, so a
+   *  reload pairs every request with its own reply. */
   const justChatting = useCallback(
     async (turnId: string) => {
+      if (busy) return;
       const at = turns.findIndex((t) => t.id === turnId);
       if (at < 0) return;
-      const history = turns.slice(0, at).flatMap((t) => [
-        { role: "user", content: t.request },
-        { role: "assistant", content: t.response },
-      ]);
-      const reply = cleanMessage(await chatOnly([...history, { role: "user", content: turns[at].request }]));
-      setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, response: reply, draft: undefined } : t)));
-      await saveMessage(activeSessionId, "assistant", reply);
+      setBusy(true);
+      try {
+        const history = turns.slice(0, at).flatMap((t) => [
+          { role: "user", content: t.request },
+          { role: "assistant", content: t.response },
+        ]);
+        const reply = cleanMessage(await chatOnly([...history, { role: "user", content: turns[at].request }]));
+        const saved = turns[at].response;
+        setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, response: reply, draft: undefined } : t)));
+        if (!activeSessionId || !saved.trim()) return;
+        const res = await fetch("/api/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "replace_last_assistant", sessionId: activeSessionId, from: saved, content: reply }),
+        }).catch(() => null);
+        const data = res?.ok ? ((await res.json().catch(() => ({}))) as { replaced?: boolean }) : {};
+        if (!data.replaced) setSaveWarning("This reply couldn't be saved to the chat.");
+      } finally {
+        setBusy(false);
+      }
     },
-    [turns, activeSessionId, saveMessage]
+    [busy, turns, activeSessionId]
   );
 
   const postSession = useCallback(async (body: Record<string, unknown>) => {

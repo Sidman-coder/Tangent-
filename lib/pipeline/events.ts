@@ -1,5 +1,5 @@
 import "server-only";
-import { getRequestContext } from "../request-context";
+import { getRequestContext, trackPending } from "../request-context";
 import { isEventType, sanitizeEventProps, type EventProps, type EventType } from "./event-types";
 
 export { EVENT_TYPES, type EventType, type EventProps } from "./event-types";
@@ -11,8 +11,10 @@ export type EventRefs = { changeSetId?: string | null; planId?: string | null; t
 
 /**
  * Records one Pipeline V2 event for the student in the current request.
- * Fire-and-forget: returns immediately, never throws, never blocks the request.
- * A failed insert is logged and dropped. Props are sanitized to structured
+ * Returns immediately and never throws. The insert is tracked on the request
+ * (trackPending), so withUser waits for it, at most 1.5 s, before the response
+ * goes out and it is not lost when a serverless function freezes. A failed
+ * insert is logged and dropped. Props are sanitized to structured
  * facts (lib/pipeline/event-types.ts); free text never reaches the table.
  */
 export function logEvent(type: EventType, props: EventProps = {}, refs: EventRefs = {}): void {
@@ -30,12 +32,12 @@ export function logEvent(type: EventType, props: EventProps = {}, refs: EventRef
       task_id: idOrNull(refs.taskId),
       props: sanitizeEventProps(props),
     };
-    void Promise.resolve(db.from("events").insert(row)).then(
+    trackPending(Promise.resolve(db.from("events").insert(row)).then(
       ({ error }) => {
         if (error) console.warn("[events] insert failed:", type, error.message);
       },
       (e: unknown) => console.warn("[events] insert failed:", type, e instanceof Error ? e.message : e)
-    );
+    ));
   } catch (e) {
     console.warn("[events] not logged:", type, e instanceof Error ? e.message : e);
   }

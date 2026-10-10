@@ -53,6 +53,7 @@ export default function PreviewCard({ changeSet, preview, onChanged, autoFocus =
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ created: number; skipped: string[] } | null>(null);
   const [chatting, setChatting] = useState(false);
+  const [expired, setExpired] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const shownRef = useRef(false);
   const base = `/api/changesets/${encodeURIComponent(cs.id)}`;
@@ -90,6 +91,7 @@ export default function PreviewCard({ changeSet, preview, onChanged, autoFocus =
   /** A refused action (409) means another tab or click already moved it on. */
   const settle = (status: number, data: Record<string, unknown>) => {
     const p = phaseOf(data.status);
+    if (data.reason === "expired") setExpired(true);
     if (status === 409 && p && p !== "draft") setPhase(p);
     throw new Error(typeof data.message === "string" ? data.message : "Something went wrong.");
   };
@@ -183,7 +185,7 @@ export default function PreviewCard({ changeSet, preview, onChanged, autoFocus =
   if (phase === "discarded") {
     return (
       <div className={`${cls} is-done`} role="status">
-        <span className="preview-card-muted">{chatting ? "Not added. Just talking." : "Discarded. Nothing was added."}</span>
+        <span className="preview-card-muted">{chatting ? "Not added. Just talking." : expired ? "This draft expired. Ask again for a fresh preview." : "Discarded. Nothing was added."}</span>
       </div>
     );
   }

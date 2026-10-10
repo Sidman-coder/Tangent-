@@ -13,13 +13,19 @@ Do these **after** Prompts 0, 1 and 2 are all built. Go top to bottom.
    ```
    - If it shows `action_records_kind_check`, continue.
    - If it shows another name, stop and ask Claude before running the migration.
-2. **Run the migration.** Open `supabase/migrations/20261006000000_pipeline_v2_change_sets_and_events.sql`, paste all of it into a new SQL Editor query, and run it. It's safe to run twice.
+2. **Run the migration.** Open `supabase/migrations/20261006000000_pipeline_v2_change_sets_and_events.sql`, paste all of it into a new SQL Editor query, and run it. It's safe to run twice, and it runs as one transaction (`begin; … commit;`), so if it fails nothing is left half-done.
 3. **Make sure the tables exist and are empty:**
    ```sql
    select count(*) from change_sets;
    select count(*) from events;
    ```
    Both should be 0.
+   Then check the lifecycle guard is installed:
+   ```sql
+   select tgname from pg_trigger where tgrelid = 'public.change_sets'::regclass and not tgisinternal;
+   select column_name from information_schema.columns where table_name = 'change_sets' and column_name = 'applied_at';
+   ```
+   The first shows `change_sets_guard`, the second shows `applied_at`.
 4. Run any migrations that Prompts 1 and 2 add the same way (paste each into the SQL Editor, oldest first).
 
 ## B. Build and tests (on the last branch)
@@ -65,8 +71,7 @@ Add `TANGENT_PIPELINE_V2=true` to `.env.local` and restart `npm run dev`.
 16. The same request from the **command palette** (Ctrl+K) shows the preview card there, and Confirm / Undo work the same.
 17. The **pen** (voice from the device) still writes directly, with no preview card. Drafting is only for typed requests in the app.
 18. After a confirm whose tasks were all duplicates, the card says "Already on your calendar · nothing new added" and offers no Undo.
-19. Known gap: reloading a chat drops an unconfirmed preview card. The draft stays in `change_sets` with status `draft` and nothing is on the calendar.
-20. Flag OFF again (remove the line, restart): no preview cards anywhere, and `POST /api/changesets/<any id>/confirm` returns **404**.
+19. Flag OFF again (remove the line, restart): no preview cards anywhere, and `POST /api/changesets/<any id>/confirm` returns **404**.
 
 ## E. Flag ON: Prompt 2 (one box, no mode switch)
 
@@ -81,10 +86,29 @@ Add `TANGENT_PIPELINE_V2=true` to `.env.local` and restart `npm run dev`.
 9. If a schedule line in the reply can't be read (for example "11/01 - 3 - Review mistakes"), the card says **"Read X of Y lines"** and lists the skipped line. Nothing disappears silently.
 10. "can you add dentist tomorrow?" adds or previews; it never just chats. "what's my plan for today?" and "ideas for my ICF project" chat. "should I schedule study time for the SAT?" previews.
 11. Browser voice: hold the mic, say "um can you like help me plan icf prep", press Enter. You get the same preview as typing it. The pen (`/api/voice`) still saves directly, with no preview.
-12. Just-talking event: `select props from events where type='changeset_discarded' order by created_at desc limit 1;` shows `"reason": "just_chatting"`.
+12. Just-talking event: `select props from events where type='changeset_discarded' order by occurred_at desc limit 1;` shows `"reason": "just_chatting"`.
 13. Reload gap: make a preview, **don't** confirm, reload the AI page. The card comes back. Open the palette (Ctrl+K) on another page: the newest open card shows there too.
 14. 24-hour expiry: in Supabase, set one draft's `created_at` to 25 hours ago, then reload. It doesn't come back, its status is `discarded`, and a `changeset_discarded` event has `"reason": "expired"`.
 15. Flag off (`TANGENT_PIPELINE_V2=false`, restart `npm run dev`): the mode switch, the old hero text and the old dock hint are back, and "Add to calendar" switches to Calendar mode as before.
+
+## E2. Cleanup fixes (steps 0 to 2)
+
+One check per fix. `npm test` covers 1, 2 and 4 automatically; the rest are by hand with the flag on.
+
+1. **Rollback if the plan link fails.** `npm test` → `apply-core.test.ts`: "if the plan's task-list update fails…" passes. It simulates the failure and checks that no plan or task is left and the change set is back to `draft`.
+2. **No stray Undo after a failure.** `npm test` → "if a step after the undo entry fails…" passes: the `apply_changeset` undo entry is removed and `action_id` is null.
+3. **Add to calendar keeps its button on failure.** Draft a plan in conversation. In DevTools → Network, set **Offline**, click **Add plan to calendar**: an error shows and the button stays. Go back online and click again: one card appears. Double-clicking makes only one card.
+4. **"Just talking" saves one reply.** `npm test` → `components/console/turns.test.ts` passes. By hand: get a preview, click **"Just talking, don't add"**, send one more message, reload. Each request shows its own reply, and the preview summary is gone from the thread.
+5. **Old drafts can't be confirmed.** Make a preview and leave the card open. In Supabase set its `created_at` to 25 hours ago (`update change_sets set created_at = now() - interval '25 hours' where id = '<id>';`). Click **Confirm** without reloading: the card says "This draft expired. Ask again for a fresh preview.", nothing is added, its status is `discarded`, and a `changeset_discarded` event has `"reason": "expired"`.
+6. **Second confirm when nothing was created.** Confirm a preview whose tasks are all duplicates. `select status, applied_at, action_id from change_sets order by created_at desc limit 1;` shows `confirmed`, a time, and null. In the DevTools console run `await (await fetch('/api/changesets/<id>/confirm', {method:'POST'})).json()`. It answers right away (no 5-second wait) with `alreadyConfirmed: true` and `createdTaskCount: 0`.
+7. **Events always land.** Note `select count(*) from events;`, then do one preview → Confirm → Undo. The count goes up by at least 4 (request_received, changeset_drafted, changeset_confirmed, changeset_undone). After deploying a Vercel preview with the flag on, repeat it there: the same events appear.
+8. **The database refuses backward moves.** In the SQL Editor (triggers apply to every role, so this is the same check the REST API gets):
+   ```sql
+   begin;
+   update change_sets set status = 'draft' where id = (select id from change_sets where status = 'confirmed' and applied_at is not null limit 1);
+   rollback;
+   ```
+   It fails with `confirmed → draft is not allowed`. The same for `discarded → draft`, and for editing `ops` on a confirmed row ("only a draft can be edited").
 
 ## F. Save and ship (in this order)
 
@@ -94,7 +118,11 @@ Add `TANGENT_PIPELINE_V2=true` to `.env.local` and restart `npm run dev`.
 4. Keep `TANGENT_PIPELINE_V2` **off in Vercel**. Only turn it on there after you and Juann have each tried 10 real brain-dumps locally.
 5. On the live site, check a quick task and Undo.
 
-## G. Known to-dos (not bugs)
+## G. Known gaps (to fix later)
+
+- With the flag on, **recurring tasks** ("gym every Monday") and **Gmail / Canvas imports** still write straight to the calendar, with no preview card.
+
+## H. Known to-dos (not bugs)
 
 - The iCF duplicate and "test next week" fail until **Prompt 3** (router + plan matcher).
 - Your local `main` is behind GitHub. Run `git checkout main && git pull` at the end. Close VS Code and File Explorer first to avoid the folder lock.

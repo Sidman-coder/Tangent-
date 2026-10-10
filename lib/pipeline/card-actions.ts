@@ -39,11 +39,14 @@ const failed = (e: unknown) => {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+const DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
+
 /** A second confirm (double click, retry) answers with the first one's result.
- *  If the first is still writing, wait briefly for its undo entry. */
+ *  applied_at is stamped when the first confirm finishes, even when it created
+ *  nothing, so only a confirm that is still writing makes this one wait. */
 async function confirmedResult(id: string): Promise<NextResponse> {
   let cs = await getChangeSet(id);
-  for (let i = 0; i < 20 && cs?.status === "confirmed" && !cs.action_id; i++) {
+  for (let i = 0; i < 20 && cs?.status === "confirmed" && !cs.applied_at; i++) {
     await sleep(250);
     cs = await getChangeSet(id);
   }
@@ -53,7 +56,16 @@ async function confirmedResult(id: string): Promise<NextResponse> {
     const step = nextStep("confirm", cs);
     return json({ ok: false, status: cs.status, message: step.kind === "refuse" ? step.message : "" }, 409);
   }
-  return json({ ok: true, alreadyConfirmed: true, changeSet: cs, actionId: cs.action_id, state: await getAppState() });
+  if (!cs.applied_at) return json({ ok: false, message: "Those changes are still being saved. Check your calendar in a moment." }, 409);
+  return json({
+    ok: true,
+    alreadyConfirmed: true,
+    changeSet: cs,
+    actionId: cs.action_id,
+    // No undo entry means the first confirm added nothing (all duplicates).
+    ...(cs.action_id ? {} : { createdTaskCount: 0 }),
+    state: await getAppState(),
+  });
 }
 
 export async function confirmChangeSet(req: Request): Promise<NextResponse> {
@@ -62,6 +74,13 @@ export async function confirmChangeSet(req: Request): Promise<NextResponse> {
     if (loaded instanceof NextResponse) return loaded;
     const { cs, step } = loaded;
     if (step.kind === "already") return await confirmedResult(cs.id);
+    if (Date.parse(cs.created_at) < Date.now() - DRAFT_TTL_MS) {
+      // Too old to trust against today's calendar (GET /api/changesets expires
+      // these too, but a card can stay open in a tab for days).
+      if (!(await markChangeSet(cs.id, "discarded", { from: "draft" }))) return await confirmedResult(cs.id);
+      logEvent("changeset_discarded", { intent: cs.intent, ops: cs.ops.length, reason: "expired" }, { changeSetId: cs.id });
+      return json({ ok: false, status: "discarded", reason: "expired", message: "This draft expired. Ask again for a fresh preview." }, 409);
+    }
 
     const result = await applyChangeSet(cs);
     if (!result.ok) {
@@ -165,8 +184,6 @@ export async function editChangeSet(req: Request): Promise<NextResponse> {
     return failed(e);
   }
 }
-
-const DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
 
 /**
  * GET /api/changesets: the student's open drafts from the last 24 hours, newest

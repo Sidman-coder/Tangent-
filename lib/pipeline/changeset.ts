@@ -142,6 +142,9 @@ export const ChangeSetSchema = z
     confirmed_at: z.iso.datetime({ offset: true }).nullable(),
     /** The single undo record (action_records.id) written when it was applied. */
     action_id: Id.nullable(),
+    /** When apply finished (with or without an undo entry). Null while a
+     *  confirm is still writing, so a second confirm knows whether to wait. */
+    applied_at: z.iso.datetime({ offset: true }).nullable().optional(),
   })
   .superRefine((cs, ctx) => {
     const refs = new Set<string>();
