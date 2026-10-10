@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import NotificationBell from "./NotificationBell";
 import CommandPalette from "./CommandPalette";
+import CaptureDock from "./CaptureDock";
 import FirstRun from "./FirstRun";
 import TangentLogo from "@/components/TangentLogo";
 import DesktopNotifPrompt from "./DesktopNotifPrompt";
@@ -237,6 +238,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </nav>
 
       <CommandPalette />
+      {/* Instant capture lives on Today only. Mounted here, not in the page,
+          so it is usable while Today is still loading and a recording isn't
+          cut off when the loading skeleton swaps for the real page. */}
+      {pathname === "/" && <CaptureDock />}
       {!showOnboarding && <DesktopNotifPrompt />}
 
       {showOnboarding && <FirstRun

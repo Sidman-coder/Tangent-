@@ -8,6 +8,8 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Tangent",
   description: "A focused productivity workspace for students to plan their time and follow through.",
+  // Added to an iPhone home screen, open full-screen like an app.
+  appleWebApp: { capable: true, title: "Tangent", statusBarStyle: "default" },
 };
 
 // Runs before the first paint, so a dark workspace opens dark. Applying the
