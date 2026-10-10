@@ -14,6 +14,7 @@ import { toYMD, formatTime12 } from "@/lib/dates";
 import { taskColor } from "@/lib/task-colors";
 import { CALENDARS } from "@/lib/calendars";
 import { isOnboardingSchoolTask } from "@/lib/school-block";
+import { baseTitle, useShortTitles } from "@/lib/short-titles";
 import "./calendar.css";
 import { initialCalendarView, prefsOf } from "@/lib/personalize";
 import type { Plan, Task } from "@/lib/types";
@@ -346,6 +347,13 @@ export default function CalendarPage() {
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const agendaDays = Array.from({ length: AGENDA_DAYS }, (_, i) => addDays(agendaStart, i));
+
+  // Concise labels for what's on screen (lib/short-titles.ts): narrow cells
+  // get "French PBA: relationships", the day panel keeps the full title.
+  const visibleYmds = new Set((view === "week" ? weekDays : cells).map((d) => toYMD(d)));
+  const onScreen = (state?.tasks ?? []).filter((t) => visibleYmds.has(t.date));
+  const shortLabels = useShortTitles(onScreen);
+  const labelFor = (t: Task) => shortLabels[t.id] ?? baseTitle(t);
   // The heading follows the view: the month, or the span a week/agenda covers.
   const headingDate = view === "month" ? new Date(year, month, 1) : view === "week" ? weekStart : agendaStart;
   const headingMonth = headingDate.toLocaleString(undefined, { month: "long" });
@@ -379,7 +387,7 @@ export default function CalendarPage() {
                     onClick={() => chooseView(v.id)}
                   >
                     {view === v.id && (
-                      <m.span layoutId="cal-view-pill" className="cal-view-pill" transition={{ type: "spring", visualDuration: 0.3, bounce: 0.15 }} />
+                      <m.span layoutId="cal-view-pill" className="cal-view-pill" transition={{ type: "spring", visualDuration: 0.28, bounce: 0 }} />
                     )}
                     <span className="cal-view-label">{v.label}</span>
                   </button>
@@ -438,6 +446,7 @@ export default function CalendarPage() {
             todayYmd={todayYmd}
             tasksForDay={tasksForDay}
             onOpenTask={(ymd, id) => { setSelectedDay(ymd); setFocusTaskId(id); }}
+            labelFor={labelFor}
             colorFor={(t) => getKindColor(t.kind)}
             onOpenDay={(d) => { setFocusTaskId(null); setSelectedDay(d); }}
             onAddAt={(ymd, time) => openAddAt(ymd, time)}
@@ -526,7 +535,7 @@ export default function CalendarPage() {
                               }}
                             >
                               <span className="cal-event-dot" aria-hidden="true" />
-                              <span className="cal-event-title"><TaskTitle task={t} chip={false} /></span>
+                              <span className="cal-event-title" title={t.title}>{labelFor(t)}</span>
                               {!deadline && t.time && <span className="cal-event-time">{shortTime(t.time)}</span>}
                             </span>
                           );

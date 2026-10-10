@@ -70,7 +70,7 @@ export default function TaskRow({
                   key="check"
                   className="ui-task-check-mark"
                   initial={{ scale: 0.3, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1, transition: { ...spring.snappy, bounce: 0.45 } }}
+                  animate={{ scale: 1, opacity: 1, transition: { ...spring.snappy, bounce: 0.2 } }}
                   exit={{ scale: 0.3, opacity: 0, transition: { duration: 0.1 } }}
                 >
                   <Check size={13} strokeWidth={2.5} aria-hidden="true" />

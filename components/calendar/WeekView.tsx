@@ -22,6 +22,8 @@ type Props = {
   days: Date[];
   todayYmd: string;
   tasksForDay: (ymd: string) => Task[];
+  /** Concise label for a narrow block; the full title shows on hover. */
+  labelFor?: (task: Task) => string;
   /** One event clicked: open just it (the day header opens the whole day). */
   onOpenTask?: (ymd: string, taskId: string) => void;
   colorFor: (task: Task) => string;
@@ -79,7 +81,7 @@ function lanes(tasks: Task[]): { task: Task; lane: number; of: number }[] {
   return placed;
 }
 
-export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpenDay, onOpenTask, onAddAt, toYMD }: Props) {
+export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpenDay, onOpenTask, labelFor, onAddAt, toYMD }: Props) {
   const reduced = useReducedMotion() ?? false;
   const scrollRef = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(() => new Date());
@@ -142,7 +144,7 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
                     onClick={() => (onOpenTask ? onOpenTask(ymd, t.id) : onOpenDay(ymd))}
                     title={t.title}
                   >
-                    <span className="wk-due-title"><TaskTitle task={t} chip={false} /></span>
+                    <span className="wk-due-title">{labelFor ? labelFor(t) : <TaskTitle task={t} chip={false} />}</span>
                   </button>
                 ))}
               </div>
@@ -199,12 +201,14 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
                         } as React.CSSProperties
                       }
                       onClick={() => (onOpenTask ? onOpenTask(ymd, task.id) : onOpenDay(ymd))}
-                      initial={reduced ? false : { opacity: 0, y: 6, scale: 0.98 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      transition={{ type: "spring", visualDuration: 0.35, bounce: 0.15, delay: Math.min(col * 0.03 + i * 0.02, 0.3) }}
+                      // Seen every time a week is opened: a quick fade, no stagger
+                      // or bounce to wait through.
+                      initial={reduced ? false : { opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.16, ease: "easeOut" }}
                       title={`${time12(task.time)} ${task.title}`}
                     >
-                      <span className="wk-block-title"><TaskTitle task={task} chip={false} /></span>
+                      <span className="wk-block-title">{labelFor ? labelFor(task) : <TaskTitle task={task} chip={false} />}</span>
                       <span className="wk-block-time">{time12(task.time)}</span>
                     </m.button>
                   );

@@ -157,7 +157,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   <m.span
                     layoutId="rail-active"
                     className="rail-active-pill"
-                    transition={{ ...spring.layout, visualDuration: 0.4, bounce: 0.18 }}
+                    transition={{ ...spring.layout, visualDuration: 0.3, bounce: 0 }}
                     aria-hidden="true"
                   />
                 )}
