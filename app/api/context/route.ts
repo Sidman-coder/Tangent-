@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getUserContext, getContextAsString } from "@/lib/store";
+import { getUserContext, getContextAsString, removeContextEntry } from "@/lib/store";
 import { extractContextFacts } from "@/lib/context-extract";
 import { withUser } from "@/lib/request-context";
 
@@ -19,6 +19,10 @@ export const POST = withUser(async (request: Request) => {
   try {
     const body = await request.json();
 
+    if (body.action === "forget") {
+      const removed = await removeContextEntry(String(body.id ?? ""));
+      return NextResponse.json({ ok: removed }, { status: removed ? 200 : 404 });
+    }
     if (body.action === "extract") {
       const added = await extractContextFacts(String(body.conversation ?? ""), body.source || "chat");
       return NextResponse.json({ ok: true, added: added.length, entries: added });

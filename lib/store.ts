@@ -1314,6 +1314,15 @@ export async function addContextEntry(entry: Omit<ContextEntry, "id" | "timestam
   return full;
 }
 
+/** Removes one remembered fact (the student said it's wrong). */
+export async function removeContextEntry(id: string): Promise<boolean> {
+  if (!isUuid(id)) return false;
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("context_entries").delete().eq("user_id", userId).eq("id", id).select("id");
+  if (error) fail("removeContextEntry", error);
+  return (data?.length ?? 0) > 0;
+}
+
 export async function getContextAsString(): Promise<string> {
   const c = await getUserContext();
   const entries = c.entries
