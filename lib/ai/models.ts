@@ -81,6 +81,8 @@ export const AI_TASKS = {
    *  (lib/ai/clarify.ts). SMART because the questions are the product; thinking
    *  off to keep the pause short. */
   clarify: { feature: "chat", tier: "SMART", maxTokens: 700, thinking: "disabled" },
+  /** Applies the student's answers to a saved task (lib/ai/refine.ts). */
+  refineTask: { feature: "chat", tier: "FAST", maxTokens: 600, temperature: 0 },
   /** Durable-fact extraction from a chat turn. */
   contextExtract: { feature: "context", tier: "FAST", maxTokens: 300 },
   /** Compress the context file once it grows past 40 entries. */

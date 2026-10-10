@@ -101,6 +101,7 @@ async function calendarReply(
   let voiceSourcesChecked: string[] | undefined;
   let voicePlan: { id: string; title: string; taskCount: number; color: string } | undefined;
   let voiceCount: number | undefined;
+  let voiceTaskId: string | undefined;
   try {
     console.log("[api/chat] Calling voice pipeline:", userText);
     const voiceRes = await handleVoiceText(userText, { context: conversationContext(messages), onProgress });
@@ -114,6 +115,7 @@ async function calendarReply(
       sourcesChecked?: string[];
       plan?: { id: string; title: string; taskCount: number; color: string };
       count?: number;
+      task?: { id?: string };
     };
     console.log("[api/chat] Voice pipeline result:", JSON.stringify(voiceData).slice(0, 300));
     voiceResponse = voiceData.response ?? "";
@@ -124,6 +126,7 @@ async function calendarReply(
     voicePending = voiceData.pending;
     voicePlan = voiceData.plan;
     voiceCount = voiceData.count;
+    voiceTaskId = voiceData.task?.id;
     voiceSourcesChecked = voiceData.sourcesChecked;
   } catch (err) {
     console.error("[api/chat] Voice pipeline error:", err);
@@ -148,6 +151,8 @@ async function calendarReply(
     return {
       message: voiceResponse.trim(),
       suggestion,
+      // So the client can ask for follow-up questions about it (/api/questions).
+      taskId: voiceAction === "add_task" ? voiceTaskId : undefined,
       action: voiceAction,
       actionId: voiceActionId,
       sourcesChecked: voiceSourcesChecked,

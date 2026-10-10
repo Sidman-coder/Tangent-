@@ -58,6 +58,8 @@ type Props = {
   onAnswer: (turnId: string, answers: ClarifyAnswer[] | null) => void;
   /** A suggested move was accepted or undone: the calendar changed. */
   onScheduleChanged: () => void;
+  /** Answers to questions about a task the turn already saved; null = Later. */
+  onAnswerLater: (turnId: string, setId: string, answers: ClarifyAnswer[] | null) => void;
 };
 
 function shortDate(ymd: string): string {
@@ -65,7 +67,7 @@ function shortDate(ymd: string): string {
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
 
-export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onUndone, mode, onAddPlan, planProgress, onAnswer, onScheduleChanged }: Props) {
+export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onUndone, mode, onAddPlan, planProgress, onAnswer, onScheduleChanged, onAnswerLater }: Props) {
   const planDone = planProgress ? planProgress.tasks.filter(Boolean).length : 0;
   const scrollerRef = useRef<HTMLDivElement>(null);
   const latestRef = useRef<HTMLElement>(null);
@@ -186,6 +188,15 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
                       <ActionReceipt actionId={t.actionId} label={t.actionLabel} onUndone={onUndone} />
                     )}
                     {t.suggestion && <SuggestionCard suggestion={t.suggestion} onMoved={onScheduleChanged} />}
+                    {t.later && t.later.questions.length > 0 && (
+                      <ClarifyCard
+                        questions={t.later.questions}
+                        disabled={busy}
+                        skipLabel="Later"
+                        onSubmit={(answers) => onAnswerLater(t.id, t.later!.id, answers)}
+                      />
+                    )}
+                    {t.laterSummary && <p className="tg-later-summary">{t.laterSummary}</p>}
                   </div>
                 </div>
               </article>

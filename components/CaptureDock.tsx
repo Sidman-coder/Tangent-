@@ -1,10 +1,11 @@
 "use client";
 
 // Instant capture on Today: one button, bottom centre. Press and talk.
-// - Tap to start, tap again to stop. Or press and hold, and let go to stop.
+// - Press the mic (tap or hold) and it listens until you tap Stop.
 // - Words stream in while you speak (live mode in useVoiceCapture).
 // - The moment you stop, the text goes straight to the pipeline (/api/chat,
-//   calendar mode) — no review step. The result shows in the same dock with
+//   calendar mode) — no review step. Tangent's questions about the new task
+//   are generated afterwards and wait on Today (lib/questions-client.ts). The result shows in the same dock with
 //   Undo, which is the guard against mishearings. Anything destructive still
 //   comes back as confirm_required and asks first.
 // - Escape throws a recording away.
@@ -20,6 +21,7 @@ import { Check, Mic, Square, X } from "lucide-react";
 import ActionReceipt from "@/components/ActionReceipt";
 import { useAppState } from "@/components/AppStateProvider";
 import { useVoiceCapture } from "@/hooks/useVoiceCapture";
+import { generateQuestions } from "@/lib/questions-client";
 import "./capture-dock.css";
 
 type Phase =
@@ -37,11 +39,10 @@ type ChatReply = {
   error?: string;
   action?: string;
   actionId?: string;
+  taskId?: string;
   pending?: { id: string; message: string };
 };
 
-/** Held longer than this, the press is push-to-talk: letting go stops. */
-const HOLD_MS = 350;
 const DONE_MS = 6000;
 const ERROR_MS = 4000;
 
@@ -65,7 +66,6 @@ export default function CaptureDock() {
   const { refresh } = useAppState();
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [partial, setPartial] = useState("");
-  const pressAt = useRef(0);
   const autoStart = useRef(false);
   const meterRef = useRef<HTMLSpanElement>(null);
   const [mounted, setMounted] = useState(false);
@@ -88,6 +88,8 @@ export default function CaptureDock() {
         }
         setPhase({ kind: "done", text: readable(data.message ?? data.response), actionId: data.actionId ?? null });
         void refresh();
+        // Saved first, asked second: questions about it wait on Today.
+        if (data.taskId) void generateQuestions(data.taskId, text);
       } catch (e) {
         setPhase({ kind: "error", message: e instanceof Error ? e.message : "Couldn't save that." });
       }
@@ -119,8 +121,14 @@ export default function CaptureDock() {
   }, [startRecording]);
 
   // The recorder can end without us asking (mic error, permission revoked).
+  // Only a real recording → idle transition counts: right after a press the
+  // dock is already listening while the mic is still starting (status idle),
+  // and treating that as "ended" collapsed the dock at random.
+  const prevStatus = useRef(status);
   useEffect(() => {
-    if (status === "idle" && phase.kind === "recording") setPhase({ kind: "idle" });
+    const was = prevStatus.current;
+    prevStatus.current = status;
+    if (was !== "idle" && status === "idle" && phase.kind === "recording") setPhase({ kind: "idle" });
   }, [status, phase.kind]);
 
   // Results and errors fold back into the button on their own.
@@ -177,24 +185,18 @@ export default function CaptureDock() {
     return () => cancelAnimationFrame(raf);
   }, [status, getLevel]);
 
-  // Respond on press, not release. Holding past HOLD_MS turns the press into
-  // push-to-talk, so the release stops it; a quick tap leaves it listening.
+  // Respond on press, not release: any press — tap or hold — opens the
+  // listening bar, and it stays open until Stop. One behaviour, every time.
   const onMicPointerDown = (e: React.PointerEvent) => {
-    if (e.button !== 0 || status !== "idle") return;
-    pressAt.current = performance.now();
+    if (e.button !== 0 || status !== "idle" || phase.kind !== "idle") return;
+    // No focus ring flash, no text selection or callout on a long press.
+    e.preventDefault();
     begin();
-    const onUp = () => {
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onUp);
-      if (performance.now() - pressAt.current > HOLD_MS) stopRecording();
-    };
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onUp);
   };
 
   // Keyboard activation (Enter/Space) arrives as a click with detail 0.
   const onMicClick = (e: React.MouseEvent) => {
-    if (e.detail === 0 && status === "idle") begin();
+    if (e.detail === 0 && status === "idle" && phase.kind === "idle") begin();
   };
 
   const resolveConfirm = async (id: string, confirm: boolean) => {

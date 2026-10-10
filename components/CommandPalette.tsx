@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppState } from "@/components/AppStateProvider";
+import { generateQuestions } from "@/lib/questions-client";
 import ActionReceipt from "@/components/ActionReceipt";
 import {
   OPEN_PALETTE_EVENT,
@@ -124,6 +125,7 @@ export default function CommandPalette() {
           error?: string;
           action?: string;
           actionId?: string;
+          taskId?: string;
           pending?: { id: string; kind: string; message: string };
         };
         if (!res.ok || !data.ok) throw new Error(data.error || "Request failed");
@@ -136,6 +138,7 @@ export default function CommandPalette() {
         setReceiptId(data.actionId ?? null);
         showToast(cleanReply(typeof raw === "string" ? raw : ""));
         await refresh();
+        if (data.taskId) void generateQuestions(data.taskId, trimmed);
       } catch (e) {
         setReceiptId(null);
         showToast(e instanceof Error ? e.message : "Something went wrong.");

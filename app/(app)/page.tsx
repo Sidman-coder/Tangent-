@@ -24,6 +24,8 @@ import { homeLayout, prefsOf, type HomeSection } from "@/lib/personalize";
 import { getSchedulePulse } from "@/lib/schedule-insights";
 import { canAskForHelp } from "@/lib/task-help";
 import { isOnboardingSchoolTask } from "@/lib/school-block";
+import QuestionsInbox from "@/components/dashboard/QuestionsInbox";
+import { useQuestionSets } from "@/hooks/useQuestionSets";
 import { taskColor } from "@/lib/task-colors";
 import { getUrgency, tracksCompletion } from "@/lib/urgency";
 
@@ -69,6 +71,8 @@ export default function DashboardPage() {
   // and per-task history in the store — but nothing ever opened it.
   const [helpTask, setHelpTask] = useState<Task | null>(null);
   const receiptSeq = useRef(0);
+  const { sets: questionSets, reload: reloadQuestions } = useQuestionSets();
+  const questionTaskIds = useMemo(() => new Set(questionSets.map((q) => q.taskId)), [questionSets]);
 
   // "Starts in 40 min" and "missed earlier today" drift, so keep the clock live.
   useEffect(() => {
@@ -280,6 +284,8 @@ export default function DashboardPage() {
         />
       </m.div>
 
+      <QuestionsInbox sets={questionSets} onChanged={() => { void reloadQuestions(); void refresh(); }} />
+
       {error && <p className="today-inline-error" role="status">Your schedule could not refresh. Showing the latest available view.</p>}
 
       {startingIntent ? (
@@ -340,6 +346,7 @@ export default function DashboardPage() {
                         <m.div key={task.id} layout="position" transition={spring.layout} {...rowPresence}>
                           <TaskRow
                             task={task}
+                            hasQuestions={questionTaskIds.has(task.id)}
                             kindColor={colorForTask(task)}
                             onComplete={tracksCompletion(task) ? () => void setCompleted(task, !task.completed) : undefined}
                             onOpen={() => router.push(`/calendar?date=${task.date}`)}

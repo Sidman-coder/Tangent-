@@ -6,6 +6,7 @@ import { localNow } from "@/lib/time";
 import ChatSidebar from "@/components/console/ChatSidebar";
 import ChatThread from "@/components/console/ChatThread";
 import type { ClarifyAnswer } from "@/components/console/ClarifyCard";
+import { answerQuestions as answerLaterQuestions, generateQuestions } from "@/lib/questions-client";
 import Composer from "@/components/console/Composer";
 import {
   actionLabel,
@@ -395,6 +396,7 @@ export default function AiPage() {
         pending?: { id: string; kind: string; message: string };
         questions?: Turn["questions"];
         suggestion?: Turn["suggestion"];
+        taskId?: string;
       };
       if (!res.ok || !data.ok) throw new Error(data.error || "Request failed");
 
@@ -474,6 +476,18 @@ export default function AiPage() {
 
       await linkAction(sessionId, data.actionId);
       await refresh();
+
+      // Acted first; now Tangent's questions about what it saved. A follow-up
+      // to questions was already grilled, so it isn't asked again.
+      if (data.taskId && !followUp) {
+        const savedTaskId = data.taskId;
+        void generateQuestions(savedTaskId, userText).then((set) => {
+          if (!set) return;
+          setTurns((prev) =>
+            prev.map((t) => (t.actionId === data.actionId ? { ...t, later: { id: set.id, questions: set.questions } } : t))
+          );
+        });
+      }
     } catch (e) {
       const message = e instanceof Error ? e.message : "Error";
       setErr(message);
@@ -740,6 +754,16 @@ export default function AiPage() {
               onAddPlan={addPlanToCalendar}
               onAnswer={answerQuestions}
               onScheduleChanged={() => void refresh()}
+              onAnswerLater={(turnId, setId, answers) => {
+                setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, later: null } : t)));
+                if (!answers) return; // Later: it waits on Today.
+                void answerLaterQuestions(setId, answers).then((r) => {
+                  setTurns((prev) =>
+                    prev.map((t) => (t.id === turnId ? { ...t, laterSummary: r.error ?? r.summary ?? "Saved." } : t))
+                  );
+                  void refresh();
+                });
+              }}
             />
             <div className="tg-dock">
               {err && <p className="tg-error" role="alert">{err}</p>}

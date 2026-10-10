@@ -5,6 +5,7 @@
 // skipping a question is fine. "Just do it" goes ahead with no answers.
 
 import { useState } from "react";
+import "./clarify-card.css";
 
 export type ClarifyQuestion = { id: string; question: string; options: string[] };
 export type ClarifyAnswer = { id: string; question: string; answer: string };
@@ -12,11 +13,14 @@ export type ClarifyAnswer = { id: string; question: string; answer: string };
 type Props = {
   questions: ClarifyQuestion[];
   disabled?: boolean;
-  /** null = "Just do it" (no answers). */
+  /** null = skipped (no answers). */
   onSubmit: (answers: ClarifyAnswer[] | null) => void;
+  /** "Just do it" when Tangent is waiting to act; "Later" when the task is
+   *  already saved and the questions can wait. */
+  skipLabel?: string;
 };
 
-export default function ClarifyCard({ questions, disabled, onSubmit }: Props) {
+export default function ClarifyCard({ questions, disabled, onSubmit, skipLabel = "Just do it" }: Props) {
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [typing, setTyping] = useState<Record<string, boolean>>({});
 
@@ -84,11 +88,11 @@ export default function ClarifyCard({ questions, disabled, onSubmit }: Props) {
         </fieldset>
       ))}
       <div className="tg-clarify-actions">
-        <button type="button" className="tg-btn tg-btn-accent" onClick={submit} disabled={disabled || answered === 0}>
+        <button type="button" className="tg-clarify-btn is-primary" onClick={submit} disabled={disabled || answered === 0}>
           Continue
         </button>
-        <button type="button" className="tg-btn" onClick={() => onSubmit(null)} disabled={disabled}>
-          Just do it
+        <button type="button" className="tg-clarify-btn" onClick={() => onSubmit(null)} disabled={disabled}>
+          {skipLabel}
         </button>
       </div>
     </div>

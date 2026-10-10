@@ -24,6 +24,8 @@ type TaskRowProps = {
   onOpen?: () => void;
   actions?: ReactNode;
   children?: ReactNode;
+  /** Tangent has open questions about this task (lib/questions-client.ts). */
+  hasQuestions?: boolean;
 };
 
 export default function TaskRow({
@@ -35,7 +37,9 @@ export default function TaskRow({
   onOpen,
   actions,
   children,
+  hasQuestions = false,
 }: TaskRowProps) {
+  const questionDot = hasQuestions ? <span className="task-question-dot" title="Tangent has a question about this" /> : null;
   return (
     <article
       className={`ui-task-row${task.completed ? " is-complete" : ""}${selected ? " is-selected" : ""}${expanded ? " is-expanded" : ""}`}
@@ -73,9 +77,10 @@ export default function TaskRow({
           {onOpen ? (
             <button type="button" className="ui-task-title-button" onClick={onOpen}>
               {task.title}
+              {questionDot}
             </button>
           ) : (
-            <span className="ui-task-title">{task.title}</span>
+            <span className="ui-task-title">{task.title}{questionDot}</span>
           )}
           <div className="ui-task-meta">
             <time dateTime={`${task.date}T${task.time}`}>{formatTime12(task.time)}</time>

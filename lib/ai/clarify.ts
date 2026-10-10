@@ -111,6 +111,53 @@ export async function clarifyQuestions(
   return questions;
 }
 
+const CAPTURE_SYSTEM = `You are TANGENT, a planner for high school students that knows them well. The student just captured something and Tangent ALREADY SAVED it as a task (shown below) — nothing is waiting on you. Your job is to ask 1 to 3 short follow-up questions they can answer later, whenever they want.
+
+Every answer should make Tangent smarter: either it sharpens this task (when it's really due, how big it is, which class, what "done" looks like, the first concrete step) or it teaches Tangent something durable about the student (how they work, what they're aiming for).
+
+Rules:
+- Always ask at least one question. Never more than 3. Most useful first.
+- Never ask something the context or the task already answers.
+- Each under 12 words, plain and direct, like a sharp older friend.
+- 2–4 tap answers each, under 4 words, specific to them (their classes, their deadlines).
+- No yes/no questions about whether they want help. Don't number them.`;
+
+/** Questions about a task that's already saved (captures, quick asks). The
+ *  student answers whenever they like; answers refine the task. */
+export async function captureQuestions(
+  task: { title: string; date: string; time: string; notes?: string },
+  request: string,
+  studentContext: string
+): Promise<ClarifyQuestion[]> {
+  const result = await callClaude(
+    "clarify",
+    {
+      system: CAPTURE_SYSTEM,
+      messages: [
+        {
+          role: "user",
+          content: `STUDENT CONTEXT:\n${studentContext}\n\nWHAT THEY SAID:\n${request}\n\nTHE TASK TANGENT SAVED:\n${task.title} — ${task.date} ${task.time}${task.notes ? `\nNotes: ${task.notes}` : ""}`,
+        },
+      ],
+    },
+    { format: { type: "json_schema", schema: SCHEMA } }
+  );
+  if (!result.ok) return [];
+  try {
+    const parsed = extractStructuredJson<{ questions: { question: string; options: string[] }[] }>(result.message);
+    return parsed.questions
+      .filter((q) => q.question?.trim())
+      .slice(0, 3)
+      .map((q, i) => ({
+        id: `q${i + 1}`,
+        question: q.question.trim(),
+        options: (q.options ?? []).map((o) => o.trim()).filter(Boolean).slice(0, 4),
+      }));
+  } catch {
+    return [];
+  }
+}
+
 /** "About 2 hrs" / "90 min" / "4+ hrs" → minutes, or null. */
 export function capacityFromAnswer(answer: string): number | null {
   const m = /(\d+(?:\.\d+)?)\s*\+?\s*(hours?|hrs?|h|minutes?|mins?|m)\b/i.exec(answer);
