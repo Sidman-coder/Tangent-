@@ -40,6 +40,7 @@ type ChatReply = {
   action?: string;
   actionId?: string;
   taskId?: string;
+  quick?: boolean;
   pending?: { id: string; message: string };
 };
 
@@ -78,7 +79,7 @@ export default function CaptureDock() {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: [{ role: "user", content: text }] }),
+          body: JSON.stringify({ messages: [{ role: "user", content: text }], capture: true }),
         });
         const data = (await res.json()) as ChatReply;
         if (!res.ok || !data.ok) throw new Error(data.error || "Couldn't save that.");
@@ -89,7 +90,7 @@ export default function CaptureDock() {
         setPhase({ kind: "done", text: readable(data.message ?? data.response), actionId: data.actionId ?? null });
         void refresh();
         // Saved first, asked second: questions about it wait on Today.
-        if (data.taskId) void generateQuestions(data.taskId, text);
+        if (data.taskId) void generateQuestions(data.taskId, text, data.quick === true).then(() => refresh());
       } catch (e) {
         setPhase({ kind: "error", message: e instanceof Error ? e.message : "Couldn't save that." });
       }

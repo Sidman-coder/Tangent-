@@ -62,7 +62,7 @@ export async function refineTask(
       messages: [
         {
           role: "user",
-          content: `${dateContext}\n\nSTUDENT CONTEXT:\n${studentContext}\n\nTASK:\nTitle: ${task.title}\nDate: ${task.date} ${task.time}\nNotes: ${task.notes ?? ""}\nFirst step: ${task.startAction ?? ""}\n\nTHEIR ANSWERS:\n${qa.map((a) => `- ${a.question} → ${a.answer}`).join("\n")}`,
+          content: `${dateContext}\n\nSTUDENT CONTEXT:\n${studentContext}\n\nTASK:\nTitle: ${task.title}\nDate: ${task.date} ${task.time}\nNotes: ${task.notes ?? ""}\nFirst step: ${task.startAction ?? ""}\n\nTHEIR ANSWERS:\n${qa.length ? qa.map((a) => `- ${a.question} → ${a.answer}`).join("\n") : "(none yet — just tidy the task from what they said; keep date and time empty)"}`,
         },
       ],
     },

@@ -18,15 +18,16 @@ function changed() {
   window.dispatchEvent(new Event(QUESTIONS_EVENT));
 }
 
-export async function generateQuestions(taskId: string, request: string): Promise<QuestionSet | null> {
+/** `enrich` for a quick capture: also tidy the task the raw words made. */
+export async function generateQuestions(taskId: string, request: string, enrich = false): Promise<QuestionSet | null> {
   try {
     const res = await fetch("/api/questions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "generate", taskId, request }),
+      body: JSON.stringify({ action: "generate", taskId, request, enrich }),
     });
-    const data = (await res.json()) as { ok?: boolean; set?: QuestionSet | null };
-    if (data.set) changed();
+    const data = (await res.json()) as { ok?: boolean; set?: QuestionSet | null; tidied?: boolean };
+    if (data.set || data.tidied) changed();
     return data.set ?? null;
   } catch {
     return null;

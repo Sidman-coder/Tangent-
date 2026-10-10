@@ -98,3 +98,12 @@
   background: var(--accent);
   vertical-align: middle;
 }
+
+/* Inside this card the questions need no card of their own. */
+.today-questions .tg-clarify {
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}

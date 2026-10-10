@@ -254,3 +254,53 @@ export function matchTask<T extends Matchable>(
   }
   return null;
 }
+
+// ─── Quick capture ──────────────────────────────────────────────────────────
+// The capture mic and Cmd-K save a plain to-do without waiting on a model:
+// the words become the task, the spacing brain (lib/spacing.ts) picks the
+// when, and the AI polishes it a moment later (/api/questions). Anything
+// that might be a command, a question, a plan or several things at once
+// returns null and goes through the full pipeline instead.
+
+export type QuickCapture = { title: string; date?: string; time?: string; deadline?: string };
+
+const NOT_A_TODO =
+  /^(?:what|when|where|why|how|who|which|is|are|do|does|did|can|could|should|show|list|find|tell|summari[sz]e|delete|remove|cancel|clear|wipe|move|reschedule|push|shift|mark|check off|uncheck|reopen|complete|finish(?:ed)?|done|undo|plan|make (?:me )?a plan|create a plan|help me|give me)\b/i;
+const MULTI_OR_PLAN =
+  /\b(plan|schedule for|every|each|daily|weekly|monthly|recurring|routine|and then|calendar|week of|for the next)\b|[,;]|\n/i;
+const CAPTURE_LEAD =
+  /^(?:please\s+)?(?:add|schedule|put|create|book|remind me to|remember to|i need to|i have to|i gotta|i should|need to|have to|gotta|don'?t forget to|todo:?|to do:?)\s+/i;
+const DUE_CLAUSE = /\s+(?:due|by|before)\s+(.+)$/i;
+
+export function quickCapture(text: string, tz: string, at: Date = currentInstant()): QuickCapture | null {
+  const s = text.trim().replace(/\s+/g, " ").replace(/[.!]+$/, "");
+  if (!s || s.length > 120 || s.includes("?")) return null;
+  if (NOT_A_TODO.test(s) || MULTI_OR_PLAN.test(s)) return null;
+  // Fixed-wording commands keep their own no-AI routes.
+  const routed = routeCommand(s, tz, at);
+  if (routed && routed.op !== "add") return null;
+
+  let body = s.replace(CAPTURE_LEAD, "");
+  let deadline: string | undefined;
+  const due = body.match(DUE_CLAUSE);
+  if (due) {
+    const d = parseDay(due[1], tz, at);
+    if (d && stripWhen(due[1]).length === 0) {
+      deadline = d;
+      body = body.slice(0, due.index).trim();
+    }
+  }
+
+  const timeHits = (body.match(new RegExp(TIME_RE.source, "gi")) ?? []).length;
+  if (timeHits > 1) return null;
+  const time = timeHits === 1 ? parseTime(body) ?? undefined : undefined;
+  const dayHits =
+    (body.match(RELATIVE_RE) ?? []).length + [ISO_RE, SLASH_RE, MONTH_DAY_RE].filter((re) => re.test(body)).length;
+  if (dayHits > 1) return null;
+  const date = dayHits === 1 ? parseDay(body, tz, at) ?? undefined : undefined;
+  if (dayHits === 1 && !date) return null;
+
+  const title = cleanTitle(stripWhen(body));
+  if (!title || title.split(" ").length > 12) return null;
+  return { title: title.charAt(0).toUpperCase() + title.slice(1), date, time, deadline };
+}

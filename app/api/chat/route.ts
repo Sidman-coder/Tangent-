@@ -2,11 +2,15 @@ import { NextResponse } from "next/server";
 import { handleVoiceText, type PlanProgress } from "@/lib/voice-handler";
 import { withUser } from "@/lib/request-context";
 import { extractContextFacts } from "@/lib/context-extract";
-import { getUserTimezone, setCapacity } from "@/lib/store";
+import { addTask, getUserTimezone, recordAction, setCapacity } from "@/lib/store";
+import { quickCapture, type QuickCapture } from "@/lib/ai/router";
+import { inferCalendarGroup } from "@/lib/calendars";
+import { dayName } from "@/lib/load";
+import { formatTime12 } from "@/lib/dates";
 import { CAPACITY_QUESTION, capacityFromAnswer, clarifyQuestions, shouldConsiderClarifying } from "@/lib/ai/clarify";
 import { buildStudentContext } from "@/lib/ai/student-context";
-import { reliefSuggestion } from "@/lib/spacing";
-import { promptDateContext } from "@/lib/time";
+import { placeNewTask, reliefSuggestion } from "@/lib/spacing";
+import { addDaysYMD, localNow, promptDateContext } from "@/lib/time";
 import { callClaude, messageText } from "@/lib/ai/call";
 import { cacheHistory, withDateLast } from "@/lib/ai/cache";
 
@@ -65,6 +69,35 @@ function extractContextFireAndForget(userMessage: string, finalResponse: string)
 Assistant: ${finalResponse}`, "chat").catch((e) => {
     console.error("[api/chat] context extraction failed:", e instanceof Error ? e.message : e);
   });
+}
+
+/** Saves a quick capture: spacing brain for the when, no model. */
+async function saveQuickCapture(quick: QuickCapture): Promise<Record<string, unknown>> {
+  const placed = await placeNewTask({ date: quick.date ?? null, time: quick.time ?? null, deadline: quick.deadline ?? null });
+  const task = await addTask({
+    title: quick.title,
+    date: placed.date,
+    time: placed.time,
+    completed: false,
+    calendarId: inferCalendarGroup(quick.title),
+  });
+  if (task.wasDuplicate) {
+    return { ok: true, action: "add_task", message: `Already have "${task.title}" around then.` };
+  }
+  const record = await recordAction("add_task", `Added "${task.title}"`, { addedTaskIds: [task.id] });
+  const tz = await getUserTimezone();
+  const today = localNow(tz).date;
+  const day =
+    task.date === today ? "today" : task.date === addDaysYMD(today, 1) ? "tomorrow" : `${dayName(task.date)}`;
+  return {
+    ok: true,
+    action: "add_task",
+    message: `Added ${task.title} for ${day} at ${formatTime12(task.time)}.${placed.note ? ` ${placed.note}` : ""}`,
+    actionId: record.id,
+    taskId: task.id,
+    quick: true,
+    suggestion: await reliefSuggestion(),
+  };
 }
 
 type Answer = { id: string; question: string; answer: string };
@@ -185,6 +218,8 @@ export const POST = withUser(async (req: Request) => {
       clarify?: unknown;
       /** Answers to questions from a previous clarify reply. */
       answers?: unknown;
+      /** From the capture mic or Cmd-K: a plain to-do saves without a model. */
+      capture?: unknown;
     };
     const mode: ChatMode = body.mode === "plan" ? "plan" : "calendar";
     const raw = body.messages;
@@ -221,6 +256,14 @@ export const POST = withUser(async (req: Request) => {
     if (mode === "plan") {
       const reply = await planReply(messages);
       return NextResponse.json({ message: reply, action: "plan_reply", mode, ok: true });
+    }
+
+    // Instant capture: a plain to-do is saved straight away — no model in the
+    // way — and polished a moment later by /api/questions (enrich). Anything
+    // that might be a command goes through the full pipeline below.
+    if (body.capture === true && messages.length === 1) {
+      const quick = quickCapture(userText, await getUserTimezone());
+      if (quick) return NextResponse.json(await saveQuickCapture(quick));
     }
 
     // Answers to Tangent's questions ride along with the original request, so

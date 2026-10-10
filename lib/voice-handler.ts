@@ -357,7 +357,6 @@ export function isUsableCommand(cmd: Record<string, unknown> | null): boolean {
   return true;
 }
 
-/** "today", "tomorrow" or "Fri, Oct 3", plus " at 4:00 PM" when a time is given. */
 /** Did the student name a day? ("tomorrow", "friday", "oct 12", "10/12") */
 function mentionsDay(text: string): boolean {
   return /\b(today|tonight|tomorrow|tmrw|mon(day)?|tue(s(day)?)?|wed(nesday)?|thu(rs(day)?)?|fri(day)?|sat(urday)?|sun(day)?|weekend|next week|jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|june?|july?|aug(ust)?|sep(t(ember)?)?|oct(ober)?|nov(ember)?|dec(ember)?|\d{1,2}\/\d{1,2})\b/i.test(text);
@@ -373,6 +372,7 @@ function mentionsDeadline(text: string): boolean {
   return /\b(due|by|before|deadline)\b/i.test(text);
 }
 
+/** "today", "tomorrow" or "Fri, Oct 3", plus " at 4:00 PM" when a time is given. */
 function friendlyWhen(date: string, time: string | undefined, today: string): string {
   const day =
     date === today ? "today"

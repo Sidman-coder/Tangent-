@@ -6,7 +6,8 @@
 .capture-dock-wrap {
   position: fixed;
   z-index: 90;
-  left: 0;
+  /* Centred on the content, not the window: the rail is beside it. */
+  left: var(--rail-w, 0px);
   right: 0;
   bottom: calc(24px + env(safe-area-inset-bottom));
   display: flex;
@@ -268,6 +269,7 @@
 /* Clear the bottom tab bar on phones. */
 @media (max-width: 720px) {
   .capture-dock-wrap {
+    left: 0;
     /* The tab bar is 66px tall including its own safe-area padding. */
     bottom: calc(66px + 16px);
   }

@@ -8,6 +8,7 @@
 // so they don't fit Batch's up-to-an-hour turnaround the way the daily brief does.
 
 import { getAllTasks, getContextAsString, addNotification, getUserTimezone } from "@/lib/store";
+import { isSchoolBlock } from "@/lib/schedule-slots";
 import { addDaysYMD, currentInstant, getUserToday } from "@/lib/time";
 import type { Notification } from "@/lib/types";
 import { extractStructuredJson } from "@/lib/anthropic-json";
@@ -59,7 +60,9 @@ export async function runProactiveCheck(trigger: string): Promise<ProactiveCheck
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) return { ok: false, generated: 0, notifications: [], error: "No API key" };
 
-    const tasks = await getAllTasks();
+    // The School block is the student's timetable, not work they can fall
+    // behind on: it produced "Overdue: School" nudges every day.
+    const tasks = (await getAllTasks()).filter((t) => !isSchoolBlock(t));
     const userContext = await getContextAsString();
     const timeZone = await getUserTimezone();
     const now = currentInstant();

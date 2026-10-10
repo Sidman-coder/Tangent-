@@ -114,7 +114,7 @@ export default function CommandPalette() {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: [{ role: "user", content: trimmed }] }),
+          body: JSON.stringify({ messages: [{ role: "user", content: trimmed }], capture: true }),
         });
         const data = (await res.json()) as {
           ok?: boolean;
@@ -126,6 +126,7 @@ export default function CommandPalette() {
           action?: string;
           actionId?: string;
           taskId?: string;
+          quick?: boolean;
           pending?: { id: string; kind: string; message: string };
         };
         if (!res.ok || !data.ok) throw new Error(data.error || "Request failed");
@@ -138,7 +139,7 @@ export default function CommandPalette() {
         setReceiptId(data.actionId ?? null);
         showToast(cleanReply(typeof raw === "string" ? raw : ""));
         await refresh();
-        if (data.taskId) void generateQuestions(data.taskId, trimmed);
+        if (data.taskId) void generateQuestions(data.taskId, trimmed, data.quick === true).then(() => refresh());
       } catch (e) {
         setReceiptId(null);
         showToast(e instanceof Error ? e.message : "Something went wrong.");
