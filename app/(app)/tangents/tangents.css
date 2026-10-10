@@ -1857,3 +1857,25 @@
   color: var(--path-danger);
   font-size: 12px;
 }
+
+/* Empty orbit: start from goals Tangent already knows. */
+.tangents-suggest {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  margin: 4px 0 6px;
+}
+.tangents-suggest > span {
+  color: var(--path-muted, rgba(255, 255, 255, 0.55));
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.tangents-suggest > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  max-width: 520px;
+}

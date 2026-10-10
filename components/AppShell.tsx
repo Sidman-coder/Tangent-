@@ -12,8 +12,6 @@ import {
   FolderKanban,
   Home,
   LogOut,
-  Spline,
-  ArrowUpRight,
   MessageSquareText,
   Search,
   Settings,
@@ -26,14 +24,31 @@ import TangentLogo from "@/components/TangentLogo";
 import DesktopNotifPrompt from "./DesktopNotifPrompt";
 import { useAppState } from "./AppStateProvider";
 
-// Four places you work, plus settings. Projects is where Plans live now. Tasks used to be its own page; it only
+// Five places you work, plus settings. Projects is where Plans live now;
+// Tangents is a main place too (it used to hide in a card at the rail's foot). Tasks used to be its own page; it only
 // ever showed today, which Today already does, and everything else about a task
 // belongs on the day it falls on. Tangents is deliberately not in this list: it
 // is a mode, not a page, and it gets its own door at the bottom of the rail.
+/** The Tangents orbit, small enough to be a nav icon: the dot keeps
+ *  circling, so the feature that used to hide in a card at the bottom of the
+ *  rail is a first-class place and still feels alive. */
+function OrbitIcon({ size = 19 }: { size?: number; strokeWidth?: number; "aria-hidden"?: boolean | "true" }) {
+  return (
+    <svg className="rail-orbit nav-orbit" viewBox="0 0 34 34" width={size} height={size} aria-hidden="true">
+      <circle className="rail-orbit-ring" cx="17" cy="17" r="13" />
+      <circle className="rail-orbit-core" cx="17" cy="17" r="4" />
+      <g className="rail-orbit-spin">
+        <circle className="rail-orbit-dot" cx="17" cy="4" r="3.4" />
+      </g>
+    </svg>
+  );
+}
+
 const NAV_LINKS = [
   { href: "/", label: "Today", icon: Home },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/projects", label: "Projects", icon: FolderKanban },
+  { href: "/tangents", label: "Tangents", icon: OrbitIcon },
   { href: "/ai", label: "Tangent AI", icon: MessageSquareText },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
@@ -155,23 +170,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         <div className="rail-spacer" />
 
-        {/* Tangents is a mode, not a page, so its entry is deliberately unlike
-            a nav row: its own block, its own surface, and it leaves the app
-            behind when you take it. */}
-        <Link href="/tangents" className="rail-tangents" aria-label="Work on your tangents">
-          <svg className="rail-orbit" viewBox="0 0 34 34" aria-hidden="true">
-            <circle className="rail-orbit-ring" cx="17" cy="17" r="13" />
-            <circle className="rail-orbit-core" cx="17" cy="17" r="3.5" />
-            <g className="rail-orbit-spin">
-              <circle className="rail-orbit-dot" cx="17" cy="4" r="2.6" />
-            </g>
-          </svg>
-          <span className="rail-tangents-copy">
-            <strong>Work on your</strong>
-            <span>tangents</span>
-          </span>
-          <ArrowUpRight size={15} className="rail-tangents-arrow" aria-hidden="true" />
-        </Link>
+
 
         <div className="rail-footer">
           <Link href="/settings" className="rail-profile" aria-label="Open account settings">
@@ -223,7 +222,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <nav className="mobile-nav" aria-label="Primary mobile navigation">
-        {[...NAV_LINKS.slice(0, 4), { href: "/tangents", label: "Tangents", icon: Spline }, NAV_LINKS[4]].map(({ href, label, icon: Icon }) => {
+        {NAV_LINKS.map(({ href, label, icon: Icon }) => {
           const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
           return (
             <Link

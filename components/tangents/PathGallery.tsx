@@ -39,6 +39,10 @@ type Props = {
   onNew: () => void;
   /** Empty-state copy, tuned by onboarding; the original words by default. */
   empty?: PathsEmptyCopy;
+  /** Goals Tangent already knows (memory, projects), offered as a start so a
+   *  student with history never faces an empty orbit. */
+  suggestions?: string[];
+  onStartFrom?: (title: string) => void;
 };
 
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
@@ -183,7 +187,7 @@ function Sphere({
   );
 }
 
-export default function PathGallery({ paths, onNew, empty = DEFAULT_PATHS_EMPTY }: Props) {
+export default function PathGallery({ paths, onNew, empty = DEFAULT_PATHS_EMPTY, suggestions = [], onStartFrom }: Props) {
   const router = useRouter();
   const reduced = useReducedMotion() ?? false;
   const stageRef = useRef<HTMLDivElement>(null);
@@ -257,6 +261,18 @@ export default function PathGallery({ paths, onNew, empty = DEFAULT_PATHS_EMPTY 
         </m.span>
         <h2>{empty.title}</h2>
         <p>{empty.body}</p>
+        {suggestions.length > 0 && onStartFrom && (
+          <div className="tangents-suggest" aria-label="Start from what Tangent knows">
+            <span>From what Tangent knows about you</span>
+            <div>
+              {suggestions.map((title) => (
+                <button key={title} type="button" className="path-chip" onClick={() => onStartFrom(title)}>
+                  {title}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <button type="button" className="path-btn is-primary" onClick={onNew}>
           <Plus size={15} aria-hidden="true" />
           {empty.cta}

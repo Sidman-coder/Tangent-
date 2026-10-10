@@ -32,6 +32,24 @@ export default function TangentsPage() {
     router.replace("/tangents");
   }, [router]);
 
+  // Seeds for an empty orbit: goals Tangent has learned and the student's
+  // projects, so someone with history starts from it, not from nothing.
+  const [knownGoals, setKnownGoals] = useState<string[]>([]);
+  useEffect(() => {
+    void fetch("/api/context", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d: { context?: { entries?: { category: string; fact: string }[] } }) =>
+        setKnownGoals((d.context?.entries ?? []).filter((e) => e.category === "goal").map((e) => e.fact))
+      )
+      .catch(() => {});
+  }, []);
+  const suggestions = Array.from(
+    new Set([...knownGoals, ...(state?.plans ?? []).map((p) => p.title)].map((t) => t.replace(/^(?:wants|aims|plans|hopes) to /i, "").replace(/\.$/, "").trim()))
+  )
+    .filter((t) => t.length > 2 && t.length < 70)
+    .map((t) => t.charAt(0).toUpperCase() + t.slice(1))
+    .slice(0, 4);
+
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/path", { cache: "no-store" });
@@ -88,7 +106,16 @@ export default function TangentsPage() {
             <span className="path-skeleton-ring is-outer" />
           </div>
         ) : (
-          <PathGallery paths={paths} onNew={() => setCreating(true)} empty={pathsEmptyCopy(prefs)} />
+          <PathGallery
+            paths={paths}
+            onNew={() => setCreating(true)}
+            empty={pathsEmptyCopy(prefs)}
+            suggestions={suggestions}
+            onStartFrom={(title) => {
+              setSeedTitle(title);
+              setCreating(true);
+            }}
+          />
         )}
       </div>
 

@@ -8384,3 +8384,19 @@ h1, h2, h3, h4, h5, h6 {
 .today-insights {
   grid-template-columns: minmax(0, 1fr);
 }
+
+/* The Tangents orbit as a nav icon (AppShell OrbitIcon): on the light rail
+   the ring needs more ink than it had on the old dark card. */
+.nav-orbit {
+  flex: none;
+}
+.nav-orbit .rail-orbit-ring {
+  stroke: rgb(from var(--accent) r g b / 0.45);
+  stroke-width: 1.6;
+}
+.nav-orbit .rail-orbit-core {
+  fill: var(--accent);
+}
+.rail-btn:hover .nav-orbit .rail-orbit-spin {
+  animation-duration: 3.2s;
+}
