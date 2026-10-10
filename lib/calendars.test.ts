@@ -1,7 +1,24 @@
+// Run with `npm test`. Same resolve hook as schedule-slots.test.ts.
+import * as nodeModule from "node:module";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CAL_OTHER, CAL_SCHOOL, calendarGroupOf, parseCalendarGroup } from "./calendars.ts";
 
+type Resolve = (specifier: string, context: unknown, next: (s: string, c: unknown) => unknown) => unknown;
+(nodeModule as unknown as { registerHooks: (h: { resolve: Resolve }) => void }).registerHooks({
+  resolve(specifier, context, next) {
+    if (specifier.startsWith(".") && !/\.[cm]?[jt]s$/.test(specifier)) {
+      try {
+        return next(`${specifier}.ts`, context);
+      } catch {
+        /* fall through */
+      }
+    }
+    return next(specifier, context);
+  },
+});
+
+type Cals = typeof import("./calendars");
+void (import("./calendars") as Promise<Cals>).then(({ CAL_OTHER, CAL_SCHOOL, calendarGroupOf, parseCalendarGroup }) => {
 const t = (over: Record<string, unknown>) => ({ title: "x", ...over }) as Parameters<typeof calendarGroupOf>[0];
 
 test("old calendar ids map onto School / No school", () => {
@@ -31,4 +48,5 @@ test("parses what the AI might say", () => {
   assert.equal(parseCalendarGroup("no school"), CAL_OTHER);
   assert.equal(parseCalendarGroup("cal_work"), CAL_OTHER);
   assert.equal(parseCalendarGroup("cal_all"), null);
+});
 });

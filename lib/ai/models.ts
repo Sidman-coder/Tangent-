@@ -77,6 +77,10 @@ export const AI_TASKS = {
    *  thinking off, like plan generation; "tangent" is a heavy feature, so it is
    *  blocked rather than downgraded once the daily budget is spent. */
   pathBranches: { feature: "tangent", tier: "SMART", maxTokens: 1500, thinking: "disabled" },
+  /** Before acting on a big or vague request: what to ask the student first
+   *  (lib/ai/clarify.ts). SMART because the questions are the product; thinking
+   *  off to keep the pause short. */
+  clarify: { feature: "chat", tier: "SMART", maxTokens: 700, thinking: "disabled" },
   /** Durable-fact extraction from a chat turn. */
   contextExtract: { feature: "context", tier: "FAST", maxTokens: 300 },
   /** Compress the context file once it grows past 40 entries. */

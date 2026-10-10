@@ -6,6 +6,7 @@ import { preferencesFrom } from "./onboarding";
 import type { OnboardingPreferences, OnboardingSubmission, PreferencesPatch, SchoolHours } from "./onboarding";
 import { SCHOOL_SERIES_WEEKS, planSchoolReplace, schoolHoursFromTasks } from "./school-block";
 import { CALENDARS, calendarGroupOf } from "./calendars";
+import { DEFAULT_CAPACITY, type Capacity } from "./load";
 import { decryptFeedUrl, encryptFeedUrl, maskCanvasFeedUrl as maskFeedUrl } from "./canvas-feed-security";
 import type {
   Task,
@@ -685,6 +686,46 @@ async function updateProfile(where: string, row: Record<string, unknown>): Promi
   if ("timezone" in row) forgetMemo("timezone");
 }
 
+// ─── Daily capacity (spacing brain) ─────────────────────────────────────────
+// Read on its own, not in PROFILE_COLUMNS: until migration
+// 20261010000000_profile_daily_capacity is applied the columns don't exist, and
+// a missing column must not take the whole profile down with it.
+
+/** The student's saved capacity, or null if never answered (or the columns
+ *  aren't there yet). */
+export async function getCapacity(): Promise<Capacity | null> {
+  return requestMemo("capacity", async () => {
+    const { db, userId } = ctx();
+    const { data, error } = await db
+      .from("profiles")
+      .select("capacity_weekday_min, capacity_weekend_min")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error || !data) return null;
+    const row = data as { capacity_weekday_min: number | null; capacity_weekend_min: number | null };
+    if (row.capacity_weekday_min === null && row.capacity_weekend_min === null) return null;
+    return {
+      weekday: row.capacity_weekday_min ?? DEFAULT_CAPACITY.weekday,
+      weekend: row.capacity_weekend_min ?? DEFAULT_CAPACITY.weekend,
+    };
+  });
+}
+
+/** Saves capacity; false when the columns don't exist yet (not applied). */
+export async function setCapacity(cap: Capacity): Promise<boolean> {
+  const { db, userId } = ctx();
+  const { error } = await db
+    .from("profiles")
+    .update({ capacity_weekday_min: Math.round(cap.weekday), capacity_weekend_min: Math.round(cap.weekend) })
+    .eq("user_id", userId);
+  forgetMemo("capacity");
+  if (error) {
+    console.warn("[store] setCapacity:", error.message);
+    return false;
+  }
+  return true;
+}
+
 function userFromRow(r: ProfileRow): UserProfile {
   return {
     displayName: r.display_name,
@@ -1163,18 +1204,19 @@ export async function deleteChatSession(sessionId: string): Promise<boolean> {
 // ─── Full state helpers ───────────────────────────────────────────────────────
 
 export async function getAppState(): Promise<AppState> {
-  const [tasks, calendars, plans, profile] = await Promise.all([
+  const [tasks, calendars, plans, profile, capacity] = await Promise.all([
     getAllTasks(),
     getAllCalendars(),
     getAllPlans(),
     getProfileRow("getAppState"),
+    getCapacity(),
   ]);
   await attachPathOrigins(tasks);
   return {
     tasks,
     calendars,
     events: [],
-    user: { ...userFromRow(profile), schoolHours: schoolHoursFromTasks(tasks) },
+    user: { ...userFromRow(profile), schoolHours: schoolHoursFromTasks(tasks), capacity },
     weeklyPlan: [...(profile.weekly_plan ?? [])],
     lastVoiceCommand: profile.last_voice_command,
     lastVoiceResponse: profile.last_voice_response,
@@ -2048,6 +2090,15 @@ export async function getPathSpace(): Promise<PathSpace> {
   ]);
   if (pathsRes.error) fail("getPathSpace", pathsRes.error);
   return { paths: ((pathsRes.data ?? []) as PathRow[]).map(pathFromRow), nodes };
+}
+
+/** Just the student's Paths (their goals), without the node trees. For the
+ *  AI's picture of the student (lib/ai/student-context.ts). */
+export async function getPathGoals(): Promise<Path[]> {
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("paths").select(PATH_COLUMNS).eq("user_id", userId).order("created_at", { ascending: true });
+  if (error) fail("getPathGoals", error);
+  return ((data ?? []) as PathRow[]).map(pathFromRow);
 }
 
 /** One Path and only its own nodes. What the deep view loads. */

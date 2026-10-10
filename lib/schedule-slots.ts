@@ -53,7 +53,7 @@ export function schoolEndFromNotes(notes: string | undefined): number | null {
 
 /** The recurring School block from onboarding, not any task tagged "school"
  *  (a test or a Canvas assignment is a moment, not the whole day). */
-function isSchoolBlock(t: Task): boolean {
+export function isSchoolBlock(t: Task): boolean {
   if (t.kind !== "school" || t.source === "canvas") return false;
   return schoolEndFromNotes(t.notes) !== null || t.title.trim().toLowerCase() === "school";
 }
@@ -89,11 +89,11 @@ function dayWindows(date: string, schoolEnd: number | null): Block[] {
   return [[start, WEEKDAY_LATEST_END]];
 }
 
-function firstFree(windows: Block[], busy: Block[], earliest: number): number | null {
+function firstFree(windows: Block[], busy: Block[], earliest: number, length = STEP_BLOCK_MIN): number | null {
   for (const [from, to] of windows) {
     let s = Math.ceil(Math.max(from, earliest) / STEP_MIN) * STEP_MIN;
-    for (; s + STEP_BLOCK_MIN <= to; s += STEP_MIN) {
-      const e = s + STEP_BLOCK_MIN;
+    for (; s + length <= to; s += STEP_MIN) {
+      const e = s + length;
       if (!busy.some(([b0, b1]) => s < b1 && b0 < e)) return s;
     }
   }
@@ -137,6 +137,16 @@ export function suggestSlots(
   return picked
     .sort((a, b) => (a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date)))
     .map(({ date, time, afterSchool }) => ({ date, time, afterSchool }));
+}
+
+/** The first open "HH:MM" on `date` that fits `length` minutes after school
+ *  (or in a weekend window), not before `earliest` minutes; null when the day
+ *  has no room. Used by the spacing brain (lib/load.ts) to time a task once it
+ *  has picked the day. */
+export function firstOpenTime(tasks: Task[], date: string, earliest = 0, length = STEP_BLOCK_MIN): string | null {
+  const { busy, schoolEnd } = dayBusy(tasks, date);
+  const start = firstFree(dayWindows(date, schoolEnd), busy, earliest, Math.min(length, 120));
+  return start === null ? null : hhmm(start);
 }
 
 /** True when date/time is before `now` (student's local wall clock). */

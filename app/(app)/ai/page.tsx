@@ -5,6 +5,7 @@ import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { localNow } from "@/lib/time";
 import ChatSidebar from "@/components/console/ChatSidebar";
 import ChatThread from "@/components/console/ChatThread";
+import type { ClarifyAnswer } from "@/components/console/ClarifyCard";
 import Composer from "@/components/console/Composer";
 import {
   actionLabel,
@@ -317,7 +318,13 @@ export default function AiPage() {
   }, [loadSessions, openSession]);
 
 
-  const send = useCallback(async (text?: string, modeOverride?: ChatMode) => {
+  const send = useCallback(async (
+    text?: string,
+    modeOverride?: ChatMode,
+    // Follow-up to Tangent's questions: `request` is the original ask the
+    // pipeline runs; `text` is what the thread shows for this turn.
+    followUp?: { request: string; answers?: ClarifyAnswer[]; skipClarify?: boolean }
+  ) => {
     const sendMode = modeOverride ?? chatMode;
     const userText = (text ?? input).trim();
     if (!userText || busy) return;
@@ -356,13 +363,20 @@ export default function AiPage() {
       { role: "user", content: t.request },
       { role: "assistant", content: t.response },
     ]);
-    history.push({ role: "user", content: userText });
+    history.push({ role: "user", content: followUp?.request ?? userText });
 
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history, mode: sendMode, stream: true }),
+        body: JSON.stringify({
+          messages: history,
+          mode: sendMode,
+          stream: true,
+          // Big or vague asks get questions first; never on a follow-up.
+          clarify: !followUp,
+          answers: followUp?.answers,
+        }),
       });
       // Calendar mode streams NDJSON: plan progress lines, then {type:"result"}.
       const data = (await readChatReply(res, (line) => setPlanProgress((v) => applyPlanProgress(v, line)))) as {
@@ -379,8 +393,28 @@ export default function AiPage() {
         recurringCount?: number;
         sourcesChecked?: string[];
         pending?: { id: string; kind: string; message: string };
+        questions?: Turn["questions"];
+        suggestion?: Turn["suggestion"];
       };
       if (!res.ok || !data.ok) throw new Error(data.error || "Request failed");
+
+      if (data.action === "clarify" && data.questions?.length) {
+        const ask = data.message ?? "A few quick questions so this fits you.";
+        setTurns((prev) => [
+          ...prev.map((t) => (t.fresh ? { ...t, fresh: false } : t)),
+          {
+            id: crypto.randomUUID(),
+            fresh: true,
+            request: userText,
+            tools: [],
+            sourcesChecked: [],
+            response: ask,
+            questions: data.questions,
+          },
+        ]);
+        await saveMessage(sessionId, "assistant", `${ask}\n${data.questions.map((q) => `- ${q.question}`).join("\n")}`);
+        return;
+      }
 
       if (data.action === "confirm_required" && data.pending) {
         const pendingId = data.pending.id;
@@ -425,6 +459,7 @@ export default function AiPage() {
           response: reply,
           actionId: data.actionId,
           actionLabel: notif ?? undefined,
+          suggestion: data.suggestion ?? null,
         },
       ]);
 
@@ -461,6 +496,18 @@ export default function AiPage() {
       void loadSessions();
     }
   }, [input, busy, chatMode, activeSessionId, turns, refresh, linkAction, loadSessions, saveMessage]);
+
+  /** Answers to a turn's questions (or "Just do it") run the original ask. */
+  const answerQuestions = useCallback(
+    (turnId: string, answers: ClarifyAnswer[] | null) => {
+      const turn = turns.find((t) => t.id === turnId);
+      if (!turn) return;
+      setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, questions: null } : t)));
+      const shown = answers && answers.length > 0 ? answers.map((a) => a.answer).join(" · ") : "Just do it";
+      void send(shown, "calendar", { request: turn.request, answers: answers ?? undefined, skipClarify: true });
+    },
+    [turns, send]
+  );
 
   /** Plan-mode draft → Calendar: flip the mode and ask for it to be added. */
   const addPlanToCalendar = useCallback(
@@ -691,6 +738,8 @@ export default function AiPage() {
               onUndone={() => void refresh()}
               mode={chatMode}
               onAddPlan={addPlanToCalendar}
+              onAnswer={answerQuestions}
+              onScheduleChanged={() => void refresh()}
             />
             <div className="tg-dock">
               {err && <p className="tg-error" role="alert">{err}</p>}

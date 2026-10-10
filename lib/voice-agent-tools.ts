@@ -7,6 +7,7 @@
 // (addTask / addPlan / updateTask) for the "act" side so behavior matches
 // the create_plan / add_task cases already in app/api/voice/route.ts.
 import { inferCalendarGroup, parseCalendarGroup } from "@/lib/calendars";
+import { placeNewTask } from "@/lib/spacing";
 import { addTask, addPlan, updateTask, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, getAllTasks, getTasksByDate, addPendingConfirmation, getUserTimezone } from "@/lib/store";
 import type { Task, TaskKind } from "@/lib/types";
 import { getRecentEmails, getEmailById } from "@/lib/gmail";
@@ -162,8 +163,8 @@ const TOOLS = [
       type: "object",
       properties: {
         title: { type: "string" },
-        date: { type: "string", description: "YYYY-MM-DD" },
-        time: { type: "string", description: "HH:MM 24-hour, default 09:00" },
+        date: { type: "string", description: "YYYY-MM-DD only if the student named a day; otherwise empty string — Tangent picks the lightest day" },
+        time: { type: "string", description: "HH:MM 24-hour only if the student named a time; otherwise empty string — Tangent picks an open time" },
         calendarId: { type: "string", description: "The calendar to file this task under: cal_school or cal_other" },
         notes: { type: "string" },
         startAction: { type: "string", description: "One specific concrete action under 20 words, starting with a verb" },
@@ -396,9 +397,15 @@ async function executeTool(name: string, input: Record<string, unknown>, request
     case "add_task": {
       const title = typeof input.title === "string" ? input.title.trim() : "";
       if (!title) return { data: { error: "Missing title" } };
-      const date = typeof input.date === "string" && input.date ? input.date : today;
-      const time = typeof input.time === "string" && input.time ? input.time : "09:00";
       const notes = typeof input.notes === "string" ? input.notes.trim() || undefined : undefined;
+      // Whatever the model left out, the spacing brain fills in (lib/spacing.ts)
+      // instead of defaulting to today at 9 AM.
+      const placed = await placeNewTask({
+        date: typeof input.date === "string" ? input.date : null,
+        time: typeof input.time === "string" ? input.time : null,
+        notes,
+      }).catch(() => ({ date: today, time: "16:00" }));
+      const { date, time } = placed;
       const startAction = typeof input.startAction === "string" ? input.startAction.trim() || undefined : undefined;
       const rawResources = Array.isArray(input.resources)
         ? (input.resources as unknown[]).filter(

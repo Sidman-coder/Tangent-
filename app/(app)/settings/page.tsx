@@ -22,6 +22,13 @@ import {
 import { getInAppPopupsEnabled, setInAppPopupsEnabled } from "@/lib/notification-popups";
 import { DAY_VIEW_OPTIONS, HELP_FOCUS_OPTIONS, formatSchoolHours } from "@/lib/onboarding";
 import { prefsOf } from "@/lib/personalize";
+import { DEFAULT_CAPACITY, formatMinutes } from "@/lib/load";
+
+/** 30 min to 6 hrs in half hours, plus the current value if it's off-grid. */
+function capacityOptions(current: number): number[] {
+  const steps = Array.from({ length: 12 }, (_, i) => (i + 1) * 30);
+  return steps.includes(current) ? steps : [...steps, current].sort((a, b) => a - b);
+}
 
 export default function SettingsPage() {
   const { state, saveState, refresh } = useAppState();
@@ -39,6 +46,20 @@ export default function SettingsPage() {
   const [desktopNotifSupported, setDesktopNotifSupported] = useState(true);
   const [inAppPopups, setInAppPopups] = useState(true);
   const accountEmail = state?.user.email ?? "";
+  const capacity = state?.user.capacity ?? DEFAULT_CAPACITY;
+  const [capMsg, setCapMsg] = useState<string | null>(null);
+
+  const onChangeCapacity = async (next: { weekday: number; weekend: number }) => {
+    setCapMsg(null);
+    const res = await fetch("/api/capacity", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(next),
+    });
+    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    setCapMsg(res.ok && data.ok ? "Saved." : data.error ?? "Couldn't save that.");
+    await refresh();
+  };
 
   useEffect(() => {
     if (accountEmail) setInAppPopups(getInAppPopupsEnabled(accountEmail));
@@ -308,6 +329,37 @@ export default function SettingsPage() {
               </div>
             </div>
             <div className="settings-option-row">
+              <div>
+                <strong>Work per school night</strong>
+                <span>How much Tangent plans on one evening before it moves work to a lighter day.</span>
+              </div>
+              <select
+                className="settings-select"
+                aria-label="Work per school night"
+                value={String(capacity.weekday)}
+                onChange={(e) => void onChangeCapacity({ ...capacity, weekday: Number(e.target.value) })}
+                disabled={!state}
+              >
+                {capacityOptions(capacity.weekday).map((m) => (
+                  <option key={m} value={m}>{formatMinutes(m)}</option>
+                ))}
+              </select>
+            </div>
+            <div className="settings-option-row">
+              <div><strong>Work per weekend day</strong><span>Same, for Saturdays and Sundays.</span></div>
+              <select
+                className="settings-select"
+                aria-label="Work per weekend day"
+                value={String(capacity.weekend)}
+                onChange={(e) => void onChangeCapacity({ ...capacity, weekend: Number(e.target.value) })}
+                disabled={!state}
+              >
+                {capacityOptions(capacity.weekend).map((m) => (
+                  <option key={m} value={m}>{formatMinutes(m)}</option>
+                ))}
+              </select>
+            </div>
+            <div className="settings-option-row">
               <div><strong>Canvas</strong><span>{canvasFeed ? "Connected" : "Not connected"}</span></div>
               <Button variant="secondary" onClick={() => setCanvasGuideOpen(true)}>{canvasFeed ? "Reconnect" : "Connect Canvas"}</Button>
             </div>
@@ -316,6 +368,7 @@ export default function SettingsPage() {
               <Button variant="secondary" loading={redoing} loadingLabel="Opening…" onClick={() => void onRestartOnboarding()}>Redo setup</Button>
             </div>
             {prefMsg && <p className="settings-status" role="status">{prefMsg}</p>}
+            {capMsg && <p className="settings-status" role="status">{capMsg}</p>}
           </section>
 
           <section id="account" className="settings-panel">

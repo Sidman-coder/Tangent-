@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { handleVoiceText, type PlanProgress } from "@/lib/voice-handler";
 import { withUser } from "@/lib/request-context";
 import { extractContextFacts } from "@/lib/context-extract";
-import { getUserTimezone } from "@/lib/store";
+import { getUserTimezone, setCapacity } from "@/lib/store";
+import { CAPACITY_QUESTION, capacityFromAnswer, clarifyQuestions, shouldConsiderClarifying } from "@/lib/ai/clarify";
+import { buildStudentContext } from "@/lib/ai/student-context";
+import { reliefSuggestion } from "@/lib/spacing";
 import { promptDateContext } from "@/lib/time";
 import { callClaude, messageText } from "@/lib/ai/call";
 import { cacheHistory, withDateLast } from "@/lib/ai/cache";
@@ -64,6 +67,22 @@ Assistant: ${finalResponse}`, "chat").catch((e) => {
   });
 }
 
+type Answer = { id: string; question: string; answer: string };
+
+function parseAnswers(raw: unknown): Answer[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((a): a is Answer =>
+      !!a && typeof a === "object" &&
+      typeof (a as Answer).id === "string" &&
+      typeof (a as Answer).question === "string" &&
+      typeof (a as Answer).answer === "string" &&
+      (a as Answer).answer.trim().length > 0
+    )
+    .slice(0, 4)
+    .map((a) => ({ id: a.id, question: a.question.slice(0, 200), answer: a.answer.trim().slice(0, 300) }));
+}
+
 /** Calendar mode: run the command through the voice pipeline and describe the result. */
 async function calendarReply(
   messages: { role: "user" | "assistant"; content: string }[],
@@ -122,8 +141,13 @@ async function calendarReply(
   if (voiceOk && voiceResponse.trim()) {
     console.log("[api/chat] Voice pipeline succeeded, skipping Anthropic rephrase:", voiceResponse.slice(0, 100));
     extractContextFireAndForget(userText, voiceResponse.trim());
+    // New work can tip a day over the student's load: offer one move, never
+    // make it (the student taps to accept; /api/reschedule records Undo).
+    const suggestion =
+      voiceAction === "add_task" || voiceAction === "create_plan" ? await reliefSuggestion() : null;
     return {
       message: voiceResponse.trim(),
+      suggestion,
       action: voiceAction,
       actionId: voiceActionId,
       sourcesChecked: voiceSourcesChecked,
@@ -148,7 +172,15 @@ async function calendarReply(
 export const POST = withUser(async (req: Request) => {
   try {
     console.log("[api/chat] === CHAT REQUEST START ===");
-    const body = (await req.json()) as { messages?: unknown; mode?: unknown; stream?: unknown };
+    const body = (await req.json()) as {
+      messages?: unknown;
+      mode?: unknown;
+      stream?: unknown;
+      /** Opt in to "grill me" questions (the AI page does; capture never does). */
+      clarify?: unknown;
+      /** Answers to questions from a previous clarify reply. */
+      answers?: unknown;
+    };
     const mode: ChatMode = body.mode === "plan" ? "plan" : "calendar";
     const raw = body.messages;
     if (!Array.isArray(raw) || raw.length === 0) {
@@ -186,7 +218,32 @@ export const POST = withUser(async (req: Request) => {
       return NextResponse.json({ message: reply, action: "plan_reply", mode, ok: true });
     }
 
-    if (body.stream !== true) return NextResponse.json(await calendarReply(messages, userText));
+    // Answers to Tangent's questions ride along with the original request, so
+    // the pipeline sees one complete ask. A capacity answer is saved for good.
+    const answers = parseAnswers(body.answers);
+    let pipelineText = userText;
+    if (answers.length > 0) {
+      for (const a of answers) {
+        if (a.id !== CAPACITY_QUESTION.id) continue;
+        const weekday = capacityFromAnswer(a.answer);
+        if (weekday) await setCapacity({ weekday, weekend: Math.min(720, Math.round(weekday * 1.6)) });
+      }
+      pipelineText = `${userText}\n\nMy answers to your questions:\n${answers.map((a) => `- ${a.question} ${a.answer}`).join("\n")}`;
+    } else if (body.clarify === true && shouldConsiderClarifying(userText)) {
+      const picture = await buildStudentContext().catch(() => null);
+      const questions = picture
+        ? await clarifyQuestions(userText, picture.text, { askCapacity: !picture.capacityKnown }).catch(() => [])
+        : [];
+      if (questions.length > 0) {
+        const reply = { ok: true, action: "clarify", message: "A few quick questions so this fits you.", questions };
+        if (body.stream !== true) return NextResponse.json(reply);
+        return new Response(JSON.stringify({ type: "result", ...reply }) + "\n", {
+          headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" },
+        });
+      }
+    }
+
+    if (body.stream !== true) return NextResponse.json(await calendarReply(messages, pipelineText));
 
     // Streamed: one JSON object per line. Plan progress ({type:"plan_outline"},
     // {type:"plan_task"}) as it's generated, then {type:"result", ...} with the
@@ -196,7 +253,7 @@ export const POST = withUser(async (req: Request) => {
       async start(controller) {
         const send = (line: unknown) => controller.enqueue(encoder.encode(JSON.stringify(line) + "\n"));
         try {
-          const result = await calendarReply(messages, userText, send);
+          const result = await calendarReply(messages, pipelineText, send);
           send({ type: "result", ...result });
         } catch (e) {
           const message = e instanceof Error ? e.message : "Unknown error";

@@ -13,6 +13,10 @@ export type Turn = {
   planDraft?: boolean;
   /** Just arrived this session — its reply animates in word by word. */
   fresh?: boolean;
+  /** Tangent's questions before acting (lib/ai/clarify.ts); cleared once answered. */
+  questions?: { id: string; question: string; options: string[] }[] | null;
+  /** One move the spacing brain suggests for an overloaded day. */
+  suggestion?: { taskId: string; title: string; toDate: string; toTime: string; message: string } | null;
 };
 
 /** A plan being generated: its title as soon as the outline is back, then

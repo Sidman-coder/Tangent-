@@ -11,6 +11,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { ArrowDown, CalendarPlus } from "lucide-react";
 import ActionReceipt from "@/components/ActionReceipt";
 import PenMark from "@/components/console/PenMark";
+import ClarifyCard, { type ClarifyAnswer } from "@/components/console/ClarifyCard";
+import SuggestionCard from "@/components/console/SuggestionCard";
 import type { ChatMode, PlanProgressView, Turn } from "@/components/console/turns";
 import { formatTime12 } from "@/lib/dates";
 
@@ -52,6 +54,10 @@ type Props = {
   onAddPlan: (turnId: string) => void;
   /** A plan being generated for the pending request, shown as it arrives. */
   planProgress?: PlanProgressView | null;
+  /** Answers to a turn's questions; null means "Just do it". */
+  onAnswer: (turnId: string, answers: ClarifyAnswer[] | null) => void;
+  /** A suggested move was accepted or undone: the calendar changed. */
+  onScheduleChanged: () => void;
 };
 
 function shortDate(ymd: string): string {
@@ -59,7 +65,7 @@ function shortDate(ymd: string): string {
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
 
-export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onUndone, mode, onAddPlan, planProgress }: Props) {
+export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onUndone, mode, onAddPlan, planProgress, onAnswer, onScheduleChanged }: Props) {
   const planDone = planProgress ? planProgress.tasks.filter(Boolean).length : 0;
   const scrollerRef = useRef<HTMLDivElement>(null);
   const latestRef = useRef<HTMLElement>(null);
@@ -169,9 +175,17 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
                         <span>Switches to Calendar mode and adds this plan.</span>
                       </div>
                     )}
+                    {t.questions && t.questions.length > 0 && (
+                      <ClarifyCard
+                        questions={t.questions}
+                        disabled={busy}
+                        onSubmit={(answers) => onAnswer(t.id, answers)}
+                      />
+                    )}
                     {t.actionId && t.actionLabel && (
                       <ActionReceipt actionId={t.actionId} label={t.actionLabel} onUndone={onUndone} />
                     )}
+                    {t.suggestion && <SuggestionCard suggestion={t.suggestion} onMoved={onScheduleChanged} />}
                   </div>
                 </div>
               </article>

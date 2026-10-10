@@ -2092,3 +2092,139 @@ a.tg-next:hover .tg-next-go { color: var(--accent); transform: translate(2px, -2
   box-shadow: none;
   background: transparent;
 }
+
+/* ── Tangent's questions (ClarifyCard) ────────────────────────────────────
+   Before acting on a big or vague ask. Each question is a row of answers to
+   tap; one tap is an answer, so nothing here needs a submit per question. */
+
+.tg-clarify {
+  display: grid;
+  gap: 14px;
+  margin-top: 12px;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.tg-clarify-q {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.tg-clarify-q legend {
+  padding: 0;
+  margin-bottom: 8px;
+  color: var(--text);
+  font: 600 14px/1.35 var(--font-body);
+}
+
+.tg-clarify-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tg-chip {
+  height: 32px;
+  padding: 0 13px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-2);
+  font: 550 13px/1 var(--font-body);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tg-chip:hover:not(.is-on):not(:disabled) {
+    border-color: var(--accent-line);
+    color: var(--text);
+  }
+}
+
+.tg-chip:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.tg-chip.is-on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.tg-chip.is-ghost {
+  border-style: dashed;
+  color: var(--text-3);
+}
+
+.tg-chip:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.tg-chip:focus-visible,
+.tg-chip-input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.tg-chip-input {
+  height: 32px;
+  min-width: 0;
+  flex: 1 1 160px;
+  padding: 0 13px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: 500 13px/1 var(--font-body);
+}
+
+.tg-clarify-actions {
+  display: flex;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+/* ── Suggested move (SuggestionCard) ──────────────────────────────────────
+   The spacing brain noticed an overloaded day; nothing moves until a tap. */
+
+.tg-suggest {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--amber);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.tg-suggest p {
+  margin: 0;
+  color: var(--text);
+  font: 500 14px/1.45 var(--font-body);
+}
+
+.tg-suggest.is-done {
+  border-left-color: var(--highlight);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-chip {
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+  }
+  .tg-chip:active:not(:disabled) {
+    transform: none;
+  }
+}
