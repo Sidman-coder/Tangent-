@@ -19,6 +19,8 @@ export type Turn = {
   later?: { id: string; questions: { id: string; question: string; options: string[] }[] } | null;
   /** What Tangent changed after those answers. */
   laterSummary?: string | null;
+  /** A plan this turn created: it lives on as a Project. */
+  projectId?: string | null;
   /** One move the spacing brain suggests for an overloaded day. */
   suggestion?: { taskId: string; title: string; toDate: string; toTime: string; message: string } | null;
 };

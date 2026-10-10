@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { handleVoiceText, type PlanProgress } from "@/lib/voice-handler";
+import { handleVoiceText, type PlanProgress, type VoiceOptions } from "@/lib/voice-handler";
 import { withUser } from "@/lib/request-context";
 import { extractContextFacts } from "@/lib/context-extract";
-import { addTask, getUserTimezone, recordAction, setCapacity } from "@/lib/store";
+import { addTask, getAllPlans, getAllTasks, getUserTimezone, recordAction, setCapacity } from "@/lib/store";
 import { quickCapture, type QuickCapture } from "@/lib/ai/router";
 import { inferCalendarGroup } from "@/lib/calendars";
 import { dayName } from "@/lib/load";
@@ -71,6 +71,18 @@ Assistant: ${finalResponse}`, "chat").catch((e) => {
   });
 }
 
+/** What the model needs to know about the project a request was made in. */
+async function projectBrief(projectId: string): Promise<string | null> {
+  const plan = (await getAllPlans()).find((p) => p.id === projectId);
+  if (!plan) return null;
+  const steps = (await getAllTasks())
+    .filter((t) => t.planId === projectId)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(0, 30)
+    .map((t) => `- ${t.completed ? "[done] " : ""}${t.title} (${t.date})`);
+  return `(This request is inside the student's project "${plan.title}".${plan.description ? ` Goal: ${plan.description}.` : ""} Anything you add belongs to this project. Its steps so far:\n${steps.join("\n") || "none yet"})`;
+}
+
 /** Saves a quick capture: spacing brain for the when, no model. */
 async function saveQuickCapture(quick: QuickCapture): Promise<Record<string, unknown>> {
   const placed = await placeNewTask({ date: quick.date ?? null, time: quick.time ?? null, deadline: quick.deadline ?? null });
@@ -120,7 +132,8 @@ function parseAnswers(raw: unknown): Answer[] {
 async function calendarReply(
   messages: { role: "user" | "assistant"; content: string }[],
   userText: string,
-  onProgress?: (event: PlanProgress) => void
+  onProgress?: (event: PlanProgress) => void,
+  project?: Pick<VoiceOptions, "projectId" | "projectGoal" | "forcePlan">
 ): Promise<Record<string, unknown>> {
   // Step 1 — Execute command via voice pipeline. Called in-process: the old
   // HTTP self-call to NEXT_PUBLIC_BASE_URL failed whenever the app wasn't on
@@ -137,7 +150,7 @@ async function calendarReply(
   let voiceTaskId: string | undefined;
   try {
     console.log("[api/chat] Calling voice pipeline:", userText);
-    const voiceRes = await handleVoiceText(userText, { context: conversationContext(messages), onProgress });
+    const voiceRes = await handleVoiceText(userText, { context: conversationContext(messages), onProgress, ...project });
     const voiceData = (await voiceRes.json()) as {
       response?: string;
       action?: string;
@@ -190,6 +203,7 @@ async function calendarReply(
       actionId: voiceActionId,
       sourcesChecked: voiceSourcesChecked,
       plan: voicePlan,
+      projectId: project?.projectId ?? voicePlan?.id,
       recurringCount: voiceAction === "add_recurring_task" ? voiceCount : undefined,
       ok: true,
     };
@@ -220,6 +234,10 @@ export const POST = withUser(async (req: Request) => {
       answers?: unknown;
       /** From the capture mic or Cmd-K: a plain to-do saves without a model. */
       capture?: unknown;
+      /** Asked from inside a Project: its steps join it. */
+      projectId?: unknown;
+      /** "New project" on the Projects page: always builds a plan. */
+      newProject?: unknown;
     };
     const mode: ChatMode = body.mode === "plan" ? "plan" : "calendar";
     const raw = body.messages;
@@ -277,7 +295,8 @@ export const POST = withUser(async (req: Request) => {
         if (weekday) await setCapacity({ weekday, weekend: Math.min(720, Math.round(weekday * 1.6)) });
       }
       pipelineText = `${userText}\n\nMy answers to your questions:\n${answers.map((a) => `- ${a.question} ${a.answer}`).join("\n")}`;
-    } else if (body.clarify === true && shouldConsiderClarifying(userText)) {
+    } else if (body.clarify === true && (body.newProject === true || shouldConsiderClarifying(userText))) {
+      // A new project is always grilled first: it's the biggest ask there is.
       const picture = await buildStudentContext().catch(() => null);
       const questions = picture
         ? await clarifyQuestions(userText, picture.text, { askCapacity: !picture.capacityKnown }).catch(() => [])
@@ -291,7 +310,21 @@ export const POST = withUser(async (req: Request) => {
       }
     }
 
-    if (body.stream !== true) return NextResponse.json(await calendarReply(messages, pipelineText));
+    // Projects: inside one, the request carries the project so the model knows
+    // what it's adding to, and its steps join it; a new project always builds
+    // a plan, with the student's first words as its goal.
+    let project: Pick<VoiceOptions, "projectId" | "projectGoal" | "forcePlan"> | undefined;
+    if (typeof body.projectId === "string" && body.projectId) {
+      const found = await projectBrief(body.projectId);
+      if (found) {
+        project = { projectId: body.projectId };
+        pipelineText = `${pipelineText}\n\n${found}`;
+      }
+    } else if (body.newProject === true) {
+      project = { forcePlan: true, projectGoal: userText.slice(0, 300) };
+    }
+
+    if (body.stream !== true) return NextResponse.json(await calendarReply(messages, pipelineText, undefined, project));
 
     // Streamed: one JSON object per line. Plan progress ({type:"plan_outline"},
     // {type:"plan_task"}) as it's generated, then {type:"result", ...} with the
@@ -301,7 +334,7 @@ export const POST = withUser(async (req: Request) => {
       async start(controller) {
         const send = (line: unknown) => controller.enqueue(encoder.encode(JSON.stringify(line) + "\n"));
         try {
-          const result = await calendarReply(messages, pipelineText, send);
+          const result = await calendarReply(messages, pipelineText, send, project);
           send({ type: "result", ...result });
         } catch (e) {
           const message = e instanceof Error ? e.message : "Unknown error";

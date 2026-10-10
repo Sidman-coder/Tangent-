@@ -462,6 +462,7 @@ export default function AiPage() {
           actionId: data.actionId,
           actionLabel: notif ?? undefined,
           suggestion: data.suggestion ?? null,
+          projectId: data.plan?.id ?? null,
         },
       ]);
 

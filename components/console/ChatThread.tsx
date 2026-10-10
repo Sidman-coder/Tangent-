@@ -187,6 +187,11 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
                     {t.actionId && t.actionLabel && (
                       <ActionReceipt actionId={t.actionId} label={t.actionLabel} onUndone={onUndone} />
                     )}
+                    {t.projectId && (
+                      <a className="tg-project-link" href={`/projects/${t.projectId}`}>
+                        Open the project →
+                      </a>
+                    )}
                     {t.suggestion && <SuggestionCard suggestion={t.suggestion} onMoved={onScheduleChanged} />}
                     {t.later && t.later.questions.length > 0 && (
                       <ClarifyCard

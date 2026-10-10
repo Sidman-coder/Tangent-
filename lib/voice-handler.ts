@@ -16,6 +16,7 @@
 // live in route.ts itself.
 import { NextResponse } from "next/server";
 import { inferCalendarGroup, parseCalendarGroup } from "@/lib/calendars";
+import { addTasksToPlan } from "@/lib/store";
 import { addTask, addPlanWithTasks, addRecurringTask, completeTask, deleteTask, updateTask, addVoiceLog, getAppState, getAllTasks, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, addPendingConfirmation, getUserTimezone } from "@/lib/store";
 import { addDaysYMD, localNow, promptDateContext, singleRelativeDay, ymdFromParts } from "@/lib/time";
 import type { TaskKind } from "@/lib/types";
@@ -476,6 +477,11 @@ export type VoiceOptions = {
   context?: string;
   /** Called as the plan outline and each task arrive. Nothing is saved until the end. */
   onProgress?: (event: PlanProgress) => void;
+  /** Inside a Project: new tasks and plan sessions join it instead of
+   *  standing alone or starting a new plan. */
+  projectId?: string;
+  /** Goal for a newly created project (the plan's description). */
+  projectGoal?: string;
 };
 
 /**
@@ -756,10 +762,7 @@ async function handleVoiceTextInner(
         const calendarIds = new Map<string, string>();
         for (const id of Array.from(new Set(generated.tasks.map((t) => t.calendarId)))) calendarIds.set(id, await resolveCalendarId(id, generated.title));
         // One insert for every task, with plan_id already set (store.addPlanWithTasks).
-        const { plan, tasks: created, skippedDuplicates } = await perfSpan(`plan: insert ${generated.tasks.length} tasks`, () =>
-          addPlanWithTasks(
-            { title: resolvePlanTitle(generated.title, text), description: "" },
-            generated.tasks.map((t) => ({
+        const planTasks = generated.tasks.map((t) => ({
               title: t.title,
               date: t.date,
               time: timeByDate.get(t.date) ?? t.time,
@@ -769,8 +772,27 @@ async function handleVoiceTextInner(
               notes: t.notes || undefined,
               startAction: t.startAction || undefined,
               resources: t.resources.length > 0 ? t.resources : undefined,
-            }))
-          )
+            }));
+
+        // Inside a Project the sessions join it; otherwise they become a new
+        // project of their own (a Plan is what the Projects page lists).
+        if (opts.projectId) {
+          const { tasks: addedToProject, skippedDuplicates: skipped } = await addTasksToPlan(opts.projectId, planTasks);
+          const ids = addedToProject.map((t) => t.id);
+          const rec = await recordAction("create_plan", `Added ${ids.length} steps to a project`, { addedTaskIds: ids });
+          await addVoiceLog({ text, response: `Added ${ids.length} steps to project`, action: "create_plan", ok: true });
+          return NextResponse.json({
+            ok: true,
+            action: "create_plan",
+            count: ids.length,
+            response: `Added ${ids.length} steps${shifted > 0 ? `, spaced around your busy days` : ""}.${skipped > 0 ? ` Skipped ${skipped} duplicate${skipped > 1 ? "s" : ""}.` : ""}`,
+            actionId: rec.id,
+            state: await getAppState(),
+          });
+        }
+
+        const { plan, tasks: created, skippedDuplicates } = await perfSpan(`plan: insert ${generated.tasks.length} tasks`, () =>
+          addPlanWithTasks({ title: resolvePlanTitle(generated.title, text), description: opts.projectGoal ?? "" }, planTasks)
         );
         const taskIds = created.map((t) => t.id);
         const record = await perfSpan("plan: undo record", () => recordAction("create_plan", `Created plan "${plan.title}" with ${taskIds.length} tasks`, {
@@ -1122,7 +1144,7 @@ async function handleVoiceTextInner(
       // The title is the title. Every surface renders task.time next to it
       // (TaskRow, the Today hero, the calendar day panel), so folding the time
       // into the title printed it twice: "Study math (15:00)  3:00 PM".
-      const task = await addTask({ title, date: placed.date, time: placed.time, completed: false, calendarId, notes, startAction, resources });
+      const task = await addTask({ title, date: placed.date, time: placed.time, completed: false, calendarId, notes, startAction, resources, ...(opts.projectId ? { planId: opts.projectId } : {}) });
       if (task.wasDuplicate) {
         const dupResponse = `Skipped 1 duplicate (already have "${task.title}" around ${task.time}).`;
         console.log("[api/voice] add_task skipped duplicate:", task.id, task.title);

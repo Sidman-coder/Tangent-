@@ -9,6 +9,7 @@ import { m } from "motion/react";
 import { pageEnter, spring } from "@/lib/motion";
 import {
   CalendarDays,
+  FolderKanban,
   Home,
   LogOut,
   Spline,
@@ -25,13 +26,14 @@ import TangentLogo from "@/components/TangentLogo";
 import DesktopNotifPrompt from "./DesktopNotifPrompt";
 import { useAppState } from "./AppStateProvider";
 
-// Three places you work, plus settings. Tasks used to be its own page; it only
+// Four places you work, plus settings. Projects is where Plans live now. Tasks used to be its own page; it only
 // ever showed today, which Today already does, and everything else about a task
 // belongs on the day it falls on. Tangents is deliberately not in this list: it
 // is a mode, not a page, and it gets its own door at the bottom of the rail.
 const NAV_LINKS = [
   { href: "/", label: "Today", icon: Home },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
+  { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/ai", label: "Tangent AI", icon: MessageSquareText },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
@@ -221,7 +223,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <nav className="mobile-nav" aria-label="Primary mobile navigation">
-        {[...NAV_LINKS.slice(0, 3), { href: "/tangents", label: "Tangents", icon: Spline }, NAV_LINKS[3]].map(({ href, label, icon: Icon }) => {
+        {[...NAV_LINKS.slice(0, 4), { href: "/tangents", label: "Tangents", icon: Spline }, NAV_LINKS[4]].map(({ href, label, icon: Icon }) => {
           const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
           return (
             <Link

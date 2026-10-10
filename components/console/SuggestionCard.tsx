@@ -6,6 +6,8 @@
 
 import { useState } from "react";
 import ActionReceipt from "@/components/ActionReceipt";
+import "./suggestion-card.css";
+import "./clarify-card.css";
 
 export type Suggestion = {
   taskId: string;
@@ -53,11 +55,11 @@ export default function SuggestionCard({ suggestion, onMoved }: Props) {
     <div className="tg-suggest">
       <p>{state === "error" ? "Couldn't move it. It may have changed — try from the calendar." : suggestion.message}</p>
       {state !== "error" && (
-        <div className="tg-confirm">
-          <button type="button" className="tg-btn tg-btn-accent" onClick={() => void accept()} disabled={state === "moving"}>
+        <div className="tg-suggest-actions">
+          <button type="button" className="tg-clarify-btn is-primary" onClick={() => void accept()} disabled={state === "moving"}>
             {state === "moving" ? "Moving…" : "Move it"}
           </button>
-          <button type="button" className="tg-btn" onClick={() => setState("kept")} disabled={state === "moving"}>
+          <button type="button" className="tg-clarify-btn" onClick={() => setState("kept")} disabled={state === "moving"}>
             Keep it
           </button>
         </div>

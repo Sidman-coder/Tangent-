@@ -927,6 +927,57 @@ export async function addPlanWithTasks(
   return { plan: { ...created, taskIds, taskCount: taskIds.length }, tasks: inserted, skippedDuplicates };
 }
 
+/** A Project is a plan with a home page (app/(app)/projects): its title and
+ *  goal (the plan's description) can be edited there. */
+export async function updatePlan(planId: string, patch: { title?: string; description?: string }): Promise<Plan | null> {
+  if (!isUuid(planId)) return null;
+  const row: Record<string, unknown> = {};
+  if (patch.title !== undefined && patch.title.trim()) row.title = patch.title.trim().slice(0, 120);
+  if (patch.description !== undefined) row.description = patch.description.trim().slice(0, 1000);
+  if (Object.keys(row).length === 0) return null;
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("plans").update(row).eq("user_id", userId).eq("id", planId).select("*").maybeSingle();
+  if (error) fail("updatePlan", error);
+  return data ? planFromRow(data as PlanRow) : null;
+}
+
+/** Adds steps to an existing project: one bulk insert with plan_id set, the
+ *  same duplicate rule as addPlanWithTasks, then the plan's task list. */
+export async function addTasksToPlan(
+  planId: string,
+  tasks: Omit<Task, "id" | "planId">[]
+): Promise<{ tasks: Task[]; skippedDuplicates: number }> {
+  const { db, userId } = ctx();
+  const { data: planRow, error: planError } = await db.from("plans").select("*").eq("user_id", userId).eq("id", planId).maybeSingle();
+  if (planError) fail("addTasksToPlan", planError);
+  if (!planRow) throw new Error("[store] addTasksToPlan: no such project");
+  const dates = tasks.map((t) => t.date).sort();
+  const existing = dates.length
+    ? await selectTasks("addTasksToPlan", (q) => q.gte("date", dates[0]).lte("date", dates[dates.length - 1]).eq("completed", false))
+    : [];
+  const fresh: Omit<Task, "id" | "planId">[] = [];
+  let skippedDuplicates = 0;
+  for (const t of tasks) {
+    if (findDuplicateIn(existing, t) || findDuplicateIn(fresh as Task[], t)) skippedDuplicates++;
+    else fresh.push(t);
+  }
+  const inserted: Task[] = [];
+  if (fresh.length > 0) {
+    const { data, error } = await db.from("tasks").insert(fresh.map((t) => newTaskRow(userId, { ...t, planId }))).select(TASK_COLUMNS);
+    if (error) fail("addTasksToPlan", error);
+    inserted.push(...(data as TaskRow[]).map(taskFromRow));
+  }
+  const plan = planFromRow(planRow as PlanRow);
+  const taskIds = [...plan.taskIds, ...inserted.map((t) => t.id)];
+  const { error: linkError } = await db
+    .from("plans")
+    .update({ task_ids: taskIds, task_count: taskIds.length })
+    .eq("user_id", userId)
+    .eq("id", planId);
+  if (linkError) fail("addTasksToPlan", linkError);
+  return { tasks: inserted, skippedDuplicates };
+}
+
 export async function deletePlan(planId: string): Promise<boolean> {
   if (!isUuid(planId)) return false;
   const { db, userId } = ctx();

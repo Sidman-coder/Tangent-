@@ -1,0 +1,28 @@
+/* ── Suggested move (SuggestionCard) ──────────────────────────────────────
+   The spacing brain noticed an overloaded day; nothing moves until a tap. */
+
+.tg-suggest {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--amber);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.tg-suggest p {
+  margin: 0;
+  color: var(--text);
+  font: 500 14px/1.45 var(--font-body);
+}
+
+.tg-suggest.is-done {
+  border-left-color: var(--highlight);
+}
+
+.tg-suggest-actions {
+  display: flex;
+  gap: 8px;
+}
