@@ -14,6 +14,10 @@ export default function TourNudge() {
     try {
       setShow(window.localStorage.getItem(TOUR_DONE_KEY) !== "1");
     } catch {}
+    // However the tour starts, the offer is done.
+    const hide = () => setShow(false);
+    window.addEventListener(TOUR_EVENT, hide);
+    return () => window.removeEventListener(TOUR_EVENT, hide);
   }, []);
   if (!show) return null;
   const dismiss = () => {

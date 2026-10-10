@@ -231,11 +231,12 @@ export default function FeatureTour() {
   const vh = window.innerHeight;
   const cardW = Math.min(360, vw - 32);
   // Below the spotlight if there's room, else above, else centred.
-  let cardStyle: React.CSSProperties = { left: (vw - cardW) / 2, top: vh / 2, transform: "translateY(-50%)", width: cardW };
+  // No transforms here: the card's own entrance animation owns transform.
+  let cardStyle: React.CSSProperties = { left: (vw - cardW) / 2, top: Math.max(16, vh / 2 - 110), width: cardW };
   if (spot) {
     const left = Math.min(Math.max(16, spot.x + spot.w / 2 - cardW / 2), vw - cardW - 16);
-    if (spot.y + spot.h + 220 < vh) cardStyle = { left, top: spot.y + spot.h + 14, width: cardW };
-    else if (spot.y > 240) cardStyle = { left, top: spot.y - 14, transform: "translateY(-100%)", width: cardW };
+    if (spot.y + spot.h + 230 < vh) cardStyle = { left, top: spot.y + spot.h + 14, width: cardW };
+    else if (spot.y > 240) cardStyle = { left, bottom: vh - spot.y + 14, width: cardW };
   }
   const isLast = index === STEPS.length - 1;
   const spring = reduced ? { duration: 0 } : ({ type: "spring", visualDuration: 0.4, bounce: 0 } as const);
@@ -249,7 +250,9 @@ export default function FeatureTour() {
             {spot && (
               <m.rect
                 initial={false}
-                animate={{ x: spot.x, y: spot.y, width: spot.w, height: spot.h }}
+                // attrX/attrY move the rect itself; x/y would be a CSS
+                // transform, which an SVG mask ignores.
+                animate={{ attrX: spot.x, attrY: spot.y, width: spot.w, height: spot.h }}
                 transition={spring}
                 rx={14}
                 fill="black"
