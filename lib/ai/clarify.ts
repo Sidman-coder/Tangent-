@@ -158,11 +158,4 @@ export async function captureQuestions(
   }
 }
 
-/** "About 2 hrs" / "90 min" / "4+ hrs" → minutes, or null. */
-export function capacityFromAnswer(answer: string): number | null {
-  const m = /(\d+(?:\.\d+)?)\s*\+?\s*(hours?|hrs?|h|minutes?|mins?|m)\b/i.exec(answer);
-  if (!m) return null;
-  const n = Number(m[1]);
-  const minutes = /^h/i.test(m[2]) ? n * 60 : n;
-  return minutes >= 15 && minutes <= 600 ? Math.round(minutes) : null;
-}
+export { capacityFromAnswer } from "@/lib/capacity-answer";

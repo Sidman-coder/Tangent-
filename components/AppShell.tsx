@@ -19,6 +19,7 @@ import {
 import NotificationBell from "./NotificationBell";
 import CommandPalette from "./CommandPalette";
 import CaptureDock from "./CaptureDock";
+import GetToKnowYou, { GET_TO_KNOW_EVENT } from "./GetToKnowYou";
 import FirstRun from "./FirstRun";
 import TangentLogo from "@/components/TangentLogo";
 import DesktopNotifPrompt from "./DesktopNotifPrompt";
@@ -239,6 +240,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </nav>
 
       <CommandPalette />
+      <GetToKnowYou />
       {/* Instant capture lives on Today only. Mounted here, not in the page,
           so it is usable while Today is still loading and a recording isn't
           cut off when the loading skeleton swaps for the real page. */}
@@ -249,6 +251,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           onComplete={async () => {
             await refresh();
             setShowOnboarding(false);
+            // Setup as a conversation: right after the form, Tangent asks.
+            window.dispatchEvent(new Event(GET_TO_KNOW_EVENT));
           }}
         />}
     </div>

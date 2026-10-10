@@ -1,11 +1,14 @@
 "use client";
 
+import "@/components/get-to-know-you.css";
+
 // "What Tangent knows about me": every fact Tangent has learned from chats,
 // captures and answers to its questions — the context every AI step reads.
 // The student can see it, forget anything wrong, and add things themselves.
 
 import { useCallback, useEffect, useState } from "react";
 import type { ContextEntry } from "@/lib/types";
+import { GET_TO_KNOW_DONE_EVENT, GET_TO_KNOW_EVENT } from "@/components/GetToKnowYou";
 
 const CATEGORY_LABEL: Record<ContextEntry["category"], string> = {
   goal: "Goals",
@@ -43,6 +46,9 @@ export default function WhatTangentKnows() {
 
   useEffect(() => {
     void load();
+    const reload = () => void load();
+    window.addEventListener(GET_TO_KNOW_DONE_EVENT, reload);
+    return () => window.removeEventListener(GET_TO_KNOW_DONE_EVENT, reload);
   }, [load]);
 
   const forget = async (id: string) => {
@@ -68,6 +74,9 @@ export default function WhatTangentKnows() {
           <h2>What Tangent knows</h2>
           <p>Everything Tangent has learned about you. It uses this for every plan and answer. Remove anything that&apos;s wrong.</p>
         </div>
+        <button type="button" className="knows-gtk" onClick={() => window.dispatchEvent(new Event(GET_TO_KNOW_EVENT))}>
+          Answer a few questions
+        </button>
       </div>
 
       {entries === null ? (

@@ -23,7 +23,9 @@ export const POST = withUser(async (request: Request) => {
     if (body.action === "remember") {
       const fact = String(body.fact ?? "").trim().slice(0, 300);
       if (!fact) return NextResponse.json({ ok: false, error: "fact is required" }, { status: 400 });
-      const entry = await addContextEntry({ category: "general", fact, source: "manual" });
+      const CATEGORIES = ["preference", "habit", "commitment", "goal", "person", "work", "general"] as const;
+      const category = CATEGORIES.find((c) => c === body.category) ?? "general";
+      const entry = await addContextEntry({ category, fact, source: "manual" });
       return NextResponse.json({ ok: true, entry });
     }
     if (body.action === "forget") {

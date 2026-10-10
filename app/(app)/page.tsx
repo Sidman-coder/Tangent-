@@ -24,6 +24,7 @@ import { getSchedulePulse } from "@/lib/schedule-insights";
 import { canAskForHelp } from "@/lib/task-help";
 import { isOnboardingSchoolTask } from "@/lib/school-block";
 import QuestionsInbox from "@/components/dashboard/QuestionsInbox";
+import GetToKnowNudge from "@/components/dashboard/GetToKnowNudge";
 import { useQuestionSets } from "@/hooks/useQuestionSets";
 import { taskColor } from "@/lib/task-colors";
 import { getUrgency, tracksCompletion } from "@/lib/urgency";
@@ -282,6 +283,8 @@ export default function DashboardPage() {
           }
         />
       </m.div>
+
+      <GetToKnowNudge />
 
       <QuestionsInbox sets={questionSets} onChanged={() => { void reloadQuestions(); void refresh(); }} />
 
