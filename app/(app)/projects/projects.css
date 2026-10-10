@@ -52,10 +52,9 @@
 }
 
 .project-card {
-  display: grid;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
-  min-height: 150px;
   padding: 18px 18px 16px;
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
@@ -140,11 +139,17 @@
   transition: width 400ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
+.project-card-meta span:last-child {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .project-card-meta {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  margin: 0;
+  /* Pinned to the card's bottom so a row of cards lines up. */
+  margin: auto 0 0;
   color: var(--text-3);
   font: 500 12.5px/1.4 var(--font-body);
 }
@@ -193,7 +198,7 @@
   opacity: 0.75;
 }
 
-.project-ask-input {
+.project-ask .project-ask-box .project-ask-input:is(textarea) {
   flex: 1;
   min-width: 0;
   min-height: 44px;
@@ -206,6 +211,10 @@
   color: var(--text);
   font: 450 15px/1.45 var(--font-body);
   field-sizing: content;
+}
+
+.project-ask .project-ask-box .project-ask-input:is(textarea):focus {
+  box-shadow: none;
 }
 
 .project-ask-input::placeholder {
@@ -301,8 +310,10 @@
   gap: 8px;
 }
 
-.project-title-input,
-.project-goal-input {
+/* :is(input/textarea) and the ancestors lift these past globals.css's
+   input:not():not():not() rule, which otherwise resets font and padding. */
+.project-page .project-head .project-title-input:is(input),
+.project-page .project-head .project-goal-input:is(textarea) {
   width: 100%;
   margin: 0;
   padding: 2px 6px;
@@ -314,26 +325,27 @@
   transition: border-color 150ms ease, background-color 150ms ease;
 }
 
-.project-title-input {
+.project-page .project-head .project-title-input:is(input) {
   font: 700 clamp(26px, 3vw, 32px)/1.15 var(--font-display);
   letter-spacing: -0.03em;
 }
 
-.project-goal-input {
+.project-page .project-head .project-goal-input:is(textarea) {
   resize: none;
   color: var(--text-2);
   font: 450 15px/1.5 var(--font-body);
   field-sizing: content;
 }
 
-.project-title-input:hover,
-.project-goal-input:hover {
+.project-page .project-head .project-title-input:is(input):hover,
+.project-page .project-head .project-goal-input:is(textarea):hover {
   background: rgb(from var(--text) r g b / 0.03);
 }
 
-.project-title-input:focus,
-.project-goal-input:focus {
+.project-page .project-head .project-title-input:is(input):focus,
+.project-page .project-head .project-goal-input:is(textarea):focus {
   outline: 0;
+  box-shadow: none;
   border-color: var(--line-strong);
   background: var(--surface);
 }

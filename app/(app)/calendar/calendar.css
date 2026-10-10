@@ -1,0 +1,379 @@
+/* Calendar, Apple-style. Loaded after globals.css and scoped to
+   .calendar-page, so it settles the older layered rules there without
+   touching them. The idea: the grid is quiet (hairlines, no fills), events
+   are a dot and a title (not boxes), and only today gets a colour. */
+
+/* ── Toolbar: one quiet row ────────────────────────────────────────────── */
+
+.calendar-page .calendar-toolbar {
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.calendar-page .calendar-toolbar .cal-month-heading {
+  min-width: 0;
+  margin-left: 0;
+  margin-right: 8px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.calendar-page .cal-heading-year {
+  color: var(--text-3);
+  font-weight: 400;
+}
+
+/* Segmented controls share one look: a recessed track, a raised thumb. */
+.calendar-page .cal-view-switch,
+.calendar-page .cal-arrows,
+.calendar-page .calendar-toolbar .cal-segment-bar {
+  padding: 2px;
+  border: 0;
+  border-radius: 9px;
+  background: rgb(from var(--text) r g b / 0.06);
+  box-shadow: none;
+}
+
+.calendar-page .cal-view-tab,
+.calendar-page .calendar-toolbar .cal-segment,
+.calendar-page .cal-today,
+.calendar-page .cal-arrow {
+  min-height: 28px;
+  border-radius: 7px;
+  font: 550 12.5px/1 var(--font-body);
+}
+
+.calendar-page .calendar-toolbar .cal-segment {
+  padding: 0 12px;
+  color: var(--text-2);
+}
+
+.calendar-page .calendar-toolbar .cal-segment.is-active,
+.calendar-page .cal-view-pill {
+  background: var(--surface);
+  box-shadow:
+    0 1px 2px rgb(from var(--text) r g b / 0.1),
+    0 0 0 0.5px rgb(from var(--text) r g b / 0.06);
+}
+
+.calendar-page .calendar-toolbar .cal-segment.is-active {
+  color: var(--text);
+}
+
+.calendar-page .cal-arrow:hover,
+.calendar-page .cal-today:hover {
+  background: rgb(from var(--surface) r g b / 0.7);
+}
+
+/* ── Month grid ────────────────────────────────────────────────────────── */
+
+.calendar-page .calendar-grid-shell {
+  border: 0;
+  border-radius: 0;
+}
+
+.calendar-page .calendar-grid-shell .cal-weekday-row {
+  border-bottom: 1px solid var(--line);
+}
+
+.calendar-page .calendar-grid-shell .cal-weekday-label {
+  padding: 8px 10px;
+  color: var(--text-3);
+  font: 600 11px/1 var(--font-body);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.calendar-page .cal-cell {
+  border-color: var(--line);
+}
+
+/* Outside the month: no tint, just quieter numbers. */
+.calendar-page .cal-cell.is-outside {
+  background: transparent;
+}
+
+.calendar-page .calendar-grid-shell .cal-cell .cal-day {
+  gap: 4px;
+  padding: 6px 8px 8px;
+}
+
+.calendar-page .calendar-grid-shell .cal-cell .cal-day:hover:not(:disabled) {
+  background: rgb(from var(--text) r g b / 0.025);
+}
+
+.calendar-page .calendar-grid-shell .cal-cell.is-selected .cal-day {
+  background: rgb(from var(--accent) r g b / 0.06);
+  box-shadow: inset 0 0 0 1.5px rgb(from var(--accent) r g b / 0.5);
+}
+
+/* Day number: same place in every cell; today is a filled circle. */
+.calendar-page .calendar-grid-shell .cal-cell .cal-day .d {
+  display: inline-grid;
+  place-items: center;
+  align-self: flex-start;
+  min-width: 26px;
+  height: 26px;
+  margin: 0;
+  padding: 0 6px;
+  border-radius: 999px;
+  color: var(--text);
+  font: 600 13px/1 var(--font-body);
+  font-variant-numeric: tabular-nums;
+  box-shadow: none;
+  background: transparent;
+}
+
+.calendar-page .calendar-grid-shell .cal-cell.is-outside .cal-day .d {
+  color: var(--text-3);
+  opacity: 1;
+  font-weight: 450;
+}
+
+.calendar-page .calendar-grid-shell .cal-cell.is-today .cal-day .d {
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: none;
+}
+
+/* ── Events: a dot and a title ─────────────────────────────────────────── */
+
+.cal-events {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cal-event {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 1px 2px;
+  color: var(--text);
+  font: 500 12px/1.35 var(--font-body);
+}
+
+.cal-event-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--chip, var(--accent));
+}
+
+/* A due date: a ring, so it reads as "by then", not "at then". */
+.cal-event.is-deadline .cal-event-dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--chip, var(--accent));
+}
+
+.cal-event-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal-event-time {
+  flex: none;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Done fades back; no strike-through noise. */
+.cal-event.is-done {
+  opacity: 0.4;
+}
+
+.cal-event-more {
+  padding-left: 15px;
+  color: var(--text-3);
+  font: 500 11px/1.4 var(--font-body);
+}
+
+/* The quick-add button: a quiet circle, top right, on hover. */
+.calendar-page .cal-day-add {
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-3);
+}
+
+.calendar-page .cal-day-add:hover {
+  border: 0;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+@media (hover: none) {
+  .calendar-page .cal-day-add {
+    display: none;
+  }
+}
+
+/* ── Week ──────────────────────────────────────────────────────────────── */
+
+.calendar-page .wk-day-head {
+  align-items: center;
+  padding: 8px 4px;
+}
+
+.calendar-page .wk-day-head:hover {
+  background: rgb(from var(--text) r g b / 0.025);
+}
+
+.calendar-page .wk-date {
+  font: 600 17px/1 var(--font-body);
+  letter-spacing: -0.01em;
+}
+
+.calendar-page .wk-day-head.is-today .wk-date {
+  min-width: 28px;
+  height: 28px;
+  box-shadow: none;
+}
+
+.calendar-page .wk-col.is-today {
+  background: rgb(from var(--accent) r g b / 0.03);
+}
+
+.calendar-page .wk-slot:hover {
+  background: rgb(from var(--accent) r g b / 0.05);
+}
+
+.calendar-page .wk-block {
+  border-left-width: 3px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--block) 12%, var(--surface));
+  box-shadow: none;
+}
+
+.calendar-page .wk-block:hover {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--block) 40%, transparent);
+}
+
+.calendar-page .wk-block.is-done {
+  opacity: 0.4;
+}
+
+.calendar-page .wk-block.is-done .wk-block-title {
+  text-decoration: none;
+}
+
+/* The "Due" row above the time grid. */
+.wk-due {
+  display: grid;
+  grid-template-columns: var(--wk-gutter) repeat(7, minmax(0, 1fr));
+  flex: none;
+  max-height: 96px;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--line);
+}
+
+.wk-due-label {
+  padding: 8px 8px 0 0;
+  color: var(--text-3);
+  font: 600 10.5px/1 var(--font-body);
+  letter-spacing: 0.06em;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.wk-due-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 4px 3px;
+  border-left: 1px solid var(--line);
+}
+
+.wk-due-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 2px 4px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font: 500 11.5px/1.3 var(--font-body);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.wk-due-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wk-due-item::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1.5px var(--block, var(--accent));
+}
+
+.wk-due-item:hover {
+  background: rgb(from var(--text) r g b / 0.04);
+}
+
+.wk-due-item.is-done {
+  opacity: 0.4;
+}
+
+/* Phones: a day can't fit titles, so events become dots under the number. */
+@media (max-width: 720px) {
+  .calendar-page .calendar-toolbar {
+    flex-wrap: wrap;
+    padding: 10px 14px;
+  }
+
+  .calendar-page .calendar-grid-shell .cal-cell .cal-day {
+    align-items: center;
+    padding: 4px 2px 6px;
+  }
+
+  .calendar-page .calendar-grid-shell .cal-cell .cal-day .d {
+    align-self: center;
+  }
+
+  .cal-events {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 3px;
+  }
+
+  .cal-event {
+    padding: 0;
+  }
+
+  .cal-event-title,
+  .cal-event-time {
+    display: none;
+  }
+
+  .cal-event-more {
+    padding: 0;
+    font-size: 9.5px;
+  }
+}

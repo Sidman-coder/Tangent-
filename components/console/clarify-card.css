@@ -77,13 +77,17 @@
   cursor: default;
 }
 
-.tg-chip:focus-visible,
-.tg-chip-input:focus-visible {
+.tg-clarify .tg-clarify-options .tg-chip-input:is(input):focus {
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.tg-chip:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
-.tg-chip-input {
+/* Lifted past globals.css's input:not():not():not() reset. */
+.tg-clarify .tg-clarify-options .tg-chip-input:is(input) {
   height: 32px;
   min-width: 0;
   flex: 1 1 160px;

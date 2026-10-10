@@ -138,6 +138,7 @@ export default function ProjectPage() {
               <m.div key={task.id} layout="position" transition={spring.layout} {...rowPresence}>
                 <TaskRow
                   task={task}
+                  showDate
                   kindColor={taskColor(task, state?.plans ?? [])}
                   onComplete={() => void toggle(task)}
                   onOpen={() => router.push(`/calendar?date=${task.date}`)}
@@ -161,7 +162,7 @@ export default function ProjectPage() {
           </summary>
           <div className="project-step-list">
             {done.map((task) => (
-              <TaskRow key={task.id} task={task} kindColor={taskColor(task, state?.plans ?? [])} onComplete={() => void toggle(task)} />
+              <TaskRow key={task.id} task={task} showDate kindColor={taskColor(task, state?.plans ?? [])} onComplete={() => void toggle(task)} />
             ))}
           </div>
         </details>

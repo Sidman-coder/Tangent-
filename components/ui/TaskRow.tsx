@@ -26,7 +26,14 @@ type TaskRowProps = {
   children?: ReactNode;
   /** Tangent has open questions about this task (lib/questions-client.ts). */
   hasQuestions?: boolean;
+  /** Lists that span days (a project's steps) show the day, not just the time. */
+  showDate?: boolean;
 };
+
+function shortDate(ymd: string): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+}
 
 export default function TaskRow({
   task,
@@ -38,6 +45,7 @@ export default function TaskRow({
   actions,
   children,
   hasQuestions = false,
+  showDate = false,
 }: TaskRowProps) {
   const questionDot = hasQuestions ? <span className="task-question-dot" title="Tangent has a question about this" /> : null;
   return (
@@ -83,7 +91,10 @@ export default function TaskRow({
             <span className="ui-task-title">{task.title}{questionDot}</span>
           )}
           <div className="ui-task-meta">
-            <time dateTime={`${task.date}T${task.time}`}>{formatTime12(task.time)}</time>
+            <time dateTime={`${task.date}T${task.time}`}>
+              {showDate ? `${shortDate(task.date)} · ` : ""}
+              {formatTime12(task.time)}
+            </time>
             {task.kind && <span className="ui-task-kind-label">{KIND_LABEL[task.kind] ?? task.kind.replaceAll("-", " ")}</span>}
             {task.recurring?.enabled && (
               <span className="ui-task-recurring"><Repeat2 size={12} aria-hidden="true" /> Recurring</span>

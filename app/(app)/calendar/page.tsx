@@ -13,6 +13,7 @@ import { toYMD, formatTime12 } from "@/lib/dates";
 import { taskColor } from "@/lib/task-colors";
 import { CALENDARS } from "@/lib/calendars";
 import { isOnboardingSchoolTask } from "@/lib/school-block";
+import "./calendar.css";
 import { initialCalendarView, prefsOf } from "@/lib/personalize";
 import type { Plan, Task } from "@/lib/types";
 import { X, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil } from "lucide-react";
@@ -402,17 +403,7 @@ export default function CalendarPage() {
             ))}
           </div>
 
-          <details className="cal-kind-legend">
-            <summary aria-label="Show task kind colors">Kinds</summary>
-            <div className="cal-kind-legend-panel">
-              {KIND_SORT_ORDER.map((kind) => (
-                <span key={kind} className="cal-kind-legend-item">
-                  <span className="cal-kind-legend-dot" style={{ background: getKindColor(kind) }} />
-                  {KIND_DISPLAY_NAME[kind]}
-                </span>
-              ))}
-            </div>
-          </details>
+
 
       </section>
 
@@ -500,18 +491,24 @@ export default function CalendarPage() {
                   >
                     <span className="d">{d.getDate()}</span>
                     {inMonth && shown.length > 0 && (
-                      <span className="cal-chips">
-                        {shown.map((t) => (
-                          <span
-                            key={t.id}
-                            className={`cal-chip${t.completed ? " is-done" : ""}`}
-                            style={{ "--chip": getKindColor(t.kind) } as React.CSSProperties}
-                          >
-                            {t.time && <span className="cal-chip-time">{shortTime(t.time)}</span>}
-                            <span className="cal-chip-title">{t.title}</span>
-                          </span>
-                        ))}
-                        {more > 0 && <span className="cal-chip-more">+{more} more</span>}
+                      <span className="cal-events">
+                        {shown.map((t) => {
+                          // Canvas items and 11:59 PM are due dates, not times
+                          // anything happens: a ring, no clock.
+                          const deadline = t.source === "canvas" || t.time === "23:59";
+                          return (
+                            <span
+                              key={t.id}
+                              className={`cal-event${t.completed ? " is-done" : ""}${deadline ? " is-deadline" : ""}`}
+                              style={{ "--chip": getKindColor(t.kind) } as React.CSSProperties}
+                            >
+                              <span className="cal-event-dot" aria-hidden="true" />
+                              <span className="cal-event-title">{t.title}</span>
+                              {!deadline && t.time && <span className="cal-event-time">{shortTime(t.time)}</span>}
+                            </span>
+                          );
+                        })}
+                        {more > 0 && <span className="cal-event-more">{more} more</span>}
                       </span>
                     )}
                   </button>

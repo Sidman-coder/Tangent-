@@ -47,6 +47,11 @@ function time12(time: string): string {
 }
 
 /** Side-by-side lanes for tasks that would overlap within one block's height. */
+/** A due date, not an appointment: Canvas items and 11:59 PM. */
+function isDue(t: Task): boolean {
+  return t.source === "canvas" || t.time === "23:59";
+}
+
 function lanes(tasks: Task[]): { task: Task; lane: number; of: number }[] {
   const sorted = [...tasks].sort((a, b) => minutesOf(a.time) - minutesOf(b.time));
   const placed: { task: Task; lane: number; of: number }[] = [];
@@ -94,6 +99,7 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toYMD(days[0])]);
 
+  const hasDue = days.some((d) => tasksForDay(toYMD(d)).some(isDue));
   const hours = useMemo(() => Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i), []);
   const nowMins = now.getHours() * 60 + now.getMinutes();
   const nowTop = ((nowMins - START_HOUR * 60) / 60) * HOUR_PX;
@@ -105,16 +111,42 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
         {days.map((d) => {
           const ymd = toYMD(d);
           const isToday = ymd === todayYmd;
-          const count = tasksForDay(ymd).length;
           return (
             <button key={ymd} type="button" className={`wk-day-head${isToday ? " is-today" : ""}`} onClick={() => onOpenDay(ymd)}>
               <span className="wk-dow">{d.toLocaleDateString(undefined, { weekday: "short" })}</span>
               <span className="wk-date">{d.getDate()}</span>
-              {count > 0 && <span className="wk-count">{count}</span>}
             </button>
           );
         })}
       </div>
+
+      {/* Due dates (Canvas, 11:59 PM) aren't times anything happens: like an
+          all-day row, they sit above the grid instead of at its very bottom. */}
+      {hasDue && (
+        <div className="wk-due">
+          <span className="wk-gutter wk-due-label">Due</span>
+          {days.map((d) => {
+            const ymd = toYMD(d);
+            const due = tasksForDay(ymd).filter(isDue);
+            return (
+              <div key={ymd} className="wk-due-col">
+                {due.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className={`wk-due-item${t.completed ? " is-done" : ""}`}
+                    style={{ "--block": colorFor(t) } as React.CSSProperties}
+                    onClick={() => onOpenDay(ymd)}
+                    title={t.title}
+                  >
+                    <span className="wk-due-title">{t.title}</span>
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <div className="wk-scroll" ref={scrollRef}>
         <div className="wk-body" style={{ height: hours.length * HOUR_PX }}>
@@ -129,7 +161,7 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
           {days.map((d, col) => {
             const ymd = toYMD(d);
             const isToday = ymd === todayYmd;
-            const placed = lanes(tasksForDay(ymd));
+            const placed = lanes(tasksForDay(ymd).filter((t) => !isDue(t)));
             return (
               <div key={ymd} className={`wk-col${isToday ? " is-today" : ""}`}>
                 {/* Each hour is a slot: clicking empty time adds a task there. */}
