@@ -452,3 +452,70 @@
     background: rgb(from var(--text) r g b / 0.05);
   }
 }
+
+/* ── Agenda: an Apple list ─────────────────────────────────────────────── */
+
+.calendar-page .ag-day {
+  grid-template-columns: 132px minmax(0, 1fr);
+  padding: 12px 0;
+}
+
+.calendar-page .ag-date {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: transparent;
+  font: 600 17px/1 var(--font-body);
+  letter-spacing: -0.01em;
+}
+
+.calendar-page .ag-day.is-today .ag-date {
+  background: var(--accent);
+  box-shadow: none;
+}
+
+.calendar-page .ag-day-head:hover {
+  background: rgb(from var(--text) r g b / 0.03);
+}
+
+.calendar-page .ag-list {
+  gap: 0;
+}
+
+/* Rows, not cards: a dot for the kind, hairlines between. */
+.calendar-page .ag-item {
+  min-height: 40px;
+  padding: 4px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.calendar-page .ag-item:last-child {
+  border-bottom: 0;
+}
+
+.calendar-page .ag-item:hover {
+  border-color: var(--line);
+  box-shadow: none;
+  transform: none;
+  background: rgb(from var(--text) r g b / 0.025);
+}
+
+.calendar-page .ag-check {
+  border-color: var(--item);
+}
+
+.calendar-page .ag-time {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.calendar-page .ag-item.is-done {
+  opacity: 0.45;
+}
+
+.calendar-page .ag-item.is-done .ag-title {
+  text-decoration: none;
+}

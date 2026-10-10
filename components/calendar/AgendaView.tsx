@@ -15,6 +15,8 @@ type Props = {
   tasksForDay: (ymd: string) => Task[];
   colorFor: (task: Task) => string;
   onOpenDay: (ymd: string) => void;
+  /** One item clicked: open just it. */
+  onOpenTask?: (ymd: string, taskId: string) => void;
   onToggle: (id: string) => void;
   onAdd: (ymd: string) => void;
   toYMD: (d: Date) => string;
@@ -27,7 +29,7 @@ function time12(time: string): string {
   return `${hour}:${String(mm || 0).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
 }
 
-export default function AgendaView({ days, todayYmd, tasksForDay, colorFor, onOpenDay, onToggle, onAdd, toYMD }: Props) {
+export default function AgendaView({ days, todayYmd, tasksForDay, colorFor, onOpenDay, onOpenTask, onToggle, onAdd, toYMD }: Props) {
   const reduced = useReducedMotion() ?? false;
   const withTasks = days
     .map((d) => ({ d, ymd: toYMD(d), tasks: [...tasksForDay(toYMD(d))].sort((a, b) => a.time.localeCompare(b.time)) }))
@@ -80,8 +82,8 @@ export default function AgendaView({ days, todayYmd, tasksForDay, colorFor, onOp
                   >
                     {t.completed && <Check size={12} strokeWidth={3} aria-hidden="true" />}
                   </button>
-                  <span className="ag-time">{time12(t.time)}</span>
-                  <button type="button" className="ag-title" onClick={() => onOpenDay(ymd)}>
+                  <span className="ag-time">{t.source === "canvas" || t.time === "23:59" ? "Due" : time12(t.time)}</span>
+                  <button type="button" className="ag-title" onClick={() => (onOpenTask ? onOpenTask(ymd, t.id) : onOpenDay(ymd))}>
                     <TaskTitle task={t} />
                   </button>
                 </li>

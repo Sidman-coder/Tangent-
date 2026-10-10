@@ -449,6 +449,7 @@ export default function CalendarPage() {
       {view === "agenda" && (
         <section className="calendar-agenda-shell" key={`ag-${toYMD(agendaStart)}`}>
           <AgendaView
+            onOpenTask={(ymd, id) => { setSelectedDay(ymd); setFocusTaskId(id); }}
             days={agendaDays}
             todayYmd={todayYmd}
             tasksForDay={tasksForDay}
