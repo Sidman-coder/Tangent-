@@ -5,7 +5,7 @@
 // project on /projects and to add to one on /projects/[id]. Big asks always
 // get questions first; small ones get them afterwards (lib/questions-client.ts).
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUp } from "lucide-react";
 import ActionReceipt from "@/components/ActionReceipt";
 import ClarifyCard, { type ClarifyAnswer, type ClarifyQuestion } from "@/components/console/ClarifyCard";
@@ -41,9 +41,11 @@ type Props = {
   /** After Tangent acted; projectId is set when a project was created or changed. */
   onDone?: (reply: { projectId?: string }) => void;
   onChanged?: () => void;
+  /** Start straight away with this (a project handed over from Cmd-K). */
+  initialRequest?: string | null;
 };
 
-export default function ProjectAsk({ placeholder, context, submitLabel = "Ask", autoFocus, onDone, onChanged }: Props) {
+export default function ProjectAsk({ placeholder, context, submitLabel = "Ask", autoFocus, onDone, onChanged, initialRequest }: Props) {
   const [text, setText] = useState("");
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [progress, setProgress] = useState<PlanProgressView | null>(null);
@@ -85,6 +87,13 @@ export default function ProjectAsk({ placeholder, context, submitLabel = "Ask", 
     },
     [context, onChanged, onDone]
   );
+
+  const started = useRef(false);
+  useEffect(() => {
+    if (!initialRequest || started.current) return;
+    started.current = true;
+    void run(initialRequest);
+  }, [initialRequest, run]);
 
   const submit = () => {
     const request = text.trim();

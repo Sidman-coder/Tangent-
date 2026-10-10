@@ -4,7 +4,7 @@
 // a goal and steps; Tangent asks a few questions, lays the steps out around the
 // student's week (the spacing brain), and helps with each one.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
@@ -12,6 +12,7 @@ import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import Button from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
 import ProjectAsk from "@/components/projects/ProjectAsk";
+import { takeAsk } from "@/lib/ask-handoff";
 import { formatTime12 } from "@/lib/dates";
 import { getUserToday } from "@/lib/time";
 import type { Plan, Task } from "@/lib/types";
@@ -31,6 +32,17 @@ export default function ProjectsPage() {
   const tz = useUserTimezone();
   const today = getUserToday(tz);
   const [composing, setComposing] = useState(false);
+  // "Tell Tangent" (Cmd-K) routed a multi-week effort here: start it.
+  const [handed, setHanded] = useState<string | null>(null);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("start") !== "1") return;
+    const text = takeAsk("project");
+    router.replace("/projects");
+    if (text) {
+      setHanded(text);
+      setComposing(true);
+    }
+  }, [router]);
 
   const projects = useMemo<ProjectSummary[]>(() => {
     const tasks = state?.tasks ?? [];
@@ -69,7 +81,8 @@ export default function ProjectsPage() {
             placeholder="Prep for my chem final on Dec 12…"
             submitLabel="Start project"
             context={{ newProject: true }}
-            autoFocus={composing}
+            autoFocus={composing && !handed}
+            initialRequest={handed}
             onChanged={() => void refresh()}
             onDone={({ projectId }) => {
               if (projectId) router.push(`/projects/${projectId}`);

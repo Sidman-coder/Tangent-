@@ -2106,3 +2106,25 @@ a.tg-next:hover .tg-next-go { color: var(--accent); transform: translate(2px, -2
   font: 600 13px/1 var(--font-body);
   text-decoration: none;
 }
+
+/* Apple pass: the AI page's spinning, floating, glowing orb and the animated
+   glow around the composer read as "an AI product", which Tangent shouldn't.
+   The mark sits still on a plain tile; the composer is a plain field.
+   (The orbit in the rail is a different element and keeps its motion.) */
+.tg-orb {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: none;
+}
+.tg-orb::before,
+.tg-orb::after {
+  display: none;
+}
+.tg-orb > span {
+  animation: none;
+}
+.tg-composer-glow::before,
+.tg-composer-glow::after {
+  display: none;
+  animation: none;
+}

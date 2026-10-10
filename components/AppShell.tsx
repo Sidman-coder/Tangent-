@@ -203,9 +203,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 </>
               )}
             </span>
-            <button type="button" className="topbar-search" onClick={openPalette} aria-label="Search and capture">
+            <button type="button" className="topbar-search" onClick={openPalette} aria-label="Tell Tangent">
               <Search size={16} strokeWidth={1.8} aria-hidden="true" />
-              <span>Search</span>
+              <span>Tell Tangent</span>
               <kbd>⌘K</kbd>
             </button>
             <NotificationBell open={notifOpen} onOpenChange={setNotifOpen} />

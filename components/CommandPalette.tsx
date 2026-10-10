@@ -4,6 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppState } from "@/components/AppStateProvider";
 import Link from "next/link";
+import { routeAsk, ROUTE_HINT } from "@/lib/ask-route";
+import { putAsk } from "@/lib/ask-handoff";
+import { putNewPathTitle } from "@/lib/path-handoff";
 import { generateQuestions } from "@/lib/questions-client";
 import ActionReceipt from "@/components/ActionReceipt";
 import {
@@ -208,6 +211,33 @@ export default function CommandPalette() {
     [closePalette, router, submitAsk]
   );
 
+  // One input, routed (lib/ask-route.ts): questions are talked through on the
+  // AI page, multi-week efforts become Projects, long-range goals become
+  // Tangents, and everything else is saved or acted on right here.
+  const sendRouted = useCallback(
+    (raw: string) => {
+      const text = raw.trim();
+      if (!text) return;
+      const route = routeAsk(text);
+      if (route === "do") {
+        void submitAsk(text);
+        return;
+      }
+      closePalette();
+      if (route === "question") {
+        putAsk("ai", text);
+        router.push("/ai?ask=1");
+      } else if (route === "project") {
+        putAsk("project", text);
+        router.push("/projects?start=1");
+      } else {
+        putNewPathTitle(text);
+        router.push("/tangents?new=1");
+      }
+    },
+    [closePalette, router, submitAsk]
+  );
+
   const onInputKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === "Escape") {
@@ -233,10 +263,10 @@ export default function CommandPalette() {
         }
       } else if (e.key === "Enter") {
         e.preventDefault();
-        void submitAsk(value);
+        sendRouted(value);
       }
     },
-    [value, highlighted, closePalette, runQuickAction, submitAsk, QUICK_ACTIONS]
+    [value, highlighted, closePalette, runQuickAction, sendRouted, QUICK_ACTIONS]
   );
 
   // Hold Space (400ms) to start voice recording, when no form field is focused and the palette is closed.
@@ -329,7 +359,9 @@ export default function CommandPalette() {
                   </button>
                 ))
               ) : (
-                <div className="cmdk-hint">Press Enter to ask Tangent</div>
+                <div className="cmdk-hint">
+                  <kbd>Enter</kbd> {ROUTE_HINT[routeAsk(value)]}
+                </div>
               )}
             </div>
           </div>

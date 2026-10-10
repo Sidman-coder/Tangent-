@@ -5,6 +5,9 @@ import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { localNow } from "@/lib/time";
 import ChatSidebar from "@/components/console/ChatSidebar";
 import ChatThread from "@/components/console/ChatThread";
+import { routeAsk } from "@/lib/ask-route";
+import { takeAsk } from "@/lib/ask-handoff";
+import { putNewPathTitle } from "@/lib/path-handoff";
 import type { ClarifyAnswer } from "@/components/console/ClarifyCard";
 import { answerQuestions as answerLaterQuestions, generateQuestions } from "@/lib/questions-client";
 import Composer from "@/components/console/Composer";
@@ -19,7 +22,6 @@ import {
   type PlanProgressView,
   type Turn,
 } from "@/components/console/turns";
-import ModeSwitch from "@/components/console/ModeSwitch";
 import {
   VOICE_TRANSCRIPT_EVENT,
   type VoiceCaptureStatus,
@@ -44,6 +46,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import PenMark from "@/components/console/PenMark";
 import BriefPanel, { CADENCE_LABEL, type BriefSummary } from "@/components/console/BriefPanel";
 import { formatTime12 } from "@/lib/dates";
@@ -58,13 +61,11 @@ function briefWhen(b: BriefSummary): string {
 }
 
 // Linear-style starter cards: fill the composer, never send on their own.
-// Each card also picks the mode its question needs: talking a plan through
-// happens in Plan mode, changing the calendar in Calendar mode.
 const SUGGESTIONS = [
-  { icon: CalendarRange, text: "Plan my week", detail: "Spread this week’s work across your free time", mode: "plan" },
-  { icon: Sun, text: "What's on today?", detail: "Today’s tasks and events, in order", mode: "calendar" },
-  { icon: Timer, text: "What fits in 30 minutes?", detail: "Quick tasks for a short gap", mode: "plan" },
-  { icon: CalendarClock, text: "Move overdue tasks", detail: "Find new slots for anything that slipped", mode: "calendar" },
+  { icon: CalendarRange, text: "Plan my week", detail: "Spread this week’s work across your free time" },
+  { icon: Sun, text: "What's on today?", detail: "Today’s tasks and events, in order" },
+  { icon: Timer, text: "What fits in 30 minutes?", detail: "Quick tasks for a short gap" },
+  { icon: CalendarClock, text: "Move overdue tasks", detail: "Find new slots for anything that slipped" },
 ] as const;
 
 const SUGGESTION_ICON: Partial<Record<AiSuggestionKey, LucideIcon>> = {
@@ -77,11 +78,11 @@ const SUGGESTION_ICON: Partial<Record<AiSuggestionKey, LucideIcon>> = {
 
 /** What the student said they're working toward leads the list; the rest stay
  *  as they were. Still four cards, and none of them sends on its own. */
-function suggestionsFor(workingToward: unknown): { icon: LucideIcon; text: string; detail: string; mode: ChatMode }[] {
+function suggestionsFor(workingToward: unknown): { icon: LucideIcon; text: string; detail: string }[] {
   const first = aiFirstSuggestion(prefsOf({ workingToward }));
-  const base = SUGGESTIONS.map((s) => ({ icon: s.icon as LucideIcon, text: s.text as string, detail: s.detail as string, mode: s.mode as ChatMode }));
+  const base = SUGGESTIONS.map((s) => ({ icon: s.icon as LucideIcon, text: s.text as string, detail: s.detail as string }));
   if (!first) return base;
-  return [{ icon: SUGGESTION_ICON[first.key] ?? Sun, text: first.text, detail: first.detail, mode: "plan" as ChatMode }, ...base.slice(0, 3)];
+  return [{ icon: SUGGESTION_ICON[first.key] ?? Sun, text: first.text, detail: first.detail }, ...base.slice(0, 3)];
 }
 
 function partOfDay(hour: number): string {
@@ -132,6 +133,7 @@ function writeStored(key: string, value: string | null) {
 }
 
 export default function AiPage() {
+  const router = useRouter();
   const { state, refresh } = useAppState();
   const workingToward = state?.user?.workingToward;
   const suggestions = useMemo(() => suggestionsFor(workingToward), [workingToward]);
@@ -279,6 +281,23 @@ export default function AiPage() {
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }, [busy]);
 
+  // A question handed over from Cmd-K (/ai?ask=1): open a fresh chat and ask
+  // it. Two steps so send() runs with the new, empty chat in scope.
+  const [handedAsk, setHandedAsk] = useState<string | null>(null);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("ask") !== "1") return;
+    const text = takeAsk("ai");
+    router.replace("/ai");
+    if (!text) return;
+    // After the saved-chat restore has run, so it can't reopen the old chat.
+    window.setTimeout(() => {
+      newChat();
+      setHandedAsk(text);
+    }, 0);
+    // Once per arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /** Appends a message to the saved chat. Awaited so messages land in order;
    *  a failure is shown instead of silently leaving the chat unsaved. */
   const saveMessage = useCallback(async (sessionId: string | null, role: "user" | "assistant", content: string) => {
@@ -328,9 +347,20 @@ export default function AiPage() {
     // pipeline runs; `text` is what the thread shows for this turn.
     followUp?: { request: string; answers?: ClarifyAnswer[]; skipClarify?: boolean }
   ) => {
-    const sendMode = modeOverride ?? chatMode;
     const userText = (text ?? input).trim();
     if (!userText || busy) return;
+    // One input, routed (lib/ask-route.ts): no Plan/Calendar switch to set.
+    // A question is talked through; everything else acts. A long-range goal
+    // goes to Tangents, a multi-week effort becomes a project.
+    const route = followUp ? "do" : routeAsk(userText);
+    if (route === "goal" && !modeOverride) {
+      putNewPathTitle(userText);
+      setInput("");
+      router.push("/tangents?new=1");
+      return;
+    }
+    const sendMode: ChatMode = modeOverride ?? (route === "question" ? "plan" : "calendar");
+    setChatMode(sendMode);
     setErr(null);
     setBusy(true);
     setPendingRequest(userText);
@@ -379,6 +409,7 @@ export default function AiPage() {
           // Big or vague asks get questions first; never on a follow-up.
           clarify: !followUp,
           answers: followUp?.answers,
+          newProject: route === "project" ? true : undefined,
         }),
       });
       // Calendar mode streams NDJSON: plan progress lines, then {type:"result"}.
@@ -515,6 +546,13 @@ export default function AiPage() {
     }
   }, [input, busy, chatMode, activeSessionId, turns, refresh, linkAction, loadSessions, saveMessage]);
 
+  useEffect(() => {
+    if (!handedAsk || activeSessionId || turns.length > 0 || busy) return;
+    const text = handedAsk;
+    setHandedAsk(null);
+    void send(text);
+  }, [handedAsk, activeSessionId, turns.length, busy, send]);
+
   /** Answers to a turn's questions (or "Just do it") run the original ask. */
   const answerQuestions = useCallback(
     (turnId: string, answers: ClarifyAnswer[] | null) => {
@@ -627,7 +665,6 @@ export default function AiPage() {
       onTranscript={acceptTranscript}
       onVoiceError={setErr}
       mode={chatMode}
-      toolbar={<ModeSwitch mode={chatMode} onChange={changeMode} disabled={busy} />}
     />
   );
 
@@ -699,9 +736,7 @@ export default function AiPage() {
             </div>
             {greeting && <p className="tg-hero-greeting">{greeting}</p>}
             <h2 className="tg-hero-title">
-              <span key={chatMode} className="tg-hero-ask">
-                {chatMode === "calendar" ? "What should go on your calendar?" : "What would you like to plan?"}
-              </span>
+              <span className="tg-hero-ask">What can Tangent help with?</span>
             </h2>
             {today && (
               today.next ? (
@@ -728,14 +763,13 @@ export default function AiPage() {
               <kbd>Enter</kbd> to send · <kbd>Shift</kbd> + <kbd>Enter</kbd> for a new line
             </p>
             <div className="tg-examples" aria-label="Try asking">
-              {suggestions.map(({ icon: Icon, text, detail, mode }) => (
+              {suggestions.map(({ icon: Icon, text, detail }) => (
                 <button
                   key={text}
                   type="button"
                   className="tg-example"
                   title={detail}
                   onClick={() => {
-                    changeMode(mode);
                     setInput(text);
                     inputRef.current?.focus();
                   }}
@@ -775,9 +809,7 @@ export default function AiPage() {
               {saveWarning && <p className="tg-error" role="alert">{saveWarning}</p>}
               <div className="tg-composer-glow">{composer}</div>
               <p className="tg-dock-hint">
-                {chatMode === "calendar"
-                  ? "Calendar mode adds and changes tasks. You’ll always see what changed."
-                  : "Plan mode only drafts — switch to Calendar to add it."}
+                Ask a question, add something, or start a project. Tangent works out which, and you&apos;ll always see what changed.
               </p>
             </div>
           </>
