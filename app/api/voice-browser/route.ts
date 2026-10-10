@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { transcribeAudio } from "@/lib/deepgram";
 import { handleVoiceText } from "@/lib/voice-handler";
 import { withUser } from "@/lib/request-context";
+import { TANGENT_PIPELINE_V2 } from "@/lib/pipeline/flags";
+import { handleRequest } from "@/lib/pipeline/intake";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,6 +37,11 @@ export const POST = withUser(async (req: Request) => {
       return NextResponse.json({ ok: true, text });
     }
 
+    // Pipeline V2: the same intake and preview as typed chat (the browser has a
+    // screen). Flag off: acts directly, as before.
+    if (TANGENT_PIPELINE_V2) {
+      return NextResponse.json({ ...(await handleRequest([{ role: "user", content: text }], { source: "voice" })), text });
+    }
     return handleVoiceText(text);
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";

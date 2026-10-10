@@ -910,6 +910,62 @@
           "delete_task"
         ]
       }
+    },
+    {
+      "id": "voice-um-plan-icf",
+      "text": "um can you like help me plan icf prep",
+      "source": "voice",
+      "note": "Voice-style: filler, no punctuation. A plan request; ICF Prep doesn't exist yet.",
+      "seed": {
+        "plans": [],
+        "tasks": []
+      },
+      "expected": {
+        "intent": "new_plan",
+        "target_plan": "NEW",
+        "min_ops": 2,
+        "max_ops": 30
+      }
+    },
+    {
+      "id": "voice-uh-icf-question",
+      "text": "uh what should i do for icf",
+      "source": "voice",
+      "note": "Voice-style question: chat reply, nothing drafted.",
+      "seed": {
+        "plans": [
+          {
+            "id": "11111111-1111-4111-8111-000000000001",
+            "title": "ICF Prep"
+          }
+        ],
+        "tasks": []
+      },
+      "expected": {
+        "intent": "question",
+        "target_plan": null,
+        "min_ops": 0,
+        "max_ops": 0
+      }
+    },
+    {
+      "id": "voice-dentist-um-tomorrow",
+      "text": "add dentist um tomorrow at 3",
+      "source": "voice",
+      "note": "Voice-style add with a filler word in the middle.",
+      "seed": {
+        "plans": [],
+        "tasks": []
+      },
+      "expected": {
+        "intent": "add_task",
+        "target_plan": null,
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan"
+        ]
+      }
     }
   ]
 }

@@ -1,6 +1,7 @@
 // Pipeline V2 eval: runs every case in lib/pipeline/fixtures/requests.json
-// through the real typed-chat pipeline (handleVoiceText with preview on) and
-// grades the drafted ChangeSet with lib/pipeline/grade.ts.
+// through the real typed-chat intake (lib/pipeline/intake.ts handleRequest: the
+// routing rule, then handleVoiceText with preview on) and grades the drafted
+// ChangeSet with lib/pipeline/grade.ts. A chat reply grades as "question".
 //
 //   npm run eval:pipeline -- --check   validate fixtures + modules, print the
 //                                      cost estimate; no database, no AI
@@ -57,7 +58,7 @@ async function main() {
   console.log(`Estimated cost: about $${cost.toFixed(2)} (×${MARGIN} margin)`);
 
   // Load the pipeline itself so --check also proves the modules resolve.
-  const { handleVoiceText } = await import("@/lib/voice-handler");
+  const { handleRequest } = await import("@/lib/pipeline/intake");
   const store = await import("@/lib/store");
   const { runAsUser } = await import("@/lib/request-context");
   const { createAdminClient } = await import("@/lib/supabase/admin");
@@ -115,8 +116,7 @@ async function main() {
     for (const t of c.seed.tasks.filter((t) => !t.planId)) await store.addTask(seedTask(t));
     const seedPlans = c.seed.plans.map((p) => ({ id: ids[p.id], title: p.title }));
 
-    const res = await handleVoiceText(c.text, { preview: true });
-    const data = (await res.json()) as Record<string, unknown>;
+    const data = await handleRequest([{ role: "user", content: c.text }], { source: c.source });
     const action = String(data.action ?? "");
 
     let graded: Graded | null = null;
@@ -126,6 +126,8 @@ async function main() {
       graded = cs;
       // Leave nothing behind as an open draft.
       await store.markChangeSet(cs.id, "discarded", { from: "draft" });
+    } else if (action === "chat_reply" || action === "plan_reply") {
+      graded = { intent: "question", target_plan_id: null, ops: [] };
     } else if (action === "confirm_required") {
       graded = { intent: "clarify", target_plan_id: null, ops: [] };
     } else {

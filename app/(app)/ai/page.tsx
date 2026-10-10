@@ -18,6 +18,8 @@ import {
   type Turn,
 } from "@/components/console/turns";
 import ModeSwitch from "@/components/console/ModeSwitch";
+import { usePipelineV2 } from "@/components/PipelineFlag";
+import { chatOnly, draftShownPlan, fetchOpenDrafts, withOpenDrafts } from "@/components/console/pipeline-intake";
 import type { ChangeSet } from "@/lib/pipeline/changeset";
 import type { PreviewPayload } from "@/lib/pipeline/draft";
 import {
@@ -145,11 +147,12 @@ export default function AiPage() {
   const [chatsOpen, setChatsOpen] = useState(false);
   const [chatsHidden, setChatsHidden] = useState(false);
   const [chatMode, setChatMode] = useState<ChatMode>("calendar");
+  const v2 = usePipelineV2();
 
   useEffect(() => {
-    if (readStored(MODE_STORAGE_KEY) === "plan") setChatMode("plan");
+    if (readStored(MODE_STORAGE_KEY) === "plan" && !v2) setChatMode("plan");
     if (readStored(CHATS_HIDDEN_KEY) === "1") setChatsHidden(true);
-  }, []);
+  }, [v2]);
 
   const changeMode = useCallback((next: ChatMode) => {
     setChatMode(next);
@@ -243,6 +246,13 @@ export default function AiPage() {
     }
   }, []);
 
+  /** Pipeline V2: open drafts from the last 24 hours come back as cards. */
+  const restoreDrafts = useCallback(async () => {
+    if (!v2) return;
+    const drafts = await fetchOpenDrafts();
+    if (drafts.length) setTurns((prev) => withOpenDrafts(prev, drafts));
+  }, [v2]);
+
   const openSession = useCallback(async (sessionId: string) => {
     try {
       const [res, confirms] = await Promise.all([
@@ -256,6 +266,7 @@ export default function AiPage() {
       if (data.ok && data.session) {
         setActiveSessionId(data.session.id);
         setTurns(turnsFromMessages(data.session.messages, confirms));
+        void restoreDrafts();
         setMode("chat");
         setErr(null);
         window.localStorage.setItem(SESSION_STORAGE_KEY, data.session.id);
@@ -263,7 +274,7 @@ export default function AiPage() {
         window.localStorage.removeItem(SESSION_STORAGE_KEY);
       }
     } catch {}
-  }, []);
+  }, [restoreDrafts]);
 
   const newChat = useCallback(() => {
     if (busy) return;
@@ -274,8 +285,9 @@ export default function AiPage() {
     setErr(null);
     setMode("chat");
     window.localStorage.removeItem(SESSION_STORAGE_KEY);
+    void restoreDrafts();
     window.setTimeout(() => inputRef.current?.focus(), 0);
-  }, [busy]);
+  }, [busy, restoreDrafts]);
 
   /** Appends a message to the saved chat. Awaited so messages land in order;
    *  a failure is shown instead of silently leaving the chat unsaved. */
@@ -315,8 +327,8 @@ export default function AiPage() {
     if (storedId) {
       setRestoring(true);
       void openSession(storedId).finally(() => setRestoring(false));
-    }
-  }, [loadSessions, openSession]);
+    } else void restoreDrafts();
+  }, [loadSessions, openSession, restoreDrafts]);
 
 
   const send = useCallback(async (text?: string, modeOverride?: ChatMode) => {
@@ -472,10 +484,34 @@ export default function AiPage() {
   const addPlanToCalendar = useCallback(
     (turnId: string) => {
       setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, planDraft: false } : t)));
+      // Pipeline V2: draft the plan exactly as shown; saved only on Confirm.
+      const shown = turns.find((t) => t.id === turnId);
+      if (v2 && shown) {
+        void draftShownPlan(shown.response, shown.request).then((r) =>
+          "error" in r ? setErr(r.error) : setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, draft: r } : t)))
+        );
+        return;
+      }
       changeMode("calendar");
       void send("Add this plan to my calendar", "calendar");
     },
-    [changeMode, send]
+    [changeMode, send, turns, v2]
+  );
+
+  /** Pipeline V2 "Just talking, don't add": answer the turn conversationally. */
+  const justChatting = useCallback(
+    async (turnId: string) => {
+      const at = turns.findIndex((t) => t.id === turnId);
+      if (at < 0) return;
+      const history = turns.slice(0, at).flatMap((t) => [
+        { role: "user", content: t.request },
+        { role: "assistant", content: t.response },
+      ]);
+      const reply = cleanMessage(await chatOnly([...history, { role: "user", content: turns[at].request }]));
+      setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, response: reply, draft: undefined } : t)));
+      await saveMessage(activeSessionId, "assistant", reply);
+    },
+    [turns, activeSessionId, saveMessage]
   );
 
   const postSession = useCallback(async (body: Record<string, unknown>) => {
@@ -568,7 +604,8 @@ export default function AiPage() {
       onTranscript={acceptTranscript}
       onVoiceError={setErr}
       mode={chatMode}
-      toolbar={<ModeSwitch mode={chatMode} onChange={changeMode} disabled={busy} />}
+      placeholder={v2 ? "Ask, plan, or add something…" : undefined}
+      toolbar={v2 ? undefined : <ModeSwitch mode={chatMode} onChange={changeMode} disabled={busy} />}
     />
   );
 
@@ -641,7 +678,7 @@ export default function AiPage() {
             {greeting && <p className="tg-hero-greeting">{greeting}</p>}
             <h2 className="tg-hero-title">
               <span key={chatMode} className="tg-hero-ask">
-                {chatMode === "calendar" ? "What should go on your calendar?" : "What would you like to plan?"}
+                {v2 ? "What do you need?" : chatMode === "calendar" ? "What should go on your calendar?" : "What would you like to plan?"}
               </span>
             </h2>
             {today && (
@@ -697,13 +734,16 @@ export default function AiPage() {
               onUndone={() => void refresh()}
               mode={chatMode}
               onAddPlan={addPlanToCalendar}
+              onJustChatting={v2 ? (id) => void justChatting(id) : undefined}
             />
             <div className="tg-dock">
               {err && <p className="tg-error" role="alert">{err}</p>}
               {saveWarning && <p className="tg-error" role="alert">{saveWarning}</p>}
               <div className="tg-composer-glow">{composer}</div>
               <p className="tg-dock-hint">
-                {chatMode === "calendar"
+                {v2
+                  ? "You’ll see a preview before anything is added."
+                  : chatMode === "calendar"
                   ? "Calendar mode adds and changes tasks. You’ll always see what changed."
                   : "Plan mode only drafts — switch to Calendar to add it."}
               </p>

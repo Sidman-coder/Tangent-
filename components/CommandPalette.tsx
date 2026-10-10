@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useAppState } from "@/components/AppStateProvider";
 import ActionReceipt from "@/components/ActionReceipt";
 import PreviewCard from "@/components/PreviewCard";
+import { usePipelineV2 } from "@/components/PipelineFlag";
+import { chatOnly, fetchOpenDrafts } from "@/components/console/pipeline-intake";
 import type { ChangeSet } from "@/lib/pipeline/changeset";
 import type { PreviewPayload } from "@/lib/pipeline/draft";
 import {
@@ -109,6 +111,12 @@ export default function CommandPalette() {
       setTimeout(() => inputRef.current?.focus(), 20);
     }
   }, [open]);
+
+  // Pipeline V2: on open, bring back the newest draft still waiting for Confirm.
+  const v2 = usePipelineV2();
+  useEffect(() => {
+    if (open && v2) void fetchOpenDrafts().then((d) => d[0] && setDraft((cur) => cur ?? d[0]));
+  }, [open, v2]);
 
   const showToast = useCallback((text: string) => {
     setToast(text);
@@ -380,6 +388,11 @@ export default function CommandPalette() {
           onChanged={() => void refresh()}
           onSettled={onDraftSettled}
           autoFocus
+          onJustChatting={() => {
+            const asked = draft.changeSet.request_text;
+            setDraft(null);
+            void chatOnly([{ role: "user", content: asked }]).then((reply) => showToast(cleanReply(reply)));
+          }}
         />
       )}
 

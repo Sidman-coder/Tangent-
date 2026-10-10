@@ -497,6 +497,9 @@ export type VoiceOptions = {
    *  on, AI-generated tasks and plans are then saved as a draft ChangeSet
    *  instead of being written; the student confirms them. Ignored when off. */
   preview?: boolean;
+  /** Where the words came from, recorded on drafts and events. Defaults to
+   *  "typed" when previewing, "voice" otherwise (the pen). */
+  source?: "typed" | "voice";
 };
 
 /**
@@ -524,7 +527,7 @@ async function handleVoiceTextInner(
   // Pipeline V2 (lib/pipeline). Neither does anything when the flag is off.
   const drafting = TANGENT_PIPELINE_V2 && opts.preview === true;
   const received = (route: string) => {
-    if (TANGENT_PIPELINE_V2) logEvent("request_received", { route, fast: false, source: opts.preview ? "typed" : "voice", reentry: !!opts.forcePlan });
+    if (TANGENT_PIPELINE_V2) logEvent("request_received", { route, fast: false, source: opts.source ?? (opts.preview ? "typed" : "voice"), reentry: !!opts.forcePlan });
   };
   try {
     const tz = await getUserTimezone();
@@ -786,7 +789,7 @@ async function handleVoiceTextInner(
           if (!rangeGiven) assumptions.push("Assumed about a week since no timeframe was given");
           return await respondWithDraft(
             {
-              source: "typed",
+              source: opts.source ?? "typed",
               requestText: text,
               summary: "New plan",
               intent: "new_plan",
@@ -854,7 +857,7 @@ async function handleVoiceTextInner(
       if (drafting) {
         return await respondWithDraft(
           {
-            source: "typed",
+            source: opts.source ?? "typed",
             requestText: text,
             summary: "Add a task",
             intent: "add_task",
@@ -934,7 +937,7 @@ async function handleVoiceTextInner(
               if (drafting) {
                 return await respondWithDraft(
                   {
-                    source: "typed",
+                    source: opts.source ?? "typed",
                     requestText: text,
                     summary: "Add a task",
                     intent: "add_task",
@@ -1186,7 +1189,7 @@ async function handleVoiceTextInner(
       if (drafting) {
         return await respondWithDraft(
           {
-            source: "typed",
+            source: opts.source ?? "typed",
             requestText: text,
             summary: "Add a task",
             intent: "add_task",

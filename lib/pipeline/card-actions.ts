@@ -4,7 +4,7 @@
 
 import "server-only";
 import { NextResponse } from "next/server";
-import { getAppState, getChangeSet, getUserTimezone, markChangeSet, saveChangeSet, undoAction } from "../store";
+import { expireDraftChangeSets, getAppState, getChangeSet, getUserTimezone, listDraftChangeSets, markChangeSet, saveChangeSet, undoAction } from "../store";
 import { localNow } from "../time";
 import { applyChangeSet } from "./apply";
 import { parseChangeSet, type ChangeSet } from "./changeset";
@@ -106,7 +106,10 @@ export async function discardChangeSet(req: Request): Promise<NextResponse> {
       if (now?.status === "discarded") return json({ ok: true, alreadyDiscarded: true });
       return json({ ok: false, status: now?.status, message: "Those changes were already added. Use Undo instead." }, 409);
     }
-    logEvent("changeset_discarded", { intent: cs.intent, ops: cs.ops.length }, { changeSetId: cs.id });
+    // Optional body { reason: "just_chatting" }: the card's "Just talking" chip.
+    const body = (await req.json().catch(() => null)) as { reason?: unknown } | null;
+    const reason = body?.reason === "just_chatting" ? "just_chatting" : undefined;
+    logEvent("changeset_discarded", { intent: cs.intent, ops: cs.ops.length, ...(reason ? { reason } : {}) }, { changeSetId: cs.id });
     return json({ ok: true });
   } catch (e) {
     return failed(e);
@@ -158,6 +161,28 @@ export async function editChangeSet(req: Request): Promise<NextResponse> {
     logEvent("preview_edited", { edit: edit.type, ops: saved.ops.length }, { changeSetId: saved.id });
     const today = localNow(await getUserTimezone()).date;
     return json({ ok: true, changeSet: saved, preview: await previewFor(saved, today) });
+  } catch (e) {
+    return failed(e);
+  }
+}
+
+const DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * GET /api/changesets: the student's open drafts from the last 24 hours, newest
+ * first, with previews, so a reloaded chat or palette shows their cards again.
+ * Older drafts are discarded first (changeset_discarded, reason "expired").
+ */
+export async function listOpenDrafts(): Promise<NextResponse> {
+  if (!TANGENT_PIPELINE_V2) return json({ ok: false, message: "Not found" }, 404);
+  try {
+    const since = new Date(Date.now() - DRAFT_TTL_MS).toISOString();
+    const expired = await expireDraftChangeSets(since);
+    for (const cs of expired) logEvent("changeset_discarded", { intent: cs.intent, ops: cs.ops.length, reason: "expired" }, { changeSetId: cs.id });
+    const drafts = await listDraftChangeSets(since);
+    const today = localNow(await getUserTimezone()).date;
+    const items = await Promise.all(drafts.map(async (changeSet) => ({ changeSet, preview: await previewFor(changeSet, today) })));
+    return json({ ok: true, drafts: items });
   } catch (e) {
     return failed(e);
   }

@@ -12,6 +12,7 @@ import { ArrowDown, CalendarPlus } from "lucide-react";
 import ActionReceipt from "@/components/ActionReceipt";
 import PreviewCard from "@/components/PreviewCard";
 import PenMark from "@/components/console/PenMark";
+import { usePipelineV2 } from "@/components/PipelineFlag";
 import type { ChatMode, PlanProgressView, Turn } from "@/components/console/turns";
 import { formatTime12 } from "@/lib/dates";
 
@@ -53,6 +54,8 @@ type Props = {
   onAddPlan: (turnId: string) => void;
   /** A plan being generated for the pending request, shown as it arrives. */
   planProgress?: PlanProgressView | null;
+  /** Pipeline V2: the preview card's "Just talking, don't add" chip. */
+  onJustChatting?: (turnId: string) => void;
 };
 
 function shortDate(ymd: string): string {
@@ -60,7 +63,8 @@ function shortDate(ymd: string): string {
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
 
-export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onUndone, mode, onAddPlan, planProgress }: Props) {
+export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onUndone, mode, onAddPlan, planProgress, onJustChatting }: Props) {
+  const v2 = usePipelineV2();
   const planDone = planProgress ? planProgress.tasks.filter(Boolean).length : 0;
   const scrollerRef = useRef<HTMLDivElement>(null);
   const latestRef = useRef<HTMLElement>(null);
@@ -167,7 +171,7 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
                           <CalendarPlus size={14} strokeWidth={2} aria-hidden="true" />
                           Add to calendar
                         </button>
-                        <span>Switches to Calendar mode and adds this plan.</span>
+                        <span>{v2 ? "Shows what will be added before saving." : "Switches to Calendar mode and adds this plan."}</span>
                       </div>
                     )}
                     {t.draft && (
@@ -176,6 +180,7 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
                         preview={t.draft.preview}
                         onChanged={onUndone}
                         autoFocus={t.fresh}
+                        onJustChatting={onJustChatting ? () => onJustChatting(t.id) : undefined}
                       />
                     )}
                     {t.actionId && t.actionLabel && (

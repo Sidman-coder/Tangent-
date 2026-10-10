@@ -77,6 +77,14 @@ Add `TANGENT_PIPELINE_V2=true` to `.env.local` and restart `npm run dev`.
 5. **Voice** and **typing** the same request give the same preview.
 6. Click **"Just talking, don't add"** on a preview. It discards and replies conversationally.
 7. Supabase: `select count(*) from events where type='changeset_discarded';` goes up.
+8. The **Add to calendar** button under a drafted plan says "Shows what will be added before saving." Clicking it shows a card (nothing saved yet). Confirm, then check every title, date and time on the calendar against the reply.
+9. If a schedule line in the reply can't be read (for example "11/01 - 3 - Review mistakes"), the card says **"Read X of Y lines"** and lists the skipped line. Nothing disappears silently.
+10. "can you add dentist tomorrow?" adds or previews; it never just chats. "what's my plan for today?" and "ideas for my ICF project" chat. "should I schedule study time for the SAT?" previews.
+11. Browser voice: hold the mic, say "um can you like help me plan icf prep", press Enter. You get the same preview as typing it. The pen (`/api/voice`) still saves directly, with no preview.
+12. Just-talking event: `select props from events where type='changeset_discarded' order by created_at desc limit 1;` shows `"reason": "just_chatting"`.
+13. Reload gap: make a preview, **don't** confirm, reload the AI page. The card comes back. Open the palette (Ctrl+K) on another page: the newest open card shows there too.
+14. 24-hour expiry: in Supabase, set one draft's `created_at` to 25 hours ago, then reload. It doesn't come back, its status is `discarded`, and a `changeset_discarded` event has `"reason": "expired"`.
+15. Flag off (`TANGENT_PIPELINE_V2=false`, restart `npm run dev`): the mode switch, the old hero text and the old dock hint are back, and "Add to calendar" switches to Calendar mode as before.
 
 ## F. Save and ship (in this order)
 

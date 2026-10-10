@@ -1954,6 +1954,40 @@ export async function markChangeSet(
   return changed;
 }
 
+/** The student's drafts created at or after `sinceIso`, newest first (at most 20). */
+export async function listDraftChangeSets(sinceIso: string): Promise<ChangeSet[]> {
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("change_sets")
+    .select(CHANGE_SET_COLUMNS)
+    .eq("user_id", userId)
+    .eq("status", "draft")
+    .gte("created_at", sinceIso)
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error) fail("listDraftChangeSets", error);
+  return ((data ?? []) as ChangeSetRow[]).map(changeSetFromRow);
+}
+
+/** Discards the student's drafts created before `beforeIso`. Returns the ones
+ *  it changed, so each can be logged. */
+export async function expireDraftChangeSets(beforeIso: string): Promise<Pick<ChangeSet, "id" | "intent" | "ops">[]> {
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("change_sets")
+    .update({ status: "discarded" })
+    .eq("user_id", userId)
+    .eq("status", "draft")
+    .lt("created_at", beforeIso)
+    .select("id, intent, ops");
+  if (error) fail("expireDraftChangeSets", error);
+  return ((data ?? []) as { id: string; intent: ChangeSet["intent"]; ops: ChangeSet["ops"] | null }[]).map((r) => ({
+    id: r.id,
+    intent: r.intent,
+    ops: r.ops ?? [],
+  }));
+}
+
 // ─── Daily Brief config ───────────────────────────────────────────────────────
 
 export async function getBriefConfig(): Promise<BriefConfig | null> {

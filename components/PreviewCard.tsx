@@ -25,6 +25,9 @@ type Props = {
   className?: string;
   /** Called when the card leaves the draft state (confirmed, discarded, undone). */
   onSettled?: (phase: Exclude<Phase, "draft">) => void;
+  /** Shows a "Just talking, don't add" chip: discards the draft (reason
+   *  just_chatting), then the caller answers conversationally. */
+  onJustChatting?: () => void;
 };
 
 async function post(url: string, body?: unknown, method = "POST"): Promise<{ status: number; data: Record<string, unknown> }> {
@@ -40,7 +43,7 @@ async function post(url: string, body?: unknown, method = "POST"): Promise<{ sta
 const phaseOf = (status: unknown): Phase | null =>
   status === "confirmed" || status === "discarded" || status === "undone" || status === "draft" ? status : null;
 
-export default function PreviewCard({ changeSet, preview, onChanged, autoFocus = false, className, onSettled }: Props) {
+export default function PreviewCard({ changeSet, preview, onChanged, autoFocus = false, className, onSettled, onJustChatting }: Props) {
   const { state } = useAppState();
   const [cs, setCs] = useState(changeSet);
   const [view, setView] = useState(preview);
@@ -49,6 +52,7 @@ export default function PreviewCard({ changeSet, preview, onChanged, autoFocus =
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ created: number; skipped: string[] } | null>(null);
+  const [chatting, setChatting] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const shownRef = useRef(false);
   const base = `/api/changesets/${encodeURIComponent(cs.id)}`;
@@ -110,6 +114,16 @@ export default function PreviewCard({ changeSet, preview, onChanged, autoFocus =
       setEditing(false);
     });
 
+  const justChatting = () =>
+    act(async () => {
+      const { status, data } = await post(`${base}/discard`, { reason: "just_chatting" });
+      if (!data.ok) return settle(status, data);
+      setChatting(true);
+      setPhase("discarded");
+      setEditing(false);
+      onJustChatting?.();
+    });
+
   const undo = () =>
     act(async () => {
       const { status, data } = await post(`${base}/undo`);
@@ -169,7 +183,7 @@ export default function PreviewCard({ changeSet, preview, onChanged, autoFocus =
   if (phase === "discarded") {
     return (
       <div className={`${cls} is-done`} role="status">
-        <span className="preview-card-muted">Discarded. Nothing was added.</span>
+        <span className="preview-card-muted">{chatting ? "Not added. Just talking." : "Discarded. Nothing was added."}</span>
       </div>
     );
   }
@@ -256,6 +270,11 @@ export default function PreviewCard({ changeSet, preview, onChanged, autoFocus =
         <button type="button" className="preview-card-btn" onClick={() => void discard()} disabled={busy}>
           Discard
         </button>
+        {onJustChatting && (
+          <button type="button" className="preview-card-btn is-chip" onClick={() => void justChatting()} disabled={busy}>
+            Just talking, don&apos;t add
+          </button>
+        )}
         <span className="preview-card-keys" aria-hidden="true">Enter to confirm · Esc to discard</span>
       </div>
     </div>

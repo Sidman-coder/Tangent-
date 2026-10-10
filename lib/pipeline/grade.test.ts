@@ -137,11 +137,11 @@ void (import("./grade") as Promise<Mod>).then(({ gradeCase, FixtureFileSchema })
   const raw = JSON.parse(readFileSync(new URL("./fixtures/requests.json", import.meta.url), "utf8"));
   const parsed = FixtureFileSchema.safeParse(raw);
 
-  test("fixtures: valid, 30 cases, unique ids", () => {
+  test("fixtures: valid, 33 cases (30 + 3 voice-style), unique ids", () => {
     assert.equal(parsed.success, true, parsed.success ? "" : JSON.stringify(parsed.error.issues.slice(0, 3)));
     if (!parsed.success) return;
     const cases = parsed.data.cases;
-    assert.equal(cases.length, 30);
+    assert.equal(cases.length, 33);
     assert.equal(new Set(cases.map((c) => c.id)).size, cases.length);
   });
 
