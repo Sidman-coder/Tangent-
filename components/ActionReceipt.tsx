@@ -48,6 +48,8 @@ export default function ActionReceipt({
         <button
           type="button"
           className="action-receipt-undo"
+          // Several receipts can be on screen; each says what it undoes.
+          aria-label={`Undo: ${label}`}
           onClick={undo}
           disabled={state === "undoing"}
         >
