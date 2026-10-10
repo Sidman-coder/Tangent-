@@ -11,6 +11,8 @@ import SidePeek from "@/components/ui/SidePeek";
 import { handleResourceClick } from "@/lib/task-utils";
 import { toYMD, formatTime12 } from "@/lib/dates";
 import { taskColor } from "@/lib/task-colors";
+import { CALENDARS } from "@/lib/calendars";
+import { isOnboardingSchoolTask } from "@/lib/school-block";
 import { initialCalendarView, prefsOf } from "@/lib/personalize";
 import type { Plan, Task } from "@/lib/types";
 import { X, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil } from "lucide-react";
@@ -137,8 +139,6 @@ export default function CalendarPage() {
   const [view, setView] = useState<CalView>("month");
   const [weekStart, setWeekStart] = useState(() => startOfWeek(now));
   const [agendaStart, setAgendaStart] = useState(() => new Date(now.getFullYear(), now.getMonth(), now.getDate()));
-  const [newCalName, setNewCalName] = useState("");
-  const [showAddCal, setShowAddCal] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [addModalDate, setAddModalDate] = useState(todayYmd);
@@ -152,7 +152,7 @@ export default function CalendarPage() {
   const [dayChatInput, setDayChatInput] = useState("");
   const [dayChatBusy, setDayChatBusy] = useState(false);
 
-  const calendars = state?.calendars ?? [{ id: "cal_all", name: "All Calendars", category: "ALL" }];
+  const calendars = state?.calendars ?? CALENDARS;
   const activeCal = calendars[calIdx] ?? calendars[0];
   const plans: Plan[] = state?.plans ?? [];
 
@@ -162,12 +162,14 @@ export default function CalendarPage() {
   }, [plans]);
 
   const getTaskCategoryColor = useCallback(
-    (t: Task): string => taskColor(t, plans, calendars),
-    [plans, calendars]
+    (t: Task): string => taskColor(t, plans),
+    [plans]
   );
 
   const tasksForDay = useCallback((ymd: string): Task[] => {
-    let tasks = state?.tasks ?? [];
+    // The onboarding School block stores the student's school hours for the
+    // scheduler; it is not something to do, so it is never drawn.
+    let tasks = (state?.tasks ?? []).filter((t) => !isOnboardingSchoolTask(t));
     if (activeCal.category !== "ALL") tasks = tasks.filter((t) => t.calendarId === activeCal.id);
     if (planFilter) tasks = tasks.filter((t) => t.planId === planFilter);
     return tasks.filter((t) => t.date === ymd);
@@ -257,19 +259,6 @@ export default function CalendarPage() {
   const prevMonth = () => { setMonthDir(-1); if (month === 0) { setYear((y) => y - 1); setMonth(11); } else setMonth((mo) => mo - 1); };
   const nextMonth = () => { setMonthDir(1); if (month === 11) { setYear((y) => y + 1); setMonth(0); } else setMonth((mo) => mo + 1); };
 
-  const addCalendar = async () => {
-    const name = newCalName.trim();
-    if (!name) return;
-    await fetch("/api/calendars", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-    setNewCalName("");
-    setShowAddCal(false);
-    await refresh();
-  };
-
   const toggleTask = async (id: string) => {
     await fetch("/api/tasks", {
       method: "POST",
@@ -311,7 +300,7 @@ export default function CalendarPage() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      setSelectedDay(null); setShowAddModal(false); setRecurDeleteTarget(null); setRecurEditTarget(null); setShowAddCal(false);
+      setSelectedDay(null); setShowAddModal(false); setRecurDeleteTarget(null); setRecurEditTarget(null);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -411,9 +400,6 @@ export default function CalendarPage() {
                 {cal.name}
               </button>
             ))}
-            <button type="button" className="cal-segment cal-segment-add" onClick={() => setShowAddCal((value) => !value)} aria-label="Add calendar" title="Add new calendar">
-              <Plus size={16} strokeWidth={1.75} />
-            </button>
           </div>
 
           <details className="cal-kind-legend">
@@ -428,19 +414,6 @@ export default function CalendarPage() {
             </div>
           </details>
 
-        {showAddCal && (
-          <div className="cal-add-cal-row">
-            <input
-              aria-label="New calendar name"
-              placeholder="New calendar name…"
-              value={newCalName}
-              onChange={(e) => setNewCalName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") void addCalendar(); }}
-              autoFocus
-            />
-            <Button variant="primary" size="sm" onClick={() => void addCalendar()}>Add</Button>
-          </div>
-        )}
       </section>
 
       {activePlan && (

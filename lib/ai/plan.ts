@@ -2,6 +2,7 @@ import "server-only";
 import type Anthropic from "@anthropic-ai/sdk";
 import { callClaude, messageText, streamClaude, type ClaudeResult } from "@/lib/ai/call";
 import { addDaysYMD, daysBetweenYMD } from "@/lib/time";
+import { inferCalendarGroup } from "@/lib/calendars";
 import type { Tier } from "@/lib/ai/models";
 
 // Two-stage plan generation.
@@ -25,7 +26,7 @@ export type PlanTask = {
   title: string;
   date: string;
   time: string;
-  calendarId: "cal_work" | "cal_personal" | "cal_study" | "cal_all";
+  calendarId: "cal_school" | "cal_other";
   notes: string;
   startAction: string;
   resources: { label: string; url: string }[];
@@ -37,7 +38,7 @@ export type GeneratedPlan =
   | { ok: true; title: string; phases: PlanPhase[]; tasks: PlanTask[] }
   | { ok: false; error: string; budgetExceeded?: boolean };
 
-const CALENDAR_IDS = ["cal_work", "cal_personal", "cal_study", "cal_all"] as const;
+const CALENDAR_IDS = ["cal_school", "cal_other"] as const;
 
 const TASK_SCHEMA = {
   type: "object",
@@ -89,7 +90,7 @@ const DETAIL_SCHEMA = {
 const TASK_RULES = `Each task:
 - title: under 7 words, specific to this session.
 - time: HH:MM between 07:00 and 20:00; vary it sensibly.
-- calendarId: cal_study for school and learning, cal_personal for health, hobbies and life, cal_work for jobs and projects, cal_all if unclear.
+- calendarId: cal_school for classes, homework, tests and studying for school; cal_other for everything else (skills, hobbies, extracurriculars, projects, health).
 - notes: ONE sentence saying exactly what to work on and how, specific to the topic. No URLs.
 - startAction: one concrete thing to do in the first 2 minutes, under 20 words, starting with a verb (Watch, Read, Open, Solve, Write, Review, Draft).
 - resources: 0 to 2 links, only when a specific page genuinely helps this session AND you are certain the exact URL exists (well-known sites such as Khan Academy, YouTube, Coursera, MIT OpenCourseWare, Lichess, Codecademy). Otherwise an empty array. Never homepages or search-result URLs.
@@ -191,7 +192,7 @@ export function normalizeTask(raw: unknown, date: string): PlanTask | null {
   const title = clip(t.title, 80);
   if (!title) return null;
   const time = typeof t.time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(t.time.trim()) ? t.time.trim() : "09:00";
-  const calendarId = CALENDAR_IDS.includes(t.calendarId as PlanTask["calendarId"]) ? (t.calendarId as PlanTask["calendarId"]) : "cal_all";
+  const calendarId = CALENDAR_IDS.includes(t.calendarId as PlanTask["calendarId"]) ? (t.calendarId as PlanTask["calendarId"]) : inferCalendarGroup(String(t.title ?? ""));
   const resources = (Array.isArray(t.resources) ? t.resources : [])
     .map((r) => (r && typeof r === "object" ? (r as Record<string, unknown>) : {}))
     .map((r) => ({ label: clip(r.label, 120), url: clip(r.url, 500) }))

@@ -5,6 +5,7 @@ import { addDaysYMD, expandRecurrence, getUserToday, weekRange } from "./time";
 import { preferencesFrom } from "./onboarding";
 import type { OnboardingPreferences, OnboardingSubmission, PreferencesPatch, SchoolHours } from "./onboarding";
 import { SCHOOL_SERIES_WEEKS, planSchoolReplace, schoolHoursFromTasks } from "./school-block";
+import { CALENDARS, calendarGroupOf } from "./calendars";
 import { decryptFeedUrl, encryptFeedUrl, maskCanvasFeedUrl as maskFeedUrl } from "./canvas-feed-security";
 import type {
   Task,
@@ -107,7 +108,6 @@ const TASK_COLUMNS =
 function taskFromRow(r: TaskRow): Task {
   const t: Task = { id: r.id, title: r.title, date: r.date, time: r.time, completed: r.completed };
   if (r.kind) t.kind = r.kind;
-  if (r.calendar_id !== null) t.calendarId = r.calendar_id;
   if (r.plan_id !== null) t.planId = r.plan_id;
   if (r.notes !== null) t.notes = r.notes;
   if (r.recurring) t.recurring = r.recurring;
@@ -116,6 +116,9 @@ function taskFromRow(r: TaskRow): Task {
   if (r.source) t.source = r.source;
   if (r.external_id !== null) t.externalId = r.external_id;
   if (r.path_node_id !== null) t.pathNodeId = r.path_node_id;
+  // Old ids (Personal/Work/Study/custom) become School or No school here, so
+  // nothing above the store sees them (lib/calendars.ts).
+  t.calendarId = calendarGroupOf({ ...t, calendarId: r.calendar_id ?? undefined });
   return t;
 }
 
@@ -562,46 +565,15 @@ export async function getAllCalendars(): Promise<CalendarDef[]> {
   return requestMemo("calendars", readCalendars);
 }
 
+// Fixed: All, School, No school (lib/calendars.ts). The calendars table is no
+// longer read; its rows are left in place for older tasks' ids.
 async function readCalendars(): Promise<CalendarDef[]> {
-  const { db, userId } = ctx();
-  const { data, error } = await db
-    .from("calendars")
-    .select("id, name, category, color")
-    .eq("user_id", userId)
-    .order("created_at")
-    .order("id");
-  if (error) fail("getAllCalendars", error);
-  const rank = (id: string) => {
-    const i = DEFAULT_CALENDAR_ORDER.indexOf(id);
-    return i === -1 ? DEFAULT_CALENDAR_ORDER.length : i;
-  };
-  return (data ?? [])
-    .map((c: { id: string; name: string; category: string; color: string | null }) => {
-      const cal: CalendarDef = { id: c.id, name: c.name, category: c.category };
-      if (c.color) cal.color = c.color;
-      return cal;
-    })
-    .sort((a, b) => rank(a.id) - rank(b.id));
+  return CALENDARS.map((c) => ({ ...c }));
 }
 
 /** Alias of getAllCalendars — used by calendar-intelligence code (voice-handler, voice-agent-tools). */
 export async function getCalendars(): Promise<CalendarDef[]> {
   return getAllCalendars();
-}
-
-export async function addCalendar(name: string, color?: string): Promise<CalendarDef> {
-  const { db, userId } = ctx();
-  const cal: CalendarDef = {
-    id: uid("cal"),
-    name,
-    category: name.toLowerCase().replace(/\s+/g, "_"),
-    color: color ?? "#a78bfa",
-  };
-  const { error } = await db.from("calendars").insert({ user_id: userId, ...cal });
-  if (error) fail("addCalendar", error);
-  forgetMemo("calendars");
-  console.log("[store] addCalendar:", cal.id, cal.name);
-  return cal;
 }
 
 export async function getTasksByCalendar(calendarId: string): Promise<Task[]> {

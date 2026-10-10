@@ -33,7 +33,7 @@ function task(p: Partial<Task> & Pick<Task, "date" | "time">): Task {
 
 /** A weekly School block the way onboarding writes it. */
 function school(date: string, time = "08:00", until = "Until 3:00 PM"): Task {
-  return task({ title: "School", kind: "school", date, time, notes: until, calendarId: "cal_personal" });
+  return task({ title: "School", kind: "school", date, time, notes: until, calendarId: "cal_school" });
 }
 
 // 2026-09-28 is a Monday.

@@ -6,6 +6,7 @@
 // (see needsAgentTools below). It reuses the existing store functions
 // (addTask / addPlan / updateTask) for the "act" side so behavior matches
 // the create_plan / add_task cases already in app/api/voice/route.ts.
+import { inferCalendarGroup, parseCalendarGroup } from "@/lib/calendars";
 import { addTask, addPlan, updateTask, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, getAllTasks, getTasksByDate, addPendingConfirmation, getUserTimezone } from "@/lib/store";
 import type { Task, TaskKind } from "@/lib/types";
 import { getRecentEmails, getEmailById } from "@/lib/gmail";
@@ -130,7 +131,7 @@ const TOOLS = [
       properties: {
         targetCalendarId: {
           type: "string",
-          description: "The id of the calendar to move tasks to, e.g. cal_work, cal_personal",
+          description: "The calendar to move tasks to: cal_school or cal_other",
         },
         filter: {
           type: "object",
@@ -163,7 +164,7 @@ const TOOLS = [
         title: { type: "string" },
         date: { type: "string", description: "YYYY-MM-DD" },
         time: { type: "string", description: "HH:MM 24-hour, default 09:00" },
-        calendarId: { type: "string", description: "The calendar id to file this task under, e.g. cal_work, cal_personal, cal_study, cal_all" },
+        calendarId: { type: "string", description: "The calendar to file this task under: cal_school or cal_other" },
         notes: { type: "string" },
         startAction: { type: "string", description: "One specific concrete action under 20 words, starting with a verb" },
         resources: {
@@ -199,7 +200,7 @@ const TOOLS = [
               title: { type: "string" },
               date: { type: "string", description: "YYYY-MM-DD" },
               time: { type: "string", description: "HH:MM 24-hour" },
-              calendarId: { type: "string", description: "The calendar id to file this task under, e.g. cal_work, cal_personal, cal_study, cal_all" },
+              calendarId: { type: "string", description: "The calendar to file this task under: cal_school or cal_other" },
               notes: { type: "string" },
               startAction: { type: "string", description: "One specific concrete action under 20 words, starting with a verb" },
               resources: {
@@ -243,46 +244,10 @@ function inferPlanKind(topic: string): TaskKind {
   return SIDE_EC_KEYWORDS.test(topic) ? "side-ec" : "academic-ec";
 }
 
-function inferCalendarId(title: string, notes?: string): string {
-  const text = (title + " " + (notes || "")).toLowerCase();
-  if (text.match(/meeting|call|client|project|deadline|work|sales|email|report|presentation/)) {
-    return "cal_work";
-  }
-  if (text.match(/gym|workout|health|family|errand|personal|hobby|friend/)) {
-    return "cal_personal";
-  }
-  if (text.match(/study|homework|assignment|exam|test|course|class|lecture|quiz/)) {
-    return "cal_study";
-  }
-  return "cal_all";
-}
-
-async function resolveCalendarId(input: string | undefined): Promise<string> {
-  if (!input) return "cal_all";
-  const calendars = await getCalendars();
-  const exactMatch = calendars.find((c) => c.id === input);
-  if (exactMatch) return exactMatch.id;
-  const nameMatch = calendars.find(
-    (c) =>
-      c.name.toLowerCase() === input.toLowerCase() ||
-      c.name.toLowerCase().includes(input.toLowerCase()) ||
-      input.toLowerCase().includes(c.name.toLowerCase())
-  );
-  if (nameMatch) return nameMatch.id;
-  const lower = input.toLowerCase();
-  if (lower.includes("work") || lower.includes("professional") || lower.includes("business")) {
-    const workCal = calendars.find((c) => c.name.toLowerCase().includes("work"));
-    if (workCal) return workCal.id;
-  }
-  if (lower.includes("personal") || lower.includes("private") || lower.includes("life")) {
-    const personalCal = calendars.find((c) => c.name.toLowerCase().includes("personal"));
-    if (personalCal) return personalCal.id;
-  }
-  if (lower.includes("study") || lower.includes("school") || lower.includes("learn")) {
-    const studyCal = calendars.find((c) => c.name.toLowerCase().includes("study"));
-    if (studyCal) return studyCal.id;
-  }
-  return inferCalendarId(input, "");
+/** School or No school (lib/calendars.ts) for a calendar the AI named, falling
+ *  back to the task's own words when it named neither. */
+async function resolveCalendarId(input: string | undefined, title = ""): Promise<string> {
+  return parseCalendarGroup(input) ?? inferCalendarGroup(title || input || "");
 }
 
 /** Distinguishes "Google Calendar isn't configured on this server" (a missing-credential
@@ -342,9 +307,8 @@ async function executeTool(name: string, input: Record<string, unknown>, request
       const targetCalendarId = typeof input.targetCalendarId === "string" ? input.targetCalendarId : "";
       if (!targetCalendarId) return { data: { error: "Missing targetCalendarId" } };
       const calendars = await getCalendars();
-      const targetCalendar = calendars.find(
-        (c) => c.id === targetCalendarId || c.name.toLowerCase() === targetCalendarId.toLowerCase()
-      );
+      const targetGroup = parseCalendarGroup(targetCalendarId);
+      const targetCalendar = calendars.find((c) => c.id === targetGroup);
       if (!targetCalendar) {
         return { data: { error: `Calendar "${targetCalendarId}" not found. Available: ${calendars.map((c) => c.name).join(", ")}` } };
       }
@@ -443,7 +407,7 @@ async function executeTool(name: string, input: Record<string, unknown>, request
           )
         : undefined;
       const resources = rawResources && rawResources.length > 0 ? rawResources : undefined;
-      const calendarId = await resolveCalendarId(typeof input.calendarId === "string" ? input.calendarId : undefined);
+      const calendarId = await resolveCalendarId(typeof input.calendarId === "string" ? input.calendarId : undefined, title);
       // See the note in voice-handler: task.time is rendered on its own, so
       // the title must not repeat it.
       const task = await addTask({ title, date, time, completed: false, calendarId, notes, startAction, resources });
@@ -473,7 +437,7 @@ async function executeTool(name: string, input: Record<string, unknown>, request
             )
           : undefined;
         const taskResources = rawTaskResources && rawTaskResources.length > 0 ? rawTaskResources : undefined;
-        const taskCalendarId = await resolveCalendarId(typeof rt.calendarId === "string" ? rt.calendarId : undefined);
+        const taskCalendarId = await resolveCalendarId(typeof rt.calendarId === "string" ? rt.calendarId : undefined, taskTitle);
         const task = await addTask({
           title: taskTitle,
           date: taskDate,
@@ -538,10 +502,10 @@ The user gave a voice command that may require reading their Gmail, Canvas or ca
 CALENDAR AWARENESS:
 The student's current calendars are listed after these instructions.
 Always assign tasks to the correct calendar based on content.
-Work tasks → cal_work
-Personal tasks → cal_personal
-Study tasks → cal_study (if exists) or cal_personal
-When user names a specific calendar always use that calendar's id exactly.
+There are exactly two: cal_school (School) and cal_other (No school). cal_all is a view, never a target.
+Schoolwork (classes, homework, assignments, tests, quizzes, studying, essays) → cal_school
+Everything else (practices, clubs, extracurriculars, jobs, projects, gym, family, errands) → cal_other
+If the student says school or no school, follow that.
 Include calendarId in every add_task and create_plan tool call.
 For move_tasks operations match tasks by title keywords or date range.
 Call get_calendars if you need to confirm what calendars exist before assigning a task.

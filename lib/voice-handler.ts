@@ -15,6 +15,7 @@
 // Next.js route files may only export HTTP method handlers, so this can't
 // live in route.ts itself.
 import { NextResponse } from "next/server";
+import { inferCalendarGroup, parseCalendarGroup } from "@/lib/calendars";
 import { addTask, addPlanWithTasks, addRecurringTask, completeTask, deleteTask, updateTask, addVoiceLog, getAppState, getAllTasks, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, addPendingConfirmation, getUserTimezone } from "@/lib/store";
 import { addDaysYMD, localNow, promptDateContext, singleRelativeDay, ymdFromParts } from "@/lib/time";
 import type { TaskKind } from "@/lib/types";
@@ -109,45 +110,10 @@ async function requestClearConfirmation(text: string): Promise<NextResponse> {
   });
 }
 
-function inferCalendarId(title: string, notes?: string): string {
-  const text = (title + " " + (notes || "")).toLowerCase();
-  if (text.match(/meeting|call|client|project|deadline|work|sales|email|report|presentation/)) {
-    return "cal_work";
-  }
-  if (text.match(/gym|workout|health|family|errand|personal|hobby|friend/)) {
-    return "cal_personal";
-  }
-  if (text.match(/study|homework|assignment|exam|test|course|class|lecture|quiz/)) {
-    return "cal_study";
-  }
-  return "cal_all";
-}
-
-export async function resolveCalendarId(input: string | undefined): Promise<string> {
-  if (!input) return 'cal_all'
-  const calendars = await getCalendars()
-  const exactMatch = calendars.find(c => c.id === input)
-  if (exactMatch) return exactMatch.id
-  const nameMatch = calendars.find(c =>
-    c.name.toLowerCase() === input.toLowerCase() ||
-    c.name.toLowerCase().includes(input.toLowerCase()) ||
-    input.toLowerCase().includes(c.name.toLowerCase())
-  )
-  if (nameMatch) return nameMatch.id
-  const lower = input.toLowerCase()
-  if (lower.includes('work') || lower.includes('professional') || lower.includes('business')) {
-    const workCal = calendars.find(c => c.name.toLowerCase().includes('work'))
-    if (workCal) return workCal.id
-  }
-  if (lower.includes('personal') || lower.includes('private') || lower.includes('life')) {
-    const personalCal = calendars.find(c => c.name.toLowerCase().includes('personal'))
-    if (personalCal) return personalCal.id
-  }
-  if (lower.includes('study') || lower.includes('school') || lower.includes('learn')) {
-    const studyCal = calendars.find(c => c.name.toLowerCase().includes('study'))
-    if (studyCal) return studyCal.id
-  }
-  return inferCalendarId(input, '')
+/** School or No school (lib/calendars.ts) for a calendar the AI named, falling
+ *  back to the task's own words when it named neither. */
+export async function resolveCalendarId(input: string | undefined, title = ""): Promise<string> {
+  return parseCalendarGroup(input) ?? inferCalendarGroup(title || input || "");
 }
 
 // ─── Deterministic intent pre-classifier ──────────────────────────────────────
@@ -262,15 +228,14 @@ const VOICE_PLAYBOOK = `TONE AND VOICE RULES — follow these exactly:
 CALENDAR AWARENESS:
 The user has multiple calendars (listed after these instructions). Before adding any task you must determine which calendar it belongs to.
 Default rules for calendar assignment:
-- Work related tasks (meetings, calls, projects, deadlines, client work) → use the work calendar
-- Personal tasks (gym, health, hobbies, family, errands) → use the personal calendar
-- Study and school tasks (assignments, studying, courses, homework) → use the study calendar if it exists, otherwise personal
-- If the user explicitly names a calendar always use that one
-- If completely unclear use the all calendars id which is cal_all
+- There are exactly two: cal_school (School) and cal_other (No school). cal_all is a view, never a target.
+- Schoolwork (classes, homework, assignments, tests, quizzes, studying, essays, teachers) → cal_school
+- Everything else (practices, clubs, extracurriculars, jobs, projects, gym, family, errands, hobbies) → cal_other
+- If the user explicitly says school or no school, follow that
 
 When adding a task always include the calendarId field in your JSON response.
 When the user says "move tasks to X calendar" use the move_tasks action.
-When the user says "add this to my work calendar" or any named calendar use that calendar's id.
+When the user says "this is for school" or "not school" use that calendar's id.
 When the user asks what calendars they have, use the get_calendars action.
 
 The student's local date and time are given at the very end. Resolve every relative date against them.
@@ -299,13 +264,13 @@ Use create_plan for any open-ended goal or skill the user wants to improve at or
 
 --- SINGLE TASK COMMAND (add/complete/delete one task) ---
 Return this exact JSON:
-{"action":"add_task"|"complete_task"|"delete_task","title":"task title","date":"YYYY-MM-DD","time":"HH:MM","calendarId":"cal_work|cal_personal|cal_study|cal_all","notes":"structured notes following the NOTES FORMAT below","startAction":"one specific concrete action under 20 words, starting with a verb","resources":[{"label":"Site — exact page title","url":"https://exact/url"}],"response":"confirmation under 15 words"}
+{"action":"add_task"|"complete_task"|"delete_task","title":"task title","date":"YYYY-MM-DD","time":"HH:MM","calendarId":"cal_school|cal_other","notes":"structured notes following the NOTES FORMAT below","startAction":"one specific concrete action under 20 words, starting with a verb","resources":[{"label":"Site — exact page title","url":"https://exact/url"}],"response":"confirmation under 15 words"}
 
 Example:
-{"action":"add_task","title":"Sales call with client","date":"2026-07-20","time":"10:00","calendarId":"cal_work","notes":"GOAL: ...","startAction":"...","resources":[],"response":"Added sales call to your Work calendar."}
+{"action":"add_task","title":"Robotics practice","date":"2026-07-20","time":"16:00","calendarId":"cal_other","notes":"GOAL: ...","startAction":"...","resources":[],"response":"Added robotics practice for July 20th at 4 PM."}
 
 Another example:
-{"action":"add_task","title":"Study derivatives","date":"2026-07-20","time":"10:00","calendarId":"cal_study","notes":"GOAL: ...\\nFOCUS: ...\\nTIME: ...","startAction":"Open the Khan Academy derivatives unit and complete the first 3 exercises","resources":[{"label":"Khan Academy — Derivatives Intro","url":"https://www.khanacademy.org/..."}],"response":"Added study session for July 20th."}
+{"action":"add_task","title":"Study derivatives","date":"2026-07-20","time":"10:00","calendarId":"cal_school","notes":"GOAL: ...\\nFOCUS: ...\\nTIME: ...","startAction":"Open the Khan Academy derivatives unit and complete the first 3 exercises","resources":[{"label":"Khan Academy — Derivatives Intro","url":"https://www.khanacademy.org/..."}],"response":"Added study session for July 20th."}
 
 CALENDARID — always include a "calendarId" field, following the CALENDAR AWARENESS rules above.
 
@@ -347,9 +312,9 @@ Return this exact JSON:
 {"action":"get_calendars","response":"Here are your calendars."}
 Use this when you are unsure what calendars exist before assigning a task.
 
---- MOVE TASKS (use this when the user says "move tasks to X calendar", "move my sales calls to work calendar", "move everything from last week to personal", etc.) ---
+--- MOVE TASKS (use this when the user says "move my essays to school", "those aren't school", "move everything from last week to no school", etc.) ---
 Return this exact JSON:
-{"action":"move_tasks","targetCalendarId":"cal_work","title":"sales call","response":"Moving sales calls to Work calendar."}
+{"action":"move_tasks","targetCalendarId":"cal_school","title":"essay","response":"Moving essay tasks to School."}
 Required fields: targetCalendarId (string — the id or exact name of the destination calendar). For move_tasks, reuse the "title" field as a keyword to match task titles, and "startDate"/"endDate" as an optional YYYY-MM-DD date range to filter by. Omit them entirely to match all tasks.
 
 Rules:
@@ -421,7 +386,7 @@ async function runFastRoute(route: FastRoute, text: string, today: string): Prom
   }
 
   if (route.op === "add") {
-    const calendarId = await resolveCalendarId(inferCalendarId(route.title));
+    const calendarId = inferCalendarGroup(route.title);
     // Same rule as the AI path below: task.time is rendered on its own.
     const task = await addTask({ title: route.title, date: route.date, time: route.time, completed: false, calendarId });
     if (task.wasDuplicate) {
@@ -532,7 +497,7 @@ async function handleVoiceTextInner(
       const extractedDays = extractDaysOfWeek(text);
       const daysOfWeek = extractedDays.length > 0 ? extractedDays : [1, 2, 3, 4, 5];
       const time = extractTime(text) ?? "";
-      const calendarId = inferCalendarId(activityName);
+      const calendarId = inferCalendarGroup(activityName);
 
       const recurringTasks = await addRecurringTask(
         {
@@ -755,7 +720,7 @@ async function handleVoiceTextInner(
       if (generated.ok && generated.tasks.length > 0) {
         const planKind = inferPlanKind(text);
         const calendarIds = new Map<string, string>();
-        for (const id of Array.from(new Set(generated.tasks.map((t) => t.calendarId)))) calendarIds.set(id, await resolveCalendarId(id));
+        for (const id of Array.from(new Set(generated.tasks.map((t) => t.calendarId)))) calendarIds.set(id, await resolveCalendarId(id, generated.title));
         // One insert for every task, with plan_id already set (store.addPlanWithTasks).
         const { plan, tasks: created, skippedDuplicates } = await perfSpan(`plan: insert ${generated.tasks.length} tasks`, () =>
           addPlanWithTasks(
@@ -766,7 +731,7 @@ async function handleVoiceTextInner(
               time: t.time,
               kind: planKind,
               completed: false,
-              calendarId: calendarIds.get(t.calendarId) ?? "cal_all",
+              calendarId: calendarIds.get(t.calendarId) ?? inferCalendarGroup(t.title),
               notes: t.notes || undefined,
               startAction: t.startAction || undefined,
               resources: t.resources.length > 0 ? t.resources : undefined,
@@ -1045,9 +1010,8 @@ async function handleVoiceTextInner(
       }
 
       const calendars = await getCalendars();
-      const targetCalendar = calendars.find(
-        (c) => c.id === targetCalendarId || c.name.toLowerCase() === targetCalendarId.toLowerCase()
-      );
+      const targetGroup = parseCalendarGroup(targetCalendarId);
+      const targetCalendar = calendars.find((c) => c.id === targetGroup);
 
       if (!targetCalendar) {
         const err = `Calendar "${targetCalendarId}" not found. Available: ${calendars.map((c) => c.name).join(", ")}`;
@@ -1103,7 +1067,7 @@ async function handleVoiceTextInner(
           )
         : undefined;
       const resources = rawResources && rawResources.length > 0 ? rawResources : undefined;
-      const calendarId = await resolveCalendarId(typeof cmd.calendarId === "string" ? cmd.calendarId : undefined);
+      const calendarId = await resolveCalendarId(typeof cmd.calendarId === "string" ? cmd.calendarId : undefined, title);
       // The title is the title. Every surface renders task.time next to it
       // (TaskRow, the Today hero, the calendar day panel), so folding the time
       // into the title printed it twice: "Study math (15:00)  3:00 PM".
