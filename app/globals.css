@@ -8791,3 +8791,47 @@ h1, h2, h3, h4, h5, h6 {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ── One check, everywhere ────────────────────────────────────────────────
+   Today, projects, the calendar's day panel, Agenda and Needs attention all
+   use the same round check: 22px, a fine ring, filled iris when done, and
+   the mark dead-centre (icons are blocks, never sitting on a text baseline). */
+.ui-task-check,
+.attention-check,
+.calendar-page .ag-check {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  padding: 0;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  line-height: 0;
+}
+.ui-task-check-mark {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+.ui-task-check svg,
+.attention-check svg,
+.calendar-page .ag-check svg,
+.capture-check svg {
+  display: block;
+  flex: none;
+}
+.ui-task-check[aria-pressed="true"],
+.calendar-page .ag-item.is-done .ag-check {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+@media (hover: hover) and (pointer: fine) {
+  .ui-task-check:hover,
+  .calendar-page .ag-check:hover {
+    border-color: var(--accent);
+  }
+}

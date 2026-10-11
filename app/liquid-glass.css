@@ -217,3 +217,166 @@
     border-radius: 28px;
   }
 }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Every button is glass (2026-10-11). Components use <Button> (which adds
+   .lg classes); hand-built buttons across the app are listed here so none
+   is left flat beside its glass neighbours. Three kinds, nothing else:
+   - prominent: the one primary action — iris-tinted glass;
+   - regular: everything else — clear glass;
+   - destructive: confirm-to-delete — rose-tinted glass.
+   Text-only links (Skip, Not now, Back, Show more) stay plain text.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.tg-clarify-btn.is-primary,
+.knows-gtk,
+.knows-add-btn,
+.gtk-nudge-start,
+.gtk-primary,
+.gtk-send,
+.tour-primary,
+.pchat-send,
+.project-ask-send,
+.capture-stop,
+.capture-text-btn.is-primary,
+.not-found-home,
+.tg-btn-accent,
+.cmdk-mic.is-on,
+.gtk-mic.is-on {
+  border: 1px solid rgb(255 255 255 / 0.28);
+  background: rgb(from var(--accent) r g b / 0.88);
+  -webkit-backdrop-filter: var(--lg-filter);
+  backdrop-filter: var(--lg-filter);
+  color: var(--accent-ink);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.4),
+    inset 0 -1px 0 rgb(0 0 0 / 0.1),
+    0 8px 22px -10px rgb(from var(--accent) r g b / 0.6);
+}
+
+.tg-clarify-btn:not(.is-primary),
+.knows-secondary,
+.knows-forget,
+.tour-secondary,
+.capture-text-btn:not(.is-primary),
+.attention-defer,
+.ui-task-help,
+.action-receipt-undo,
+.calendar-task-remove,
+.import-ctx-prompt button,
+.tg-btn:not(.tg-btn-accent):not(.tg-btn-danger),
+.gtk-mic:not(.is-on),
+.cmdk-mic:not(.is-on),
+.td-icon,
+.tg-chip:not(.is-on) {
+  border: 1px solid var(--lg-edge);
+  background: var(--lg-fill-strong);
+  -webkit-backdrop-filter: var(--lg-filter);
+  backdrop-filter: var(--lg-filter);
+  color: var(--text);
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim-top),
+    0 1px 2px rgb(28 26 38 / 0.05),
+    0 6px 16px -10px var(--lg-shade);
+}
+
+/* The mic buttons keep their iris glyph on clear glass. */
+.gtk-mic:not(.is-on),
+.cmdk-mic:not(.is-on) {
+  color: var(--accent);
+}
+
+/* A selected chip is prominent glass. */
+.tg-chip.is-on {
+  border-color: rgb(255 255 255 / 0.28);
+  background: rgb(from var(--accent) r g b / 0.88);
+  color: var(--accent-ink);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.4), 0 6px 16px -10px rgb(from var(--accent) r g b / 0.6);
+}
+
+.project-delete-yes,
+.tg-btn-danger,
+.ui-button--danger {
+  border: 1px solid rgb(255 255 255 / 0.25);
+  background: rgb(from var(--red) r g b / 0.9);
+  -webkit-backdrop-filter: var(--lg-filter);
+  backdrop-filter: var(--lg-filter);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.35), 0 8px 22px -10px rgb(from var(--red) r g b / 0.55);
+}
+
+/* All of them: capsules that press. */
+.tg-clarify-btn,
+.knows-gtk,
+.knows-add-btn,
+.knows-secondary,
+.knows-forget,
+.gtk-nudge-start,
+.gtk-primary,
+.tour-primary,
+.tour-secondary,
+.capture-text-btn,
+.attention-defer,
+.ui-task-help,
+.action-receipt-undo,
+.calendar-task-remove,
+.not-found-home,
+.project-delete-yes,
+.tg-btn {
+  border-radius: 999px;
+}
+
+.tg-clarify-btn:active:not(:disabled),
+.knows-gtk:active,
+.knows-add-btn:active:not(:disabled),
+.knows-secondary:active,
+.knows-forget:active,
+.gtk-nudge-start:active,
+.gtk-primary:active,
+.tour-primary:active,
+.tour-secondary:active,
+.attention-defer:active,
+.ui-task-help:active,
+.action-receipt-undo:active:not(:disabled),
+.calendar-task-remove:active,
+.project-delete-yes:active,
+.tg-btn:active:not(:disabled),
+.td-icon:active {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .tg-clarify-btn,
+  .knows-gtk,
+  .knows-add-btn,
+  .knows-secondary,
+  .knows-forget,
+  .gtk-nudge-start,
+  .gtk-primary,
+  .gtk-send,
+  .tour-primary,
+  .tour-secondary,
+  .pchat-send,
+  .project-ask-send,
+  .capture-stop,
+  .capture-text-btn,
+  .attention-defer,
+  .ui-task-help,
+  .action-receipt-undo,
+  .calendar-task-remove,
+  .tg-btn,
+  .td-icon,
+  .tg-chip {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* <Button> glass keeps its glass on hover, and every button is a capsule. */
+.ui-button {
+  border-radius: 999px;
+}
+.ui-button.lg:not(.lg-tint):hover:not(:disabled) {
+  background: var(--lg-fill-strong);
+  border-color: var(--lg-edge);
+}

@@ -1,0 +1,215 @@
+/* A task, centred (components/TaskDetail.tsx) — Google Calendar's event card
+   in Tangent's materials: a solid card (it's content), glass controls. */
+
+.td-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 420;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(14 13 20 / 0.28);
+}
+
+.td-card {
+  position: relative;
+  width: min(460px, 100%);
+  max-height: min(640px, calc(100dvh - 32px));
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--surface);
+  box-shadow: 0 30px 80px -24px rgb(14 13 20 / 0.45), 0 2px 6px rgb(14 13 20 / 0.06);
+  outline: none;
+}
+
+.td-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 12px 12px 0;
+}
+
+.td-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.td-icon:disabled {
+  opacity: 0.5;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .td-icon:hover {
+    color: var(--text);
+  }
+}
+
+.td-body {
+  display: grid;
+  gap: 18px;
+  padding: 4px 24px 22px;
+}
+
+.td-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.td-swatch {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin-top: 7px;
+  border-radius: 5px;
+}
+
+.td-head h2 {
+  margin: 0;
+  color: var(--text);
+  font: 700 22px/1.25 var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+.td-head h2.is-done {
+  color: var(--text-3);
+}
+
+.td-when {
+  margin: 4px 0 0;
+  color: var(--text-2);
+  font: 500 14px/1.4 var(--font-body);
+}
+
+.td-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: 28px;
+}
+
+.td-chip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgb(from var(--accent) r g b / 0.1);
+  color: var(--accent);
+  font: 600 12px/1.3 var(--font-body);
+  text-decoration: none;
+}
+
+.td-chip.is-quiet {
+  background: rgb(from var(--text) r g b / 0.06);
+  color: var(--text-2);
+}
+
+.td-chip.is-link:hover {
+  background: rgb(from var(--accent) r g b / 0.16);
+}
+
+.td-section {
+  margin-left: 28px;
+}
+
+.td-section h3 {
+  margin: 0 0 4px;
+  color: var(--text-3);
+  font: 600 11.5px/1 var(--font-body);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.td-section p {
+  margin: 0;
+  color: var(--text);
+  font: 450 14px/1.55 var(--font-body);
+  white-space: pre-line;
+}
+
+.td-notes {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+}
+
+.td-notes.is-open {
+  display: block;
+}
+
+.td-more {
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: 600 12.5px/1.4 var(--font-body);
+  cursor: pointer;
+}
+
+.td-links {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.td-links a {
+  color: var(--accent);
+  font: 550 14px/1.4 var(--font-body);
+  text-decoration: none;
+}
+
+.td-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.td-primary,
+.td-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font: 600 13.5px/1 var(--font-body);
+  cursor: pointer;
+  transition: transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.td-secondary {
+  color: var(--text);
+}
+
+.td-primary:active,
+.td-secondary:active {
+  transform: scale(0.97);
+}
+
+.td-primary.is-done {
+  background: rgb(from var(--highlight) r g b / 0.9);
+}
+
+@media (max-width: 720px) {
+  .td-scrim {
+    align-items: end;
+    padding: 0;
+  }
+  .td-card {
+    width: 100%;
+    border-radius: 22px 22px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}

@@ -12,6 +12,7 @@ import * as m from "motion/react-m";
 import { ChevronLeft, MessageSquareText } from "lucide-react";
 import { useAppState } from "@/components/AppStateProvider";
 import ProjectChat from "@/components/projects/ProjectChat";
+import { openTask } from "@/components/TaskDetail";
 import TaskChatModal from "@/components/TaskChatModal";
 import TaskRow from "@/components/ui/TaskRow";
 import { rowPresence, spring } from "@/lib/motion";
@@ -137,7 +138,7 @@ export default function ProjectPage() {
                   showDate
                   kindColor={taskColor(task, state?.plans ?? [])}
                   onComplete={() => void toggle(task)}
-                  onOpen={() => router.push(`/calendar?date=${task.date}`)}
+                  onOpen={() => openTask(task.id)}
                   actions={
                     <button type="button" className="ui-task-help" onClick={() => setHelpTask(task)} aria-label={`Get help with ${task.title}`}>
                       <MessageSquareText size={13} aria-hidden="true" />

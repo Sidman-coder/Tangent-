@@ -8,6 +8,7 @@ import { MessageSquareText } from "lucide-react";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { localNow, wallClockNow } from "@/lib/time";
 import ActionReceipt from "@/components/ActionReceipt";
+import { openTask } from "@/components/TaskDetail";
 import TaskChatModal from "@/components/TaskChatModal";
 import AttentionSection, { type AttentionReceipt } from "@/components/dashboard/AttentionSection";
 import WeekAhead from "@/components/dashboard/WeekAhead";
@@ -308,7 +309,7 @@ export default function DashboardPage() {
                 receipt={receipt}
                 onComplete={completeFromAttention}
                 onTomorrow={moveToTomorrow}
-                onOpen={(task) => router.push(`/calendar?date=${task.date}`)}
+                onOpen={(task) => openTask(task.id)}
                 onSeeAll={() => router.push(`/calendar?date=${today}`)}
               />
             );
@@ -345,7 +346,7 @@ export default function DashboardPage() {
                             hasQuestions={questionTaskIds.has(task.id)}
                             kindColor={colorForTask(task)}
                             onComplete={tracksCompletion(task) ? () => void setCompleted(task, !task.completed) : undefined}
-                            onOpen={() => router.push(`/calendar?date=${task.date}`)}
+                            onOpen={() => openTask(task.id)}
                             actions={
                               canAskForHelp(task) ? (
                                 <button

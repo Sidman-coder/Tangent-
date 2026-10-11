@@ -519,3 +519,131 @@
 .calendar-page .ag-item.is-done .ag-title {
   text-decoration: none;
 }
+
+/* ── The island (2026-10-11) ───────────────────────────────────────────
+   Every control on one floating glass capsule, bottom centre over the grid,
+   so the top is just the month and the grid gets the page. Groups inside
+   are plain segments: glass is never nested in glass. */
+
+.calendar-page .calendar-toolbar {
+  min-height: 0;
+  padding: 18px 24px 10px;
+  border-bottom: 0;
+}
+
+.cal-island {
+  position: fixed;
+  z-index: 60;
+  bottom: calc(22px + env(safe-area-inset-bottom));
+  left: calc(var(--rail-w) + (100vw - var(--rail-w)) / 2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+  border-radius: 999px;
+  translate: -50% 0;
+}
+
+.cal-island .cal-island-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cal-island .cal-view-switch,
+.cal-island .cal-arrows,
+.cal-island .cal-segment-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Thin separators between the three groups. */
+.cal-island .cal-arrows::before,
+.cal-island .cal-segment-bar::before {
+  content: "";
+  width: 1px;
+  height: 18px;
+  margin: 0 6px;
+  background: rgb(from var(--text) r g b / 0.12);
+}
+
+.cal-island .cal-view-tab,
+.cal-island .cal-today,
+.cal-island .cal-arrow,
+.cal-island .cal-segment {
+  min-height: 32px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  font: 600 13px/1 var(--font-body);
+  cursor: pointer;
+}
+
+.cal-island .cal-view-tab,
+.cal-island .cal-segment,
+.cal-island .cal-today {
+  padding: 0 13px;
+}
+
+.cal-island .cal-arrow {
+  width: 32px;
+}
+
+.cal-island .cal-view-tab.is-active,
+.cal-island .cal-segment.is-active {
+  color: var(--text);
+}
+
+.cal-island .cal-view-pill,
+.cal-island .cal-segment.is-active {
+  background: rgb(from var(--surface) r g b / 0.92);
+  box-shadow: 0 1px 3px rgb(28 26 38 / 0.12), inset 0 1px 0 rgb(255 255 255 / 0.8);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cal-island .cal-arrow:hover,
+  .cal-island .cal-today:hover,
+  .cal-island .cal-segment:not(.is-active):hover,
+  .cal-island .cal-view-tab:not(.is-active):hover {
+    color: var(--text);
+    background: rgb(from var(--text) r g b / 0.05);
+  }
+}
+
+/* Room under the grid so the island never hides the last week. */
+.calendar-page {
+  padding-bottom: 76px;
+}
+
+/* A calmer month: lighter lines, more air, quieter past. */
+.calendar-page .cal-cell {
+  border-color: rgb(from var(--text) r g b / 0.06);
+}
+.calendar-page .calendar-grid-shell .cal-weekday-row {
+  border-bottom-color: rgb(from var(--text) r g b / 0.06);
+}
+.calendar-page .calendar-grid-shell .cal-cell .cal-day {
+  gap: 6px;
+  padding: 8px 10px 10px;
+}
+.cal-event {
+  font-size: 12.5px;
+}
+
+@media (max-width: 720px) {
+  .cal-island {
+    left: 50%;
+    bottom: calc(66px + 16px);
+    max-width: calc(100vw - 20px);
+    overflow-x: auto;
+  }
+}

@@ -7,6 +7,7 @@ import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { wallClockNow } from "@/lib/time";
 import AddTaskModal from "@/components/AddTaskModal";
 import ActionReceipt from "@/components/ActionReceipt";
+import { openTask } from "@/components/TaskDetail";
 import Button from "@/components/ui/Button";
 import SidePeek from "@/components/ui/SidePeek";
 import { handleResourceClick } from "@/lib/task-utils";
@@ -18,7 +19,7 @@ import { baseTitle, useShortTitles } from "@/lib/short-titles";
 import "./calendar.css";
 import { initialCalendarView, prefsOf } from "@/lib/personalize";
 import type { Plan, Task } from "@/lib/types";
-import { X, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil } from "lucide-react";
+import { X, Check, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil } from "lucide-react";
 import WeekView from "@/components/calendar/WeekView";
 import AgendaView from "@/components/calendar/AgendaView";
 import TaskTitle from "@/components/ui/TaskTitle";
@@ -119,14 +120,6 @@ function recurringLabel(task: Task): string {
 type RecurDeleteTarget = { taskId: string; parentId: string; title: string };
 type RecurEditTarget = { taskId: string; parentId: string; task: Task };
 
-/** "4:00 PM" becomes "4p", "4:30 PM" becomes "4:30p": chip-sized. */
-function shortTime(hhmm: string): string {
-  const [h, mm] = hhmm.split(":").map(Number);
-  if (!Number.isFinite(h)) return "";
-  const suffix = h < 12 ? "a" : "p";
-  const hour = h % 12 === 0 ? 12 : h % 12;
-  return mm ? `${hour}:${String(mm).padStart(2, "0")}${suffix}` : `${hour}${suffix}`;
-}
 
 export default function CalendarPage() {
   const { state, refresh } = useAppState();
@@ -141,7 +134,6 @@ export default function CalendarPage() {
   const [agendaStart, setAgendaStart] = useState(() => new Date(now.getFullYear(), now.getMonth(), now.getDate()));
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   // Clicking one event opens just that event; clicking the date opens the day.
-  const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
   const [removed, setRemoved] = useState<{ actionId: string; title: string } | null>(null);
   const [openNotes, setOpenNotes] = useState<Set<string>>(new Set());
   const [showAddModal, setShowAddModal] = useState(false);
@@ -182,8 +174,7 @@ export default function CalendarPage() {
   const wholeDayTasks = selectedDay
     ? tasksForDay(selectedDay).slice().sort((a, b) => a.time.localeCompare(b.time))
     : [];
-  const focusTask = focusTaskId ? wholeDayTasks.find((t) => t.id === focusTaskId) ?? null : null;
-  const selectedDayTasks = focusTask ? [focusTask] : wholeDayTasks;
+  const selectedDayTasks = wholeDayTasks;
 
   // Remember the chosen view; first visit gets the week grid on wide screens
   // and the agenda list on phones, where seven columns can't breathe. A
@@ -286,7 +277,6 @@ export default function CalendarPage() {
         });
         const data = (await res.json().catch(() => ({}))) as { actionId?: string };
         if (data.actionId) setRemoved({ actionId: data.actionId, title: t.title });
-        if (focusTaskId === t.id) setFocusTaskId(null);
         await refresh();
       })();
     }
@@ -309,7 +299,7 @@ export default function CalendarPage() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      setSelectedDay(null); setFocusTaskId(null); setRemoved(null); setShowAddModal(false); setRecurDeleteTarget(null); setRecurEditTarget(null);
+      setSelectedDay(null); setRemoved(null); setShowAddModal(false); setRecurDeleteTarget(null); setRecurEditTarget(null);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -371,8 +361,14 @@ export default function CalendarPage() {
               <span>{headingMonth}</span> <span className="cal-heading-year">{headingYear}</span>
               {headingSpan && <span className="cal-heading-span">{headingSpan}</span>}
             </h1>
-            <div className="cal-nav-group">
-              <div className="cal-view-switch lg lg-interactive" role="tablist" aria-label="Calendar view">
+          </div>
+      </section>
+
+      {/* The island: every calendar control on one floating glass capsule
+          at the bottom centre, so the grid gets the whole page. */}
+      <div className="cal-island lg lg-interactive" role="toolbar" aria-label="Calendar controls">
+        <div className="cal-island-group">
+              <div className="cal-view-switch" role="tablist" aria-label="Calendar view">
                 {VIEWS.map((v) => (
                   <button
                     key={v.id}
@@ -389,7 +385,7 @@ export default function CalendarPage() {
                   </button>
                 ))}
               </div>
-              <div className="cal-arrows lg lg-interactive">
+              <div className="cal-arrows">
                 <button type="button" className="cal-arrow" onClick={() => step(-1)} aria-label={`Previous ${unitLabel}`}>
                   <ChevronLeft size={16} aria-hidden="true" />
                 </button>
@@ -398,9 +394,8 @@ export default function CalendarPage() {
                   <ChevronRight size={16} aria-hidden="true" />
                 </button>
               </div>
-            </div>
-          </div>
-          <div className="cal-segment-bar lg lg-interactive" role="tablist" aria-label="Filter by calendar">
+        </div>
+          <div className="cal-segment-bar" role="tablist" aria-label="Filter by calendar">
             {calendars.map((cal, idx) => (
               <button
                 key={cal.id}
@@ -417,10 +412,7 @@ export default function CalendarPage() {
               </button>
             ))}
           </div>
-
-
-
-      </section>
+      </div>
 
       {activePlan && (
         <div className="plan-filter-banner" style={{ borderLeft: `3px solid ${activePlan.color}` }}>
@@ -441,10 +433,10 @@ export default function CalendarPage() {
             days={weekDays}
             todayYmd={todayYmd}
             tasksForDay={tasksForDay}
-            onOpenTask={(ymd, id) => { setSelectedDay(ymd); setFocusTaskId(id); }}
+            onOpenTask={(_ymd, id) => openTask(id)}
             labelFor={labelFor}
             colorFor={(t) => getKindColor(t.kind)}
-            onOpenDay={(d) => { setFocusTaskId(null); setSelectedDay(d); }}
+            onOpenDay={setSelectedDay}
             onAddAt={(ymd, time) => openAddAt(ymd, time)}
             toYMD={toYMD}
           />
@@ -454,12 +446,12 @@ export default function CalendarPage() {
       {view === "agenda" && (
         <section className="calendar-agenda-shell" key={`ag-${toYMD(agendaStart)}`}>
           <AgendaView
-            onOpenTask={(ymd, id) => { setSelectedDay(ymd); setFocusTaskId(id); }}
+            onOpenTask={(_ymd, id) => openTask(id)}
             days={agendaDays}
             todayYmd={todayYmd}
             tasksForDay={tasksForDay}
             colorFor={(t) => getKindColor(t.kind)}
-            onOpenDay={(d) => { setFocusTaskId(null); setSelectedDay(d); }}
+            onOpenDay={setSelectedDay}
             onToggle={(id) => void toggleTask(id)}
             onAdd={(ymd) => openAddAt(ymd)}
             toYMD={toYMD}
@@ -492,7 +484,8 @@ export default function CalendarPage() {
               // The day's own tasks, in time order, shown as chips: the grid
               // answers "what's on" without opening every day.
               const ordered = [...dayTasks].sort((a, b) => (a.time || "").localeCompare(b.time || ""));
-              const shown = ordered.slice(0, 3);
+              // Two per day keeps the month readable; the rest is "N more".
+              const shown = ordered.slice(0, 2);
               const more = ordered.length - shown.length;
               let className = "cal-cell";
               if (!inMonth) className += " is-outside";
@@ -505,8 +498,7 @@ export default function CalendarPage() {
                     className="cal-day"
                     onClick={() => {
                       if (!inMonth) return;
-                      setFocusTaskId(null);
-                      setSelectedDay(ymd === selectedDay && !focusTaskId ? null : ymd);
+                      setSelectedDay(ymd === selectedDay ? null : ymd);
                     }}
                     aria-label={`${d.toDateString()}${dayTasks.length ? `, ${dayTasks.length} tasks` : ""}`}
                     disabled={!inMonth}
@@ -524,15 +516,14 @@ export default function CalendarPage() {
                               className={`cal-event${t.completed ? " is-done" : ""}${deadline ? " is-deadline" : ""}`}
                               style={{ "--chip": getKindColor(t.kind) } as React.CSSProperties}
                               onClick={(e) => {
-                                // The event, not the whole day.
+                                // The event opens in the middle, like Google
+                                // Calendar; the date opens the day.
                                 e.stopPropagation();
-                                setSelectedDay(ymd);
-                                setFocusTaskId(t.id);
+                                openTask(t.id);
                               }}
                             >
                               <span className="cal-event-dot" aria-hidden="true" />
                               <span className="cal-event-title" title={t.title}>{labelFor(t)}</span>
-                              {!deadline && t.time && <span className="cal-event-time">{shortTime(t.time)}</span>}
                             </span>
                           );
                         })}
@@ -564,7 +555,7 @@ export default function CalendarPage() {
       </div>
 
       {selectedDay && (
-        <SidePeek open titleId="calendar-day-title" onClose={() => { setSelectedDay(null); setFocusTaskId(null); setRemoved(null); }}>
+        <SidePeek open titleId="calendar-day-title" onClose={() => { setSelectedDay(null); setRemoved(null); }}>
           <div className="calendar-peek-content">
             <div className="calendar-modal-header">
               <span className="calendar-peek-kicker">Selected day</span>
@@ -574,16 +565,10 @@ export default function CalendarPage() {
               {/* The count only. An empty day is announced once, by the
                   empty state below — it used to say "No tasks for this day."
                   here and "Nothing scheduled yet." directly underneath. */}
-              {focusTask ? (
-                <button type="button" className="calendar-see-day" onClick={() => setFocusTaskId(null)}>
-                  See the whole day ({wholeDayTasks.length})
-                </button>
-              ) : (
-                selectedDayTasks.length > 0 && (
-                  <p className="calendar-modal-subhead">
-                    {selectedDayTasks.length} task{selectedDayTasks.length !== 1 ? "s" : ""}
-                  </p>
-                )
+              {selectedDayTasks.length > 0 && (
+                <p className="calendar-modal-subhead">
+                  {selectedDayTasks.length} task{selectedDayTasks.length !== 1 ? "s" : ""}
+                </p>
               )}
               {removed && (
                 <div className="calendar-removed">
@@ -617,12 +602,15 @@ export default function CalendarPage() {
                     <div key={t.id} className={`calendar-modal-task${t.completed ? " calendar-modal-task--done" : ""}`} style={{ borderLeftColor: categoryColor }}>
                       <div className="calendar-modal-task-top">
                         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0 }}>
-                          <input
-                            type="checkbox"
-                            checked={t.completed}
-                            onChange={() => void toggleTask(t.id)}
-                            aria-label={`Mark ${t.title} complete`}
-                          />
+                          <button
+                            type="button"
+                            className="ui-task-check"
+                            aria-pressed={t.completed}
+                            aria-label={`${t.completed ? "Mark incomplete" : "Complete"} ${t.title}`}
+                            onClick={() => void toggleTask(t.id)}
+                          >
+                            {t.completed && <Check size={12} strokeWidth={2.8} aria-hidden="true" />}
+                          </button>
                           <span className={`calendar-modal-task-title${t.completed ? " done" : ""}`}><TaskTitle task={t} /></span>
                           {t.recurring?.enabled && (
                             <span className="recurring-badge" title={freq || "Recurring"}><Repeat size={12} strokeWidth={1.75} /></span>
