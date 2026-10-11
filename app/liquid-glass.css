@@ -521,7 +521,11 @@
   width: 100%;
   border: 0;
   background: transparent;
-  font: inherit;
+  /* Same type as the other sidebar rows (.rail-btn: 13px / 500). */
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
   cursor: pointer;
 }
 .notif-bell-wrapper.is-rail .notif-rail-btn svg {

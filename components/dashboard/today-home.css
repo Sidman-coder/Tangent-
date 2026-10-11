@@ -142,7 +142,7 @@
   border: 1px solid transparent;
   border-radius: 14px;
   /* The shade is the load: faint for a free day, deep iris for a full one. */
-  background: color-mix(in srgb, var(--accent) calc(var(--load) * 88%), rgb(from var(--text) r g b / 0.03));
+  background: color-mix(in oklab, var(--accent) calc(6% + var(--load) * 88%), var(--surface));
   color: var(--text-2);
   font: inherit;
   text-align: left;
