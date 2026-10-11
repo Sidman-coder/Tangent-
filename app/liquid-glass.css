@@ -527,6 +527,8 @@
   padding: 0;
   border: 1px solid var(--lg-edge);
   background: var(--lg-fill-strong);
+  -webkit-backdrop-filter: var(--lg-filter);
+  backdrop-filter: var(--lg-filter);
   color: var(--accent);
   box-shadow: inset 0 1px 0 var(--lg-rim-top);
 }

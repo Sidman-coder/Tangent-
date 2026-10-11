@@ -80,6 +80,7 @@ export default function AddFlow({
   initialText = "",
   onClose,
   onTextChange,
+  defaultDest,
 }: {
   variant?: "hero" | "sheet";
   autoFocus?: boolean;
@@ -90,6 +91,8 @@ export default function AddFlow({
   onClose?: () => void;
   /** Lets the sheet show its suggestions only while the box is empty. */
   onTextChange?: (text: string) => void;
+  /** Where it goes until the student picks (Projects starts on Project). */
+  defaultDest?: Dest;
 }) {
   const router = useRouter();
   const { state, refresh } = useAppState();
@@ -103,8 +106,8 @@ export default function AddFlow({
   const projects = useMemo(() => (state?.plans ?? []).slice(-6).reverse(), [state?.plans]);
   const route = routeAsk(text);
   // The student's tap wins; otherwise the words decide.
-  const dest: Dest = destChoice ?? (route === "project" ? "project" : "calendar");
-  const handoff = !destChoice && (route === "question" || route === "goal") ? route : null;
+  const dest: Dest = destChoice ?? defaultDest ?? (route === "project" ? "project" : "calendar");
+  const handoff = !destChoice && !defaultDest && (route === "question" || route === "goal") ? route : null;
 
   useEffect(() => {
     if (autoFocus) window.setTimeout(() => inputRef.current?.focus(), 30);

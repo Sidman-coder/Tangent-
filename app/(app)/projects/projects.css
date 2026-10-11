@@ -624,3 +624,23 @@
   opacity: 0.35;
   cursor: default;
 }
+
+/* Starting a project is the Add box (components/add), which is its own
+   surface: no second card around it. */
+.projects-page .projects-new {
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.projects-page .projects-new h2 {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.projects-page .projects-new > p {
+  margin: 0 0 10px;
+  color: var(--text-3);
+  font-size: 13px;
+}

@@ -11,7 +11,7 @@ import { Plus } from "lucide-react";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import Button from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
-import ProjectAsk from "@/components/projects/ProjectAsk";
+import AddFlow from "@/components/add/AddFlow";
 import { takeAsk } from "@/lib/ask-handoff";
 import { formatTime12 } from "@/lib/dates";
 import { getUserToday } from "@/lib/time";
@@ -76,18 +76,8 @@ export default function ProjectsPage() {
       {showComposer && (
         <section className="projects-new" aria-label="Start a project">
           <h2>What are you working toward?</h2>
-          <p>Tangent will ask a few questions, then lay out the steps around your week.</p>
-          <ProjectAsk
-            placeholder="Prep for my chem final on Dec 12…"
-            submitLabel="Start project"
-            context={{ newProject: true }}
-            autoFocus={composing && !handed}
-            initialRequest={handed}
-            onChanged={() => void refresh()}
-            onDone={({ projectId }) => {
-              if (projectId) router.push(`/projects/${projectId}`);
-            }}
-          />
+          <p>Say it or type it. Tangent asks a few questions, then lays the steps out around your week.</p>
+          <AddFlow variant="hero" defaultDest="project" autoFocus={composing && !handed} initialText={handed ?? ""} />
           {composing && projects.length > 0 && (
             <button type="button" className="projects-new-cancel" onClick={() => setComposing(false)}>
               Cancel
