@@ -92,7 +92,9 @@ Rules: only use what the context actually supports — leave a field "" rather t
     const r = await callClaude(
       "pathIntake",
       {
-        system: `You are TANGENT, about to map a high school student's path to a long-range goal (${kind}). Before building it, ask 1 to 3 questions. Each one must pass this test: a different answer would make you suggest clearly different next steps.
+        system: `You are TANGENT, about to map a high school student's path to ONE long-range goal (${kind}), named under THE GOAL below. Before building it, ask 1 to 3 questions about reaching THAT goal. Each one must pass this test: a different answer would make you suggest clearly different next steps toward it.
+
+Every question is about the goal under THE GOAL. Use the student's context only to skip what you already know and to make the options specific. Never ask about a different goal, project or activity from their context unless it directly bears on this goal.
 
 Good questions find the gap between where they are and the goal:
 - where they stand now on what the goal actually requires (scores, rating, portfolio, experience), with real ranges as options;
@@ -105,13 +107,13 @@ Never ask:
 - yes/no questions about including something ("Will X be part of your story?");
 - vague scope questions ("What's your focus?") or anything a counsellor would find obvious.
 
-Each under 14 words, plain, specific to this student (name their real activities and classes). 2–4 tap answers each, under 4 words, mutually exclusive, covering the realistic range. Fewer questions is better than a weak one.`,
+Each under 14 words, plain, specific to this goal and this student. 2–4 tap answers each, under 4 words, mutually exclusive, covering the realistic range. Fewer questions is better than a weak one.`,
         messages: [
           {
             role: "user",
-            content: `STUDENT CONTEXT:\n${picture.text}\n\nTHEIR INTAKE:\n${Object.entries(d)
+            content: `THE GOAL: ${String(d.title ?? "").slice(0, 200)}${d.target && d.target !== d.title ? ` (${String(d.target).slice(0, 200)})` : ""}\n\nTHEIR INTAKE:\n${Object.entries(d)
               .map(([k, v]) => `${k}: ${String(v).slice(0, 400)}`)
-              .join("\n")}`,
+              .join("\n")}\n\nSTUDENT CONTEXT (background only):\n${picture.text}`,
           },
         ],
       },
