@@ -1,14 +1,27 @@
 import { NextResponse } from "next/server";
-import { getAppState, getRecentActions, undoAction } from "@/lib/store";
+import { getActionsByIds, getAppState, getRecentActions, undoAction } from "@/lib/store";
 import { withUser } from "@/lib/request-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** GET recent action receipts (for a future "recent activity" list). */
-export const GET = withUser(async () => {
-  return NextResponse.json({ ok: true, actions: await getRecentActions(20) });
+/**
+ * GET the signed-in student's recent action receipts (Recent changes, newest
+ * first), or ?ids=a,b to re-check specific ones (Undo on a reopened chat).
+ * Always scoped to the student: other students' ids are just not returned.
+ */
+export const GET = withUser(async (req: Request) => {
+  const params = new URL(req.url).searchParams;
+  const ids = params.get("ids");
+  const actions =
+    ids !== null
+      ? await getActionsByIds(ids.split(",").map((s) => s.trim()).filter((s) => UUID.test(s)))
+      : await getRecentActions(Number(params.get("limit")) || 20);
+  // Snapshots hold copies of task data the client never needs.
+  return NextResponse.json({ ok: true, actions: actions.map(({ snapshot: _snapshot, ...rest }) => rest) });
 });
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** POST { id } to undo a previously recorded action. */
 export const POST = withUser(async (req: Request) => {

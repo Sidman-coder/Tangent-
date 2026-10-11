@@ -49,10 +49,10 @@ function memoryStore(cs: ChangeSet, fail: { linkUpdate?: boolean; finalMark?: bo
       return true;
     },
     async getAllTasks() {
-      return [...db.tasks.values()];
+      return Array.from(db.tasks.values());
     },
     async getAllPlans() {
-      return [...db.plans.values()];
+      return Array.from(db.plans.values());
     },
     async addPlanWithTasks(plan, tasks, hooks = {}) {
       const created: Plan = { id: randomUUID(), title: plan.title, description: plan.description ?? "", taskIds: [], taskCount: 0, color: "", createdAt: "" };
@@ -67,7 +67,7 @@ function memoryStore(cs: ChangeSet, fail: { linkUpdate?: boolean; finalMark?: bo
       return { plan: created, tasks: inserted, skippedDuplicates: 0 };
     },
     async addTask(task) {
-      const dup = [...db.tasks.values()].find((t) => t.title === task.title && t.date === task.date && !t.completed);
+      const dup = Array.from(db.tasks.values()).find((t) => t.title === task.title && t.date === task.date && !t.completed);
       if (dup) return { ...dup, wasDuplicate: true };
       const t = { ...task, id: randomUUID() };
       db.tasks.set(t.id, t);

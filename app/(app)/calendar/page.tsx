@@ -12,8 +12,9 @@ import { handleResourceClick } from "@/lib/task-utils";
 import { toYMD, formatTime12 } from "@/lib/dates";
 import { taskColor } from "@/lib/task-colors";
 import { initialCalendarView, prefsOf } from "@/lib/personalize";
+import { openRecentChanges } from "@/lib/undo-events";
 import type { Plan, Task } from "@/lib/types";
-import { X, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil, Undo2 } from "lucide-react";
 import WeekView from "@/components/calendar/WeekView";
 import AgendaView from "@/components/calendar/AgendaView";
 
@@ -391,6 +392,9 @@ export default function CalendarPage() {
                 <button type="button" className="cal-today" onClick={goToday}>Today</button>
                 <button type="button" className="cal-arrow" onClick={() => step(1)} aria-label={`Next ${unitLabel}`}>
                   <ChevronRight size={16} aria-hidden="true" />
+                </button>
+                <button type="button" className="cal-arrow" onClick={openRecentChanges} aria-label="Recent changes" title="Recent changes">
+                  <Undo2 size={16} aria-hidden="true" />
                 </button>
               </div>
             </div>

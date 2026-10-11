@@ -22,7 +22,7 @@ type PT = typeof import("./plan-text");
 type DR = typeof import("./draft");
 
 void Promise.all([import("./plan-text") as Promise<PT>, import("./draft") as Promise<DR>]).then(([pt, dr]) => {
-  const { parsePlanText, skippedNotes, countScheduleLines, parseDayLabel, parseTimeLabel, stripModeSwitchLine, isAddShownPlan } = pt;
+  const { parsePlanText, skippedNotes, countScheduleLines, parseDayLabel, parseTimeLabel, stripModeSwitchLine, isAddShownPlan, isCompleteSchedule } = pt;
   const TODAY = "2026-10-26"; // a Monday
 
   // Format 1: the Plan prompt's own shape, em dashes, dates crossing into November.
@@ -150,6 +150,20 @@ void Promise.all([import("./plan-text") as Promise<PT>, import("./draft") as Pro
   test("non-schedule lines are not counted", () => {
     assert.equal(countScheduleLines("Great question! Monday is a good day to start.\nMay I suggest a break?"), 0);
     assert.equal(countScheduleLines(EM_DASH_REPLY), 5);
+  });
+
+  test("the ready-to-add prompt is only for a complete schedule", () => {
+    assert.equal(isCompleteSchedule(stripModeSwitchLine(EM_DASH_REPLY)), true);
+    // Still asking: one short question, no schedule yet.
+    assert.equal(isCompleteSchedule("How many hours a week can you give the SAT?"), false);
+    // A partial schedule that ends waiting on an answer.
+    assert.equal(
+      isCompleteSchedule("- Mon, Oct 26 — 4:00 PM — Math section\n- Wed, Oct 28 — 4:00 PM — Reading\nDo weekends work too?"),
+      false
+    );
+    // One entry is a suggestion, not a schedule.
+    assert.equal(isCompleteSchedule("- Mon, Oct 26 — 4:00 PM — Math section"), false);
+    assert.equal(isCompleteSchedule("Sounds good! Good luck on the test."), false);
   });
 
   test("stripModeSwitchLine removes only the switch line", () => {

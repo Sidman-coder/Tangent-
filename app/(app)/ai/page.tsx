@@ -27,7 +27,8 @@ import {
   type VoiceCaptureStatus,
   type VoiceTranscriptDetail,
 } from "@/hooks/useVoiceCapture";
-import type { ChatSession } from "@/lib/types";
+import type { ChatMessageRefs, ChatSession } from "@/lib/types";
+import { actionIdsOf, announceUndo, withUndoStatus, type UndoRecord } from "@/lib/undo-events";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -253,6 +254,17 @@ export default function AiPage() {
     if (drafts.length) setTurns((prev) => withOpenDrafts(prev, drafts));
   }, [v2]);
 
+  /** A reopened chat: is each saved change still undoable? (Safety hotfix.) */
+  const recheckUndo = useCallback(async (restored: Turn[]) => {
+    const ids = actionIdsOf(restored);
+    if (!ids.length) return;
+    try {
+      const res = await fetch(`/api/actions?ids=${ids.join(",")}`, { cache: "no-store" });
+      const data = (await res.json()) as { ok?: boolean; actions?: UndoRecord[] };
+      if (res.ok && data.ok) setTurns((prev) => withUndoStatus(prev, data.actions ?? []));
+    } catch {}
+  }, []);
+
   const openSession = useCallback(async (sessionId: string) => {
     try {
       const [res, confirms] = await Promise.all([
@@ -265,7 +277,9 @@ export default function AiPage() {
       const data = (await res.json()) as { ok?: boolean; session?: ChatSession };
       if (data.ok && data.session) {
         setActiveSessionId(data.session.id);
-        setTurns(turnsFromMessages(data.session.messages, confirms));
+        const restored = turnsFromMessages(data.session.messages, confirms);
+        setTurns(restored);
+        void recheckUndo(restored);
         void restoreDrafts();
         setMode("chat");
         setErr(null);
@@ -274,7 +288,7 @@ export default function AiPage() {
         window.localStorage.removeItem(SESSION_STORAGE_KEY);
       }
     } catch {}
-  }, [restoreDrafts]);
+  }, [restoreDrafts, recheckUndo]);
 
   const newChat = useCallback(() => {
     if (busy) return;
@@ -291,13 +305,13 @@ export default function AiPage() {
 
   /** Appends a message to the saved chat. Awaited so messages land in order;
    *  a failure is shown instead of silently leaving the chat unsaved. */
-  const saveMessage = useCallback(async (sessionId: string | null, role: "user" | "assistant", content: string) => {
+  const saveMessage = useCallback(async (sessionId: string | null, role: "user" | "assistant", content: string, refs: ChatMessageRefs = {}) => {
     if (!sessionId) return;
     try {
       const res = await fetch("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "add_message", sessionId, role, content }),
+        body: JSON.stringify({ action: "add_message", sessionId, role, content, ...refs }),
       });
       if (!res.ok) throw new Error(String(res.status));
     } catch {
@@ -446,7 +460,8 @@ export default function AiPage() {
         },
       ]);
 
-      await saveMessage(sessionId, "assistant", reply);
+      await saveMessage(sessionId, "assistant", reply, { actionId: data.actionId, changeSetId: data.changeSet?.id });
+      if (data.actionId) announceUndo({ actionId: data.actionId, label: notif ?? "Change applied", from: "/ai" });
       if (sessionId && isNewSession) {
         void fetch("/api/sessions", {
           method: "POST",
@@ -480,6 +495,30 @@ export default function AiPage() {
     }
   }, [input, busy, chatMode, activeSessionId, turns, refresh, linkAction, loadSessions, saveMessage]);
 
+  /** Adds an action / change set id to an already-saved assistant message:
+   *  matched by change set id, or by its text (`from`). Best effort. */
+  const attachRefs = useCallback(
+    (body: { actionId?: string; changeSetId?: string; from?: string }) => {
+      if (!activeSessionId) return;
+      void fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "attach", sessionId: activeSessionId, ...body }),
+      }).catch(() => {});
+    },
+    [activeSessionId]
+  );
+
+  /** Pipeline V2: a preview card was confirmed; keep its Undo after a reload
+   *  and offer it app-wide (the card shows its own Undo here). */
+  const cardConfirmed = useCallback(
+    (_turnId: string, changeSetId: string, actionId: string) => {
+      attachRefs({ changeSetId, actionId });
+      announceUndo({ actionId, label: "Change applied", from: "/ai" });
+    },
+    [attachRefs]
+  );
+
   /** Turns whose "Add to calendar" draft is in flight (one request each). */
   const draftingPlans = useRef(new Set<string>());
 
@@ -497,7 +536,8 @@ export default function AiPage() {
           .then((r) =>
             "error" in r
               ? setErr(r.error)
-              : setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, planDraft: false, draft: r } : t)))
+              : (setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, planDraft: false, draft: r } : t))),
+                attachRefs({ changeSetId: r.changeSet.id, from: shown.response }))
           )
           .finally(() => draftingPlans.current.delete(turnId));
         return;
@@ -506,7 +546,7 @@ export default function AiPage() {
       changeMode("calendar");
       void send("Add this plan to my calendar", "calendar");
     },
-    [changeMode, send, turns, v2]
+    [changeMode, send, turns, v2, attachRefs]
   );
 
   /** Pipeline V2 "Just talking, don't add": answer the turn conversationally.
@@ -606,7 +646,9 @@ export default function AiPage() {
         )
       );
 
-      await saveMessage(activeSessionId, "assistant", reply);
+      const applied = confirm && data.ok ? data.actionId : undefined;
+      await saveMessage(activeSessionId, "assistant", reply, { actionId: applied });
+      if (applied) announceUndo({ actionId: applied, label: "Change applied", from: "/ai" });
 
       if (confirm && data.ok) await linkAction(activeSessionId, data.actionId);
       await refresh();
@@ -763,6 +805,11 @@ export default function AiPage() {
               mode={chatMode}
               onAddPlan={addPlanToCalendar}
               onJustChatting={v2 ? (id) => void justChatting(id) : undefined}
+              onCardConfirmed={v2 ? cardConfirmed : undefined}
+              onKeepTalking={(id) => {
+                setTurns((prev) => prev.map((t) => (t.id === id ? { ...t, planDraft: false } : t)));
+                inputRef.current?.focus();
+              }}
             />
             <div className="tg-dock">
               {err && <p className="tg-error" role="alert">{err}</p>}

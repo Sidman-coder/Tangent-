@@ -20,7 +20,7 @@ import { resolvePlanTitle } from "../plan-title";
 import { planOps } from "./draft";
 import { respondWithDraft } from "./drafting";
 import { logEvent } from "./events";
-import { countScheduleLines, isAddShownPlan, parsePlanText, skippedNotes, stripModeSwitchLine } from "./plan-text";
+import { countScheduleLines, isAddShownPlan, isCompleteSchedule, parsePlanText, skippedNotes, stripModeSwitchLine } from "./plan-text";
 import { routeRequest } from "./route-request";
 
 export type IntakeOptions = {
@@ -75,9 +75,10 @@ export async function handleRequest(messages: ChatMessage[], opts: IntakeOptions
   const route = opts.route === "chat" ? "chat" : routeRequest(userText, await getUserTimezone());
   if (route === "chat") {
     logEvent("request_received", { route: "chat", fast: false, source });
-    // The Plan prompt is unchanged; its "Switch to Calendar…" line is cut here.
-    const reply = stripModeSwitchLine(await planReply(messages));
-    return { message: reply, action: countScheduleLines(reply) > 0 ? "plan_reply" : "chat_reply", ok: true };
+    // The Plan prompt plus the one-question-at-a-time rules; its "Switch to
+    // Calendar…" line is cut here. Only a complete schedule offers adding it.
+    const reply = stripModeSwitchLine(await planReply(messages, { followUp: true }));
+    return { message: reply, action: isCompleteSchedule(reply) ? "plan_reply" : "chat_reply", ok: true };
   }
   return calendarReply(messages, userText, opts.onProgress, source);
 }

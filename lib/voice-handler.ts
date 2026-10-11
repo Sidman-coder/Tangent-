@@ -15,9 +15,9 @@
 // Next.js route files may only export HTTP method handlers, so this can't
 // live in route.ts itself.
 import { NextResponse } from "next/server";
-import { addTask, addPlanWithTasks, addRecurringTask, completeTask, deleteTask, updateTask, addVoiceLog, getAppState, getAllTasks, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, addPendingConfirmation, getUserTimezone } from "@/lib/store";
+import { addTask, addPlanWithTasks, addRecurringTask, completeTask, deleteTask, updateTask, addVoiceLog, getAppState, getAllTasks, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, addPendingConfirmation, getUserTimezone, getAllPlans } from "@/lib/store";
 import { addDaysYMD, localNow, promptDateContext, singleRelativeDay, ymdFromParts } from "@/lib/time";
-import type { TaskKind } from "@/lib/types";
+import type { Task, TaskKind } from "@/lib/types";
 import { needsAgentTools, runVoiceAgentToolLoop } from "@/lib/voice-agent-tools";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import { generatePlan, isClearPlanRequest, planDates } from "@/lib/ai/plan";
@@ -33,6 +33,8 @@ import { TANGENT_PIPELINE_V2 } from "@/lib/pipeline/flags";
 import { logEvent } from "@/lib/pipeline/events";
 import { respondWithDraft } from "@/lib/pipeline/drafting";
 import { planOps, taskOp } from "@/lib/pipeline/draft";
+import { ASK_WHICH, bulkDeleteMessage, isFullClearRequest, parseDeleteScope, planBulkDelete } from "@/lib/delete-scope";
+import { cleanTitle, hasTimeWords } from "@/lib/quick-add";
 
 const RESOURCE_ITEM_SCHEMA = {
   type: "object",
@@ -85,32 +87,70 @@ const VOICE_COMMAND_SCHEMA = {
 // intent (action: create_plan); handleVoiceText then re-enters with forcePlan to
 // generate the tasks with the two-stage generator in lib/ai/plan.ts.
 
-/** Clearing the whole schedule always requires confirmation — it's total and irreversible
- *  from the user's perspective without the undo system. Shared by all three call sites
- *  below (instant-detect, LLM-returned action, and the JSON-parse-failed fallback). */
-async function requestClearConfirmation(text: string): Promise<NextResponse> {
-  const existing = await getAllTasks();
-  if (existing.length === 0) {
-    await addVoiceLog({ text, response: "Nothing to clear — schedule is already empty", action: "delete_all_tasks", ok: true });
-    return NextResponse.json({
-      ok: true,
-      action: "delete_all_tasks",
-      response: "Your schedule is already empty.",
-      state: await getAppState(),
-    });
+type DeleteMeta = { text: string; drafting: boolean; source: "typed" | "voice"; today: string };
+
+/** ChangeSet ops are capped at 400 (lib/pipeline/changeset.ts); bigger deletes use a pending confirmation. */
+const MAX_DRAFT_DELETES = 400;
+
+/**
+ * Proposes deleting these tasks and never deletes anything itself. Pipeline V2
+ * drafting: a preview card of delete_task ops (one batch Undo when confirmed).
+ * Otherwise a pending confirmation resolved by app/api/confirm. Either way the
+ * student sees the count and up to five titles first.
+ */
+async function proposeDelete(tasks: Task[], meta: DeleteMeta, scope: { all?: boolean; label?: string } = {}): Promise<NextResponse> {
+  const message = bulkDeleteMessage(tasks.map((t) => t.title), scope);
+  const n = tasks.length;
+  if (meta.drafting && n <= MAX_DRAFT_DELETES) {
+    return respondWithDraft(
+      {
+        source: meta.source,
+        requestText: meta.text,
+        summary: scope.all ? `Clear ALL ${n} tasks from your schedule` : `Delete ${n} task${n === 1 ? "" : "s"}${scope.label ? ` matching "${scope.label}"` : ""}`,
+        intent: "delete_task",
+        ops: tasks.map((t) => ({ op: "delete_task" as const, task_id: t.id })),
+        assumptions: scope.all ? ["This removes every task on your schedule"] : [],
+      },
+      { text: meta.text, today: meta.today, route: scope.all ? "clear" : "delete_scope" }
+    );
   }
-  const pending = await addPendingConfirmation(
-    "delete_all_tasks",
-    `Clear all ${existing.length} tasks from your schedule?`,
-    {}
-  );
-  await addVoiceLog({ text, response: "Awaiting confirmation to clear schedule", action: "confirm_required", ok: true });
+  const pending = scope.all
+    ? await addPendingConfirmation("delete_all_tasks", message, {})
+    : n === 1
+      ? await addPendingConfirmation("delete_task", message, { taskId: tasks[0].id, title: tasks[0].title })
+      : await addPendingConfirmation("delete_task", message, { taskIds: tasks.map((t) => t.id), label: scope.label ?? null });
+  await addVoiceLog({ text: meta.text, response: `Awaiting confirmation to delete ${n} task(s)`, action: "confirm_required", ok: true });
   return NextResponse.json({
     ok: true,
     action: "confirm_required",
     pending: { id: pending.id, kind: pending.kind, message: pending.message },
     response: pending.message,
   });
+}
+
+/** A reply that changes nothing (a question back to the student). */
+async function askBack(text: string, response: string): Promise<NextResponse> {
+  await addVoiceLog({ text, response, action: "clarify", ok: true });
+  return NextResponse.json({ ok: true, action: "clarify", response });
+}
+
+/**
+ * Delete requests about more than one task (or an explicit full clear), before
+ * any model call. Returns null when the text isn't one. Decided by
+ * planBulkDelete (lib/delete-scope.ts): it proposes or asks, never widens.
+ */
+async function handleBulkDelete(meta: DeleteMeta): Promise<NextResponse | null> {
+  const full = isFullClearRequest(meta.text);
+  if (!full && !parseDeleteScope(meta.text)) return null;
+  const [tasks, plans] = await Promise.all([getAllTasks(), full ? Promise.resolve([]) : getAllPlans()]);
+  const plan = planBulkDelete(meta.text, tasks, plans);
+  if (!plan) return null;
+  if (plan.kind === "ask") return askBack(meta.text, plan.message);
+  if (plan.kind === "empty") {
+    await addVoiceLog({ text: meta.text, response: "Nothing to clear — schedule is already empty", action: "delete_all_tasks", ok: true });
+    return NextResponse.json({ ok: true, action: "delete_all_tasks", response: "Your schedule is already empty.", state: await getAppState() });
+  }
+  return proposeDelete(plan.tasks, meta, { all: plan.all, label: plan.label });
 }
 
 function inferCalendarId(title: string, notes?: string): string {
@@ -342,7 +382,7 @@ It must be under 20 words.
 It must start with a verb — Watch, Read, Open, Write, Complete, Solve, Review, Draft.
 Never say "Start by" or "Begin with" — just give the direct action.
 
---- CLEAR SCHEDULE COMMAND (use this when user says "clear my schedule", "clean my schedule", "delete all my tasks", "remove everything", "wipe my calendar", "start fresh", "clear everything", "empty my schedule") ---
+--- CLEAR SCHEDULE COMMAND (use this ONLY when the user asks to remove every task: "clear my whole schedule", "delete everything", "delete all my tasks". Never for a group of tasks like "all the SAT tasks" or "my SAT plan") ---
 Return this exact JSON:
 {"action":"delete_all_tasks","response":"confirmation under 15 words"}
 
@@ -357,7 +397,8 @@ Return this exact JSON:
 Required fields: targetCalendarId (string — the id or exact name of the destination calendar). For move_tasks, reuse the "title" field as a keyword to match task titles, and "startDate"/"endDate" as an optional YYYY-MM-DD date range to filter by. Omit them entirely to match all tasks.
 
 Rules:
-- If no date mentioned use the student's local date (given at the end). Default time: 09:00.
+- If no date mentioned use the student's local date (given at the end). If no time is mentioned, omit the time field (the task is untimed). Never pick a time from the current time.
+- Titles are short noun phrases without lead-ins: "I have a dentists appointment" → "Dentists appointment".
 - Choose recurring vs single based on whether the user says a repeating word like "every" or "each".
 - Choose plan vs single based on whether the user wants a multi-step schedule (plan) or one specific task (single).
 - Use delete_all_tasks ONLY for explicit clear/wipe/remove-all commands, never for deleting a single task.
@@ -534,12 +575,17 @@ async function handleVoiceTextInner(
     const local = localNow(tz);
     console.log("[api/voice] POST received text:", text);
 
-    // Detect clear-schedule commands instantly — no API call needed
-    const lowerText = text.toLowerCase().trim();
-    if (/clear|clean|wipe|empty|delete all|remove all|reset|start fresh|start over/.test(lowerText)) {
-      console.log("[api/voice] Clear schedule detected — requesting confirmation");
-      received("clear");
-      return await requestClearConfirmation(text);
+    // Deletes of more than one task, before the router or any model call:
+    // an explicit full clear, or a named group ("all of the SAT tasks").
+    // Both are proposed, never applied here (lib/delete-scope.ts).
+    const deleteMeta: DeleteMeta = { text, drafting, source: opts.source ?? (opts.preview ? "typed" : "voice"), today: local.date };
+    if (!opts.forcePlan) {
+      const bulk = await handleBulkDelete(deleteMeta);
+      if (bulk) {
+        console.log("[api/voice] bulk delete request — proposing, not deleting");
+        received("delete_scope");
+        return bulk;
+      }
     }
 
     // ── Deterministic intent classification — runs before any AI plan-generation path ──
@@ -933,7 +979,7 @@ async function handleVoiceTextInner(
             const cmd = retryJson;
             if (cmd.action === "add_task" && typeof cmd.title === "string" && cmd.title) {
               const retryDate = singleRelativeDay(text, tz) ?? (typeof cmd.date === "string" ? cmd.date : today);
-              const retryTime = typeof cmd.time === "string" ? cmd.time : "09:00";
+              const retryTime = hasTimeWords(text) && typeof cmd.time === "string" ? cmd.time : "";
               if (drafting) {
                 return await respondWithDraft(
                   {
@@ -941,14 +987,14 @@ async function handleVoiceTextInner(
                     requestText: text,
                     summary: "Add a task",
                     intent: "add_task",
-                    ops: [taskOp({ title: cmd.title, date: retryDate, time: retryTime, notes: "Added after retry: " + text.substring(0, 100) })],
-                    assumptions: typeof cmd.time === "string" ? [] : ["Assumed 9:00 AM since no time was given"],
+                    ops: [taskOp({ title: cleanTitle(cmd.title), date: retryDate, time: retryTime, notes: "Added after retry: " + text.substring(0, 100) })],
+                    assumptions: retryTime ? [] : ["No time given, so it's untimed (all day)"],
                   },
                   { text, today, route: "standard_retry" }
                 );
               }
               const task = await addTask({
-                title: cmd.title,
+                title: cleanTitle(cmd.title),
                 date: retryDate,
                 time: retryTime,
                 completed: false,
@@ -966,7 +1012,7 @@ async function handleVoiceTextInner(
                 ok: true,
                 action: "add_task",
                 task,
-                response: (cmd.response as string) || "Task added!",
+                response: `Added "${task.title}" for ${friendlyWhen(retryDate, retryTime || undefined, today)}.`,
                 actionId: retryRecord.id,
                 state: await getAppState(),
               });
@@ -1024,9 +1070,13 @@ async function handleVoiceTextInner(
 
     const cmd = parsed;
     const action = cmd.action as string;
-    const title = (cmd.title as string | undefined) ?? "";
+    // Quick-add titles are cleaned deterministically ("I have a dentists
+    // appointment" → "Dentists appointment"), and a request with no time in it
+    // stays untimed: the model sometimes invents one (a 9 PM dentist).
+    const rawTitle = (cmd.title as string | undefined) ?? "";
+    const title = action === "add_task" || action === "add_recurring_task" ? cleanTitle(rawTitle) : rawTitle;
     const response = (cmd.response as string | undefined) ?? "";
-    const time = (cmd.time as string | undefined) ?? "09:00";
+    const time = hasTimeWords(text) ? ((cmd.time as string | undefined) ?? "") : "";
 
     console.log("[api/voice] Parsed — action:", action, "| title:", title);
 
@@ -1088,9 +1138,12 @@ async function handleVoiceTextInner(
     }
 
     // ── Clear all tasks ────────────────────────────────────────────────────────
+    // The model's word is never enough to clear everything: only an explicit
+    // full-clear phrase does (checked above, and again here).
     if (action === "delete_all_tasks") {
-      console.log("[api/voice] delete_all_tasks — requesting confirmation");
-      return await requestClearConfirmation(text);
+      if (isFullClearRequest(text)) return (await handleBulkDelete(deleteMeta)) ?? (await askBack(text, ASK_WHICH));
+      console.log("[api/voice] delete_all_tasks from the model without an explicit clear phrase — asking");
+      return await askBack(text, ASK_WHICH);
     }
 
     // ── Get calendars ──────────────────────────────────────────────────────────
@@ -1195,7 +1248,7 @@ async function handleVoiceTextInner(
             intent: "add_task",
             ops: [taskOp({ title, date, time, calendarId, notes, startAction, resources })],
             assumptions: [
-              ...(cmd.time === undefined ? ["Assumed 9:00 AM since no time was given"] : []),
+              ...(!time ? ["No time given, so it's untimed (all day)"] : []),
               ...(!hintedDate && !aiDate ? ["Assumed today since no day was given"] : []),
             ],
           },
@@ -1214,8 +1267,10 @@ async function handleVoiceTextInner(
       }
       const addRecord = await recordAction("add_task", `Added "${task.title}"`, { addedTaskIds: [task.id] });
       console.log("[api/voice] add_task success:", task.id, task.title);
-      await addVoiceLog({ text, response, action, ok: true });
-      return NextResponse.json({ ok: true, action, task, response, actionId: addRecord.id, state: await getAppState() });
+      // The model's sentence may name a time or title that was changed above, so say what was saved.
+      const saved = `Added "${task.title}" for ${friendlyWhen(date, time || undefined, today)}.`;
+      await addVoiceLog({ text, response: saved, action, ok: true });
+      return NextResponse.json({ ok: true, action, task, response: saved, actionId: addRecord.id, state: await getAppState() });
     }
 
     if (action === "complete_task") {

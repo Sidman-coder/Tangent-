@@ -17,8 +17,11 @@ import {
 } from "@/hooks/useVoiceCapture";
 import { Check } from "lucide-react";
 import { captureCopy, prefsOf, type CaptureQuickAction } from "@/lib/personalize";
+import { UNDO_TOAST_MS, openRecentChanges } from "@/lib/undo-events";
 
-type QuickAction = CaptureQuickAction;
+/** Quick actions plus "Undo recent change", which opens Recent changes. */
+type QuickAction = CaptureQuickAction | { label: string; kind: "recent"; value: string };
+const UNDO_RECENT: QuickAction = { label: "Undo recent change", kind: "recent", value: "" };
 
 function cleanReply(text: string): string {
   if (!text) return "Done! Your request has been processed.";
@@ -42,10 +45,10 @@ export default function CommandPalette() {
   // no answers these are the palette's original defaults.
   const slipPoint = state?.user?.slipPoint;
   const helpFocus = state?.user?.helpFocus;
-  const { placeholder, quickActions: QUICK_ACTIONS } = useMemo(
-    () => captureCopy(prefsOf({ slipPoint, helpFocus })),
-    [slipPoint, helpFocus]
-  );
+  const { placeholder, quickActions: QUICK_ACTIONS } = useMemo(() => {
+    const copy = captureCopy(prefsOf({ slipPoint, helpFocus }));
+    return { placeholder: copy.placeholder, quickActions: [...copy.quickActions, UNDO_RECENT] as QuickAction[] };
+  }, [slipPoint, helpFocus]);
 
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
@@ -118,9 +121,10 @@ export default function CommandPalette() {
     if (open && v2) void fetchOpenDrafts().then((d) => d[0] && setDraft((cur) => cur ?? d[0]));
   }, [open, v2]);
 
-  const showToast = useCallback((text: string) => {
+  // A toast with Undo stays as long as the app-level Undo toast (8 s).
+  const showToast = useCallback((text: string, withUndo = false) => {
     setToast(text);
-    window.setTimeout(() => setToast(null), 5000);
+    window.setTimeout(() => setToast(null), withUndo ? UNDO_TOAST_MS : 5000);
   }, []);
 
   const submitAsk = useCallback(
@@ -163,7 +167,7 @@ export default function CommandPalette() {
         }
         const raw = data.message ?? data.reply ?? data.response ?? data.text ?? "";
         setReceiptId(data.actionId ?? null);
-        showToast(cleanReply(typeof raw === "string" ? raw : ""));
+        showToast(cleanReply(typeof raw === "string" ? raw : ""), !!data.actionId);
         await refresh();
       } catch (e) {
         setReceiptId(null);
@@ -190,7 +194,7 @@ export default function CommandPalette() {
         const data = (await res.json()) as { ok?: boolean; response?: string; error?: string; actionId?: string };
         if (!res.ok || !data.ok) throw new Error(data.error || "Request failed");
         setReceiptId(confirm ? data.actionId ?? null : null);
-        showToast(data.response ?? (confirm ? "Done." : "Cancelled."));
+        showToast(data.response ?? (confirm ? "Done." : "Cancelled."), confirm && !!data.actionId);
         await refresh();
       } catch (e) {
         showToast(e instanceof Error ? e.message : "Something went wrong.");
@@ -203,6 +207,11 @@ export default function CommandPalette() {
 
   const runQuickAction = useCallback(
     (action: QuickAction) => {
+      if (action.kind === "recent") {
+        closePalette();
+        openRecentChanges();
+        return;
+      }
       if (action.kind === "navigate") {
         closePalette();
         router.push(action.value);

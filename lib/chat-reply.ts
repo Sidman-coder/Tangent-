@@ -20,6 +20,12 @@ In Plan mode you never add, move, or delete anything; you help the user work out
 - Keep it under 150 words. Plain text only: no markdown headings, bold, tables, JSON, or code fences. Simple "- " bullets are fine.
 - End a proposed schedule with: "Switch to Calendar and say \"add this plan\" to put it on your calendar."`;
 
+/** Pipeline V2 only: talk it through one question at a time, and finish a
+ *  schedule cleanly so the app can offer to add it. */
+export const PLAN_FOLLOWUP = `
+- Ask one short question per reply and wait for the answer before asking the next.
+- Only list a schedule once you have what you need; then list every session and end without a question.`;
+
 /** Earlier turns, newest last, trimmed — lets Calendar mode resolve "add this plan". */
 export function conversationContext(messages: { role: string; content: string }[]): string | undefined {
   const earlier = messages.slice(0, -1).slice(-4);
@@ -28,11 +34,11 @@ export function conversationContext(messages: { role: string; content: string }[
   return text.length > 2400 ? text.slice(-2400) : text;
 }
 
-export async function planReply(messages: { role: "user" | "assistant"; content: string }[]): Promise<string> {
+export async function planReply(messages: { role: "user" | "assistant"; content: string }[], opts: { followUp?: boolean } = {}): Promise<string> {
   // Static system, settled history cached, date last (lib/ai/cache.ts). The
   // history breakpoint only takes effect once a long talk passes the minimum.
   const res = await callClaude("chatPlan", {
-    system: PLAN_SYSTEM,
+    system: opts.followUp ? PLAN_SYSTEM + PLAN_FOLLOWUP : PLAN_SYSTEM,
     messages: withDateLast(cacheHistory(messages.slice(-12)), promptDateContext(await getUserTimezone())),
   });
   if (!res.ok) throw new Error(res.budgetExceeded ? res.error : `Anthropic error ${res.status}`);

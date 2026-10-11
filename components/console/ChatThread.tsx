@@ -56,6 +56,10 @@ type Props = {
   planProgress?: PlanProgressView | null;
   /** Pipeline V2: the preview card's "Just talking, don't add" chip. */
   onJustChatting?: (turnId: string) => void;
+  /** Pipeline V2: a preview card was confirmed (keeps Undo after a reload). */
+  onCardConfirmed?: (turnId: string, changeSetId: string, actionId: string) => void;
+  /** Pipeline V2: "Keep talking" on the ready-to-add row. */
+  onKeepTalking?: (turnId: string) => void;
 };
 
 function shortDate(ymd: string): string {
@@ -63,7 +67,7 @@ function shortDate(ymd: string): string {
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
 
-export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onUndone, mode, onAddPlan, planProgress, onJustChatting }: Props) {
+export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onUndone, mode, onAddPlan, planProgress, onJustChatting, onCardConfirmed, onKeepTalking }: Props) {
   const v2 = usePipelineV2();
   const planDone = planProgress ? planProgress.tasks.filter(Boolean).length : 0;
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -165,13 +169,24 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
                         </button>
                       </div>
                     )}
-                    {t.planDraft && (
+                    {t.planDraft && v2 && (
+                      <div className="tg-plan-cta">
+                        <span>Ready to add this to your calendar?</span>
+                        <button type="button" className="tg-btn tg-btn-accent" onClick={() => onAddPlan(t.id)} disabled={busy}>
+                          Yes, show preview
+                        </button>
+                        <button type="button" className="tg-btn" onClick={() => onKeepTalking?.(t.id)} disabled={busy}>
+                          Keep talking
+                        </button>
+                      </div>
+                    )}
+                    {t.planDraft && !v2 && (
                       <div className="tg-plan-cta">
                         <button type="button" className="tg-btn tg-btn-accent" onClick={() => onAddPlan(t.id)} disabled={busy}>
                           <CalendarPlus size={14} strokeWidth={2} aria-hidden="true" />
                           Add to calendar
                         </button>
-                        <span>{v2 ? "Shows what will be added before saving." : "Switches to Calendar mode and adds this plan."}</span>
+                        <span>Switches to Calendar mode and adds this plan.</span>
                       </div>
                     )}
                     {t.draft && (
@@ -179,12 +194,20 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
                         changeSet={t.draft.changeSet}
                         preview={t.draft.preview}
                         onChanged={onUndone}
+                        onConfirmed={onCardConfirmed ? (id) => onCardConfirmed(t.id, t.draft!.changeSet.id, id) : undefined}
                         autoFocus={t.fresh}
                         onJustChatting={onJustChatting ? () => onJustChatting(t.id) : undefined}
                       />
                     )}
                     {t.actionId && t.actionLabel && (
-                      <ActionReceipt actionId={t.actionId} label={t.actionLabel} onUndone={onUndone} />
+                      <ActionReceipt
+                        key={`${t.actionId}:${t.undoStatus ?? ""}`}
+                        actionId={t.actionId}
+                        label={t.actionLabel}
+                        onUndone={onUndone}
+                        initiallyUndone={t.undoStatus === "undone"}
+                        expired={t.undoStatus === "expired"}
+                      />
                     )}
                   </div>
                 </div>

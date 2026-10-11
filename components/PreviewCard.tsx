@@ -20,6 +20,8 @@ type Props = {
   preview: PreviewPayload;
   /** The calendar changed (confirm or undo): reload app state. */
   onChanged?: () => void;
+  /** Confirmed: the undo entry's id, so the chat can keep Undo after a reload. */
+  onConfirmed?: (actionId: string) => void;
   /** Focus the card when it appears so Enter/Esc work straight away. */
   autoFocus?: boolean;
   className?: string;
@@ -43,7 +45,7 @@ async function post(url: string, body?: unknown, method = "POST"): Promise<{ sta
 const phaseOf = (status: unknown): Phase | null =>
   status === "confirmed" || status === "discarded" || status === "undone" || status === "draft" ? status : null;
 
-export default function PreviewCard({ changeSet, preview, onChanged, autoFocus = false, className, onSettled, onJustChatting }: Props) {
+export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed, autoFocus = false, className, onSettled, onJustChatting }: Props) {
   const { state } = useAppState();
   const [cs, setCs] = useState(changeSet);
   const [view, setView] = useState(preview);
@@ -106,6 +108,7 @@ export default function PreviewCard({ changeSet, preview, onChanged, autoFocus =
       setPhase("confirmed");
       setEditing(false);
       onChanged?.();
+      if (typeof data.actionId === "string") onConfirmed?.(data.actionId);
     });
 
   const discard = () =>

@@ -12,6 +12,7 @@ import {
   recordAction,
   addVoiceLog,
   deleteTask,
+  deleteTasks,
   updateTask,
 } from "@/lib/store";
 import { withUser } from "@/lib/request-context";
@@ -93,6 +94,28 @@ export const POST = withUser(async (req: Request) => {
         action: "move_tasks",
         moved,
         response: `Moved ${moved} tasks to your ${targetCalendar.name} calendar.`,
+        actionId: record.id,
+        state: await getAppState(),
+      });
+    }
+
+    if (pending.kind === "delete_task" && Array.isArray(pending.payload.taskIds)) {
+      // A scoped bulk delete ("all of the SAT tasks", lib/delete-scope.ts): only
+      // the tasks listed when it was proposed, and only those still there.
+      const ids = new Set(pending.payload.taskIds as string[]);
+      const found = (await getAllTasks()).filter((t) => ids.has(t.id));
+      if (found.length === 0) {
+        return NextResponse.json({ ok: false, error: "Those tasks no longer exist." }, { status: 422 });
+      }
+      await deleteTasks(found.map((t) => t.id));
+      const label = typeof pending.payload.label === "string" ? ` "${pending.payload.label}"` : "";
+      const summary = `Deleted ${found.length}${label} task${found.length === 1 ? "" : "s"}`;
+      const record = await recordAction("delete_task", summary, { removedTasks: found });
+      await addVoiceLog({ text: "(confirmed) delete tasks", response: summary, action: "delete_task", ok: true });
+      return NextResponse.json({
+        ok: true,
+        action: "delete_task",
+        response: `${summary}.`,
         actionId: record.id,
         state: await getAppState(),
       });

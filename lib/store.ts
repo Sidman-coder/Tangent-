@@ -27,6 +27,7 @@ import type {
   CanvasFeedStatus,
   PendingBriefBatch,
   ChatMessage,
+  ChatMessageRefs,
   ChatSession,
   Path,
   PathNode,
@@ -367,6 +368,11 @@ export async function deleteTask(id: string): Promise<boolean> {
   const removed = await deleteTaskIds("deleteTask", [id]);
   if (!removed) console.log("[store] deleteTask: not found", id);
   return removed > 0;
+}
+
+/** Deletes these tasks (the student's own only). Returns how many were removed. */
+export async function deleteTasks(ids: string[]): Promise<number> {
+  return deleteTaskIds("deleteTasks", ids);
 }
 
 export async function clearAllTasks(): Promise<void> {
@@ -968,10 +974,35 @@ export async function updatePlan(
 const MAX_MESSAGES = 200;
 const MAX_CHATS = 50;
 
-type MessageRow = { id: number; role: "user" | "assistant"; content: string; created_at: string };
+type MessageRow = {
+  id: number;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+  action_id?: string | null;
+  change_set_id?: string | null;
+};
 
 function messageFromRow(r: MessageRow): ChatMessage {
-  return { role: r.role, content: r.content, timestamp: iso(r.created_at) };
+  return {
+    role: r.role,
+    content: r.content,
+    timestamp: iso(r.created_at),
+    ...(r.action_id ? { actionId: r.action_id } : {}),
+    ...(r.change_set_id ? { changeSetId: r.change_set_id } : {}),
+  };
+}
+
+/** chat_messages.action_id / change_set_id come from migration 20261011000000;
+ *  until it is applied, chats load and save without them (no Undo after reload). */
+let warnedMessageRefsMissing = false;
+function messageRefsMissing(error: { code?: string; message: string }): boolean {
+  const missing = isMissingColumn(error) || error.code === "PGRST204" || /action_id|change_set_id/.test(error.message);
+  if (missing && !warnedMessageRefsMissing) {
+    console.warn("[store] chat_messages is missing action_id/change_set_id; apply migration 20261011000000");
+    warnedMessageRefsMissing = true;
+  }
+  return missing;
 }
 
 /** Deletes the oldest rows of a message thread beyond the cap. */
@@ -1081,15 +1112,24 @@ async function sessionMessages(sessionIds: string[]): Promise<Map<string, ChatMe
   const bySession = new Map<string, ChatMessage[]>();
   if (sessionIds.length === 0) return bySession;
   const { db, userId } = ctx();
-  const rows = await selectAll<MessageRow & { session_id: string }>("chat messages", (from, to) =>
-    db
-      .from("chat_messages")
-      .select("id, session_id, role, content, created_at")
-      .eq("user_id", userId)
-      .in("session_id", sessionIds)
-      .order("id")
-      .range(from, to)
-  );
+  type Row = MessageRow & { session_id: string };
+  const read = (columns: string) =>
+    selectAll<Row>("chat messages", (from, to) =>
+      db
+        .from("chat_messages")
+        .select(columns)
+        .eq("user_id", userId)
+        .in("session_id", sessionIds)
+        .order("id")
+        .range(from, to) as unknown as PromiseLike<{ data: Row[] | null; error: { message: string } | null }>
+    );
+  let rows: Row[];
+  try {
+    rows = await read("id, session_id, role, content, created_at, action_id, change_set_id");
+  } catch (e) {
+    if (!messageRefsMissing({ message: e instanceof Error ? e.message : String(e) })) throw e;
+    rows = await read("id, session_id, role, content, created_at");
+  }
   for (const r of rows) {
     const list = bySession.get(r.session_id) ?? [];
     list.push(messageFromRow(r));
@@ -1153,15 +1193,27 @@ export async function getChatSession(sessionId: string): Promise<ChatSession | n
   return sessionFromRow(row, messages.get(row.id) ?? []);
 }
 
-export async function addChatSessionMessage(sessionId: string, role: "user" | "assistant", content: string): Promise<ChatMessage | null> {
+export async function addChatSessionMessage(
+  sessionId: string,
+  role: "user" | "assistant",
+  content: string,
+  refs: ChatMessageRefs = {}
+): Promise<ChatMessage | null> {
   const row = await updateSessionRow("addChatSessionMessage", sessionId, { updated_at: new Date().toISOString() });
   if (!row) return null;
   const { db, userId } = ctx();
-  const { data, error } = await db
-    .from("chat_messages")
-    .insert({ user_id: userId, session_id: sessionId, role, content })
-    .select("id, role, content, created_at")
-    .single();
+  const base = { user_id: userId, session_id: sessionId, role, content };
+  const withRefs = role === "assistant" && !!(refs.actionId || refs.changeSetId);
+  let { data, error } = withRefs
+    ? await db
+        .from("chat_messages")
+        .insert({ ...base, action_id: refs.actionId ?? null, change_set_id: refs.changeSetId ?? null })
+        .select("id, role, content, created_at, action_id, change_set_id")
+        .single()
+    : await db.from("chat_messages").insert(base).select("id, role, content, created_at").single();
+  if (error && withRefs && messageRefsMissing(error)) {
+    ({ data, error } = await db.from("chat_messages").insert(base).select("id, role, content, created_at").single());
+  }
   if (error) fail("addChatSessionMessage", error);
   await trimThread("chat_messages", "session_id", sessionId);
   return messageFromRow(data as MessageRow);
@@ -1196,6 +1248,41 @@ export async function replaceLastAssistantMessage(sessionId: string, from: strin
     .select("id");
   if (updateError) fail("replaceLastAssistantMessage", updateError);
   return (updated?.length ?? 0) > 0;
+}
+
+/**
+ * Attaches the change an earlier assistant message led to: the newest one in
+ * this session previewing `changeSetId` (a card confirmed later), or else the
+ * newest with exactly `content` (a plan drafted from the chat). Returns false
+ * when there is no such message or the columns don't exist yet.
+ */
+export async function attachChatMessageRefs(
+  sessionId: string,
+  match: { changeSetId?: string; content?: string },
+  refs: ChatMessageRefs
+): Promise<boolean> {
+  if (!refs.actionId && !refs.changeSetId) return false;
+  if (!match.changeSetId && !match.content) return false;
+  if (!(await getSessionRow(sessionId))) return false;
+  const { db, userId } = ctx();
+  let query = db.from("chat_messages").select("id").eq("user_id", userId).eq("session_id", sessionId).eq("role", "assistant");
+  query = match.changeSetId ? query.eq("change_set_id", match.changeSetId) : query.eq("content", match.content as string);
+  const { data, error } = await query.order("id", { ascending: false }).limit(1).maybeSingle();
+  if (error) {
+    if (messageRefsMissing(error)) return false;
+    fail("attachChatMessageRefs", error);
+  }
+  const target = data as { id: number } | null;
+  if (!target) return false;
+  const patch: Record<string, string> = {};
+  if (refs.actionId) patch.action_id = refs.actionId;
+  if (refs.changeSetId) patch.change_set_id = refs.changeSetId;
+  const { error: updateError } = await db.from("chat_messages").update(patch).eq("user_id", userId).eq("id", target.id);
+  if (updateError) {
+    if (messageRefsMissing(updateError)) return false;
+    fail("attachChatMessageRefs", updateError);
+  }
+  return true;
 }
 
 export async function renameChatSession(sessionId: string, title: string): Promise<boolean> {
@@ -1688,6 +1775,16 @@ async function findActionRecord(id: string): Promise<ActionRecord | null> {
     .maybeSingle();
   if (error) fail("findActionRecord", error);
   return data ? actionFromRow(data as ActionRow) : null;
+}
+
+/** The signed-in student's action records with these ids (others are simply
+ *  absent). Used to re-check Undo when a saved chat is reopened. */
+export async function getActionsByIds(ids: string[]): Promise<ActionRecord[]> {
+  if (ids.length === 0) return [];
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("action_records").select(ACTION_COLUMNS).eq("user_id", userId).in("id", ids.slice(0, MAX_ACTIONS));
+  if (error) fail("getActionsByIds", error);
+  return ((data ?? []) as ActionRow[]).map(actionFromRow);
 }
 
 export async function getRecentActions(limit = 20): Promise<ActionRecord[]> {

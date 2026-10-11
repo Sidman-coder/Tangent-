@@ -142,6 +142,17 @@ export function countScheduleLines(text: string): number {
   return text.split(/\r?\n/).filter(isScheduleLine).length;
 }
 
+/**
+ * A finished schedule, ready to add: at least two entries and not waiting on
+ * an answer (the last line isn't a question). Pipeline V2 only offers "Ready
+ * to add this to your calendar?" for these.
+ */
+export function isCompleteSchedule(text: string): boolean {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const last = lines[lines.length - 1] ?? "";
+  return countScheduleLines(text) >= 2 && !last.endsWith("?");
+}
+
 /** One entry, or null when it can't be read. */
 function parseLine(line: string, today: string): DraftTask | null {
   // "4–5pm" and "4:00 PM – 5:00 PM" are one time, not two parts. A spaced dash

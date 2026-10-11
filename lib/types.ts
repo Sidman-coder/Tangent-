@@ -267,7 +267,19 @@ export interface PendingConfirmation {
 
 // ─── Chat sessions (console chats) ───────────────────────────────────────────
 
-export type ChatMessage = { role: "user" | "assistant"; content: string; timestamp: string };
+export type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+  /** The change this assistant message made (action_records.id), so Undo
+   *  survives reopening the chat. */
+  actionId?: string;
+  /** Pipeline V2: the change set this message previewed. */
+  changeSetId?: string;
+};
+
+/** What a saved assistant message points at (both optional). */
+export type ChatMessageRefs = { actionId?: string; changeSetId?: string };
 
 export type ChatSession = {
   id: string;

@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import NotificationBell from "./NotificationBell";
 import CommandPalette from "./CommandPalette";
+import RecentChanges from "./RecentChanges";
+import UndoToast from "./UndoToast";
 import FirstRun from "./FirstRun";
 import TangentLogo from "@/components/TangentLogo";
 import DesktopNotifPrompt from "./DesktopNotifPrompt";
@@ -237,6 +239,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </nav>
 
       <CommandPalette />
+      <RecentChanges />
+      <UndoToast />
       {!showOnboarding && <DesktopNotifPrompt />}
 
       {showOnboarding && <FirstRun

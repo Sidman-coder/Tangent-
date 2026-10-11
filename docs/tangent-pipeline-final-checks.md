@@ -122,7 +122,22 @@ One check per fix. `npm test` covers 1, 2 and 4 automatically; the rest are by h
 
 - With the flag on, **recurring tasks** ("gym every Monday") and **Gmail / Canvas imports** still write straight to the calendar, with no preview card.
 
-## H. Known to-dos (not bugs)
+## H. Safety hotfix
+
+Fixes 1 to 3 apply with the flag **on and off**, so do steps 3 to 9 twice: once without `TANGENT_PIPELINE_V2`, once with `TANGENT_PIPELINE_V2=true`. Restart `npm run dev` after changing the flag, because it is read only when the server starts.
+
+1. **Migration (optional but recommended).** Paste `supabase/migrations/20261011000000_chat_messages_undo_refs.sql` into the SQL Editor and run it. It adds two empty columns to `chat_messages` and is safe to run twice. Without it, everything still works except that Undo on a reopened chat doesn't come back (the server logs one warning naming this migration).
+2. **Automated.** `npm test` passes, including `lib/delete-scope.test.ts`, `lib/quick-add.test.ts`, `lib/undo-events.test.ts` and the "ready-to-add" test in `lib/pipeline/plan-text.test.ts`. `npm run eval:pipeline -- --check` passes.
+3. **Scoped delete.** With an SAT plan and other tasks on the calendar, type "Actually, nevermind I dont want the SAT tasks. Take out all of the SAT tasks". It shows the count and up to 5 titles, all SAT tasks, and nothing is deleted yet (flag on: a preview card of deletes; flag off: Confirm / Cancel). Confirm: only the SAT tasks are gone. Undo brings them back.
+4. **Nothing matches.** With no SAT tasks, "delete the SAT stuff" asks which tasks you mean. Nothing is deleted.
+5. **Full clear needs the explicit phrase.** "delete all the tasks" or "get rid of the stuff" asks which tasks you mean. "clear my schedule" or "delete everything" shows "Clear all N tasks…" with up to 5 titles and waits for Confirm. Cancel leaves everything.
+6. **Undo after leaving the page.** Add a task in the AI console, go to Calendar within 8 seconds: an Undo toast is there. Click it: the task is gone.
+7. **Undo after reopening a chat** (needs step 1). Add a task in the AI console, reload the page: its Undo is still in the thread. Undo it, reload again: it says "Undone". For a change older than the newest 50, it says "Can't undo anymore".
+8. **Recent changes.** On Calendar, click the ↶ button next to the arrows, or press Ctrl+K and choose "Undo recent change". Up to 10 changes appear, newest first, each with a time and Undo. Undo one: the calendar updates. Sign in as a second account: none of the first account's changes appear.
+9. **Quick-add titles.** "I have a dentists appointment" adds an untimed task called "Dentists appointment" (no 9:00 PM). "dentist tomorrow at 3pm" still lands at 3:00 PM.
+10. **Just talking (flag on only).** Ask "help me plan for the SAT". It asks one short question at a time. Once a reply lists a full schedule, it shows "Ready to add this to your calendar?" with **Yes, show preview** (opens the preview card; nothing is saved until Confirm) and **Keep talking** (hides the row). A reply that ends with a question shows no row.
+
+## I. Known to-dos (not bugs)
 
 - The iCF duplicate and "test next week" fail until **Prompt 3** (router + plan matcher).
 - Your local `main` is behind GitHub. Run `git checkout main && git pull` at the end. Close VS Code and File Explorer first to avoid the folder lock.

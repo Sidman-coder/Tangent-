@@ -2,6 +2,7 @@
 
 import type { ChangeSet } from "@/lib/pipeline/changeset";
 import type { PreviewPayload } from "@/lib/pipeline/draft";
+import type { UndoStatus } from "@/lib/undo-events";
 
 export type Turn = {
   id: string;
@@ -11,6 +12,10 @@ export type Turn = {
   response: string;
   actionId?: string;
   actionLabel?: string;
+  /** Set on a reopened chat after re-checking actionId (lib/undo-events.ts). */
+  undoStatus?: UndoStatus;
+  /** Pipeline V2: the change set this turn previewed (saved with the reply). */
+  changeSetId?: string;
   pendingConfirm?: { id: string; message: string } | null;
   /** A schedule drafted in Plan mode — offers "Add to calendar". */
   planDraft?: boolean;
@@ -51,7 +56,7 @@ export type ChatMode = "plan" | "calendar";
  *  row; the later one wins, matching what the live console showed. A turn whose
  *  reply is still an open confirmation's prompt gets its Confirm/Cancel back. */
 export function turnsFromMessages(
-  messages: { role: "user" | "assistant"; content: string }[],
+  messages: { role: "user" | "assistant"; content: string; actionId?: string; changeSetId?: string }[],
   openConfirms: { id: string; message: string }[] = []
 ): Turn[] {
   const result: Turn[] = [];
@@ -59,8 +64,24 @@ export function turnsFromMessages(
     if (messages[i].role !== "user") continue;
     const request = messages[i].content;
     let response = "";
-    while (messages[i + 1]?.role === "assistant") response = messages[++i].content;
-    result.push({ id: crypto.randomUUID(), request, tools: [], sourcesChecked: [], response });
+    // The saved change ids come back with the reply, so Undo survives a reload.
+    let actionId: string | undefined;
+    let changeSetId: string | undefined;
+    while (messages[i + 1]?.role === "assistant") {
+      const m = messages[++i];
+      response = m.content;
+      actionId = m.actionId ?? actionId;
+      changeSetId = m.changeSetId ?? changeSetId;
+    }
+    result.push({
+      id: crypto.randomUUID(),
+      request,
+      tools: [],
+      sourcesChecked: [],
+      response,
+      ...(actionId ? { actionId } : {}),
+      ...(changeSetId ? { changeSetId } : {}),
+    });
   }
   // Newest turns claim the newest matching confirmation; each is used once.
   const unclaimed = [...openConfirms];
