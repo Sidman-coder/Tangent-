@@ -83,6 +83,8 @@ export const AI_TASKS = {
   clarify: { feature: "chat", tier: "SMART", maxTokens: 700, thinking: "disabled" },
   /** Facts pulled from text the student pastes from another AI (lib/ai/import-context.ts). */
   contextImport: { feature: "context", tier: "SMART", maxTokens: 3000, thinking: "disabled" },
+  /** New Tangent intake: drafts the answers from context, then asks what's missing. */
+  pathIntake: { feature: "tangent", tier: "SMART", maxTokens: 900, thinking: "disabled" },
   /** The next "grill me" question, aimed at what Tangent doesn't know yet. */
   grillNext: { feature: "chat", tier: "SMART", maxTokens: 400, thinking: "disabled" },
   /** Short calendar labels for long task titles (app/api/short-titles). */

@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { AnimatePresence, m } from "motion/react";
-import { ArrowLeft, ArrowRight, Briefcase, GraduationCap, Target, Trophy, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Briefcase, GraduationCap, Mic, Square, Target, Trophy, X } from "lucide-react";
+import { useVoiceCapture } from "@/hooks/useVoiceCapture";
 import type { PathGoalKind } from "@/lib/types";
 
 // Starting a path.
@@ -240,6 +241,80 @@ export default function NewPathDialog({ onCancel, onCreate, initialTitle, initia
   const [picked, setPicked] = useState(Boolean(initialKind));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Drafted from what Tangent already knows (/api/path-intake prefill): the
+  // student confirms and edits instead of starting from empty boxes.
+  const [known, setKnown] = useState<Set<FieldKey>>(new Set());
+  const [drafting, setDrafting] = useState(false);
+  // The last stage grills them on what the draft still lacks.
+  const [sharpen, setSharpen] = useState<{ question: string; chips: string[] }[] | null>(null);
+  const [sharpAnswers, setSharpAnswers] = useState<Record<number, string>>({});
+  const [loadingQs, setLoadingQs] = useState(false);
+
+  const prefill = async (kind: PathGoalKind) => {
+    setDrafting(true);
+    try {
+      const res = await fetch("/api/path-intake", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "prefill", kind, title: seed }),
+      });
+      const data = (await res.json()) as { ok?: boolean; draft?: Partial<Record<FieldKey, string>> };
+      if (!data.ok || !data.draft) return;
+      const filled = new Set<FieldKey>();
+      setDraft((d) => {
+        const n = { ...d };
+        for (const [k, v] of Object.entries(data.draft!) as [FieldKey, string][]) {
+          const val = (v ?? "").trim();
+          if (val && !String(d[k] ?? "").trim()) {
+            n[k] = val;
+            filled.add(k);
+          }
+        }
+        return n;
+      });
+      setKnown(filled);
+    } catch {
+      /* the questions still work without a draft */
+    } finally {
+      setDrafting(false);
+    }
+  };
+
+  // Answer out loud into the field on screen.
+  const voiceKey = useRef<FieldKey | null>(null);
+  const voice = useVoiceCapture({
+    live: true,
+    onPartial: (t) => {
+      const k = voiceKey.current;
+      if (k) setDraft((d) => ({ ...d, [k]: t }));
+    },
+    onTranscript: (t) => {
+      const k = voiceKey.current;
+      if (k) setDraft((d) => ({ ...d, [k]: t }));
+    },
+  });
+  const micFor = (key: FieldKey) => (
+    <button
+      type="button"
+      className={`tangents-intake-mic${voice.status === "recording" && voiceKey.current === key ? " is-on" : ""}`}
+      aria-label={voice.status === "recording" ? "Stop" : "Answer out loud"}
+      disabled={voice.status === "transcribing"}
+      onClick={() => {
+        if (voice.status === "recording") {
+          voice.stopRecording();
+          return;
+        }
+        voiceKey.current = key;
+        void voice.startRecording();
+      }}
+    >
+      {voice.status === "recording" && voiceKey.current === key ? (
+        <Square size={11} strokeWidth={0} fill="currentColor" aria-hidden="true" />
+      ) : (
+        <Mic size={15} aria-hidden="true" />
+      )}
+    </button>
+  );
 
   const steps = useMemo(() => {
     const set = QUESTIONS[draft.kind];
@@ -256,8 +331,9 @@ export default function NewPathDialog({ onCancel, onCreate, initialTitle, initia
     setDraft((d) => ({ ...d, kind }));
     setPicked(true);
     setError(null);
-    // Straight on: picking is the answer.
+    // Straight on: picking is the answer — and Tangent starts drafting.
     setStage(0);
+    void prefill(kind);
   };
 
   const next = async () => {
@@ -285,8 +361,34 @@ export default function NewPathDialog({ onCancel, onCreate, initialTitle, initia
       return;
     }
 
+    // Before building: a few sharp questions about what the draft lacks.
+    if (sharpen === null) {
+      setLoadingQs(true);
+      try {
+        const res = await fetch("/api/path-intake", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "questions", kind: draft.kind, draft }),
+        });
+        const data = (await res.json()) as { questions?: { question: string; chips: string[] }[] };
+        const qs = data.questions ?? [];
+        setSharpen(qs);
+        setLoadingQs(false);
+        if (qs.length > 0) return;
+      } catch {
+        setSharpen([]);
+        setLoadingQs(false);
+      }
+    }
+
+    // Answers to those join what the path is built from.
+    const qa = (sharpen ?? [])
+      .map((q, i) => (sharpAnswers[i]?.trim() ? `${q.question} ${sharpAnswers[i].trim()}` : ""))
+      .filter(Boolean);
+    const finalDraft = qa.length ? { ...draft, standing: [draft.standing, ...qa].filter(Boolean).join("\n") } : draft;
+
     setSubmitting(true);
-    const ok = await onCreate(draft);
+    const ok = await onCreate(finalDraft);
     setSubmitting(false);
     if (!ok) setError("That didn't save. Try again.");
   };
@@ -356,11 +458,46 @@ export default function NewPathDialog({ onCancel, onCreate, initialTitle, initia
                   })}
                 </div>
               </>
+            ) : isLast && sharpen && sharpen.length > 0 ? (
+              <>
+                <h2>A few questions before Tangent maps it</h2>
+                <p>Answer what you can. Each one changes which paths it suggests.</p>
+                <div className="tangents-intake-group">
+                  {sharpen.map((q, i) => (
+                    <div key={i} className="tangents-intake-field">
+                      <span>{q.question}</span>
+                      <div className="tangents-intake-chips" role="group" aria-label={q.question}>
+                        {q.chips.map((chip) => (
+                          <button
+                            key={chip}
+                            type="button"
+                            className={`tangents-intake-chip${sharpAnswers[i] === chip ? " is-on" : ""}`}
+                            onClick={() => setSharpAnswers((a) => ({ ...a, [i]: a[i] === chip ? "" : chip }))}
+                          >
+                            {chip}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        className="tangents-intake-input"
+                        value={q.chips.includes(sharpAnswers[i] ?? "") ? "" : sharpAnswers[i] ?? ""}
+                        onChange={(e) => setSharpAnswers((a) => ({ ...a, [i]: e.target.value }))}
+                        placeholder="Or say it in your words"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </>
             ) : (
               step && (
                 <>
                   <h2>{step.question}</h2>
                   <p>{step.help}</p>
+                  {drafting && <p className="tangents-intake-known">Tangent is drafting this from what it knows…</p>}
+                  {!drafting &&
+                    (step.key ? known.has(step.key) : step.fields?.some((f) => known.has(f.key))) && (
+                      <p className="tangents-intake-known">From what Tangent knows about you. Edit anything.</p>
+                    )}
                   {step.fields ? (
                     <div className="tangents-intake-group">
                       {step.fields.map((field, i) => (
@@ -402,24 +539,30 @@ export default function NewPathDialog({ onCancel, onCreate, initialTitle, initia
                       ))}
                     </div>
                   ) : step.multiline ? (
-                    <textarea
-                      className="tangents-intake-input is-area"
-                      value={String(value)}
-                      onChange={(e) => step.key && set(step.key, e.target.value)}
-                      placeholder={step.placeholder}
-                      rows={4}
-                      autoFocus
-                    />
+                    <div className="tangents-intake-row">
+                      <textarea
+                        className="tangents-intake-input is-area"
+                        value={String(value)}
+                        onChange={(e) => step.key && set(step.key, e.target.value)}
+                        placeholder={step.placeholder}
+                        rows={4}
+                        autoFocus
+                      />
+                      {step.key && micFor(step.key)}
+                    </div>
                   ) : (
-                    <input
-                      className="tangents-intake-input"
-                      value={String(value)}
-                      onChange={(e) => step.key && set(step.key, e.target.value)}
-                      placeholder={step.placeholder}
-                      inputMode={step.key === "hoursPerWeek" ? "numeric" : undefined}
-                      onKeyDown={(e) => e.key === "Enter" && void next()}
-                      autoFocus
-                    />
+                    <div className="tangents-intake-row">
+                      <input
+                        className="tangents-intake-input"
+                        value={String(value)}
+                        onChange={(e) => step.key && set(step.key, e.target.value)}
+                        placeholder={step.placeholder}
+                        inputMode={step.key === "hoursPerWeek" ? "numeric" : undefined}
+                        onKeyDown={(e) => e.key === "Enter" && void next()}
+                        autoFocus
+                      />
+                      {step.key && micFor(step.key)}
+                    </div>
                   )}
                   {step.chips && (
                     <div className="tangents-intake-chips" role="group" aria-label="Quick answers">
@@ -451,14 +594,19 @@ export default function NewPathDialog({ onCancel, onCreate, initialTitle, initia
           <button
             type="button"
             className="path-btn is-quiet"
-            onClick={() => (stage <= -1 ? onCancel() : setStage((s) => s - 1))}
+            onClick={() => {
+              if (stage <= -1) onCancel();
+              // From the questions back to the last answers, not past them.
+              else if (isLast && sharpen && sharpen.length > 0) setSharpen(null);
+              else setStage((s) => s - 1);
+            }}
           >
             <ArrowLeft size={15} aria-hidden="true" />
             {stage <= -1 ? "Cancel" : "Back"}
           </button>
           {(stage >= 0 || picked) && (
-            <button type="button" className="path-btn is-primary" onClick={() => void next()} disabled={submitting}>
-              {submitting ? "Creating" : isLast ? "Create the path" : "Next"}
+            <button type="button" className="path-btn is-primary" onClick={() => void next()} disabled={submitting || loadingQs}>
+              {submitting ? "Creating" : loadingQs ? "Thinking…" : isLast ? (sharpen && sharpen.length ? "Create the path" : "Next") : "Next"}
               {!isLast && <ArrowRight size={15} aria-hidden="true" />}
             </button>
           )}
