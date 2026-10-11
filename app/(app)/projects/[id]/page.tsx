@@ -11,7 +11,7 @@ import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { ChevronLeft, MessageSquareText } from "lucide-react";
 import { useAppState } from "@/components/AppStateProvider";
-import ProjectAsk from "@/components/projects/ProjectAsk";
+import ProjectChat from "@/components/projects/ProjectChat";
 import TaskChatModal from "@/components/TaskChatModal";
 import TaskRow from "@/components/ui/TaskRow";
 import { rowPresence, spring } from "@/lib/motion";
@@ -121,13 +121,8 @@ export default function ProjectPage() {
         </div>
       </header>
 
-      <section className="project-ask-section" aria-label="Ask Tangent about this project">
-        <ProjectAsk
-          placeholder="Add steps, change the plan, or ask for help…"
-          context={{ projectId: plan.id }}
-          onChanged={() => void refresh()}
-        />
-      </section>
+      <div className="project-layout">
+        <div className="project-main">
 
       <section className="project-steps" aria-labelledby="project-next">
         <h2 id="project-next">{open.length > 0 ? "Up next" : "All done"}</h2>
@@ -195,6 +190,12 @@ export default function ProjectPage() {
           </button>
         )}
       </footer>
+
+        </div>
+        <aside className="project-side">
+          <ProjectChat projectId={plan.id} projectTitle={plan.title} onChanged={() => void refresh()} />
+        </aside>
+      </div>
 
       {helpTask && <TaskChatModal task={helpTask} onClose={() => setHelpTask(null)} />}
     </div>

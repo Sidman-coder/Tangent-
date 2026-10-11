@@ -141,7 +141,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </Link>
 
         <nav className="rail-nav" aria-label="Primary">
-          {NAV_LINKS.map(({ href, label, icon: Icon }) => {
+          {NAV_LINKS.filter((l) => l.href !== "/tangents").map(({ href, label, icon: Icon }) => {
             const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
             return (
               <Link
@@ -171,6 +171,31 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         <div className="rail-spacer" />
 
+        {/* Tangents sits at the foot of the rail, apart from the daily places:
+            the long view, one step removed. Its orbit keeps circling. */}
+        {(() => {
+          const active = pathname.startsWith("/tangents");
+          return (
+            <Link
+              href="/tangents"
+              className={`rail-btn rail-btn-tangents${active ? " is-active" : ""}`}
+              aria-current={active ? "page" : undefined}
+              aria-label="Tangents"
+            >
+              {active && (
+                <m.span
+                  layoutId="rail-active"
+                  className="rail-active-pill"
+                  transition={{ ...spring.layout, visualDuration: 0.3, bounce: 0 }}
+                  aria-hidden="true"
+                />
+              )}
+              <OrbitIcon size={22} />
+              <span className="rail-btn-label">Tangents</span>
+              <span className="rail-tooltip">Tangents</span>
+            </Link>
+          );
+        })()}
 
 
         <div className="rail-footer">

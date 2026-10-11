@@ -8478,3 +8478,18 @@ h1, h2, h3, h4, h5, h6 {
     backdrop-filter: none;
   }
 }
+
+/* Tangents at the foot of the rail, a hairline above it. */
+.rail-btn-tangents {
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+.rail-btn-tangents::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 10px;
+  right: 10px;
+  height: 1px;
+  background: var(--line);
+}

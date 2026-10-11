@@ -41,7 +41,7 @@ function conversationContext(messages: { role: string; content: string }[]): str
   return text.length > 2400 ? text.slice(-2400) : text;
 }
 
-async function planReply(messages: { role: "user" | "assistant"; content: string }[]): Promise<string> {
+async function planReply(messages: { role: "user" | "assistant"; content: string }[], projectNote = ""): Promise<string> {
   // Static system, settled history cached, date last (lib/ai/cache.ts). The
   // history breakpoint only takes effect once a long talk passes the minimum.
   // Plan mode used to know nothing about the student: "plan my week" with ten
@@ -52,7 +52,7 @@ async function planReply(messages: { role: "user" | "assistant"; content: string
     system: picture
       ? [
           { type: "text" as const, text: PLAN_SYSTEM },
-          { type: "text" as const, text: `STUDENT CONTEXT — their real schedule, work and goals. Start from this; never ask for anything it already answers:\n${picture}` },
+          { type: "text" as const, text: `STUDENT CONTEXT — their real schedule, work and goals. Start from this; never ask for anything it already answers:\n${picture}${projectNote ? `\n\n${projectNote}` : ""}` },
         ]
       : PLAN_SYSTEM,
     messages: withDateLast(cacheHistory(messages.slice(-12)), promptDateContext(await getUserTimezone())),
@@ -286,7 +286,9 @@ export const POST = withUser(async (req: Request) => {
     console.log("[api/chat] User message:", userText);
 
     if (mode === "plan") {
-      const reply = await planReply(messages);
+      // Asked from inside a project: the talk is about that project.
+      const note = typeof body.projectId === "string" && body.projectId ? (await projectBrief(body.projectId)) ?? "" : "";
+      const reply = await planReply(messages, note);
       return NextResponse.json({ message: reply, action: "plan_reply", mode, ok: true });
     }
 
