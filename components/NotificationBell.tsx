@@ -1,5 +1,6 @@
 "use client"
 import { useState, useEffect, useCallback, useRef } from "react"
+import { createPortal } from "react-dom"
 import { Sun, Lightbulb, AlertTriangle, Clock, Calendar, Bell, X, type LucideIcon } from "lucide-react"
 import { Notification } from "@/lib/types"
 import { notifyNewDesktopNotifications } from "@/lib/desktop-notifications"
@@ -14,9 +15,11 @@ import { humanizeTimestamps } from "@/lib/humanize"
 type NotificationBellProps = {
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  /** "rail": a row in the sidebar, its panel opening beside the sidebar. */
+  placement?: "top" | "rail"
 }
 
-export default function NotificationBell({ open: openProp, onOpenChange }: NotificationBellProps = {}) {
+export default function NotificationBell({ open: openProp, onOpenChange, placement = "top" }: NotificationBellProps = {}) {
   const tz = useUserTimezone()
   const email = useAppState().state?.user.email ?? ""
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -218,10 +221,17 @@ export default function NotificationBell({ open: openProp, onOpenChange }: Notif
     )
   }
 
+  // In the sidebar, the panel is portalled out so the sidebar's glass (which
+  // contains fixed children) can't clip it; it opens beside the sidebar.
+  const wrapPanel = (panel: React.ReactNode) =>
+    placement === "rail" && typeof document !== "undefined"
+      ? createPortal(<div className="notif-rail-layer">{panel}</div>, document.body)
+      : panel
+
   const dismissToast = (key: string) => setToasts(current => current.filter(t => t.key !== key))
 
   return (
-    <div className="notif-bell-wrapper">
+    <div className={`notif-bell-wrapper${placement === "rail" ? " is-rail" : ""}`}>
       <NotificationToasts
         toasts={toasts}
         onDismiss={dismissToast}
@@ -229,7 +239,7 @@ export default function NotificationBell({ open: openProp, onOpenChange }: Notif
         onOpenInbox={() => setOpen(true)}
       />
       <button
-        className="notif-bell-btn"
+        className={placement === "rail" ? "rail-btn notif-rail-btn" : "notif-bell-btn"}
         onClick={() => setOpen(o => !o)}
         aria-label="Notifications"
       >
@@ -237,12 +247,13 @@ export default function NotificationBell({ open: openProp, onOpenChange }: Notif
           <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
+        {placement === "rail" && <span className="rail-btn-label">Notifications</span>}
         {unreadCount > 0 && (
           <span className="notif-bell-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>
         )}
       </button>
 
-      {open && (
+      {open && wrapPanel(
         <>
           <div className="notif-overlay" onClick={() => setOpen(false)} />
           <div className="notif-panel">

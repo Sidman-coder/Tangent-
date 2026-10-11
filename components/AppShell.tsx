@@ -12,7 +12,6 @@ import {
   Home,
   MessageSquareText,
   Mic,
-  Plus,
   Settings,
 } from "lucide-react";
 import NotificationBell from "./NotificationBell";
@@ -56,6 +55,15 @@ const NAV_LINKS = [
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [notifOpen, setNotifOpen] = useState(false);
+  // One bell at a time: in the sidebar on desktop, in the top bar on a phone.
+  const [desktop, setDesktop] = useState(true);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 721px)");
+    const update = () => setDesktop(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
   const { state, refresh } = useAppState();
   const refreshState = refresh;
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -91,7 +99,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const profileName = state?.user.displayName?.trim() ?? "";
   const profileInitial = (profileName || "T").charAt(0).toUpperCase();
 
-  const openPalette = () => window.dispatchEvent(new Event("tangent:open-palette"));
   const openListening = () => window.dispatchEvent(new CustomEvent("tangent:open-palette", { detail: { listen: true } }));
 
   // Tangents takes over the window. Returning children bare rather than hiding
@@ -184,6 +191,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         })()}
 
 
+        {desktop && <NotificationBell open={notifOpen} onOpenChange={setNotifOpen} placement="rail" />}
+
         <div className="rail-footer">
           <Link href="/settings" className="rail-profile" aria-label="Open account settings">
             <span className="rail-profile-avatar" aria-hidden="true">{profileInitial}</span>
@@ -198,19 +207,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className="shell-main">
         <header className="topbar">
-          <div className="topbar-right lg lg-interactive">
+          <div className="topbar-right">
             <StorageStatus />
-            {/* Adding is the heart of Tangent, so it's the one prominent
-                control up here: Add (type it) and the mic (say it). */}
-            <button type="button" className="topbar-mic" onClick={openListening} aria-label="Say it" title="Say it">
-              <Mic size={16} strokeWidth={2} aria-hidden="true" />
+            {/* One control up here: the mic. Say anything, from any page;
+                it opens Add already listening. (⌘K opens it to type.) */}
+            <button type="button" className="topbar-mic lg lg-interactive" onClick={openListening} aria-label="Say it to Tangent" title="Say it  ·  ⌘K to type">
+              <Mic size={19} strokeWidth={2} aria-hidden="true" />
             </button>
-            <button type="button" className="topbar-add" onClick={openPalette} aria-label="Add or ask">
-              <Plus size={16} strokeWidth={2.4} aria-hidden="true" />
-              <span>Add</span>
-              <kbd>⌘K</kbd>
-            </button>
-            <NotificationBell open={notifOpen} onOpenChange={setNotifOpen} />
+            {!desktop && <NotificationBell open={notifOpen} onOpenChange={setNotifOpen} />}
           </div>
         </header>
 
