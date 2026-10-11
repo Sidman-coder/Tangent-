@@ -5,6 +5,8 @@ import { addDaysYMD, expandRecurrence, getUserToday, weekRange } from "./time";
 import { preferencesFrom } from "./onboarding";
 import type { OnboardingPreferences, OnboardingSubmission, PreferencesPatch, SchoolHours } from "./onboarding";
 import { SCHOOL_SERIES_WEEKS, planSchoolReplace, schoolHoursFromTasks } from "./school-block";
+import { CALENDARS, calendarGroupOf } from "./calendars";
+import { DEFAULT_CAPACITY, type Capacity } from "./load";
 import { decryptFeedUrl, encryptFeedUrl, maskCanvasFeedUrl as maskFeedUrl } from "./canvas-feed-security";
 import type {
   Task,
@@ -111,7 +113,6 @@ const TASK_COLUMNS =
 function taskFromRow(r: TaskRow): Task {
   const t: Task = { id: r.id, title: r.title, date: r.date, time: r.time, completed: r.completed };
   if (r.kind) t.kind = r.kind;
-  if (r.calendar_id !== null) t.calendarId = r.calendar_id;
   if (r.plan_id !== null) t.planId = r.plan_id;
   if (r.notes !== null) t.notes = r.notes;
   if (r.recurring) t.recurring = r.recurring;
@@ -120,6 +121,9 @@ function taskFromRow(r: TaskRow): Task {
   if (r.source) t.source = r.source;
   if (r.external_id !== null) t.externalId = r.external_id;
   if (r.path_node_id !== null) t.pathNodeId = r.path_node_id;
+  // Old ids (Personal/Work/Study/custom) become School or No school here, so
+  // nothing above the store sees them (lib/calendars.ts).
+  t.calendarId = calendarGroupOf({ ...t, calendarId: r.calendar_id ?? undefined });
   return t;
 }
 
@@ -579,46 +583,15 @@ export async function getAllCalendars(): Promise<CalendarDef[]> {
   return requestMemo("calendars", readCalendars);
 }
 
+// Fixed: All, School, No school (lib/calendars.ts). The calendars table is no
+// longer read; its rows are left in place for older tasks' ids.
 async function readCalendars(): Promise<CalendarDef[]> {
-  const { db, userId } = ctx();
-  const { data, error } = await db
-    .from("calendars")
-    .select("id, name, category, color")
-    .eq("user_id", userId)
-    .order("created_at")
-    .order("id");
-  if (error) fail("getAllCalendars", error);
-  const rank = (id: string) => {
-    const i = DEFAULT_CALENDAR_ORDER.indexOf(id);
-    return i === -1 ? DEFAULT_CALENDAR_ORDER.length : i;
-  };
-  return (data ?? [])
-    .map((c: { id: string; name: string; category: string; color: string | null }) => {
-      const cal: CalendarDef = { id: c.id, name: c.name, category: c.category };
-      if (c.color) cal.color = c.color;
-      return cal;
-    })
-    .sort((a, b) => rank(a.id) - rank(b.id));
+  return CALENDARS.map((c) => ({ ...c }));
 }
 
 /** Alias of getAllCalendars — used by calendar-intelligence code (voice-handler, voice-agent-tools). */
 export async function getCalendars(): Promise<CalendarDef[]> {
   return getAllCalendars();
-}
-
-export async function addCalendar(name: string, color?: string): Promise<CalendarDef> {
-  const { db, userId } = ctx();
-  const cal: CalendarDef = {
-    id: uid("cal"),
-    name,
-    category: name.toLowerCase().replace(/\s+/g, "_"),
-    color: color ?? "#a78bfa",
-  };
-  const { error } = await db.from("calendars").insert({ user_id: userId, ...cal });
-  if (error) fail("addCalendar", error);
-  forgetMemo("calendars");
-  console.log("[store] addCalendar:", cal.id, cal.name);
-  return cal;
 }
 
 export async function getTasksByCalendar(calendarId: string): Promise<Task[]> {
@@ -730,6 +703,46 @@ async function updateProfile(where: string, row: Record<string, unknown>): Promi
   if ("timezone" in row) forgetMemo("timezone");
 }
 
+// ─── Daily capacity (spacing brain) ─────────────────────────────────────────
+// Read on its own, not in PROFILE_COLUMNS: until migration
+// 20261010000000_profile_daily_capacity is applied the columns don't exist, and
+// a missing column must not take the whole profile down with it.
+
+/** The student's saved capacity, or null if never answered (or the columns
+ *  aren't there yet). */
+export async function getCapacity(): Promise<Capacity | null> {
+  return requestMemo("capacity", async () => {
+    const { db, userId } = ctx();
+    const { data, error } = await db
+      .from("profiles")
+      .select("capacity_weekday_min, capacity_weekend_min")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error || !data) return null;
+    const row = data as { capacity_weekday_min: number | null; capacity_weekend_min: number | null };
+    if (row.capacity_weekday_min === null && row.capacity_weekend_min === null) return null;
+    return {
+      weekday: row.capacity_weekday_min ?? DEFAULT_CAPACITY.weekday,
+      weekend: row.capacity_weekend_min ?? DEFAULT_CAPACITY.weekend,
+    };
+  });
+}
+
+/** Saves capacity; false when the columns don't exist yet (not applied). */
+export async function setCapacity(cap: Capacity): Promise<boolean> {
+  const { db, userId } = ctx();
+  const { error } = await db
+    .from("profiles")
+    .update({ capacity_weekday_min: Math.round(cap.weekday), capacity_weekend_min: Math.round(cap.weekend) })
+    .eq("user_id", userId);
+  forgetMemo("capacity");
+  if (error) {
+    console.warn("[store] setCapacity:", error.message);
+    return false;
+  }
+  return true;
+}
+
 function userFromRow(r: ProfileRow): UserProfile {
   return {
     displayName: r.display_name,
@@ -829,7 +842,17 @@ export async function restartOnboarding(): Promise<void> {
 
 // ─── Plan functions ───────────────────────────────────────────────────────────
 
-const PLAN_COLORS = ["#38bdf8", "#f472b6", "#fb923c", "#818cf8", "#e879f9", "#06b6d4", "#84cc16"];
+// Tangent's palette, not stock Tailwind hues: iris, teal, lilac, mauve,
+// deep teal-blue and their mid tones. Plans made before this carry an old
+// colour in the database; planFromRow maps those onto this set.
+const PLAN_COLORS = ["#4b3a8c", "#1f8f86", "#8a78e0", "#b06a9a", "#3d6f8a", "#6b5bc4", "#3aa89f"];
+
+function brandColor(color: string, id: string): string {
+  if (PLAN_COLORS.includes(color.toLowerCase())) return color;
+  let h = 0;
+  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return PLAN_COLORS[h % PLAN_COLORS.length];
+}
 
 type PlanRow = {
   id: string;
@@ -847,7 +870,7 @@ function planFromRow(r: PlanRow): Plan {
     title: r.title,
     description: r.description,
     taskIds: [...(r.task_ids ?? [])],
-    color: r.color,
+    color: brandColor(r.color ?? "", r.id),
     createdAt: r.created_at,
     taskCount: r.task_count,
   };
@@ -938,6 +961,43 @@ export async function addPlanWithTasks(
   return { plan: { ...created, taskIds, taskCount: taskIds.length }, tasks: inserted, skippedDuplicates };
 }
 
+/** Adds steps to an existing project: one bulk insert with plan_id set, the
+ *  same duplicate rule as addPlanWithTasks, then the plan's task list. */
+export async function addTasksToPlan(
+  planId: string,
+  tasks: Omit<Task, "id" | "planId">[]
+): Promise<{ tasks: Task[]; skippedDuplicates: number }> {
+  const { db, userId } = ctx();
+  const { data: planRow, error: planError } = await db.from("plans").select("*").eq("user_id", userId).eq("id", planId).maybeSingle();
+  if (planError) fail("addTasksToPlan", planError);
+  if (!planRow) throw new Error("[store] addTasksToPlan: no such project");
+  const dates = tasks.map((t) => t.date).sort();
+  const existing = dates.length
+    ? await selectTasks("addTasksToPlan", (q) => q.gte("date", dates[0]).lte("date", dates[dates.length - 1]).eq("completed", false))
+    : [];
+  const fresh: Omit<Task, "id" | "planId">[] = [];
+  let skippedDuplicates = 0;
+  for (const t of tasks) {
+    if (findDuplicateIn(existing, t) || findDuplicateIn(fresh as Task[], t)) skippedDuplicates++;
+    else fresh.push(t);
+  }
+  const inserted: Task[] = [];
+  if (fresh.length > 0) {
+    const { data, error } = await db.from("tasks").insert(fresh.map((t) => newTaskRow(userId, { ...t, planId }))).select(TASK_COLUMNS);
+    if (error) fail("addTasksToPlan", error);
+    inserted.push(...(data as TaskRow[]).map(taskFromRow));
+  }
+  const plan = planFromRow(planRow as PlanRow);
+  const taskIds = [...plan.taskIds, ...inserted.map((t) => t.id)];
+  const { error: linkError } = await db
+    .from("plans")
+    .update({ task_ids: taskIds, task_count: taskIds.length })
+    .eq("user_id", userId)
+    .eq("id", planId);
+  if (linkError) fail("addTasksToPlan", linkError);
+  return { tasks: inserted, skippedDuplicates };
+}
+
 export async function deletePlan(planId: string): Promise<boolean> {
   if (!isUuid(planId)) return false;
   const { db, userId } = ctx();
@@ -948,16 +1008,18 @@ export async function deletePlan(planId: string): Promise<boolean> {
   return true;
 }
 
-/** Changes a plan's title, description or task list. Used by Pipeline V2
- *  (lib/pipeline/apply.ts) and to put a plan back on undo. */
+/** Changes a plan's title, description or task list. A Project is a plan with
+ *  a home page (app/(app)/projects), where its title and goal (the plan's
+ *  description) are edited; Pipeline V2 (lib/pipeline/apply.ts) also uses it
+ *  and to put a plan back on undo. A blank title is ignored. */
 export async function updatePlan(
   planId: string,
   patch: { title?: string; description?: string; taskIds?: string[]; taskCount?: number }
 ): Promise<Plan | null> {
   if (!isUuid(planId)) return null;
   const row: Record<string, unknown> = {};
-  if (patch.title != null) row.title = patch.title;
-  if (patch.description != null) row.description = patch.description;
+  if (patch.title != null && patch.title.trim()) row.title = patch.title.trim().slice(0, 120);
+  if (patch.description != null) row.description = patch.description.trim().slice(0, 1000);
   if (patch.taskIds) row.task_ids = patch.taskIds.filter(isUuid);
   if (patch.taskCount != null) row.task_count = patch.taskCount;
   const { db, userId } = ctx();
@@ -1348,18 +1410,19 @@ export async function deleteChatSession(sessionId: string): Promise<boolean> {
 // ─── Full state helpers ───────────────────────────────────────────────────────
 
 export async function getAppState(): Promise<AppState> {
-  const [tasks, calendars, plans, profile] = await Promise.all([
+  const [tasks, calendars, plans, profile, capacity] = await Promise.all([
     getAllTasks(),
     getAllCalendars(),
     getAllPlans(),
     getProfileRow("getAppState"),
+    getCapacity(),
   ]);
   await attachPathOrigins(tasks);
   return {
     tasks,
     calendars,
     events: [],
-    user: { ...userFromRow(profile), schoolHours: schoolHoursFromTasks(tasks) },
+    user: { ...userFromRow(profile), schoolHours: schoolHoursFromTasks(tasks), capacity },
     weeklyPlan: [...(profile.weekly_plan ?? [])],
     lastVoiceCommand: profile.last_voice_command,
     lastVoiceResponse: profile.last_voice_response,
@@ -1455,6 +1518,15 @@ export async function addContextEntry(entry: Omit<ContextEntry, "id" | "timestam
   const full = contextFromRow(data as ContextRow);
   console.log("[store] Context entry added:", full.category, full.fact.slice(0, 60));
   return full;
+}
+
+/** Removes one remembered fact (the student said it's wrong). */
+export async function removeContextEntry(id: string): Promise<boolean> {
+  if (!isUuid(id)) return false;
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("context_entries").delete().eq("user_id", userId).eq("id", id).select("id");
+  if (error) fail("removeContextEntry", error);
+  return (data?.length ?? 0) > 0;
 }
 
 export async function getContextAsString(): Promise<string> {
@@ -1579,7 +1651,32 @@ export async function addNotification(notif: Omit<Notification, "id" | "timestam
     }
   }
 
+  // One per (task, type) per day — and one per type per day for alerts about
+  // no single task — even after it was dismissed. The proactive check runs on
+  // page loads, so without this a dismissed alert came back as a new row
+  // (and a new popup) on the very next page.
+  // Tangent's questions are exempt: each set is its own conversation.
   const { db, userId } = ctx();
+  const isQuestions = (notif.actionData as { kind?: string } | undefined)?.kind === "questions";
+  if (!isQuestions && notif.type !== "daily_brief") {
+    let recent = db
+      .from("notifications")
+      .select(NOTIFICATION_COLUMNS)
+      .eq("user_id", userId)
+      .eq("type", notif.type)
+      .gte("created_at", new Date(Date.now() - 20 * 60 * 60 * 1000).toISOString())
+      .order("created_at", { ascending: false })
+      .limit(1);
+    recent = taskId ? recent.eq("task_id", taskId) : recent.is("task_id", null);
+    const { data: same, error: sameError } = await recent;
+    if (sameError) fail("addNotification", sameError);
+    if (same && same.length > 0) {
+      console.log("[store] Notification deduped (today):", notif.type, taskId ?? "(no task)");
+      return notificationFromRow(same[0] as NotificationRow);
+    }
+  }
+
+
   const { data, error } = await db
     .from("notifications")
     .insert({
@@ -2461,6 +2558,15 @@ export async function getPathSpace(): Promise<PathSpace> {
   ]);
   if (pathsRes.error) fail("getPathSpace", pathsRes.error);
   return { paths: ((pathsRes.data ?? []) as PathRow[]).map(pathFromRow), nodes };
+}
+
+/** Just the student's Paths (their goals), without the node trees. For the
+ *  AI's picture of the student (lib/ai/student-context.ts). */
+export async function getPathGoals(): Promise<Path[]> {
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("paths").select(PATH_COLUMNS).eq("user_id", userId).order("created_at", { ascending: true });
+  if (error) fail("getPathGoals", error);
+  return ((data ?? []) as PathRow[]).map(pathFromRow);
 }
 
 /** One Path and only its own nodes. What the deep view loads. */

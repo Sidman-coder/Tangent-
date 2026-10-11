@@ -5,6 +5,11 @@ import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { localNow } from "@/lib/time";
 import ChatSidebar from "@/components/console/ChatSidebar";
 import ChatThread from "@/components/console/ChatThread";
+import { routeAsk } from "@/lib/ask-route";
+import { takeAsk } from "@/lib/ask-handoff";
+import { putNewPathTitle } from "@/lib/path-handoff";
+import type { ClarifyAnswer } from "@/components/console/ClarifyCard";
+import { answerQuestions as answerLaterQuestions, generateQuestions } from "@/lib/questions-client";
 import Composer from "@/components/console/Composer";
 import {
   actionLabel,
@@ -17,7 +22,6 @@ import {
   type PlanProgressView,
   type Turn,
 } from "@/components/console/turns";
-import ModeSwitch from "@/components/console/ModeSwitch";
 import { usePipelineV2 } from "@/components/PipelineFlag";
 import { chatOnly, draftShownPlan, fetchOpenDrafts, withOpenDrafts } from "@/components/console/pipeline-intake";
 import type { ChangeSet } from "@/lib/pipeline/changeset";
@@ -47,6 +51,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import PenMark from "@/components/console/PenMark";
 import BriefPanel, { CADENCE_LABEL, type BriefSummary } from "@/components/console/BriefPanel";
 import { formatTime12 } from "@/lib/dates";
@@ -133,6 +138,7 @@ function writeStored(key: string, value: string | null) {
 }
 
 export default function AiPage() {
+  const router = useRouter();
   const { state, refresh } = useAppState();
   const workingToward = state?.user?.workingToward;
   const suggestions = useMemo(() => suggestionsFor(workingToward), [workingToward]);
@@ -303,6 +309,23 @@ export default function AiPage() {
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }, [busy, restoreDrafts]);
 
+  // A question handed over from Cmd-K (/ai?ask=1): open a fresh chat and ask
+  // it. Two steps so send() runs with the new, empty chat in scope.
+  const [handedAsk, setHandedAsk] = useState<string | null>(null);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("ask") !== "1") return;
+    const text = takeAsk("ai");
+    router.replace("/ai");
+    if (!text) return;
+    // After the saved-chat restore has run, so it can't reopen the old chat.
+    window.setTimeout(() => {
+      newChat();
+      setHandedAsk(text);
+    }, 0);
+    // Once per arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /** Appends a message to the saved chat. Awaited so messages land in order;
    *  a failure is shown instead of silently leaving the chat unsaved. */
   const saveMessage = useCallback(async (sessionId: string | null, role: "user" | "assistant", content: string, refs: ChatMessageRefs = {}) => {
@@ -345,10 +368,27 @@ export default function AiPage() {
   }, [loadSessions, openSession, restoreDrafts]);
 
 
-  const send = useCallback(async (text?: string, modeOverride?: ChatMode) => {
-    const sendMode = modeOverride ?? chatMode;
+  const send = useCallback(async (
+    text?: string,
+    modeOverride?: ChatMode,
+    // Follow-up to Tangent's questions: `request` is the original ask the
+    // pipeline runs; `text` is what the thread shows for this turn.
+    followUp?: { request: string; answers?: ClarifyAnswer[]; skipClarify?: boolean }
+  ) => {
     const userText = (text ?? input).trim();
     if (!userText || busy) return;
+    // One input, routed (lib/ask-route.ts): no Plan/Calendar switch to set.
+    // A question is talked through; everything else acts. A long-range goal
+    // goes to Tangents, a multi-week effort becomes a project.
+    const route = followUp ? "do" : routeAsk(userText);
+    if (route === "goal" && !modeOverride) {
+      putNewPathTitle(userText);
+      setInput("");
+      router.push("/tangents?new=1");
+      return;
+    }
+    const sendMode: ChatMode = modeOverride ?? (route === "question" ? "plan" : "calendar");
+    setChatMode(sendMode);
     setErr(null);
     setBusy(true);
     setPendingRequest(userText);
@@ -384,13 +424,22 @@ export default function AiPage() {
       { role: "user", content: t.request },
       { role: "assistant", content: t.response },
     ]);
-    history.push({ role: "user", content: userText });
+    history.push({ role: "user", content: followUp?.request ?? userText });
 
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history, mode: sendMode, stream: true }),
+        body: JSON.stringify({
+          messages: history,
+          mode: sendMode,
+          stream: true,
+          // Big or vague asks get questions first; never on a follow-up.
+          clarify: !followUp,
+          answers: followUp?.answers,
+          // Flag on, a big ask is drafted by the intake (preview first) instead.
+          newProject: route === "project" && !v2 ? true : undefined,
+        }),
       });
       // Calendar mode streams NDJSON: plan progress lines, then {type:"result"}.
       const data = (await readChatReply(res, (line) => setPlanProgress((v) => applyPlanProgress(v, line)))) as {
@@ -409,8 +458,29 @@ export default function AiPage() {
         pending?: { id: string; kind: string; message: string };
         changeSet?: ChangeSet;
         preview?: PreviewPayload;
+        questions?: Turn["questions"];
+        suggestion?: Turn["suggestion"];
+        taskId?: string;
       };
       if (!res.ok || !data.ok) throw new Error(data.error || "Request failed");
+
+      if (data.action === "clarify" && data.questions?.length) {
+        const ask = data.message ?? "A few quick questions so this fits you.";
+        setTurns((prev) => [
+          ...prev.map((t) => (t.fresh ? { ...t, fresh: false } : t)),
+          {
+            id: crypto.randomUUID(),
+            fresh: true,
+            request: userText,
+            tools: [],
+            sourcesChecked: [],
+            response: ask,
+            questions: data.questions,
+          },
+        ]);
+        await saveMessage(sessionId, "assistant", `${ask}\n${data.questions.map((q) => `- ${q.question}`).join("\n")}`);
+        return;
+      }
 
       if (data.action === "confirm_required" && data.pending) {
         const pendingId = data.pending.id;
@@ -448,7 +518,8 @@ export default function AiPage() {
         {
           id: crypto.randomUUID(),
           fresh: true,
-          planDraft: action === "plan_reply",
+          // A reply that only asks a question isn't a plan to add yet.
+          planDraft: action === "plan_reply" && !/\?\s*$/.test(reply.trim()),
           request: userText,
           tools: toolsForAction(action),
           sourcesChecked: data.sourcesChecked ?? [],
@@ -457,6 +528,8 @@ export default function AiPage() {
           actionLabel: notif ?? undefined,
           // Pipeline V2 (flag on only): nothing is saved until the card's Confirm.
           draft: action === "preview" && data.changeSet && data.preview ? { changeSet: data.changeSet, preview: data.preview } : undefined,
+          suggestion: data.suggestion ?? null,
+          projectId: data.plan?.id ?? null,
         },
       ]);
 
@@ -472,6 +545,18 @@ export default function AiPage() {
 
       await linkAction(sessionId, data.actionId);
       await refresh();
+
+      // Acted first; now Tangent's questions about what it saved. A follow-up
+      // to questions was already grilled, so it isn't asked again.
+      if (data.taskId && !followUp) {
+        const savedTaskId = data.taskId;
+        void generateQuestions(savedTaskId, userText).then((set) => {
+          if (!set) return;
+          setTurns((prev) =>
+            prev.map((t) => (t.actionId === data.actionId ? { ...t, later: { id: set.id, questions: set.questions } } : t))
+          );
+        });
+      }
     } catch (e) {
       const message = e instanceof Error ? e.message : "Error";
       setErr(message);
@@ -493,7 +578,7 @@ export default function AiPage() {
       setPlanProgress(null);
       void loadSessions();
     }
-  }, [input, busy, chatMode, activeSessionId, turns, refresh, linkAction, loadSessions, saveMessage]);
+  }, [input, busy, chatMode, activeSessionId, turns, refresh, linkAction, loadSessions, saveMessage, v2]);
 
   /** Adds an action / change set id to an already-saved assistant message:
    *  matched by change set id, or by its text (`from`). Best effort. */
@@ -521,6 +606,25 @@ export default function AiPage() {
 
   /** Turns whose "Add to calendar" draft is in flight (one request each). */
   const draftingPlans = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (!handedAsk || activeSessionId || turns.length > 0 || busy) return;
+    const text = handedAsk;
+    setHandedAsk(null);
+    void send(text);
+  }, [handedAsk, activeSessionId, turns.length, busy, send]);
+
+  /** Answers to a turn's questions (or "Just do it") run the original ask. */
+  const answerQuestions = useCallback(
+    (turnId: string, answers: ClarifyAnswer[] | null) => {
+      const turn = turns.find((t) => t.id === turnId);
+      if (!turn) return;
+      setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, questions: null } : t)));
+      const shown = answers && answers.length > 0 ? answers.map((a) => a.answer).join(" · ") : "Just do it";
+      void send(shown, "calendar", { request: turn.request, answers: answers ?? undefined, skipClarify: true });
+    },
+    [turns, send]
+  );
 
   /** Plan-mode draft → Calendar: flip the mode and ask for it to be added. */
   const addPlanToCalendar = useCallback(
@@ -675,7 +779,6 @@ export default function AiPage() {
       onVoiceError={setErr}
       mode={chatMode}
       placeholder={v2 ? "Ask, plan, or add something…" : undefined}
-      toolbar={v2 ? undefined : <ModeSwitch mode={chatMode} onChange={changeMode} disabled={busy} />}
     />
   );
 
@@ -747,9 +850,7 @@ export default function AiPage() {
             </div>
             {greeting && <p className="tg-hero-greeting">{greeting}</p>}
             <h2 className="tg-hero-title">
-              <span key={chatMode} className="tg-hero-ask">
-                {v2 ? "What do you need?" : chatMode === "calendar" ? "What should go on your calendar?" : "What would you like to plan?"}
-              </span>
+              <span className="tg-hero-ask">{v2 ? "What do you need?" : "What can Tangent help with?"}</span>
             </h2>
             {today && (
               today.next ? (
@@ -810,6 +911,18 @@ export default function AiPage() {
                 setTurns((prev) => prev.map((t) => (t.id === id ? { ...t, planDraft: false } : t)));
                 inputRef.current?.focus();
               }}
+              onAnswer={answerQuestions}
+              onScheduleChanged={() => void refresh()}
+              onAnswerLater={(turnId, setId, answers) => {
+                setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, later: null } : t)));
+                if (!answers) return; // Later: it waits on Today.
+                void answerLaterQuestions(setId, answers).then((r) => {
+                  setTurns((prev) =>
+                    prev.map((t) => (t.id === turnId ? { ...t, laterSummary: r.error ?? r.summary ?? "Saved." } : t))
+                  );
+                  void refresh();
+                });
+              }}
             />
             <div className="tg-dock">
               {err && <p className="tg-error" role="alert">{err}</p>}
@@ -817,10 +930,8 @@ export default function AiPage() {
               <div className="tg-composer-glow">{composer}</div>
               <p className="tg-dock-hint">
                 {v2
-                  ? "You’ll see a preview before anything is added."
-                  : chatMode === "calendar"
-                  ? "Calendar mode adds and changes tasks. You’ll always see what changed."
-                  : "Plan mode only drafts — switch to Calendar to add it."}
+                  ? "Ask a question, add something, or start a project. You’ll see a preview before anything is added."
+                  : <>Ask a question, add something, or start a project. Tangent works out which, and you&apos;ll always see what changed.</>}
               </p>
             </div>
           </>

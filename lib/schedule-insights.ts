@@ -1,4 +1,5 @@
 import type { Task } from "./types";
+import { tracksCompletion } from "./urgency";
 
 /** A natural next action for an insight — deep-links into the calendar,
  *  optionally opening the add-task modal pre-filled for that date/time. */
@@ -104,7 +105,9 @@ export function getMonthDensity(tasks: Task[], year: number, monthIndex: number)
   }
 
   for (const task of tasks) {
-    if (task.completed) continue;
+    // Same rule as Week ahead and Today (lib/urgency.ts tracksCompletion):
+    // the School block and standing commitments are timetable, not work.
+    if (task.completed || !tracksCompletion(task)) continue;
     const date = readCalendarDate(task.date);
     if (!date || date.year !== year || date.month !== monthIndex + 1) continue;
     density.set(task.date, (density.get(task.date) ?? 0) + 1);
@@ -116,7 +119,8 @@ export function getMonthDensity(tasks: Task[], year: number, monthIndex: number)
 export function getSchedulePulse(tasks: Task[], now: Date = new Date()): ScheduleInsight {
   if (Number.isNaN(now.getTime())) return fallbackInsight();
 
-  const validTasks = tasks.filter((task) => readCalendarDate(task.date) !== null);
+  // Counted like every other widget: real work only (tracksCompletion).
+  const validTasks = tasks.filter((task) => readCalendarDate(task.date) !== null && tracksCompletion(task));
   if (validTasks.length === 0) return fallbackInsight();
 
   const weekStart = currentWeekStart(now);

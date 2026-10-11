@@ -84,7 +84,8 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Everything except Next internals and static files.
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|glb|gltf|mp3|wav|woff2?)$).*)",
+    // Everything except Next internals and static files. The manifest is
+    // fetched without cookies, so it must not be redirected to /signin.
+    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|glb|gltf|mp3|wav|woff2?)$).*)",
   ],
 };

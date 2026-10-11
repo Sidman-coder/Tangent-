@@ -108,6 +108,9 @@ export type UserProfile = {
   startingIntent?: string | null;
   /** Read-only, derived from the onboarding School series in getAppState. */
   schoolHours?: SchoolHours | null;
+  /** Minutes of work per day before it's too much (lib/load.ts). null means
+   *  never answered: the spacing brain uses DEFAULT_CAPACITY and asks once. */
+  capacity?: { weekday: number; weekend: number } | null;
 };
 
 export type VoiceLogEntry = {

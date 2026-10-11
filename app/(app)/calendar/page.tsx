@@ -2,21 +2,29 @@
 
 import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
+import { createPortal } from "react-dom";
 import { m, useReducedMotion } from "motion/react";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { wallClockNow } from "@/lib/time";
 import AddTaskModal from "@/components/AddTaskModal";
+import ActionReceipt from "@/components/ActionReceipt";
+import { openTask } from "@/components/TaskDetail";
 import Button from "@/components/ui/Button";
 import SidePeek from "@/components/ui/SidePeek";
 import { handleResourceClick } from "@/lib/task-utils";
 import { toYMD, formatTime12 } from "@/lib/dates";
-import { taskColor } from "@/lib/task-colors";
+import { KIND_LABEL, taskColor } from "@/lib/task-colors";
+import { CALENDARS } from "@/lib/calendars";
+import { isOnboardingSchoolTask } from "@/lib/school-block";
+import { baseTitle, useShortTitles } from "@/lib/short-titles";
+import "./calendar.css";
 import { initialCalendarView, prefsOf } from "@/lib/personalize";
 import { openRecentChanges } from "@/lib/undo-events";
 import type { Plan, Task } from "@/lib/types";
-import { X, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil, Undo2 } from "lucide-react";
+import { X, Check, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil, Undo2 } from "lucide-react";
 import WeekView from "@/components/calendar/WeekView";
 import AgendaView from "@/components/calendar/AgendaView";
+import TaskTitle from "@/components/ui/TaskTitle";
 
 type CalView = "week" | "month" | "agenda";
 const VIEWS: { id: CalView; label: string }[] = [
@@ -38,25 +46,15 @@ function addDays(d: Date, n: number): Date {
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+// The theme's kind tokens (globals.css), so both themes and the brand
+// palette apply here too — these used to be hard-coded Tailwind hues.
 function getKindColor(kind?: string): string {
-  const map: Record<string, string> = {
-    'school':      '#2563eb',
-    'commitment':  '#0d9488',
-    'academic-ec': '#7c3aed',
-    'side-ec':     '#d97706',
-    'personal':    '#64748b',
-  }
-  return map[kind ?? ''] ?? '#9b97a6'
+  const known = ["school", "commitment", "academic-ec", "side-ec", "personal"];
+  return known.includes(kind ?? "") ? `var(--kind-${kind})` : "var(--kind-default)";
 }
 
 const KIND_SORT_ORDER = ["school", "academic-ec", "commitment", "side-ec", "personal"];
-const KIND_DISPLAY_NAME: Record<string, string> = {
-  school: "School",
-  commitment: "Commitment",
-  "academic-ec": "Academics",
-  "side-ec": "Activities",
-  personal: "Personal time",
-};
+const KIND_DISPLAY_NAME: Record<string, string> = KIND_LABEL;
 const NO_KIND = "__none__";
 
 function sortKindKeys(keys: string[]): string[] {
@@ -118,14 +116,6 @@ function recurringLabel(task: Task): string {
 type RecurDeleteTarget = { taskId: string; parentId: string; title: string };
 type RecurEditTarget = { taskId: string; parentId: string; task: Task };
 
-/** "4:00 PM" becomes "4p", "4:30 PM" becomes "4:30p": chip-sized. */
-function shortTime(hhmm: string): string {
-  const [h, mm] = hhmm.split(":").map(Number);
-  if (!Number.isFinite(h)) return "";
-  const suffix = h < 12 ? "a" : "p";
-  const hour = h % 12 === 0 ? 12 : h % 12;
-  return mm ? `${hour}:${String(mm).padStart(2, "0")}${suffix}` : `${hour}${suffix}`;
-}
 
 export default function CalendarPage() {
   const { state, refresh } = useAppState();
@@ -136,11 +126,14 @@ export default function CalendarPage() {
   const [month, setMonth] = useState(now.getMonth());
   const [calIdx, setCalIdx] = useState(0);
   const [view, setView] = useState<CalView>("month");
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const [weekStart, setWeekStart] = useState(() => startOfWeek(now));
   const [agendaStart, setAgendaStart] = useState(() => new Date(now.getFullYear(), now.getMonth(), now.getDate()));
-  const [newCalName, setNewCalName] = useState("");
-  const [showAddCal, setShowAddCal] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  // Clicking one event opens just that event; clicking the date opens the day.
+  const [removed, setRemoved] = useState<{ actionId: string; title: string } | null>(null);
+  const [openNotes, setOpenNotes] = useState<Set<string>>(new Set());
   const [showAddModal, setShowAddModal] = useState(false);
   const [addModalDate, setAddModalDate] = useState(todayYmd);
   const [addModalTime, setAddModalTime] = useState<string | undefined>(undefined);
@@ -153,7 +146,7 @@ export default function CalendarPage() {
   const [dayChatInput, setDayChatInput] = useState("");
   const [dayChatBusy, setDayChatBusy] = useState(false);
 
-  const calendars = state?.calendars ?? [{ id: "cal_all", name: "All Calendars", category: "ALL" }];
+  const calendars = state?.calendars ?? CALENDARS;
   const activeCal = calendars[calIdx] ?? calendars[0];
   const plans: Plan[] = state?.plans ?? [];
 
@@ -163,20 +156,23 @@ export default function CalendarPage() {
   }, [plans]);
 
   const getTaskCategoryColor = useCallback(
-    (t: Task): string => taskColor(t, plans, calendars),
-    [plans, calendars]
+    (t: Task): string => taskColor(t, plans),
+    [plans]
   );
 
   const tasksForDay = useCallback((ymd: string): Task[] => {
-    let tasks = state?.tasks ?? [];
+    // The onboarding School block stores the student's school hours for the
+    // scheduler; it is not something to do, so it is never drawn.
+    let tasks = (state?.tasks ?? []).filter((t) => !isOnboardingSchoolTask(t));
     if (activeCal.category !== "ALL") tasks = tasks.filter((t) => t.calendarId === activeCal.id);
     if (planFilter) tasks = tasks.filter((t) => t.planId === planFilter);
     return tasks.filter((t) => t.date === ymd);
   }, [state, activeCal, planFilter]);
 
-  const selectedDayTasks = selectedDay
+  const wholeDayTasks = selectedDay
     ? tasksForDay(selectedDay).slice().sort((a, b) => a.time.localeCompare(b.time))
     : [];
+  const selectedDayTasks = wholeDayTasks;
 
   // Remember the chosen view; first visit gets the week grid on wide screens
   // and the agenda list on phones, where seven columns can't breathe. A
@@ -258,19 +254,6 @@ export default function CalendarPage() {
   const prevMonth = () => { setMonthDir(-1); if (month === 0) { setYear((y) => y - 1); setMonth(11); } else setMonth((mo) => mo - 1); };
   const nextMonth = () => { setMonthDir(1); if (month === 11) { setYear((y) => y + 1); setMonth(0); } else setMonth((mo) => mo + 1); };
 
-  const addCalendar = async () => {
-    const name = newCalName.trim();
-    if (!name) return;
-    await fetch("/api/calendars", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-    setNewCalName("");
-    setShowAddCal(false);
-    await refresh();
-  };
-
   const toggleTask = async (id: string) => {
     await fetch("/api/tasks", {
       method: "POST",
@@ -285,11 +268,13 @@ export default function CalendarPage() {
       setRecurDeleteTarget({ taskId: t.id, parentId: t.recurring.parentId, title: t.title });
     } else {
       void (async () => {
-        await fetch("/api/tasks", {
+        const res = await fetch("/api/tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "delete_task", id: t.id }),
         });
+        const data = (await res.json().catch(() => ({}))) as { actionId?: string };
+        if (data.actionId) setRemoved({ actionId: data.actionId, title: t.title });
         await refresh();
       })();
     }
@@ -312,7 +297,7 @@ export default function CalendarPage() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      setSelectedDay(null); setShowAddModal(false); setRecurDeleteTarget(null); setRecurEditTarget(null); setShowAddCal(false);
+      setSelectedDay(null); setRemoved(null); setShowAddModal(false); setRecurDeleteTarget(null); setRecurEditTarget(null);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -346,6 +331,13 @@ export default function CalendarPage() {
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const agendaDays = Array.from({ length: AGENDA_DAYS }, (_, i) => addDays(agendaStart, i));
+
+  // Concise labels for what's on screen (lib/short-titles.ts): narrow cells
+  // get "French PBA: relationships", the day panel keeps the full title.
+  const visibleYmds = new Set((view === "week" ? weekDays : cells).map((d) => toYMD(d)));
+  const onScreen = (state?.tasks ?? []).filter((t) => visibleYmds.has(t.date));
+  const shortLabels = useShortTitles(onScreen);
+  const labelFor = (t: Task) => shortLabels[t.id] ?? baseTitle(t);
   // The heading follows the view: the month, or the span a week/agenda covers.
   const headingDate = view === "month" ? new Date(year, month, 1) : view === "week" ? weekStart : agendaStart;
   const headingMonth = headingDate.toLocaleString(undefined, { month: "long" });
@@ -358,16 +350,12 @@ export default function CalendarPage() {
   const openAddAt = (ymd: string, time?: string) => { setAddModalDate(ymd); setAddModalTime(time); setShowAddModal(true); };
   const activePlan = planFilter ? getPlan(planFilter) : null;
 
-  return (
-    <>
-      <div className="calendar-page">
-        <section className="calendar-toolbar" aria-label="Calendar controls">
-          <div className="calendar-toolbar-primary">
-            <h1 className="cal-month-heading">
-              <span>{headingMonth}</span> <span className="cal-heading-year">{headingYear}</span>
-              {headingSpan && <span className="cal-heading-span">{headingSpan}</span>}
-            </h1>
-            <div className="cal-nav-group">
+  // The island: every calendar control on one floating glass capsule at the
+  // bottom centre, so the grid gets the whole page. Portalled to <body>: the
+  // page's entrance transform would otherwise make "fixed" relative to it.
+  const island = (
+      <div className="cal-island lg lg-interactive" role="toolbar" aria-label="Calendar controls">
+        <div className="cal-island-group">
               <div className="cal-view-switch" role="tablist" aria-label="Calendar view">
                 {VIEWS.map((v) => (
                   <button
@@ -379,7 +367,7 @@ export default function CalendarPage() {
                     onClick={() => chooseView(v.id)}
                   >
                     {view === v.id && (
-                      <m.span layoutId="cal-view-pill" className="cal-view-pill" transition={{ type: "spring", visualDuration: 0.3, bounce: 0.15 }} />
+                      <m.span layoutId="cal-view-pill" className="cal-view-pill" transition={{ type: "spring", visualDuration: 0.28, bounce: 0 }} />
                     )}
                     <span className="cal-view-label">{v.label}</span>
                   </button>
@@ -397,8 +385,7 @@ export default function CalendarPage() {
                   <Undo2 size={16} aria-hidden="true" />
                 </button>
               </div>
-            </div>
-          </div>
+        </div>
           <div className="cal-segment-bar" role="tablist" aria-label="Filter by calendar">
             {calendars.map((cal, idx) => (
               <button
@@ -415,36 +402,21 @@ export default function CalendarPage() {
                 {cal.name}
               </button>
             ))}
-            <button type="button" className="cal-segment cal-segment-add" onClick={() => setShowAddCal((value) => !value)} aria-label="Add calendar" title="Add new calendar">
-              <Plus size={16} strokeWidth={1.75} />
-            </button>
           </div>
+      </div>
+  );
 
-          <details className="cal-kind-legend">
-            <summary aria-label="Show task kind colors">Kinds</summary>
-            <div className="cal-kind-legend-panel">
-              {KIND_SORT_ORDER.map((kind) => (
-                <span key={kind} className="cal-kind-legend-item">
-                  <span className="cal-kind-legend-dot" style={{ background: getKindColor(kind) }} />
-                  {KIND_DISPLAY_NAME[kind]}
-                </span>
-              ))}
-            </div>
-          </details>
-
-        {showAddCal && (
-          <div className="cal-add-cal-row">
-            <input
-              aria-label="New calendar name"
-              placeholder="New calendar name…"
-              value={newCalName}
-              onChange={(e) => setNewCalName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") void addCalendar(); }}
-              autoFocus
-            />
-            <Button variant="primary" size="sm" onClick={() => void addCalendar()}>Add</Button>
+  return (
+    <>
+      {mounted && createPortal(island, document.body)}
+      <div className="calendar-page">
+        <section className="calendar-toolbar" aria-label="Calendar controls">
+          <div className="calendar-toolbar-primary">
+            <h1 className="cal-month-heading">
+              <span>{headingMonth}</span> <span className="cal-heading-year">{headingYear}</span>
+              {headingSpan && <span className="cal-heading-span">{headingSpan}</span>}
+            </h1>
           </div>
-        )}
       </section>
 
       {activePlan && (
@@ -466,7 +438,9 @@ export default function CalendarPage() {
             days={weekDays}
             todayYmd={todayYmd}
             tasksForDay={tasksForDay}
-            colorFor={(t) => getKindColor(t.kind)}
+            onOpenTask={(_ymd, id) => openTask(id)}
+            labelFor={labelFor}
+            colorFor={getTaskCategoryColor}
             onOpenDay={setSelectedDay}
             onAddAt={(ymd, time) => openAddAt(ymd, time)}
             toYMD={toYMD}
@@ -477,10 +451,11 @@ export default function CalendarPage() {
       {view === "agenda" && (
         <section className="calendar-agenda-shell" key={`ag-${toYMD(agendaStart)}`}>
           <AgendaView
+            onOpenTask={(_ymd, id) => openTask(id)}
             days={agendaDays}
             todayYmd={todayYmd}
             tasksForDay={tasksForDay}
-            colorFor={(t) => getKindColor(t.kind)}
+            colorFor={getTaskCategoryColor}
             onOpenDay={setSelectedDay}
             onToggle={(id) => void toggleTask(id)}
             onAdd={(ymd) => openAddAt(ymd)}
@@ -514,7 +489,8 @@ export default function CalendarPage() {
               // The day's own tasks, in time order, shown as chips: the grid
               // answers "what's on" without opening every day.
               const ordered = [...dayTasks].sort((a, b) => (a.time || "").localeCompare(b.time || ""));
-              const shown = ordered.slice(0, 3);
+              // Two per day keeps the month readable; the rest is "N more".
+              const shown = ordered.slice(0, 2);
               const more = ordered.length - shown.length;
               let className = "cal-cell";
               if (!inMonth) className += " is-outside";
@@ -525,24 +501,38 @@ export default function CalendarPage() {
                   <button
                     type="button"
                     className="cal-day"
-                    onClick={() => inMonth && setSelectedDay(ymd === selectedDay ? null : ymd)}
+                    onClick={() => {
+                      if (!inMonth) return;
+                      setSelectedDay(ymd === selectedDay ? null : ymd);
+                    }}
                     aria-label={`${d.toDateString()}${dayTasks.length ? `, ${dayTasks.length} tasks` : ""}`}
                     disabled={!inMonth}
                   >
                     <span className="d">{d.getDate()}</span>
                     {inMonth && shown.length > 0 && (
-                      <span className="cal-chips">
-                        {shown.map((t) => (
-                          <span
-                            key={t.id}
-                            className={`cal-chip${t.completed ? " is-done" : ""}`}
-                            style={{ "--chip": getKindColor(t.kind) } as React.CSSProperties}
-                          >
-                            {t.time && <span className="cal-chip-time">{shortTime(t.time)}</span>}
-                            <span className="cal-chip-title">{t.title}</span>
-                          </span>
-                        ))}
-                        {more > 0 && <span className="cal-chip-more">+{more} more</span>}
+                      <span className="cal-events">
+                        {shown.map((t) => {
+                          // Canvas items and 11:59 PM are due dates, not times
+                          // anything happens: a ring, no clock.
+                          const deadline = t.source === "canvas" || t.time === "23:59";
+                          return (
+                            <span
+                              key={t.id}
+                              className={`cal-event${t.completed ? " is-done" : ""}${deadline ? " is-deadline" : ""}`}
+                              style={{ "--chip": getTaskCategoryColor(t) } as React.CSSProperties}
+                              onClick={(e) => {
+                                // The event opens in the middle, like Google
+                                // Calendar; the date opens the day.
+                                e.stopPropagation();
+                                openTask(t.id);
+                              }}
+                            >
+                              <span className="cal-event-dot" aria-hidden="true" />
+                              <span className="cal-event-title" title={t.title}>{labelFor(t)}</span>
+                            </span>
+                          );
+                        })}
+                        {more > 0 && <span className="cal-event-more">{more} more</span>}
                       </span>
                     )}
                   </button>
@@ -570,7 +560,7 @@ export default function CalendarPage() {
       </div>
 
       {selectedDay && (
-        <SidePeek open titleId="calendar-day-title" onClose={() => setSelectedDay(null)}>
+        <SidePeek open titleId="calendar-day-title" onClose={() => { setSelectedDay(null); setRemoved(null); }}>
           <div className="calendar-peek-content">
             <div className="calendar-modal-header">
               <span className="calendar-peek-kicker">Selected day</span>
@@ -584,6 +574,18 @@ export default function CalendarPage() {
                 <p className="calendar-modal-subhead">
                   {selectedDayTasks.length} task{selectedDayTasks.length !== 1 ? "s" : ""}
                 </p>
+              )}
+              {removed && (
+                <div className="calendar-removed">
+                  <ActionReceipt
+                    actionId={removed.actionId}
+                    label={`Removed “${removed.title}”`}
+                    onUndone={() => {
+                      setRemoved(null);
+                      void refresh();
+                    }}
+                  />
+                </div>
               )}
             </div>
 
@@ -605,13 +607,16 @@ export default function CalendarPage() {
                     <div key={t.id} className={`calendar-modal-task${t.completed ? " calendar-modal-task--done" : ""}`} style={{ borderLeftColor: categoryColor }}>
                       <div className="calendar-modal-task-top">
                         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0 }}>
-                          <input
-                            type="checkbox"
-                            checked={t.completed}
-                            onChange={() => void toggleTask(t.id)}
-                            aria-label={`Mark ${t.title} complete`}
-                          />
-                          <span className={`calendar-modal-task-title${t.completed ? " done" : ""}`}>{t.title}</span>
+                          <button
+                            type="button"
+                            className="ui-task-check"
+                            aria-pressed={t.completed}
+                            aria-label={`${t.completed ? "Mark incomplete" : "Complete"} ${t.title}`}
+                            onClick={() => void toggleTask(t.id)}
+                          >
+                            {t.completed && <Check size={12} strokeWidth={2.8} aria-hidden="true" />}
+                          </button>
+                          <span className={`calendar-modal-task-title${t.completed ? " done" : ""}`}><TaskTitle task={t} /></span>
                           {t.recurring?.enabled && (
                             <span className="recurring-badge" title={freq || "Recurring"}><Repeat size={12} strokeWidth={1.75} /></span>
                           )}
@@ -640,7 +645,23 @@ export default function CalendarPage() {
                       )}
                       {t.notes && (
                         <div className="calendar-modal-task-desc">
-                          {t.notes}
+                          <p className={`calendar-task-notes${openNotes.has(t.id) ? " is-open" : ""}`}>{t.notes}</p>
+                          {t.notes.length > 140 && (
+                            <button
+                              type="button"
+                              className="calendar-task-more"
+                              onClick={() =>
+                                setOpenNotes((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(t.id)) next.delete(t.id);
+                                  else next.add(t.id);
+                                  return next;
+                                })
+                              }
+                            >
+                              {openNotes.has(t.id) ? "Show less" : "Show more"}
+                            </button>
+                          )}
                           {t.resources && t.resources.length > 0 && (
                             <div className="resource-links-section">
                               {t.resources.map((r, i) => (
@@ -664,12 +685,12 @@ export default function CalendarPage() {
                           </button>
                         ) : null}
                         <button
+                          type="button"
+                          className="calendar-task-remove"
                           onClick={() => handleDeleteTask(t)}
-                          style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: "0.85rem", padding: "0 0.25rem", lineHeight: 1, flexShrink: 0 }}
-                          aria-label={`Delete ${t.title}`}
-                          title="Delete task"
+                          aria-label={`Remove ${t.title}`}
                         >
-                          <X size={16} strokeWidth={1.75} />
+                          Remove
                         </button>
                       </div>
                     </div>
@@ -774,7 +795,7 @@ export default function CalendarPage() {
                 className="btn"
                 onClick={() => void confirmRecurDelete(true)}
                 disabled={recurDeleting}
-                style={{ background: "linear-gradient(135deg,#7f1d1d,#991b1b)", borderColor: "#ef4444" }}
+                style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff" }}
               >
                 {recurDeleting ? "Deleting…" : "All occurrences"}
               </button>

@@ -77,6 +77,20 @@ export const AI_TASKS = {
    *  thinking off, like plan generation; "tangent" is a heavy feature, so it is
    *  blocked rather than downgraded once the daily budget is spent. */
   pathBranches: { feature: "tangent", tier: "SMART", maxTokens: 1500, thinking: "disabled" },
+  /** Before acting on a big or vague request: what to ask the student first
+   *  (lib/ai/clarify.ts). SMART because the questions are the product; thinking
+   *  off to keep the pause short. */
+  clarify: { feature: "chat", tier: "SMART", maxTokens: 700, thinking: "disabled" },
+  /** Facts pulled from text the student pastes from another AI (lib/ai/import-context.ts). */
+  contextImport: { feature: "context", tier: "SMART", maxTokens: 3000, thinking: "disabled" },
+  /** New Tangent intake: drafts the answers from context, then asks what's missing. */
+  pathIntake: { feature: "tangent", tier: "SMART", maxTokens: 900, thinking: "disabled" },
+  /** The next "grill me" question, aimed at what Tangent doesn't know yet. */
+  grillNext: { feature: "chat", tier: "SMART", maxTokens: 400, thinking: "disabled" },
+  /** Short calendar labels for long task titles (app/api/short-titles). */
+  shortTitles: { feature: "classify", tier: "FAST", maxTokens: 3000, temperature: 0 },
+  /** Applies the student's answers to a saved task (lib/ai/refine.ts). */
+  refineTask: { feature: "chat", tier: "FAST", maxTokens: 600, temperature: 0 },
   /** Durable-fact extraction from a chat turn. */
   contextExtract: { feature: "context", tier: "FAST", maxTokens: 300 },
   /** Compress the context file once it grows past 40 entries. */

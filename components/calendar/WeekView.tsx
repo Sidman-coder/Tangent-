@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { m, useReducedMotion } from "motion/react";
 import type { Task } from "@/lib/types";
+import TaskTitle from "@/components/ui/TaskTitle";
 
 // The week as a time grid: seven day columns, hours down the side, each task a
 // block at its time. This is the view people now expect from a calendar - you
@@ -21,6 +22,10 @@ type Props = {
   days: Date[];
   todayYmd: string;
   tasksForDay: (ymd: string) => Task[];
+  /** Concise label for a narrow block; the full title shows on hover. */
+  labelFor?: (task: Task) => string;
+  /** One event clicked: open just it (the day header opens the whole day). */
+  onOpenTask?: (ymd: string, taskId: string) => void;
   colorFor: (task: Task) => string;
   onOpenDay: (ymd: string) => void;
   onAddAt: (ymd: string, time: string) => void;
@@ -47,6 +52,11 @@ function time12(time: string): string {
 }
 
 /** Side-by-side lanes for tasks that would overlap within one block's height. */
+/** A due date, not an appointment: Canvas items and 11:59 PM. */
+function isDue(t: Task): boolean {
+  return t.source === "canvas" || t.time === "23:59";
+}
+
 function lanes(tasks: Task[]): { task: Task; lane: number; of: number }[] {
   const sorted = [...tasks].sort((a, b) => minutesOf(a.time) - minutesOf(b.time));
   const placed: { task: Task; lane: number; of: number }[] = [];
@@ -71,7 +81,7 @@ function lanes(tasks: Task[]): { task: Task; lane: number; of: number }[] {
   return placed;
 }
 
-export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpenDay, onAddAt, toYMD }: Props) {
+export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpenDay, onOpenTask, labelFor, onAddAt, toYMD }: Props) {
   const reduced = useReducedMotion() ?? false;
   const scrollRef = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(() => new Date());
@@ -94,6 +104,7 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toYMD(days[0])]);
 
+  const hasDue = days.some((d) => tasksForDay(toYMD(d)).some(isDue));
   const hours = useMemo(() => Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i), []);
   const nowMins = now.getHours() * 60 + now.getMinutes();
   const nowTop = ((nowMins - START_HOUR * 60) / 60) * HOUR_PX;
@@ -105,16 +116,42 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
         {days.map((d) => {
           const ymd = toYMD(d);
           const isToday = ymd === todayYmd;
-          const count = tasksForDay(ymd).length;
           return (
             <button key={ymd} type="button" className={`wk-day-head${isToday ? " is-today" : ""}`} onClick={() => onOpenDay(ymd)}>
               <span className="wk-dow">{d.toLocaleDateString(undefined, { weekday: "short" })}</span>
               <span className="wk-date">{d.getDate()}</span>
-              {count > 0 && <span className="wk-count">{count}</span>}
             </button>
           );
         })}
       </div>
+
+      {/* Due dates (Canvas, 11:59 PM) aren't times anything happens: like an
+          all-day row, they sit above the grid instead of at its very bottom. */}
+      {hasDue && (
+        <div className="wk-due">
+          <span className="wk-gutter wk-due-label">Due</span>
+          {days.map((d) => {
+            const ymd = toYMD(d);
+            const due = tasksForDay(ymd).filter(isDue);
+            return (
+              <div key={ymd} className="wk-due-col">
+                {due.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className={`wk-due-item${t.completed ? " is-done" : ""}`}
+                    style={{ "--block": colorFor(t) } as React.CSSProperties}
+                    onClick={() => (onOpenTask ? onOpenTask(ymd, t.id) : onOpenDay(ymd))}
+                    title={t.title}
+                  >
+                    <span className="wk-due-title">{labelFor ? labelFor(t) : <TaskTitle task={t} chip={false} />}</span>
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <div className="wk-scroll" ref={scrollRef}>
         <div className="wk-body" style={{ height: hours.length * HOUR_PX }}>
@@ -129,7 +166,7 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
           {days.map((d, col) => {
             const ymd = toYMD(d);
             const isToday = ymd === todayYmd;
-            const placed = lanes(tasksForDay(ymd));
+            const placed = lanes(tasksForDay(ymd).filter((t) => !isDue(t)));
             return (
               <div key={ymd} className={`wk-col${isToday ? " is-today" : ""}`}>
                 {/* Each hour is a slot: clicking empty time adds a task there. */}
@@ -163,13 +200,15 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
                           "--block": color,
                         } as React.CSSProperties
                       }
-                      onClick={() => onOpenDay(ymd)}
-                      initial={reduced ? false : { opacity: 0, y: 6, scale: 0.98 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      transition={{ type: "spring", visualDuration: 0.35, bounce: 0.15, delay: Math.min(col * 0.03 + i * 0.02, 0.3) }}
+                      onClick={() => (onOpenTask ? onOpenTask(ymd, task.id) : onOpenDay(ymd))}
+                      // Seen every time a week is opened: a quick fade, no stagger
+                      // or bounce to wait through.
+                      initial={reduced ? false : { opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.16, ease: "easeOut" }}
                       title={`${time12(task.time)} ${task.title}`}
                     >
-                      <span className="wk-block-title">{task.title}</span>
+                      <span className="wk-block-title">{labelFor ? labelFor(task) : <TaskTitle task={task} chip={false} />}</span>
                       <span className="wk-block-time">{time12(task.time)}</span>
                     </m.button>
                   );

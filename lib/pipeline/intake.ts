@@ -12,7 +12,7 @@
 
 import "server-only";
 import type { NextResponse } from "next/server";
-import { calendarReply, lastUserMessage, planReply, type ChatMessage } from "../chat-reply";
+import { calendarReply, lastUserMessage, planReply, type CalendarReplyOptions, type ChatMessage } from "../chat-reply";
 import type { PlanProgress } from "../voice-handler";
 import { getUserTimezone } from "../store";
 import { localNow } from "../time";
@@ -28,6 +28,13 @@ export type IntakeOptions = {
   source?: "typed" | "voice";
   /** "chat": answer conversationally, draft nothing ("Just talking, don't add"). */
   route?: "chat";
+  /** The text the pipeline acts on when it differs from the last message:
+   *  answers to Tangent's questions ride along (app/api/chat). Routing still
+   *  reads the student's own words. */
+  pipelineText?: string;
+  /** Answers came back for questions Tangent asked, so this is an ask to act. */
+  answered?: boolean;
+  project?: CalendarReplyOptions["project"];
 };
 
 /**
@@ -72,7 +79,8 @@ export async function handleRequest(messages: ChatMessage[], opts: IntakeOptions
     return { message: String(data.response ?? ""), action: "preview", changeSet: data.changeSet, preview: data.preview, ok: true };
   }
 
-  const route = opts.route === "chat" ? "chat" : routeRequest(userText, await getUserTimezone());
+  const route =
+    opts.route === "chat" ? "chat" : opts.answered || opts.project?.forcePlan ? "draft" : routeRequest(userText, await getUserTimezone());
   if (route === "chat") {
     logEvent("request_received", { route: "chat", fast: false, source });
     // The Plan prompt plus the one-question-at-a-time rules; its "Switch to
@@ -80,7 +88,7 @@ export async function handleRequest(messages: ChatMessage[], opts: IntakeOptions
     const reply = stripModeSwitchLine(await planReply(messages, { followUp: true }));
     return { message: reply, action: isCompleteSchedule(reply) ? "plan_reply" : "chat_reply", ok: true };
   }
-  return calendarReply(messages, userText, opts.onProgress, source);
+  return calendarReply(messages, opts.pipelineText ?? userText, opts.onProgress, { source, project: opts.project });
 }
 
 function findLastIndex<T>(list: T[], pred: (x: T) => boolean): number {

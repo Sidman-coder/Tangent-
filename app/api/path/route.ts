@@ -7,7 +7,6 @@ import {
   addPathTask,
   clearSuggestions,
   createPath,
-  getAllCalendars,
   getPath,
   getPathNode,
   getPathNodeTasks,
@@ -32,6 +31,7 @@ import type {
   TaskKind,
 } from "@/lib/types";
 import { withUser } from "@/lib/request-context";
+import { CAL_OTHER } from "@/lib/calendars";
 import { callClaude, messageText } from "@/lib/ai/call";
 import { addDaysYMD, getUserToday, localNow } from "@/lib/time";
 import { isBeforeNow, suggestSlots, toMinutes } from "@/lib/schedule-slots";
@@ -400,9 +400,8 @@ export const POST = withUser(async (req: Request) => {
     }
 
     const college = owning.path.kind === "college";
-    const calendars = new Set((await getAllCalendars()).map((c) => c.id));
-    const calendarId =
-      college && calendars.has("cal_study") ? "cal_study" : calendars.has("cal_personal") ? "cal_personal" : null;
+    // Path steps are the student's own goals, not schoolwork.
+    const calendarId = CAL_OTHER;
     const kind: TaskKind = college ? "academic-ec" : "personal";
 
     const { firstStep } = splitNodeDetail(node.detail);

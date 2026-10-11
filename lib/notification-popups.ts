@@ -13,7 +13,7 @@
 
 import type { Notification } from "@/lib/types";
 
-export const MAX_VISIBLE_POPUPS = 3;
+export const MAX_VISIBLE_POPUPS = 2;
 export const POPUP_AUTO_DISMISS_MS = 8000;
 const MAX_TRACKED_IDS = 500;
 

@@ -1,0 +1,626 @@
+/* Projects (app/(app)/projects). Calm on purpose: hairline cards, one color
+   per project used only as a dot and a progress line, plenty of space. */
+
+.projects-page,
+.project-page {
+  display: grid;
+  gap: 24px;
+  padding-bottom: 48px;
+}
+
+/* ── New project ───────────────────────────────────────────────────────── */
+
+.projects-new {
+  display: grid;
+  gap: 6px;
+  padding: 22px 22px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.projects-new h2 {
+  margin: 0;
+  color: var(--text);
+  font: 650 18px/1.25 var(--font-body);
+  letter-spacing: -0.01em;
+}
+
+.projects-new > p {
+  margin: 0 0 10px;
+  color: var(--text-2);
+  font: 450 14px/1.45 var(--font-body);
+}
+
+.projects-new-cancel {
+  justify-self: start;
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-3);
+  font: 500 13px/1 var(--font-body);
+  cursor: pointer;
+}
+
+/* ── Project cards ─────────────────────────────────────────────────────── */
+
+.projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: 14px;
+}
+
+.project-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 18px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    border-color 160ms ease,
+    box-shadow 200ms ease,
+    transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .project-card:hover {
+    border-color: var(--line-strong);
+    box-shadow: 0 6px 24px -12px rgb(from var(--text) r g b / 0.22);
+  }
+}
+
+.project-card:active {
+  transform: scale(0.99);
+}
+
+.project-card:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.project-card.is-loading {
+  background: var(--elev-2);
+  border-color: transparent;
+}
+
+.project-card-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.project-card h3 {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font: 650 16px/1.3 var(--font-body);
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-dot {
+  width: 9px;
+  height: 9px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--project-color, var(--accent));
+}
+
+.project-card-goal {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font: 450 13.5px/1.45 var(--font-body);
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.project-progress {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--elev-2);
+}
+
+.project-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--project-color, var(--accent));
+  transition: width 400ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.project-card-meta span:last-child {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.project-card-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  /* Pinned to the card's bottom so a row of cards lines up. */
+  margin: auto 0 0;
+  color: var(--text-3);
+  font: 500 12.5px/1.4 var(--font-body);
+}
+
+.project-card-next {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.projects-finished h2,
+.project-steps h2 {
+  margin: 0 0 10px;
+  color: var(--text-3);
+  font: 600 12px/1 var(--font-body);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ── Ask box (ProjectAsk) ──────────────────────────────────────────────── */
+
+.project-ask {
+  display: grid;
+  gap: 10px;
+}
+
+.project-ask-box {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px 10px 10px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.project-ask-box:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.project-ask-box.is-working {
+  opacity: 0.75;
+}
+
+.project-ask .project-ask-box .project-ask-input:is(textarea) {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  max-height: 160px;
+  padding: 4px 0;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: transparent;
+  color: var(--text);
+  font: 450 15px/1.45 var(--font-body);
+  field-sizing: content;
+}
+
+.project-ask .project-ask-box .project-ask-input:is(textarea):focus {
+  box-shadow: none;
+}
+
+.project-ask-input::placeholder {
+  color: var(--text-3);
+}
+
+.project-ask-send {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  cursor: pointer;
+  transition: transform 140ms cubic-bezier(0.23, 1, 0.32, 1), opacity 160ms ease;
+}
+
+.project-ask-send:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.project-ask-send:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.project-ask-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgb(from var(--accent-ink) r g b / 0.35);
+  border-top-color: var(--accent-ink);
+  border-radius: 999px;
+  animation: project-spin 0.6s linear infinite;
+}
+
+@keyframes project-spin {
+  to { transform: rotate(360deg); }
+}
+
+.project-ask-status,
+.project-ask-result p,
+.project-ask-error,
+.project-ask-request {
+  margin: 0;
+  font: 500 14px/1.45 var(--font-body);
+}
+
+.project-ask-status {
+  color: var(--text-2);
+}
+
+.project-ask-error {
+  color: var(--red);
+}
+
+.project-ask-request {
+  color: var(--text-2);
+}
+
+.project-ask-result {
+  display: grid;
+  gap: 10px;
+  color: var(--text);
+}
+
+.project-ask-questions .tg-clarify {
+  margin-top: 8px;
+}
+
+/* ── One project ───────────────────────────────────────────────────────── */
+
+.project-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  justify-self: start;
+  color: var(--text-2);
+  font: 550 13px/1 var(--font-body);
+  text-decoration: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .project-back:hover {
+    color: var(--text);
+  }
+}
+
+.project-head {
+  display: grid;
+  gap: 8px;
+}
+
+/* :is(input/textarea) and the ancestors lift these past globals.css's
+   input:not():not():not() rule, which otherwise resets font and padding. */
+.project-page .project-head .project-title-input:is(input),
+.project-page .project-head .project-goal-input:is(textarea) {
+  width: 100%;
+  margin: 0;
+  padding: 2px 6px;
+  margin-left: -6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.project-page .project-head .project-title-input:is(input) {
+  font: 700 clamp(26px, 3vw, 32px)/1.15 var(--font-display);
+  letter-spacing: -0.03em;
+}
+
+.project-page .project-head .project-goal-input:is(textarea) {
+  resize: none;
+  color: var(--text-2);
+  font: 450 15px/1.5 var(--font-body);
+  field-sizing: content;
+}
+
+.project-page .project-head .project-title-input:is(input):hover,
+.project-page .project-head .project-goal-input:is(textarea):hover {
+  background: rgb(from var(--text) r g b / 0.03);
+}
+
+.project-page .project-head .project-title-input:is(input):focus,
+.project-page .project-head .project-goal-input:is(textarea):focus {
+  outline: 0;
+  box-shadow: none;
+  border-color: var(--line-strong);
+  background: var(--surface);
+}
+
+.project-head-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 420px;
+  color: var(--text-3);
+  font: 550 12.5px/1 var(--font-body);
+}
+
+.project-head-progress .project-progress {
+  flex: 1;
+}
+
+.project-ask-section {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.project-step-list {
+  display: grid;
+}
+
+.project-empty,
+.project-missing {
+  margin: 0;
+  color: var(--text-2);
+  font: 450 14px/1.45 var(--font-body);
+}
+
+.project-done summary {
+  width: fit-content;
+  color: var(--text-3);
+  font: 600 12px/1 var(--font-body);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  list-style: none;
+}
+
+.project-done summary::-webkit-details-marker {
+  display: none;
+}
+
+.project-done summary span {
+  margin-left: 6px;
+  color: var(--text-3);
+}
+
+.project-done[open] summary {
+  margin-bottom: 10px;
+}
+
+.project-foot {
+  padding-top: 8px;
+}
+
+.project-delete,
+.project-delete-no {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-3);
+  font: 500 13px/1 var(--font-body);
+  cursor: pointer;
+}
+
+.project-delete-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  color: var(--text);
+  font: 500 13.5px/1.45 var(--font-body);
+}
+
+.project-delete-yes {
+  height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font: 600 13px/1 var(--font-body);
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-card,
+  .project-ask-send,
+  .project-progress span {
+    transition: none;
+  }
+}
+
+/* ── Project page: steps beside the project's own Tangent AI ───────────── */
+
+.project-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+  align-items: start;
+  gap: 28px;
+}
+
+.project-main {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+
+.project-side {
+  position: sticky;
+  top: calc(var(--topbar-h) + 16px);
+  min-width: 0;
+}
+
+@media (max-width: 980px) {
+  .project-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .project-side {
+    position: static;
+    order: -1;
+  }
+}
+
+.pchat {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - var(--topbar-h) - 120px);
+  min-height: 420px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+@media (max-width: 980px) {
+  .pchat {
+    height: 460px;
+  }
+}
+
+.pchat-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.pchat-mark {
+  color: var(--accent);
+}
+
+.pchat-head h2 {
+  margin: 0;
+  color: var(--text);
+  font: 650 14.5px/1.2 var(--font-body);
+}
+
+.pchat-head p {
+  margin: 2px 0 0;
+  color: var(--text-3);
+  font: 450 12.5px/1.2 var(--font-body);
+}
+
+.pchat-thread {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.pchat-empty p {
+  margin: 0 0 10px;
+  color: var(--text-2);
+  font: 450 14px/1.5 var(--font-body);
+}
+
+.pchat-starters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pchat-user {
+  align-self: flex-end;
+  max-width: 85%;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 16px 16px 4px 16px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: 500 14px/1.45 var(--font-body);
+  white-space: pre-wrap;
+}
+
+.pchat-assistant {
+  display: grid;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.pchat-assistant > p {
+  margin: 0;
+  color: var(--text);
+  font: 450 14px/1.55 var(--font-body);
+  white-space: pre-wrap;
+}
+
+.pchat-assistant .action-receipt {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.pchat-working {
+  margin: 0;
+  color: var(--text-3);
+  font: 500 13px/1.4 var(--font-body);
+}
+
+.pchat-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin: 0 12px 12px;
+  padding: 6px 6px 6px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 20px;
+  background: var(--surface);
+}
+
+.pchat-composer:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* Lifted past globals.css's textarea reset. */
+.pchat .pchat-composer textarea:is(textarea) {
+  flex: 1;
+  min-width: 0;
+  max-height: 120px;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  resize: none;
+  color: var(--text);
+  font: 450 14px/1.4 var(--font-body);
+  field-sizing: content;
+}
+
+.pchat-send {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  cursor: pointer;
+}
+
+.pchat-send:disabled {
+  opacity: 0.35;
+  cursor: default;
+}

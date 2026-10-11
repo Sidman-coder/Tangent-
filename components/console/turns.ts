@@ -23,6 +23,16 @@ export type Turn = {
   fresh?: boolean;
   /** Pipeline V2: a drafted change waiting for Confirm (components/PreviewCard). */
   draft?: { changeSet: ChangeSet; preview: PreviewPayload };
+  /** Tangent's questions before acting (lib/ai/clarify.ts); cleared once answered. */
+  questions?: { id: string; question: string; options: string[] }[] | null;
+  /** Questions about a task this turn already saved; answering is optional. */
+  later?: { id: string; questions: { id: string; question: string; options: string[] }[] } | null;
+  /** What Tangent changed after those answers. */
+  laterSummary?: string | null;
+  /** A plan this turn created: it lives on as a Project. */
+  projectId?: string | null;
+  /** One move the spacing brain suggests for an overloaded day. */
+  suggestion?: { taskId: string; title: string; toDate: string; toTime: string; message: string } | null;
 };
 
 /** A plan being generated: its title as soon as the outline is back, then

@@ -5,15 +5,10 @@ import * as m from "motion/react-m";
 import { Check, Repeat2 } from "lucide-react";
 import { press, spring } from "@/lib/motion";
 import type { Task } from "@/lib/types";
-import { formatTime12 } from "@/lib/dates";
+import { formatTime12, isDueOnly } from "@/lib/dates";
+import TaskTitle from "@/components/ui/TaskTitle";
+import { KIND_LABEL } from "@/lib/task-colors";
 
-const KIND_LABEL: Record<string, string> = {
-  school: "School",
-  "academic-ec": "Academics",
-  "side-ec": "Activities",
-  commitment: "Commitment",
-  personal: "Personal",
-};
 
 type TaskRowProps = {
   task: Task;
@@ -24,7 +19,16 @@ type TaskRowProps = {
   onOpen?: () => void;
   actions?: ReactNode;
   children?: ReactNode;
+  /** Tangent has open questions about this task (lib/questions-client.ts). */
+  hasQuestions?: boolean;
+  /** Lists that span days (a project's steps) show the day, not just the time. */
+  showDate?: boolean;
 };
+
+function shortDate(ymd: string): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+}
 
 export default function TaskRow({
   task,
@@ -35,7 +39,10 @@ export default function TaskRow({
   onOpen,
   actions,
   children,
+  hasQuestions = false,
+  showDate = false,
 }: TaskRowProps) {
+  const questionDot = hasQuestions ? <span className="task-question-dot" title="Tangent has a question about this" /> : null;
   return (
     <article
       className={`ui-task-row${task.completed ? " is-complete" : ""}${selected ? " is-selected" : ""}${expanded ? " is-expanded" : ""}`}
@@ -57,7 +64,7 @@ export default function TaskRow({
                   key="check"
                   className="ui-task-check-mark"
                   initial={{ scale: 0.3, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1, transition: { ...spring.snappy, bounce: 0.45 } }}
+                  animate={{ scale: 1, opacity: 1, transition: { ...spring.snappy, bounce: 0.2 } }}
                   exit={{ scale: 0.3, opacity: 0, transition: { duration: 0.1 } }}
                 >
                   <Check size={13} strokeWidth={2.5} aria-hidden="true" />
@@ -72,14 +79,19 @@ export default function TaskRow({
         <div className="ui-task-copy">
           {onOpen ? (
             <button type="button" className="ui-task-title-button" onClick={onOpen}>
-              {task.title}
+              <TaskTitle task={task} />
+              {questionDot}
             </button>
           ) : (
-            <span className="ui-task-title">{task.title}</span>
+            <span className="ui-task-title"><TaskTitle task={task} />{questionDot}</span>
           )}
           <div className="ui-task-meta">
-            <time dateTime={`${task.date}T${task.time}`}>{formatTime12(task.time)}</time>
-            {task.kind && <span className="ui-task-kind-label">{KIND_LABEL[task.kind] ?? task.kind.replaceAll("-", " ")}</span>}
+            <time dateTime={`${task.date}T${task.time}`}>
+              {showDate ? `${shortDate(task.date)} · ` : ""}
+              {/* A due date isn't a time anything happens: "Due", as on the calendar. */}
+              {isDueOnly(task) ? "Due" : formatTime12(task.time)}
+            </time>
+            {task.kind && <span className="ui-task-kind-label">{KIND_LABEL[task.kind as keyof typeof KIND_LABEL] ?? task.kind.replaceAll("-", " ")}</span>}
             {task.recurring?.enabled && (
               <span className="ui-task-recurring"><Repeat2 size={12} aria-hidden="true" /> Recurring</span>
             )}

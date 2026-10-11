@@ -8,6 +8,8 @@
 // so they don't fit Batch's up-to-an-hour turnaround the way the daily brief does.
 
 import { getAllTasks, getContextAsString, addNotification, getUserTimezone } from "@/lib/store";
+import { isSchoolBlock } from "@/lib/schedule-slots";
+import { formatTime12 } from "@/lib/dates";
 import { addDaysYMD, currentInstant, getUserToday } from "@/lib/time";
 import type { Notification } from "@/lib/types";
 import { extractStructuredJson } from "@/lib/anthropic-json";
@@ -54,12 +56,29 @@ export type ProactiveCheckResult = {
   error?: string;
 };
 
+const SHORT_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "today (Tue, Oct 6)", "tomorrow (Wed, Oct 7)", "yesterday (…)" or
+ *  "Thu, Oct 8", decided in code from the student's own today. */
+export function relativeDayLabel(date: string, today: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const day = new Date(Date.UTC(y, m - 1, d));
+  const plain = `${SHORT_DAYS[day.getUTCDay()]}, ${SHORT_MONTHS[m - 1]} ${d}`;
+  if (date === today) return `today (${plain})`;
+  if (date === addDaysYMD(today, 1)) return `tomorrow (${plain})`;
+  if (date === addDaysYMD(today, -1)) return `yesterday (${plain})`;
+  return plain;
+}
+
 export async function runProactiveCheck(trigger: string): Promise<ProactiveCheckResult> {
   try {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) return { ok: false, generated: 0, notifications: [], error: "No API key" };
 
-    const tasks = await getAllTasks();
+    // The School block is the student's timetable, not work they can fall
+    // behind on: it produced "Overdue: School" nudges every day.
+    const tasks = (await getAllTasks()).filter((t) => !isSchoolBlock(t));
     const userContext = await getContextAsString();
     const timeZone = await getUserTimezone();
     const now = currentInstant();
@@ -74,18 +93,26 @@ export async function runProactiveCheck(trigger: string): Promise<ProactiveCheck
         t.date <= inThreeDays
     );
 
+    // Relative days are worked out here, in the student's timezone, and given
+    // to the model as labels. Left to itself it called Oct 8 "tomorrow" on Oct 6.
+    const when = (date: string, time?: string) => {
+      const label = relativeDayLabel(date, today);
+      const clock = time && time !== "23:59" ? ` at ${formatTime12(time)}` : time === "23:59" ? " (due end of day)" : "";
+      return `${label}${clock}`;
+    };
+
     const agentContext = `
-Today: ${today}
+Today: ${relativeDayLabel(today, today)}
 Current time: ${now.toLocaleTimeString("en-US", { timeZone })}
 
 Today's tasks:
-${todayTasks.map((t) => `- ${t.time} ${t.title} (${t.completed ? "done" : "pending"})`).join("\n") || "None"}
+${todayTasks.map((t) => `- ${when(t.date, t.time)}: ${t.title} (${t.completed ? "done" : "pending"})`).join("\n") || "None"}
 
 Overdue tasks:
-${overdueTasks.map((t) => `- id=${t.id} ${t.date} ${t.title}`).join("\n") || "None"}
+${overdueTasks.map((t) => `- id=${t.id} was due ${when(t.date)}: ${t.title}`).join("\n") || "None"}
 
 Upcoming (next 3 days):
-${upcomingTasks.map((t) => `- ${t.date} ${t.time} ${t.title}`).join("\n") || "None"}
+${upcomingTasks.map((t) => `- ${when(t.date, t.time)}: ${t.title}`).join("\n") || "None"}
 
 User context:
 ${userContext}
@@ -114,6 +141,8 @@ actionLabel "Move it" and actionData containing exactly:
 { "taskId": "<the task's id>", "suggestedDate": "YYYY-MM-DD", "suggestedTime": "HH:MM" }
 Only offer one reschedule_offer per overdue task, and only when you can name a specific
 free slot — do not offer it if you cannot suggest a concrete date and time.
+
+When you mention when something is, copy the day label exactly as given above ("tomorrow (Wed, Oct 7)", "Thu, Oct 8"). Never work out "today", "tomorrow" or a weekday yourself, and never write raw dates like 2026-10-08 or 24-hour times. Use 12-hour times like 3:30 PM.
 
 Each notification's title should be short, under 8 words. Each body should be a specific actionable message under 30 words. actionLabel is an optional button label like 'Reschedule' or 'Add prep time'.
 

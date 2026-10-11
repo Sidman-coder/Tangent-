@@ -1,0 +1,153 @@
+/* ── Tangent's questions (ClarifyCard) ────────────────────────────────────
+   Before acting on a big or vague ask. Each question is a row of answers to
+   tap; one tap is an answer, so nothing here needs a submit per question. */
+
+.tg-clarify {
+  display: grid;
+  gap: 14px;
+  margin-top: 12px;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.tg-clarify-q {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.tg-clarify-q legend {
+  padding: 0;
+  margin-bottom: 8px;
+  color: var(--text);
+  font: 600 14px/1.35 var(--font-body);
+}
+
+.tg-clarify-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tg-chip {
+  height: 32px;
+  padding: 0 13px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-2);
+  font: 550 13px/1 var(--font-body);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tg-chip:hover:not(.is-on):not(:disabled) {
+    border-color: var(--accent-line);
+    color: var(--text);
+  }
+}
+
+.tg-chip:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.tg-chip.is-on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.tg-chip.is-ghost {
+  border-style: dashed;
+  color: var(--text-3);
+}
+
+.tg-chip:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.tg-clarify .tg-clarify-options .tg-chip-input:is(input):focus {
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.tg-chip:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Lifted past globals.css's input:not():not():not() reset. */
+.tg-clarify .tg-clarify-options .tg-chip-input:is(input) {
+  height: 32px;
+  min-width: 0;
+  flex: 1 1 160px;
+  padding: 0 13px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: 500 13px/1 var(--font-body);
+}
+
+.tg-clarify-actions {
+  display: flex;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.tg-clarify-btn {
+  height: 34px;
+  padding: 0 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: 600 13px/1 var(--font-body);
+  cursor: pointer;
+  transition: background-color 150ms ease, transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.tg-clarify-btn.is-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.tg-clarify-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.tg-clarify-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tg-clarify-btn:not(.is-primary):hover:not(:disabled) {
+    background: var(--bg);
+  }
+  .tg-clarify-btn.is-primary:hover:not(:disabled) {
+    background: var(--accent-hover);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-chip,
+  .tg-clarify-btn {
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+  }
+  .tg-chip:active:not(:disabled),
+  .tg-clarify-btn:active:not(:disabled) {
+    transform: none;
+  }
+}

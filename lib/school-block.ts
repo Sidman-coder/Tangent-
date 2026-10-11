@@ -3,6 +3,7 @@
 // blocks. These pure helpers find the existing onboarding series so the store
 // can replace them with exactly one (lib/store.ts replaceSchoolBlock).
 
+import { CAL_SCHOOL } from "./calendars";
 import { formatTime12 } from "./dates";
 import type { SchoolHours } from "./onboarding";
 import { parseSchoolHours } from "./onboarding";
@@ -56,7 +57,7 @@ export function schoolSeriesFor(hours: SchoolHours, today: string, endDate: stri
       time: hours.start,
       completed: false,
       kind: "school" as const,
-      calendarId: "cal_personal",
+      calendarId: CAL_SCHOOL,
       notes: schoolNotes(hours.end),
     },
     recurring: { frequency: "weekly" as const, daysOfWeek: [...hours.days], endDate },

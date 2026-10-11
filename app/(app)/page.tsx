@@ -4,16 +4,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
-import { MessageSquareText, Plus } from "lucide-react";
+import { MessageSquareText } from "lucide-react";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { localNow, wallClockNow } from "@/lib/time";
 import ActionReceipt from "@/components/ActionReceipt";
+import { openTask } from "@/components/TaskDetail";
 import TaskChatModal from "@/components/TaskChatModal";
 import AttentionSection, { type AttentionReceipt } from "@/components/dashboard/AttentionSection";
-import MonthRhythm from "@/components/MonthRhythm";
 import WeekAhead from "@/components/dashboard/WeekAhead";
 import { CanvasCard, PathsCard, StartingIntentCard } from "@/components/dashboard/HomeCards";
-import Button from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
 import TaskRow from "@/components/ui/TaskRow";
 import type { ActionRecord, Task } from "@/lib/types";
@@ -23,6 +22,11 @@ import { riseIn, rowPresence, spring, staggerChildren } from "@/lib/motion";
 import { homeLayout, prefsOf, type HomeSection } from "@/lib/personalize";
 import { getSchedulePulse } from "@/lib/schedule-insights";
 import { canAskForHelp } from "@/lib/task-help";
+import { isOnboardingSchoolTask } from "@/lib/school-block";
+import QuestionsInbox from "@/components/dashboard/QuestionsInbox";
+import GetToKnowNudge from "@/components/dashboard/GetToKnowNudge";
+import TourNudge from "@/components/dashboard/TourNudge";
+import { useQuestionSets } from "@/hooks/useQuestionSets";
 import { taskColor } from "@/lib/task-colors";
 import { getUrgency, tracksCompletion } from "@/lib/urgency";
 
@@ -68,6 +72,8 @@ export default function DashboardPage() {
   // and per-task history in the store — but nothing ever opened it.
   const [helpTask, setHelpTask] = useState<Task | null>(null);
   const receiptSeq = useRef(0);
+  const { sets: questionSets, reload: reloadQuestions } = useQuestionSets();
+  const questionTaskIds = useMemo(() => new Set(questionSets.map((q) => q.taskId)), [questionSets]);
 
   // "Starts in 40 min" and "missed earlier today" drift, so keep the clock live.
   useEffect(() => {
@@ -126,19 +132,19 @@ export default function DashboardPage() {
 
   const today = toYMD(now);
   const plans = state?.plans;
-  const calendars = state?.calendars;
-  const colorForTask = useCallback(
-    (task: Task) => taskColor(task, plans ?? [], calendars ?? []),
-    [calendars, plans]
-  );
+  const colorForTask = useCallback((task: Task) => taskColor(task, plans ?? []), [plans]);
 
-  const urgency = useMemo(() => getUrgency(tasks, now), [now, tasks]);
+  // The onboarding School block holds the student's school hours for the
+  // scheduler and the week insights below; it is not a to-do, so it never
+  // shows as a row.
+  const doable = useMemo(() => tasks.filter((t) => !isOnboardingSchoolTask(t)), [tasks]);
+  const urgency = useMemo(() => getUrgency(doable, now), [now, doable]);
   const attentionIds = useMemo(() => new Set(urgency.items.map((i) => i.task.id)), [urgency]);
   const insight = useMemo(() => getSchedulePulse(tasks, now), [now, tasks]);
 
   const todaysTasks = useMemo(
-    () => tasks.filter((t) => t.date === today).sort((a, b) => a.time.localeCompare(b.time)),
-    [tasks, today]
+    () => doable.filter((t) => t.date === today).sort((a, b) => a.time.localeCompare(b.time)),
+    [doable, today]
   );
   const trackableToday = todaysTasks.filter(tracksCompletion);
   const completedToday = trackableToday.filter((t) => t.completed).length;
@@ -271,13 +277,13 @@ export default function DashboardPage() {
               {trackableToday.length > 0 && <span>{completedToday} of {trackableToday.length} complete</span>}
             </span>
           }
-          actions={
-            <Button variant="primary" onClick={openCapture} icon={<Plus size={16} aria-hidden="true" />}>
-              New task
-            </Button>
-          }
         />
       </m.div>
+
+      <TourNudge />
+      <GetToKnowNudge />
+
+      <QuestionsInbox sets={questionSets} onChanged={() => { void reloadQuestions(); void refresh(); }} />
 
       {error && <p className="today-inline-error" role="status">Your schedule could not refresh. Showing the latest available view.</p>}
 
@@ -303,7 +309,7 @@ export default function DashboardPage() {
                 receipt={receipt}
                 onComplete={completeFromAttention}
                 onTomorrow={moveToTomorrow}
-                onOpen={(task) => router.push(`/calendar?date=${task.date}`)}
+                onOpen={(task) => openTask(task.id)}
                 onSeeAll={() => router.push(`/calendar?date=${today}`)}
               />
             );
@@ -311,7 +317,6 @@ export default function DashboardPage() {
             return (
               <aside key="insights" className="today-insights" aria-label="Schedule context">
                 <WeekAhead tasks={tasks} now={now} insight={insight} openWeekLink={layout.openWeekLink} />
-                <MonthRhythm tasks={tasks} year={now.getFullYear()} monthIndex={now.getMonth()} today={today} />
               </aside>
             );
           case "dayline":
@@ -327,8 +332,7 @@ export default function DashboardPage() {
                     <h2 id="today-dayline-title">{todayInAttention > 0 ? "The rest of today" : "Your day"}</h2>
                   </div>
                   <span>
-                    {dayRemaining} left
-                    {todayInAttention > 0 && <> · {todayInAttention} above</>}
+                    {dayRemaining > 0 ? `${dayRemaining} left` : ""}
                   </span>
                 </div>
 
@@ -339,9 +343,10 @@ export default function DashboardPage() {
                         <m.div key={task.id} layout="position" transition={spring.layout} {...rowPresence}>
                           <TaskRow
                             task={task}
+                            hasQuestions={questionTaskIds.has(task.id)}
                             kindColor={colorForTask(task)}
                             onComplete={tracksCompletion(task) ? () => void setCompleted(task, !task.completed) : undefined}
-                            onOpen={() => router.push(`/calendar?date=${task.date}`)}
+                            onOpen={() => openTask(task.id)}
                             actions={
                               canAskForHelp(task) ? (
                                 <button

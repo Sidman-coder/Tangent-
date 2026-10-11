@@ -200,7 +200,7 @@
 .card-md:hover {
   box-shadow: var(--shadow-lg);
   transform: translateY(-1px);
-  transition: all 0.18s ease;
+  transition: box-shadow 0.18s ease, transform 0.18s ease;
 }
 
 .neu-btn-primary {
@@ -3223,7 +3223,7 @@ textarea:focus {
   font-size: 13px;
   font-family: var(--font-body);
   text-decoration: none;
-  transition: all 0.18s ease;
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
   cursor: pointer;
 }
 .resource-link:hover {
@@ -5343,7 +5343,7 @@ textarea:focus {
     bottom: 0;
     left: 0;
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     height: 66px;
     padding: 6px 8px max(6px, env(safe-area-inset-bottom));
     border-top: 1px solid var(--line);
@@ -7397,10 +7397,12 @@ textarea:focus {
 }
 
 /* ── In-app notification popups (components/NotificationToasts.tsx) ── */
+/* Top right, under the header: inputs (the AI composer, the capture mic,
+   chips) all live at the bottom, and a popup must never sit on one. */
 .notif-toasts {
   position: fixed;
   right: 1rem;
-  bottom: 1rem;
+  top: calc(var(--topbar-h) + 0.75rem);
   z-index: 300;
   display: flex;
   flex-direction: column;
@@ -7423,7 +7425,7 @@ textarea:focus {
 }
 
 @keyframes notifToastIn {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(-6px); }
   to { opacity: 1; transform: none; }
 }
 
@@ -8295,4 +8297,736 @@ textarea:focus {
     left: 16px;
     width: auto;
   }
+}
+
+/* Canvas course chip next to a task title (components/ui/TaskTitle.tsx). */
+.course-chip {
+  display: inline-block;
+  margin-left: 7px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgb(from var(--text) r g b / 0.06);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.5;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+
+/* The Cmd-K confirmation links to what it created. */
+.command-toast-link {
+  margin-left: 12px;
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.command-toast:has(.command-toast-link) {
+  display: flex;
+  align-items: center;
+}
+
+/* ── 404 (app/not-found.tsx) ── */
+.not-found {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+}
+.not-found-card {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  max-width: 360px;
+  text-align: center;
+}
+.not-found-card h1 {
+  margin: 0;
+  color: var(--text);
+  font: 700 24px/1.2 var(--font-display);
+  letter-spacing: -0.02em;
+}
+.not-found-card p {
+  margin: 0 0 8px;
+  color: var(--text-2);
+  font: 450 14.5px/1.5 var(--font-body);
+}
+.not-found-home {
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: 600 14px/1 var(--font-body);
+  text-decoration: none;
+}
+
+.settings-skeleton {
+  display: inline-block;
+  width: 160px;
+  height: 12px;
+  border-radius: 6px;
+  background: rgb(from var(--text) r g b / 0.08);
+  vertical-align: middle;
+}
+
+/* ── Settings: What Tangent knows (components/settings/WhatTangentKnows.tsx) ── */
+.knows-groups {
+  display: grid;
+  gap: 18px;
+}
+.knows-group h3 {
+  margin: 0 0 6px;
+  color: var(--text-3);
+  font: 600 11.5px/1 var(--font-body);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.knows-group ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.knows-group li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  font: 450 14px/1.45 var(--font-body);
+}
+.knows-group li:last-child {
+  border-bottom: 0;
+}
+.knows-summary,
+.knows-empty {
+  margin: 0;
+  color: var(--text-2);
+  font: 450 14px/1.5 var(--font-body);
+}
+.knows-forget {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  font: 550 12px/1 var(--font-body);
+  cursor: pointer;
+}
+@media (hover: hover) and (pointer: fine) {
+  .knows-forget:hover {
+    border-color: var(--red);
+    color: var(--red);
+  }
+}
+.knows-add {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+.knows-add input {
+  flex: 1;
+  min-width: 0;
+}
+.knows-add-btn {
+  padding: 0 16px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: 600 13px/1 var(--font-body);
+  cursor: pointer;
+}
+.knows-add-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Apple pass (2026-10-10). One block, last in the file, so it settles the
+   layered rules above without editing them — and can be reviewed or reverted
+   in one place.
+   - Type: the platform's own (SF Pro on Apple devices, Segoe/Roboto
+     elsewhere), which ships optical sizing and tracking tables.
+   - Colour: Apple's neutral greys for ground, lines and text; the iris accent
+     and teal highlight stay, so it's still Tangent.
+   - Scale: headings are titles, not posters.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+:root,
+[data-theme="light"] {
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --bg: #f5f5f7;
+  --bg-sunken: #f5f5f7;
+  --surface: #ffffff;
+  --elev-2: #f2f2f5;
+  --layer-3: #e5e5ea;
+  --line: #e5e5ea;
+  --line-strong: #d2d2d7;
+  --text: #1d1d1f;
+  --text-2: #6e6e73;
+  --text-3: #86868b;
+  --neu-fill: #f2f2f5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #000000;
+    --bg-sunken: #000000;
+    --surface: #1c1c1e;
+    --elev-2: #2c2c2e;
+    --layer-3: #3a3a3c;
+    --line: #2c2c2e;
+    --line-strong: #3a3a3c;
+    --text: #f5f5f7;
+    --text-2: #a1a1a6;
+    --text-3: #8e8e93;
+    --neu-fill: #1c1c1e;
+  }
+}
+
+[data-theme="dark"] {
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --bg: #000000;
+  --bg-sunken: #000000;
+  --surface: #1c1c1e;
+  --elev-2: #2c2c2e;
+  --layer-3: #3a3a3c;
+  --line: #2c2c2e;
+  --line-strong: #3a3a3c;
+  --text: #f5f5f7;
+  --text-2: #a1a1a6;
+  --text-3: #8e8e93;
+  --neu-fill: #1c1c1e;
+}
+
+/* Tracking is size-specific: tight on titles, neutral on body. */
+h1, h2, h3, h4, h5, h6 {
+  letter-spacing: -0.015em;
+}
+
+/* Page titles: a large title, not a poster. */
+.page-header-title {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.022em;
+  line-height: 1.15;
+}
+
+.attention-title {
+  font-size: clamp(22px, 2.4vw, 28px);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.tg-hero-title,
+.console-empty h2 {
+  font-size: clamp(24px, 2.8vw, 30px);
+  font-weight: 650;
+  letter-spacing: -0.022em;
+}
+
+.calendar-toolbar .cal-month-heading,
+.calendar-page .calendar-toolbar .cal-month-heading {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* The rail: quieter active state, no bold labels. */
+.rail-btn {
+  font-weight: 500;
+}
+.rail-btn.is-active {
+  font-weight: 600;
+}
+.rail-logo-word {
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+/* Cards: hairlines, not shadows. */
+.card,
+.dash-card,
+.home-card {
+  box-shadow: none;
+}
+
+/* Today shows one insight now (Week ahead); Monthly rhythm repeated it with
+   different numbers. The grid takes the full width. */
+.today-insights {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* The Tangents orbit as a nav icon (AppShell OrbitIcon): on the light rail
+   the ring needs more ink than it had on the old dark card. */
+.nav-orbit {
+  flex: none;
+}
+.nav-orbit .rail-orbit-ring {
+  stroke: rgb(from var(--accent) r g b / 0.45);
+  stroke-width: 1.6;
+}
+.nav-orbit .rail-orbit-core {
+  fill: var(--accent);
+}
+.rail-btn:hover .nav-orbit .rail-orbit-spin {
+  animation-duration: 3.2s;
+}
+
+/* ── Apple pass: materials (frosted glass) ────────────────────────────────
+   Only on layers that float over moving content — bars content scrolls
+   under, panels and popovers over the page. Never on cards or text areas
+   that sit on a plain ground, where it would just look grey. Falls back to
+   solid under prefers-reduced-transparency. */
+
+:root,
+[data-theme="light"] {
+  --glass: rgb(255 255 255 / 0.72);
+  --glass-thick: rgb(255 255 255 / 0.84);
+  --glass-edge: rgb(255 255 255 / 0.6);
+  --glass-blur: blur(24px) saturate(180%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --glass: rgb(28 28 30 / 0.72);
+    --glass-thick: rgb(28 28 30 / 0.86);
+    --glass-edge: rgb(255 255 255 / 0.08);
+  }
+}
+
+[data-theme="dark"] {
+  --glass: rgb(28 28 30 / 0.72);
+  --glass-thick: rgb(28 28 30 / 0.86);
+  --glass-edge: rgb(255 255 255 / 0.08);
+}
+
+/* Bars: content scrolls under them. A hairline instead of a heavy border. */
+.topbar,
+.mobile-nav {
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-color: rgb(from var(--text) r g b / 0.08);
+}
+
+/* Floating panels and popovers: thicker glass, a bright top edge where
+   light would catch it, and a soft shadow for lift. */
+.cmdk-panel,
+.notif-panel,
+.side-peek,
+.command-toast,
+.confirm-toast,
+.notif-toast {
+  background: var(--glass-thick);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-color: rgb(from var(--text) r g b / 0.08);
+  box-shadow:
+    inset 0 0.5px 0 var(--glass-edge),
+    0 12px 40px -12px rgb(0 0 0 / 0.28);
+}
+
+/* Spotlight-style: the page stays visible behind Tell Tangent, just set back. */
+.cmdk-overlay {
+  background: rgb(0 0 0 / 0.16);
+}
+
+.side-peek-backdrop {
+  background: rgb(0 0 0 / 0.12);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .topbar,
+  .mobile-nav,
+  .cmdk-panel,
+  .notif-panel,
+  .side-peek,
+  .command-toast,
+  .confirm-toast,
+  .notif-toast {
+    background: var(--surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* Tangents at the foot of the rail, a hairline above it. */
+.rail-btn-tangents {
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+.rail-btn-tangents::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 10px;
+  right: 10px;
+  height: 1px;
+  background: var(--line);
+}
+
+/* ── Apple pass, round two ────────────────────────────────────────────── */
+
+/* Sidebar selection: a soft fill, no outline — like Notes and Mail. */
+.rail-active-pill {
+  background: rgb(from var(--accent) r g b / 0.1);
+  box-shadow: none;
+}
+.rail-btn.is-active {
+  color: var(--text);
+}
+.rail-btn.is-active svg:not(.nav-orbit) {
+  color: var(--accent);
+}
+
+/* To-dos are circles, as in Reminders. */
+.ui-task-check {
+  border-radius: 999px;
+}
+
+/* Month titles are plain, like Calendar; the year stays quiet. */
+.calendar-toolbar .cal-month-heading,
+.calendar-page .calendar-toolbar .cal-month-heading {
+  color: var(--text);
+}
+
+/* Section labels: Apple's small grey caps, a touch quieter. */
+.today-section-label,
+.projects-finished h2,
+.project-steps h2 {
+  letter-spacing: 0.03em;
+}
+
+/* Primary buttons are capsules; their press is quick and small. */
+.ui-button--primary {
+  border-radius: 999px;
+}
+.ui-button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Tangent, through the Apple pass (2026-10-11). The Apple block above made
+   the app clean but anonymous. This puts Tangent back without the noise:
+   - One palette, used everywhere: iris (the accent) and teal (the
+     highlight), with lilac, mauve, deep teal, ochre and rose as companions.
+     No stock Tailwind hues (blue-600, amber-600, red-600…) anywhere.
+   - Neutrals carry a whisper of iris instead of pure grey.
+   - Bricolage Grotesque, the brand's display face, for big titles; the UI
+     itself stays SF.
+   - A soft iris-and-teal wash behind the app — "layered colours, some
+     purple" — which is also what the frosted bars and rail frost.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+:root,
+[data-theme="light"] {
+  --font-display: "Bricolage Grotesque Variable", "Bricolage Grotesque", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+
+  --bg: #f5f4f9;
+  --bg-sunken: #f5f4f9;
+  --surface: #ffffff;
+  --elev-2: #f1eff8;
+  --layer-3: #e3e0ee;
+  --line: #e7e4ef;
+  --line-strong: #d5d1e2;
+  --text: #1c1a26;
+  --text-2: #615d72;
+  --text-3: #8a8699;
+
+  --accent: #4b3a8c;
+  --accent-hover: #3d2e76;
+  --accent-soft: #ece8f6;
+  --accent-line: rgb(75 58 140 / 0.2);
+  --highlight: #1f7a74;
+
+  --green: #1f8f86;
+  --amber: #c48c3a;
+  --red: #c94a5f;
+  --path-danger: #c94a5f;
+
+  --kind-school: #4b3a8c;
+  --kind-academic-ec: #8a78e0;
+  --kind-academic: #8a78e0;
+  --kind-side-ec: #1f8f86;
+  --kind-commitment: #3d6f8a;
+  --kind-personal: #b06a9a;
+  --kind-default: #9a96a8;
+  --cal-all: var(--accent);
+  --cal-work: #3d6f8a;
+  --cal-personal: #b06a9a;
+
+  --glass: rgb(255 255 255 / 0.62);
+  --glass-thick: rgb(255 255 255 / 0.8);
+  --glass-edge: rgb(255 255 255 / 0.7);
+  --wash-iris: rgb(75 58 140 / 0.13);
+  --wash-teal: rgb(31 122 116 / 0.09);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e0d14;
+    --bg-sunken: #0e0d14;
+    --surface: #1a1824;
+    --elev-2: #24212f;
+    --layer-3: #332f42;
+    --line: #2a2735;
+    --line-strong: #383446;
+    --text: #f2f0f8;
+    --text-2: #a7a3b8;
+    --text-3: #8a8699;
+    --accent: #b3a5f0;
+    --accent-hover: #c4b9f5;
+    --accent-soft: #2a2540;
+    --highlight: #5cc8bd;
+    --green: #5cc8bd;
+    --amber: #e0b15c;
+    --red: #f2707f;
+    --path-danger: #f2707f;
+    --kind-school: #b3a5f0;
+    --kind-academic-ec: #9d8ef0;
+    --kind-academic: #9d8ef0;
+    --kind-side-ec: #5cc8bd;
+    --kind-commitment: #7fb3cf;
+    --kind-personal: #e0a2c8;
+    --kind-default: #8a8699;
+    --glass: rgb(26 24 36 / 0.62);
+    --glass-thick: rgb(26 24 36 / 0.82);
+    --glass-edge: rgb(255 255 255 / 0.07);
+    --wash-iris: rgb(122 104 220 / 0.18);
+    --wash-teal: rgb(92 200 189 / 0.08);
+  }
+}
+
+[data-theme="dark"] {
+  --font-display: "Bricolage Grotesque Variable", "Bricolage Grotesque", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+  --bg: #0e0d14;
+  --bg-sunken: #0e0d14;
+  --surface: #1a1824;
+  --elev-2: #24212f;
+  --layer-3: #332f42;
+  --line: #2a2735;
+  --line-strong: #383446;
+  --text: #f2f0f8;
+  --text-2: #a7a3b8;
+  --text-3: #8a8699;
+  --accent: #b3a5f0;
+  --accent-hover: #c4b9f5;
+  --accent-soft: #2a2540;
+  --highlight: #5cc8bd;
+  --green: #5cc8bd;
+  --amber: #e0b15c;
+  --red: #f2707f;
+  --path-danger: #f2707f;
+  --kind-school: #b3a5f0;
+  --kind-academic-ec: #9d8ef0;
+  --kind-academic: #9d8ef0;
+  --kind-side-ec: #5cc8bd;
+  --kind-commitment: #7fb3cf;
+  --kind-personal: #e0a2c8;
+  --kind-default: #8a8699;
+  --glass: rgb(26 24 36 / 0.62);
+  --glass-thick: rgb(26 24 36 / 0.82);
+  --glass-edge: rgb(255 255 255 / 0.07);
+  --wash-iris: rgb(122 104 220 / 0.18);
+  --wash-teal: rgb(92 200 189 / 0.08);
+}
+
+/* The wash: soft light from the top corners, fixed so it stays put while
+   content scrolls past — and gives the glass something to frost. */
+.shell {
+  background:
+    radial-gradient(70% 55% at 0% 0%, var(--wash-iris), transparent 70%),
+    radial-gradient(55% 50% at 100% 0%, var(--wash-teal), transparent 70%),
+    radial-gradient(60% 45% at 60% 100%, var(--wash-iris), transparent 75%),
+    var(--bg);
+  background-attachment: fixed;
+}
+.shell-main,
+.shell-content {
+  background: transparent;
+}
+
+/* The rail is a frosted sidebar over the wash, like a macOS sidebar. */
+.rail {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+  border-right-color: rgb(from var(--text) r g b / 0.07);
+}
+
+/* Big titles speak in the brand's voice. */
+.page-header-title,
+.attention-title,
+.tg-hero-title,
+.project-page .project-head .project-title-input:is(input),
+.calendar-toolbar .cal-month-heading,
+.calendar-page .calendar-toolbar .cal-month-heading,
+.not-found-card h1 {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  letter-spacing: -0.028em;
+}
+
+/* The logo word too. */
+.rail-logo-word {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .rail {
+    background: var(--surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* Glass you can actually see: thinner bars over a slightly richer wash, so
+   the iris tint and whatever scrolls past read through them. */
+:root,
+[data-theme="light"] {
+  --wash-iris: rgb(75 58 140 / 0.17);
+  --wash-teal: rgb(31 122 116 / 0.12);
+}
+.topbar,
+.mobile-nav {
+  background: rgb(from var(--surface) r g b / 0.5);
+}
+.rail {
+  background: rgb(from var(--surface) r g b / 0.42);
+}
+@media (prefers-reduced-transparency: reduce) {
+  .topbar,
+  .mobile-nav,
+  .rail {
+    background: var(--surface);
+  }
+}
+
+/* Tell Tangent: a mic beside the box, and suggestions that say why. */
+.cmdk-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.cmdk-input-row .cmdk-input {
+  flex: 1;
+  min-width: 0;
+  border-bottom: 0;
+}
+.cmdk-mic {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(from var(--accent) r g b / 0.1);
+  color: var(--accent);
+  cursor: pointer;
+  transition: background-color 150ms ease, transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.cmdk-mic.is-on {
+  background: var(--red);
+  color: #fff;
+}
+.cmdk-mic:active {
+  transform: scale(0.94);
+}
+.cmdk-section {
+  margin: 6px 12px 4px;
+  color: var(--text-3);
+  font: 600 11px/1 var(--font-body);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.cmdk-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.cmdk-item-label {
+  color: var(--text);
+  font-weight: 550;
+}
+.cmdk-item-detail {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── One check, everywhere ────────────────────────────────────────────────
+   Today, projects, the calendar's day panel, Agenda and Needs attention all
+   use the same round check: 22px, a fine ring, filled iris when done, and
+   the mark dead-centre (icons are blocks, never sitting on a text baseline). */
+.ui-task-check,
+.attention-check,
+.calendar-page .ag-check {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  padding: 0;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  line-height: 0;
+}
+.ui-task-check-mark {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+.ui-task-check svg,
+.attention-check svg,
+.calendar-page .ag-check svg,
+.capture-check svg {
+  display: block;
+  flex: none;
+}
+.ui-task-check[aria-pressed="true"],
+.calendar-page .ag-item.is-done .ag-check {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+@media (hover: hover) and (pointer: fine) {
+  .ui-task-check:hover,
+  .calendar-page .ag-check:hover {
+    border-color: var(--accent);
+  }
+}
+
+/* One colour marker everywhere: a dot (lists, calendar, the task card). */
+.ui-task-kind,
+.attention-kind {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  align-self: center;
+  border-radius: 999px;
 }

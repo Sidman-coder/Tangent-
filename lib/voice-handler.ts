@@ -15,12 +15,16 @@
 // Next.js route files may only export HTTP method handlers, so this can't
 // live in route.ts itself.
 import { NextResponse } from "next/server";
+import { inferCalendarGroup, parseCalendarGroup } from "@/lib/calendars";
+import { addTasksToPlan } from "@/lib/store";
 import { addTask, addPlanWithTasks, addRecurringTask, completeTask, deleteTask, updateTask, addVoiceLog, getAppState, getAllTasks, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, addPendingConfirmation, getUserTimezone, getAllPlans } from "@/lib/store";
 import { addDaysYMD, localNow, promptDateContext, singleRelativeDay, ymdFromParts } from "@/lib/time";
 import type { Task, TaskKind } from "@/lib/types";
 import { needsAgentTools, runVoiceAgentToolLoop } from "@/lib/voice-agent-tools";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import { generatePlan, isClearPlanRequest, planDates } from "@/lib/ai/plan";
+import { placeNewTask, spreadPlanDates } from "@/lib/spacing";
+import { buildStudentContext } from "@/lib/ai/student-context";
 import { resolvePlanTitle } from "@/lib/plan-title";
 import { perfCount, perfSpan, withPerfTrace } from "@/lib/perf";
 import type Anthropic from "@anthropic-ai/sdk";
@@ -153,45 +157,10 @@ async function handleBulkDelete(meta: DeleteMeta): Promise<NextResponse | null> 
   return proposeDelete(plan.tasks, meta, { all: plan.all, label: plan.label });
 }
 
-function inferCalendarId(title: string, notes?: string): string {
-  const text = (title + " " + (notes || "")).toLowerCase();
-  if (text.match(/meeting|call|client|project|deadline|work|sales|email|report|presentation/)) {
-    return "cal_work";
-  }
-  if (text.match(/gym|workout|health|family|errand|personal|hobby|friend/)) {
-    return "cal_personal";
-  }
-  if (text.match(/study|homework|assignment|exam|test|course|class|lecture|quiz/)) {
-    return "cal_study";
-  }
-  return "cal_all";
-}
-
-export async function resolveCalendarId(input: string | undefined): Promise<string> {
-  if (!input) return 'cal_all'
-  const calendars = await getCalendars()
-  const exactMatch = calendars.find(c => c.id === input)
-  if (exactMatch) return exactMatch.id
-  const nameMatch = calendars.find(c =>
-    c.name.toLowerCase() === input.toLowerCase() ||
-    c.name.toLowerCase().includes(input.toLowerCase()) ||
-    input.toLowerCase().includes(c.name.toLowerCase())
-  )
-  if (nameMatch) return nameMatch.id
-  const lower = input.toLowerCase()
-  if (lower.includes('work') || lower.includes('professional') || lower.includes('business')) {
-    const workCal = calendars.find(c => c.name.toLowerCase().includes('work'))
-    if (workCal) return workCal.id
-  }
-  if (lower.includes('personal') || lower.includes('private') || lower.includes('life')) {
-    const personalCal = calendars.find(c => c.name.toLowerCase().includes('personal'))
-    if (personalCal) return personalCal.id
-  }
-  if (lower.includes('study') || lower.includes('school') || lower.includes('learn')) {
-    const studyCal = calendars.find(c => c.name.toLowerCase().includes('study'))
-    if (studyCal) return studyCal.id
-  }
-  return inferCalendarId(input, '')
+/** School or No school (lib/calendars.ts) for a calendar the AI named, falling
+ *  back to the task's own words when it named neither. */
+export async function resolveCalendarId(input: string | undefined, title = ""): Promise<string> {
+  return parseCalendarGroup(input) ?? inferCalendarGroup(title || input || "");
 }
 
 // ─── Deterministic intent pre-classifier ──────────────────────────────────────
@@ -280,7 +249,7 @@ function inferPlanKind(topic: string): TaskKind {
 async function voiceSystemPrompt(tz: string, userContext?: string): Promise<Anthropic.TextBlockParam[]> {
   const calendars = await getCalendars();
   const calendarList = calendars.map((c) => `${c.id} (${c.name})`).join(", ");
-  const context = `${userContext ? `USER CONTEXT (what you know about this user from past interactions):
+  const context = `${userContext ? `STUDENT CONTEXT (what Tangent knows about this student and their schedule):
 ${userContext}
 
 Use this context to:
@@ -299,22 +268,28 @@ const VOICE_PLAYBOOK = `TONE AND VOICE RULES — follow these exactly:
 - Never start a response with "I"
 - Be direct and specific — say exactly what was done or found, nothing more
 - Use short sentences. No corporate speak.
-- When confirming a task was added say exactly what was added and when, nothing else
+- When confirming a task was added say exactly what was added, nothing else
 - When summarizing information be precise and factual, not enthusiastic
 - Responses should feel like a text from a competent friend, not a customer service bot
+
+WHEN A NEW TASK HAPPENS (Tangent's spacing brain places it — you don't):
+- "date": only if the user named a day ("tomorrow", "friday", "oct 12"). Otherwise "".
+- "time": only if the user named a time ("at 4", "7pm", "tonight"). Otherwise "".
+- "endDate": if the work has a deadline ("due friday", "before thursday's test"), the deadline date. Otherwise null. Never put a deadline in "date".
+- Leaving them empty is correct and expected: Tangent puts the task on the lightest day with room before the deadline, around the student's existing load (shown in their context).
+- "response": say what was added, not when — Tangent adds the when.
 
 CALENDAR AWARENESS:
 The user has multiple calendars (listed after these instructions). Before adding any task you must determine which calendar it belongs to.
 Default rules for calendar assignment:
-- Work related tasks (meetings, calls, projects, deadlines, client work) → use the work calendar
-- Personal tasks (gym, health, hobbies, family, errands) → use the personal calendar
-- Study and school tasks (assignments, studying, courses, homework) → use the study calendar if it exists, otherwise personal
-- If the user explicitly names a calendar always use that one
-- If completely unclear use the all calendars id which is cal_all
+- There are exactly two: cal_school (School) and cal_other (No school). cal_all is a view, never a target.
+- Schoolwork (classes, homework, assignments, tests, quizzes, studying, essays, teachers) → cal_school
+- Everything else (practices, clubs, extracurriculars, jobs, projects, gym, family, errands, hobbies) → cal_other
+- If the user explicitly says school or no school, follow that
 
 When adding a task always include the calendarId field in your JSON response.
 When the user says "move tasks to X calendar" use the move_tasks action.
-When the user says "add this to my work calendar" or any named calendar use that calendar's id.
+When the user says "this is for school" or "not school" use that calendar's id.
 When the user asks what calendars they have, use the get_calendars action.
 
 The student's local date and time are given at the very end. Resolve every relative date against them.
@@ -343,13 +318,13 @@ Use create_plan for any open-ended goal or skill the user wants to improve at or
 
 --- SINGLE TASK COMMAND (add/complete/delete one task) ---
 Return this exact JSON:
-{"action":"add_task"|"complete_task"|"delete_task","title":"task title","date":"YYYY-MM-DD","time":"HH:MM","calendarId":"cal_work|cal_personal|cal_study|cal_all","notes":"structured notes following the NOTES FORMAT below","startAction":"one specific concrete action under 20 words, starting with a verb","resources":[{"label":"Site — exact page title","url":"https://exact/url"}],"response":"confirmation under 15 words"}
+{"action":"add_task"|"complete_task"|"delete_task","title":"task title","date":"YYYY-MM-DD or empty","time":"HH:MM or empty","endDate":"YYYY-MM-DD deadline or null","calendarId":"cal_school|cal_other","notes":"structured notes following the NOTES FORMAT below","startAction":"one specific concrete action under 20 words, starting with a verb","resources":[{"label":"Site — exact page title","url":"https://exact/url"}],"response":"confirmation under 15 words"}
 
 Example:
-{"action":"add_task","title":"Sales call with client","date":"2026-07-20","time":"10:00","calendarId":"cal_work","notes":"GOAL: ...","startAction":"...","resources":[],"response":"Added sales call to your Work calendar."}
+{"action":"add_task","title":"Robotics practice","date":"2026-07-20","time":"16:00","calendarId":"cal_other","notes":"GOAL: ...","startAction":"...","resources":[],"response":"Added robotics practice."}
 
 Another example:
-{"action":"add_task","title":"Study derivatives","date":"2026-07-20","time":"10:00","calendarId":"cal_study","notes":"GOAL: ...\\nFOCUS: ...\\nTIME: ...","startAction":"Open the Khan Academy derivatives unit and complete the first 3 exercises","resources":[{"label":"Khan Academy — Derivatives Intro","url":"https://www.khanacademy.org/..."}],"response":"Added study session for July 20th."}
+{"action":"add_task","title":"Study derivatives","date":"","time":"","endDate":"2026-07-24","calendarId":"cal_school","notes":"GOAL: ...\\nFOCUS: ...\\nTIME: ...","startAction":"Open the Khan Academy derivatives unit and complete the first 3 exercises","resources":[{"label":"Khan Academy — Derivatives Intro","url":"https://www.khanacademy.org/..."}],"response":"Added a derivatives study session."}
 
 CALENDARID — always include a "calendarId" field, following the CALENDAR AWARENESS rules above.
 
@@ -391,9 +366,9 @@ Return this exact JSON:
 {"action":"get_calendars","response":"Here are your calendars."}
 Use this when you are unsure what calendars exist before assigning a task.
 
---- MOVE TASKS (use this when the user says "move tasks to X calendar", "move my sales calls to work calendar", "move everything from last week to personal", etc.) ---
+--- MOVE TASKS (use this when the user says "move my essays to school", "those aren't school", "move everything from last week to no school", etc.) ---
 Return this exact JSON:
-{"action":"move_tasks","targetCalendarId":"cal_work","title":"sales call","response":"Moving sales calls to Work calendar."}
+{"action":"move_tasks","targetCalendarId":"cal_school","title":"essay","response":"Moving essay tasks to School."}
 Required fields: targetCalendarId (string — the id or exact name of the destination calendar). For move_tasks, reuse the "title" field as a keyword to match task titles, and "startDate"/"endDate" as an optional YYYY-MM-DD date range to filter by. Omit them entirely to match all tasks.
 
 Rules:
@@ -426,6 +401,21 @@ export function isUsableCommand(cmd: Record<string, unknown> | null): boolean {
   if (TITLED_ACTIONS.has(cmd.action)) return typeof cmd.title === "string" && cmd.title.trim().length > 0;
   if (cmd.action === "move_tasks") return Boolean(cmd.targetCalendarId || cmd.calendarId);
   return true;
+}
+
+/** Did the student name a day? ("tomorrow", "friday", "oct 12", "10/12") */
+function mentionsDay(text: string): boolean {
+  return /\b(today|tonight|tomorrow|tmrw|mon(day)?|tue(s(day)?)?|wed(nesday)?|thu(rs(day)?)?|fri(day)?|sat(urday)?|sun(day)?|weekend|next week|jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|june?|july?|aug(ust)?|sep(t(ember)?)?|oct(ober)?|nov(ember)?|dec(ember)?|\d{1,2}\/\d{1,2})\b/i.test(text);
+}
+
+/** Did the student give a time of day? ("at 4", "7pm", "noon", "after practice" doesn't count) */
+function mentionsTime(text: string): boolean {
+  return /\b(\d{1,2}(:\d{2})?\s*(am|pm|a\.m\.|p\.m\.)|at \d{1,2}(:\d{2})?|noon|midnight|\d{1,2}:\d{2}|in the (morning|afternoon|evening)|tonight)\b/i.test(text);
+}
+
+/** "due friday", "before the test on thursday", "by monday". */
+function mentionsDeadline(text: string): boolean {
+  return /\b(due|by|before|deadline)\b/i.test(text);
 }
 
 /** "today", "tomorrow" or "Fri, Oct 3", plus " at 4:00 PM" when a time is given. */
@@ -468,7 +458,7 @@ async function runFastRoute(route: FastRoute, text: string, today: string): Prom
   }
 
   if (route.op === "add") {
-    const calendarId = await resolveCalendarId(inferCalendarId(route.title));
+    const calendarId = inferCalendarGroup(route.title);
     // Same rule as the AI path below: task.time is rendered on its own.
     const task = await addTask({ title: route.title, date: route.date, time: route.time, completed: false, calendarId });
     if (task.wasDuplicate) {
@@ -541,6 +531,11 @@ export type VoiceOptions = {
   /** Where the words came from, recorded on drafts and events. Defaults to
    *  "typed" when previewing, "voice" otherwise (the pen). */
   source?: "typed" | "voice";
+  /** Inside a Project: new tasks and plan sessions join it instead of
+   *  standing alone or starting a new plan. */
+  projectId?: string;
+  /** Goal for a newly created project (the plan's description). */
+  projectGoal?: string;
 };
 
 /**
@@ -598,7 +593,7 @@ async function handleVoiceTextInner(
       const extractedDays = extractDaysOfWeek(text);
       const daysOfWeek = extractedDays.length > 0 ? extractedDays : [1, 2, 3, 4, 5];
       const time = extractTime(text) ?? "";
-      const calendarId = inferCalendarId(activityName);
+      const calendarId = inferCalendarGroup(activityName);
 
       const recurringTasks = await addRecurringTask(
         {
@@ -809,16 +804,26 @@ async function handleVoiceTextInner(
       console.log("[api/voice] Final date range:", startDate, "to", endDate);
 
       // Session dates are fixed here (lib/ai/plan.ts sessionInterval), not by the model.
-      const dates = planDates(startDate, endDate);
-      console.log("[api/voice] Plan sessions:", dates.length, "from", startDate, "to", endDate);
+      const studentPicture = await buildStudentContext().then((c) => c.text).catch(() => "");
+      const evenDates = planDates(startDate, endDate);
+      // The spacing brain moves sessions off days that are already full and
+      // gives each one a real open time (lib/spacing.ts).
+      const spaced = await spreadPlanDates(evenDates).catch((e) => {
+        console.warn("[api/voice] spacing failed, using even dates:", e instanceof Error ? e.message : e);
+        return null;
+      });
+      const dates = spaced ? spaced.map((s) => s.date) : evenDates;
+      const timeByDate = new Map(spaced?.map((s) => [s.date, s.time]) ?? []);
+      const shifted = spaced ? spaced.filter((s, i) => s.date !== evenDates[i]).length : 0;
+      console.log("[api/voice] Plan sessions:", dates.length, "from", startDate, "to", endDate, "| moved off busy days:", shifted);
 
       const generated = await perfSpan("plan: generate", () =>
         generatePlan({
-          request: withContext(text),
+          request: studentPicture ? `${withContext(text)}\n\nSTUDENT CONTEXT (fit the plan to this student):\n${studentPicture}` : withContext(text),
           dateContext: promptDateContext(tz),
           dates,
           onOutline: (o) => opts.onProgress?.({ type: "plan_outline", title: resolvePlanTitle(o.title, text), taskCount: o.taskCount }),
-          onTask: (index, t) => opts.onProgress?.({ type: "plan_task", index, task: { title: t.title, date: t.date, time: t.time } }),
+          onTask: (index, t) => opts.onProgress?.({ type: "plan_task", index, task: { title: t.title, date: t.date, time: timeByDate.get(t.date) ?? t.time } }),
         })
       );
       const budgetMessage = !generated.ok && generated.budgetExceeded ? generated.error : null;
@@ -827,52 +832,61 @@ async function handleVoiceTextInner(
       if (generated.ok && generated.tasks.length > 0) {
         const planKind = inferPlanKind(text);
         const calendarIds = new Map<string, string>();
-        for (const id of Array.from(new Set(generated.tasks.map((t) => t.calendarId)))) calendarIds.set(id, await resolveCalendarId(id));
+        for (const id of Array.from(new Set(generated.tasks.map((t) => t.calendarId)))) calendarIds.set(id, await resolveCalendarId(id, generated.title));
+        // One insert for every task, with plan_id already set (store.addPlanWithTasks).
+        const planTasks = generated.tasks.map((t) => ({
+              title: t.title,
+              date: t.date,
+              time: timeByDate.get(t.date) ?? t.time,
+              kind: planKind,
+              completed: false,
+              calendarId: calendarIds.get(t.calendarId) ?? inferCalendarGroup(t.title),
+              notes: t.notes || undefined,
+              startAction: t.startAction || undefined,
+              resources: t.resources.length > 0 ? t.resources : undefined,
+            }));
+
         if (drafting) {
           // Pipeline V2: the same tasks, saved as a draft for the student to confirm.
           const planTitle = resolvePlanTitle(generated.title, text);
           const assumptions = [`Spread from ${friendlyWhen(startDate, undefined, today)} to ${friendlyWhen(endDate, undefined, today)}`];
           if (!rangeGiven) assumptions.push("Assumed about a week since no timeframe was given");
+          if (shifted > 0) assumptions.push(`${shifted} session${shifted > 1 ? "s" : ""} moved off days that were already full`);
+          const draftTasks = planTasks.map((t) => ({ ...t, resources: t.resources ?? [] }));
           return await respondWithDraft(
             {
               source: opts.source ?? "typed",
               requestText: text,
-              summary: "New plan",
+              summary: opts.projectId ? "Add to project" : "New plan",
               intent: "new_plan",
-              ops: planOps(
-                planTitle,
-                generated.tasks.map((t) => ({
-                  title: t.title,
-                  date: t.date,
-                  time: t.time,
-                  kind: planKind,
-                  calendarId: calendarIds.get(t.calendarId) ?? "cal_all",
-                  notes: t.notes || undefined,
-                  startAction: t.startAction || undefined,
-                  resources: t.resources,
-                }))
-              ),
+              ops: opts.projectId
+                ? draftTasks.map((t) => taskOp(t, { plan_id: opts.projectId }))
+                : planOps(planTitle, draftTasks, opts.projectGoal),
               assumptions,
             },
             { text, today, route: "plan" }
           );
         }
-        // One insert for every task, with plan_id already set (store.addPlanWithTasks).
+
+        // Inside a Project the sessions join it; otherwise they become a new
+        // project of their own (a Plan is what the Projects page lists).
+        if (opts.projectId) {
+          const { tasks: addedToProject, skippedDuplicates: skipped } = await addTasksToPlan(opts.projectId, planTasks);
+          const ids = addedToProject.map((t) => t.id);
+          const rec = await recordAction("create_plan", `Added ${ids.length} steps to a project`, { addedTaskIds: ids });
+          await addVoiceLog({ text, response: `Added ${ids.length} steps to project`, action: "create_plan", ok: true });
+          return NextResponse.json({
+            ok: true,
+            action: "create_plan",
+            count: ids.length,
+            response: `Added ${ids.length} steps${shifted > 0 ? `, spaced around your busy days` : ""}.${skipped > 0 ? ` Skipped ${skipped} duplicate${skipped > 1 ? "s" : ""}.` : ""}`,
+            actionId: rec.id,
+            state: await getAppState(),
+          });
+        }
+
         const { plan, tasks: created, skippedDuplicates } = await perfSpan(`plan: insert ${generated.tasks.length} tasks`, () =>
-          addPlanWithTasks(
-            { title: resolvePlanTitle(generated.title, text), description: "" },
-            generated.tasks.map((t) => ({
-              title: t.title,
-              date: t.date,
-              time: t.time,
-              kind: planKind,
-              completed: false,
-              calendarId: calendarIds.get(t.calendarId) ?? "cal_all",
-              notes: t.notes || undefined,
-              startAction: t.startAction || undefined,
-              resources: t.resources.length > 0 ? t.resources : undefined,
-            }))
-          )
+          addPlanWithTasks({ title: resolvePlanTitle(generated.title, text), description: opts.projectGoal ?? "" }, planTasks)
         );
         const taskIds = created.map((t) => t.id);
         const record = await perfSpan("plan: undo record", () => recordAction("create_plan", `Created plan "${plan.title}" with ${taskIds.length} tasks`, {
@@ -886,7 +900,7 @@ async function handleVoiceTextInner(
           ok: true,
           action: "create_plan",
           count: taskIds.length,
-          response: `Your plan has been created with ${taskIds.length} tasks added to your calendar!${dupSuffix}`,
+          response: `Added "${plan.title}": ${taskIds.length} sessions${shifted > 0 ? `, spaced around your busy days (${shifted} moved off days that were already full)` : ""}.${dupSuffix}`,
           plan: { id: plan.id, title: plan.title, taskCount: taskIds.length, color: plan.color },
           actionId: record.id,
           state: await perfSpan("plan: full app state", () => getAppState()),
@@ -943,7 +957,11 @@ async function handleVoiceTextInner(
     received("standard");
     console.log("[api/voice] Calling Anthropic API...");
     routeAs(ROUTES.fast);
-    const userContext = await getContextAsString();
+    // Memory, school hours, capacity, how full the next two weeks are, what's
+    // due, their goals (lib/ai/student-context.ts).
+    const userContext = await buildStudentContext()
+      .then((c) => c.text)
+      .catch(() => getContextAsString());
     const voiceRequest = {
       system: await voiceSystemPrompt(tz, userContext),
       messages: [{ role: "user" as const, content: withContext(text) }],
@@ -1180,9 +1198,8 @@ async function handleVoiceTextInner(
       }
 
       const calendars = await getCalendars();
-      const targetCalendar = calendars.find(
-        (c) => c.id === targetCalendarId || c.name.toLowerCase() === targetCalendarId.toLowerCase()
-      );
+      const targetGroup = parseCalendarGroup(targetCalendarId);
+      const targetCalendar = calendars.find((c) => c.id === targetGroup);
 
       if (!targetCalendar) {
         const err = `Calendar "${targetCalendarId}" not found. Available: ${calendars.map((c) => c.name).join(", ")}`;
@@ -1238,7 +1255,20 @@ async function handleVoiceTextInner(
           )
         : undefined;
       const resources = rawResources && rawResources.length > 0 ? rawResources : undefined;
-      const calendarId = await resolveCalendarId(typeof cmd.calendarId === "string" ? cmd.calendarId : undefined);
+      const calendarId = await resolveCalendarId(typeof cmd.calendarId === "string" ? cmd.calendarId : undefined, title);
+      // When it happens: exactly what the student said, and the spacing brain
+      // (lib/spacing.ts) fills in whatever they didn't — the lightest day with
+      // room before any deadline, at an open time after school. The model's
+      // date/time only count when the student actually said one; models fill
+      // both in regardless.
+      const aiDeadline = typeof cmd.endDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(cmd.endDate) ? cmd.endDate : null;
+      const saidDay = hintedDate ?? (aiDate && mentionsDay(text) && !(aiDeadline && mentionsDeadline(text)) ? aiDate : null);
+      const aiTime = typeof cmd.time === "string" && /^\d{1,2}:\d{2}$/.test(cmd.time) ? cmd.time : null;
+      const saidTime = aiTime && mentionsTime(text) ? aiTime : null;
+      const placed = await placeNewTask({ date: saidDay, time: saidTime, deadline: aiDeadline, notes }).catch((e) => {
+        console.warn("[api/voice] spacing failed, using the model's time:", e instanceof Error ? e.message : e);
+        return { date, time, note: undefined };
+      });
       if (drafting) {
         return await respondWithDraft(
           {
@@ -1246,10 +1276,11 @@ async function handleVoiceTextInner(
             requestText: text,
             summary: "Add a task",
             intent: "add_task",
-            ops: [taskOp({ title, date, time, calendarId, notes, startAction, resources })],
+            ops: [taskOp({ title, date: placed.date, time: placed.time, calendarId, notes, startAction, resources }, opts.projectId ? { plan_id: opts.projectId } : {})],
             assumptions: [
-              ...(!time ? ["No time given, so it's untimed (all day)"] : []),
-              ...(!hintedDate && !aiDate ? ["Assumed today since no day was given"] : []),
+              ...(!saidTime ? ["No time given, so Tangent picked an open time"] : []),
+              ...(!saidDay ? ["No day given, so Tangent picked the lightest day with room"] : []),
+              ...(placed.note ? [placed.note] : []),
             ],
           },
           { text, today, route: "standard" }
@@ -1258,7 +1289,7 @@ async function handleVoiceTextInner(
       // The title is the title. Every surface renders task.time next to it
       // (TaskRow, the Today hero, the calendar day panel), so folding the time
       // into the title printed it twice: "Study math (15:00)  3:00 PM".
-      const task = await addTask({ title, date, time, completed: false, calendarId, notes, startAction, resources });
+      const task = await addTask({ title, date: placed.date, time: placed.time, completed: false, calendarId, notes, startAction, resources, ...(opts.projectId ? { planId: opts.projectId } : {}) });
       if (task.wasDuplicate) {
         const dupResponse = `Skipped 1 duplicate (already have "${task.title}" around ${task.time}).`;
         console.log("[api/voice] add_task skipped duplicate:", task.id, task.title);
@@ -1266,11 +1297,11 @@ async function handleVoiceTextInner(
         return NextResponse.json({ ok: true, action, task, response: dupResponse, state: await getAppState() });
       }
       const addRecord = await recordAction("add_task", `Added "${task.title}"`, { addedTaskIds: [task.id] });
-      console.log("[api/voice] add_task success:", task.id, task.title);
-      // The model's sentence may name a time or title that was changed above, so say what was saved.
-      const saved = `Added "${task.title}" for ${friendlyWhen(date, time || undefined, today)}.`;
-      await addVoiceLog({ text, response: saved, action, ok: true });
-      return NextResponse.json({ ok: true, action, task, response: saved, actionId: addRecord.id, state: await getAppState() });
+      console.log("[api/voice] add_task success:", task.id, task.title, task.date, task.time);
+      // Say when it landed: the model's own sentence may name a time the brain changed.
+      const placedResponse = `Added ${task.title} for ${friendlyWhen(task.date, task.time, today)}.${placed.note ? ` ${placed.note}` : ""}`;
+      await addVoiceLog({ text, response: placedResponse, action, ok: true });
+      return NextResponse.json({ ok: true, action, task, response: placedResponse, actionId: addRecord.id, state: await getAppState() });
     }
 
     if (action === "complete_task") {

@@ -25,7 +25,7 @@ export default function Button({
   return (
     <button
       {...props}
-      className={`ui-button ui-button--${variant} ui-button--${size} ${className}`.trim()}
+      className={`ui-button ui-button--${variant} ui-button--${size}${variant === "primary" ? " lg lg-tint lg-interactive" : variant === "quiet" ? "" : " lg lg-interactive"} ${className}`.trim()}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
     >

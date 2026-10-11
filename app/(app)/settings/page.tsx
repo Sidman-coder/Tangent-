@@ -5,6 +5,7 @@ import { useAppState } from "@/components/AppStateProvider";
 import Button from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
 import CanvasConnectGuide from "@/components/CanvasConnectGuide";
+import WhatTangentKnows from "@/components/settings/WhatTangentKnows";
 import { CalendarSync } from "lucide-react";
 import type { AppState, CanvasFeedStatus } from "@/lib/types";
 import {
@@ -22,12 +23,21 @@ import {
 import { getInAppPopupsEnabled, setInAppPopupsEnabled } from "@/lib/notification-popups";
 import { DAY_VIEW_OPTIONS, HELP_FOCUS_OPTIONS, formatSchoolHours } from "@/lib/onboarding";
 import { prefsOf } from "@/lib/personalize";
+import { DEFAULT_CAPACITY, formatMinutes } from "@/lib/load";
+
+/** 30 min to 6 hrs in half hours, plus the current value if it's off-grid. */
+function capacityOptions(current: number): number[] {
+  const steps = Array.from({ length: 12 }, (_, i) => (i + 1) * 30);
+  return steps.includes(current) ? steps : [...steps, current].sort((a, b) => a - b);
+}
 
 export default function SettingsPage() {
   const { state, saveState, refresh } = useAppState();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [canvasFeed, setCanvasFeed] = useState<CanvasFeedStatus | null>(null);
+  // Unknown until the status call answers: showing "Not connected" first was wrong for connected students.
+  const [canvasLoaded, setCanvasLoaded] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -39,6 +49,20 @@ export default function SettingsPage() {
   const [desktopNotifSupported, setDesktopNotifSupported] = useState(true);
   const [inAppPopups, setInAppPopups] = useState(true);
   const accountEmail = state?.user.email ?? "";
+  const capacity = state?.user.capacity ?? DEFAULT_CAPACITY;
+  const [capMsg, setCapMsg] = useState<string | null>(null);
+
+  const onChangeCapacity = async (next: { weekday: number; weekend: number }) => {
+    setCapMsg(null);
+    const res = await fetch("/api/capacity", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(next),
+    });
+    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    setCapMsg(res.ok && data.ok ? "Saved." : data.error ?? "Couldn't save that.");
+    await refresh();
+  };
 
   useEffect(() => {
     if (accountEmail) setInAppPopups(getInAppPopupsEnabled(accountEmail));
@@ -63,7 +87,8 @@ export default function SettingsPage() {
     fetch("/api/canvas/status", { cache: "no-store" })
       .then((r) => r.json())
       .then((data: { ok?: boolean; feed?: CanvasFeedStatus | null }) => setCanvasFeed(data.ok ? data.feed ?? null : null))
-      .catch(() => setCanvasFeed(null));
+      .catch(() => setCanvasFeed(null))
+      .finally(() => setCanvasLoaded(true));
   }, [canvasGuideOpen]);
 
   useEffect(() => {
@@ -183,6 +208,7 @@ export default function SettingsPage() {
           <a href="#notifications">Notifications</a>
           <a href="#integrations">Integrations</a>
           <a href="#your-tangent">Your Tangent</a>
+          <a href="#what-tangent-knows">What Tangent knows</a>
           <a href="#account">Account</a>
         </nav>
 
@@ -257,13 +283,15 @@ export default function SettingsPage() {
                 <div>
                   <strong>Canvas calendar</strong>
                   <span>
-                    {canvasFeed
+                    {!canvasLoaded
+                      ? <span className="settings-skeleton" aria-label="Checking Canvas" />
+                      : canvasFeed
                       ? `Connected · ${canvasFeed.maskedUrl}${canvasFeed.lastSyncedAt ? ` · ${canvasFeed.lastSyncCount} items last sync` : ""}`
                       : "Bring assignments and due dates into your Tangent calendar."}
                   </span>
                 </div>
               </div>
-              <Button variant="primary" onClick={() => setCanvasGuideOpen(true)}>{canvasFeed ? "Reconnect Canvas" : "Connect Canvas"}</Button>
+              <Button variant="primary" onClick={() => setCanvasGuideOpen(true)} disabled={!canvasLoaded}>{canvasFeed ? "Reconnect Canvas" : "Connect Canvas"}</Button>
             </div>
           </section>
 
@@ -308,15 +336,49 @@ export default function SettingsPage() {
               </div>
             </div>
             <div className="settings-option-row">
-              <div><strong>Canvas</strong><span>{canvasFeed ? "Connected" : "Not connected"}</span></div>
-              <Button variant="secondary" onClick={() => setCanvasGuideOpen(true)}>{canvasFeed ? "Reconnect" : "Connect Canvas"}</Button>
+              <div>
+                <strong>Work per school night</strong>
+                <span>How much Tangent plans on one evening before it moves work to a lighter day.</span>
+              </div>
+              <select
+                className="settings-select"
+                aria-label="Work per school night"
+                value={String(capacity.weekday)}
+                onChange={(e) => void onChangeCapacity({ ...capacity, weekday: Number(e.target.value) })}
+                disabled={!state}
+              >
+                {capacityOptions(capacity.weekday).map((m) => (
+                  <option key={m} value={m}>{formatMinutes(m)}</option>
+                ))}
+              </select>
+            </div>
+            <div className="settings-option-row">
+              <div><strong>Work per weekend day</strong><span>Same, for Saturdays and Sundays.</span></div>
+              <select
+                className="settings-select"
+                aria-label="Work per weekend day"
+                value={String(capacity.weekend)}
+                onChange={(e) => void onChangeCapacity({ ...capacity, weekend: Number(e.target.value) })}
+                disabled={!state}
+              >
+                {capacityOptions(capacity.weekend).map((m) => (
+                  <option key={m} value={m}>{formatMinutes(m)}</option>
+                ))}
+              </select>
+            </div>
+            <div className="settings-option-row">
+              <div><strong>Take the tour</strong><span>A two-minute walk through everything Tangent does.</span></div>
+              <Button variant="secondary" onClick={() => window.dispatchEvent(new Event("tangent:tour"))}>Start tour</Button>
             </div>
             <div className="settings-option-row">
               <div><strong>Redo setup</strong><span>Go through the questions again with your answers filled in.</span></div>
               <Button variant="secondary" loading={redoing} loadingLabel="Opening…" onClick={() => void onRestartOnboarding()}>Redo setup</Button>
             </div>
             {prefMsg && <p className="settings-status" role="status">{prefMsg}</p>}
+            {capMsg && <p className="settings-status" role="status">{capMsg}</p>}
           </section>
+
+          <WhatTangentKnows />
 
           <section id="account" className="settings-panel">
             <div className="settings-option-row">

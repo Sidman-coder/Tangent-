@@ -5,8 +5,11 @@ import { Notification } from "@/lib/types"
 import { notifyNewDesktopNotifications } from "@/lib/desktop-notifications"
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider"
 import { getUserToday } from "@/lib/time"
+import { useRouter } from "next/navigation"
+import { QUESTIONS_EVENT } from "@/lib/questions-client"
 import { claimPopups, getInAppPopupsEnabled, planToasts, popupCandidates, type Toast } from "@/lib/notification-popups"
 import NotificationToasts from "@/components/NotificationToasts"
+import { humanizeTimestamps } from "@/lib/humanize"
 
 type NotificationBellProps = {
   open?: boolean
@@ -24,6 +27,7 @@ export default function NotificationBell({ open: openProp, onOpenChange }: Notif
   const [unreadCount, setUnreadCount] = useState(0)
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const router = useRouter()
 
   const isControlled = openProp !== undefined
   const open = isControlled ? openProp : uncontrolledOpen
@@ -181,14 +185,20 @@ export default function NotificationBell({ open: openProp, onOpenChange }: Notif
     >
       <div className="notif-item-icon"><Icon size={18} strokeWidth={1.75} /></div>
       <div className="notif-item-content">
-        <div className="notif-item-title">{n.title}</div>
-        <div className="notif-item-body">{n.body}</div>
+        <div className="notif-item-title">{humanizeTimestamps(n.title)}</div>
+        <div className="notif-item-body">{humanizeTimestamps(n.body)}</div>
         {n.actionLabel && (
           <button
             className="notif-item-action"
             onClick={e => {
               e.stopPropagation()
               if (n.type === 'reschedule_offer') void handleReschedule(n)
+              // Tangent's questions about a task are answered on Today.
+              if ((n.actionData as { kind?: string } | undefined)?.kind === 'questions') {
+                setOpen(false)
+                window.dispatchEvent(new Event(QUESTIONS_EVENT))
+                router.push('/#questions')
+              }
             }}
           >
             {n.actionLabel}

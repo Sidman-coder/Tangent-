@@ -4,10 +4,11 @@ import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { ArrowRight, Check, Redo2 } from "lucide-react";
 import type { Task } from "@/lib/types";
-import { formatTime12 } from "@/lib/dates";
+import { formatTime12, isDueOnly } from "@/lib/dates";
 import { press, riseIn, rowPresence, spring } from "@/lib/motion";
 import { describeReason, type UrgencySummary } from "@/lib/urgency";
 import { urgencyRgbVar } from "./urgency-palette";
+import TaskTitle from "@/components/ui/TaskTitle";
 
 const VISIBLE_LIMIT = 5;
 
@@ -99,7 +100,7 @@ export default function AttentionSection({
             <p className="attention-guidance">
               {clear
                 ? nextTask
-                  ? <>Next up: <strong>{nextTask.title}</strong> · {dayLabel(nextTask, today) ?? "today"} at {formatTime12(nextTask.time)}</>
+                  ? <>Next up: <strong>{nextTask.title}</strong> · {isDueOnly(nextTask) ? `due ${dayLabel(nextTask, today) ?? "today"}` : `${dayLabel(nextTask, today) ?? "today"} at ${formatTime12(nextTask.time)}`}</>
                   : "Your schedule is open. Capture something when it comes to you."
                 : GUIDANCE[urgency.level]}
             </p>
@@ -127,10 +128,10 @@ export default function AttentionSection({
                     <span className="attention-kind" style={{ background: colorForTask(task) }} aria-hidden="true" />
                     <div className="attention-copy">
                       <button type="button" className="attention-task-title" onClick={() => onOpen(task)}>
-                        {task.title}
+                        <TaskTitle task={task} />
                       </button>
                       <span className="attention-meta">
-                        {day ? `${day} · ` : ""}{formatTime12(task.time)}
+                        {isDueOnly(task) ? `Due ${day ?? "today"}` : `${day ? `${day} · ` : ""}${formatTime12(task.time)}`}
                       </span>
                     </div>
                     <span className={`attention-chip attention-chip--${reason.type}`}>{describeReason(reason)}</span>

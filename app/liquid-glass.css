@@ -1,0 +1,382 @@
+/* ═════════════════════════════════════════════════════════════════════════
+   Liquid Glass, for the web (after Apple's iOS 26 material; see the
+   liquid-glass-design skill). A material for things that FLOAT — the rail,
+   the top-bar controls, the capture mic, segmented controls, the phone tab
+   bar, primary buttons — never for content cards.
+
+   What makes it read as glass, not just blur:
+   - it bends the colour behind it (blur + strong saturation + a touch of
+     brightness), so the iris/teal wash shows through tinted;
+   - it catches light: a bright inner top edge and a soft sheen (::before);
+   - it responds: a highlight follows the pointer over .lg-interactive
+     (--lg-x / --lg-y, set by components/LiquidGlass.tsx);
+   - "prominent" glass (.lg-tint) carries the iris accent, like
+     .glassProminent, for the one primary action in view.
+   Solid under prefers-reduced-transparency.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+:root,
+[data-theme="light"] {
+  --lg-fill: rgb(255 255 255 / 0.42);
+  --lg-fill-strong: rgb(255 255 255 / 0.6);
+  --lg-edge: rgb(255 255 255 / 0.65);
+  --lg-rim-top: rgb(255 255 255 / 0.9);
+  --lg-rim-bottom: rgb(255 255 255 / 0.2);
+  --lg-shade: rgb(28 26 38 / 0.22);
+  --lg-sheen: rgb(255 255 255 / 0.55);
+  --lg-light: rgb(255 255 255 / 0.45);
+  --lg-filter: blur(18px) saturate(210%) brightness(1.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --lg-fill: rgb(44 40 62 / 0.4);
+    --lg-fill-strong: rgb(44 40 62 / 0.6);
+    --lg-edge: rgb(255 255 255 / 0.12);
+    --lg-rim-top: rgb(255 255 255 / 0.22);
+    --lg-rim-bottom: rgb(255 255 255 / 0.04);
+    --lg-shade: rgb(0 0 0 / 0.5);
+    --lg-sheen: rgb(255 255 255 / 0.12);
+    --lg-light: rgb(255 255 255 / 0.14);
+    --lg-filter: blur(18px) saturate(180%) brightness(1.1);
+  }
+}
+
+[data-theme="dark"] {
+  --lg-fill: rgb(44 40 62 / 0.4);
+  --lg-fill-strong: rgb(44 40 62 / 0.6);
+  --lg-edge: rgb(255 255 255 / 0.12);
+  --lg-rim-top: rgb(255 255 255 / 0.22);
+  --lg-rim-bottom: rgb(255 255 255 / 0.04);
+  --lg-shade: rgb(0 0 0 / 0.5);
+  --lg-sheen: rgb(255 255 255 / 0.12);
+  --lg-light: rgb(255 255 255 / 0.14);
+  --lg-filter: blur(18px) saturate(180%) brightness(1.1);
+}
+
+.lg {
+  position: relative;
+  isolation: isolate;
+  background: var(--lg-fill);
+  -webkit-backdrop-filter: var(--lg-filter);
+  backdrop-filter: var(--lg-filter);
+  border: 1px solid var(--lg-edge);
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim-top),
+    inset 0 -1px 0 var(--lg-rim-bottom),
+    0 1px 2px rgb(28 26 38 / 0.06),
+    0 12px 32px -14px var(--lg-shade);
+}
+
+/* The sheen: light lying across the top of the glass. */
+.lg::before,
+.lg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.lg::before {
+  background: linear-gradient(
+    168deg,
+    var(--lg-sheen) 0%,
+    transparent 34%,
+    transparent 72%,
+    rgb(255 255 255 / 0.06) 100%
+  );
+}
+
+/* Interactive glass lights up where the pointer is. */
+.lg-interactive::after {
+  background: radial-gradient(160px circle at var(--lg-x, 50%) var(--lg-y, -40%), var(--lg-light), transparent 65%);
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .lg-interactive:hover::after {
+    opacity: 1;
+  }
+}
+
+.lg-strong {
+  background: var(--lg-fill-strong);
+}
+
+/* Prominent glass: the iris accent, still catching light. */
+.lg-tint {
+  background: rgb(from var(--accent) r g b / 0.86);
+  border-color: rgb(255 255 255 / 0.28);
+  color: var(--accent-ink);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.45),
+    inset 0 -1px 0 rgb(0 0 0 / 0.12),
+    0 10px 28px -10px rgb(from var(--accent) r g b / 0.65);
+}
+
+.lg-tint::before {
+  background: linear-gradient(168deg, rgb(255 255 255 / 0.38) 0%, transparent 42%);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .lg,
+  .lg-strong {
+    background: var(--surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .lg-tint {
+    background: var(--accent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lg-interactive::after {
+    transition: none;
+  }
+}
+
+/* ── Where it's used ──────────────────────────────────────────────────── */
+
+/* The rail floats: an inset glass panel over the wash (macOS Tahoe). */
+/* .lg is position: relative (for its light layers); bars keep their own. */
+.rail.lg {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  bottom: 10px;
+  width: calc(var(--rail-w) - 20px);
+  border-radius: 22px;
+  padding: 16px 12px 12px;
+}
+
+/* The top bar is no longer a slab: it clears to the page with a soft
+   scroll-edge fade, and its controls sit on one glass capsule. */
+.topbar {
+  background: linear-gradient(to bottom, rgb(from var(--bg) r g b / 0.85), rgb(from var(--bg) r g b / 0));
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-bottom: 0;
+  box-shadow: none;
+}
+
+.topbar-right.lg {
+  padding: 5px 6px 5px 14px;
+  border-radius: 999px;
+}
+
+.topbar-right.lg .topbar-search {
+  border-color: transparent;
+  background: rgb(from var(--surface) r g b / 0.55);
+}
+
+/* Segmented controls on the calendar: glass capsules. */
+.calendar-page .cal-view-switch.lg,
+.calendar-page .cal-arrows.lg,
+.calendar-page .calendar-toolbar .cal-segment-bar.lg {
+  border-radius: 999px;
+  padding: 3px;
+}
+
+.calendar-page .cal-view-switch.lg .cal-view-pill,
+.calendar-page .calendar-toolbar .cal-segment-bar.lg .cal-segment.is-active {
+  border-radius: 999px;
+  background: rgb(from var(--surface) r g b / 0.9);
+}
+
+.calendar-page .cal-view-switch.lg .cal-view-tab,
+.calendar-page .cal-arrows.lg .cal-today,
+.calendar-page .cal-arrows.lg .cal-arrow,
+.calendar-page .calendar-toolbar .cal-segment-bar.lg .cal-segment {
+  border-radius: 999px;
+}
+
+/* The calendar's own toolbar lets the wash through so the glass has
+   something to bend. */
+.calendar-page .calendar-toolbar {
+  background: transparent;
+}
+
+/* The capture mic is prominent glass. */
+.capture-mic.lg {
+  border-width: 1px;
+}
+
+/* Phone tab bar: a floating glass capsule. */
+@media (max-width: 720px) {
+  .mobile-nav.lg {
+    position: fixed;
+    right: 10px;
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    left: 10px;
+    height: 62px;
+    padding: 6px;
+    border-radius: 28px;
+  }
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Every button is glass (2026-10-11). Components use <Button> (which adds
+   .lg classes); hand-built buttons across the app are listed here so none
+   is left flat beside its glass neighbours. Three kinds, nothing else:
+   - prominent: the one primary action — iris-tinted glass;
+   - regular: everything else — clear glass;
+   - destructive: confirm-to-delete — rose-tinted glass.
+   Text-only links (Skip, Not now, Back, Show more) stay plain text.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.tg-clarify-btn.is-primary,
+.knows-gtk,
+.knows-add-btn,
+.gtk-nudge-start,
+.gtk-primary,
+.gtk-send,
+.tour-primary,
+.pchat-send,
+.project-ask-send,
+.capture-stop,
+.capture-text-btn.is-primary,
+.not-found-home,
+.tg-btn-accent,
+.cmdk-mic.is-on,
+.gtk-mic.is-on {
+  border: 1px solid rgb(255 255 255 / 0.28);
+  background: rgb(from var(--accent) r g b / 0.88);
+  -webkit-backdrop-filter: var(--lg-filter);
+  backdrop-filter: var(--lg-filter);
+  color: var(--accent-ink);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.4),
+    inset 0 -1px 0 rgb(0 0 0 / 0.1),
+    0 8px 22px -10px rgb(from var(--accent) r g b / 0.6);
+}
+
+.tg-clarify-btn:not(.is-primary),
+.knows-secondary,
+.knows-forget,
+.tour-secondary,
+.capture-text-btn:not(.is-primary),
+.attention-defer,
+.ui-task-help,
+.action-receipt-undo,
+.calendar-task-remove,
+.import-ctx-prompt button,
+.tg-btn:not(.tg-btn-accent):not(.tg-btn-danger),
+.gtk-mic:not(.is-on),
+.cmdk-mic:not(.is-on),
+.td-icon,
+.tg-chip:not(.is-on) {
+  border: 1px solid var(--lg-edge);
+  background: var(--lg-fill-strong);
+  -webkit-backdrop-filter: var(--lg-filter);
+  backdrop-filter: var(--lg-filter);
+  color: var(--text);
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim-top),
+    0 1px 2px rgb(28 26 38 / 0.05),
+    0 6px 16px -10px var(--lg-shade);
+}
+
+/* The mic buttons keep their iris glyph on clear glass. */
+.gtk-mic:not(.is-on),
+.cmdk-mic:not(.is-on) {
+  color: var(--accent);
+}
+
+/* A selected chip is prominent glass. */
+.tg-chip.is-on {
+  border-color: rgb(255 255 255 / 0.28);
+  background: rgb(from var(--accent) r g b / 0.88);
+  color: var(--accent-ink);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.4), 0 6px 16px -10px rgb(from var(--accent) r g b / 0.6);
+}
+
+.project-delete-yes,
+.tg-btn-danger,
+.ui-button--danger {
+  border: 1px solid rgb(255 255 255 / 0.25);
+  background: rgb(from var(--red) r g b / 0.9);
+  -webkit-backdrop-filter: var(--lg-filter);
+  backdrop-filter: var(--lg-filter);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.35), 0 8px 22px -10px rgb(from var(--red) r g b / 0.55);
+}
+
+/* All of them: capsules that press. */
+.tg-clarify-btn,
+.knows-gtk,
+.knows-add-btn,
+.knows-secondary,
+.knows-forget,
+.gtk-nudge-start,
+.gtk-primary,
+.tour-primary,
+.tour-secondary,
+.capture-text-btn,
+.attention-defer,
+.ui-task-help,
+.action-receipt-undo,
+.calendar-task-remove,
+.not-found-home,
+.project-delete-yes,
+.tg-btn {
+  border-radius: 999px;
+}
+
+.tg-clarify-btn:active:not(:disabled),
+.knows-gtk:active,
+.knows-add-btn:active:not(:disabled),
+.knows-secondary:active,
+.knows-forget:active,
+.gtk-nudge-start:active,
+.gtk-primary:active,
+.tour-primary:active,
+.tour-secondary:active,
+.attention-defer:active,
+.ui-task-help:active,
+.action-receipt-undo:active:not(:disabled),
+.calendar-task-remove:active,
+.project-delete-yes:active,
+.tg-btn:active:not(:disabled),
+.td-icon:active {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .tg-clarify-btn,
+  .knows-gtk,
+  .knows-add-btn,
+  .knows-secondary,
+  .knows-forget,
+  .gtk-nudge-start,
+  .gtk-primary,
+  .gtk-send,
+  .tour-primary,
+  .tour-secondary,
+  .pchat-send,
+  .project-ask-send,
+  .capture-stop,
+  .capture-text-btn,
+  .attention-defer,
+  .ui-task-help,
+  .action-receipt-undo,
+  .calendar-task-remove,
+  .tg-btn,
+  .td-icon,
+  .tg-chip {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* <Button> glass keeps its glass on hover, and every button is a capsule. */
+.ui-button {
+  border-radius: 999px;
+}
+.ui-button.lg:not(.lg-tint):hover:not(:disabled) {
+  background: var(--lg-fill-strong);
+  border-color: var(--lg-edge);
+}

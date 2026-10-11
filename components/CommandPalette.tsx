@@ -3,6 +3,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppState } from "@/components/AppStateProvider";
+import Link from "next/link";
+import { Mic, Square } from "lucide-react";
+import { contextActions, type ContextAction } from "@/lib/context-actions";
+import { useQuestionSets } from "@/hooks/useQuestionSets";
+import { useUserTimezone } from "@/components/AppStateProvider";
+import { localNow } from "@/lib/time";
+import { routeAsk, ROUTE_HINT } from "@/lib/ask-route";
+import { putAsk } from "@/lib/ask-handoff";
+import { putNewPathTitle } from "@/lib/path-handoff";
+import { generateQuestions } from "@/lib/questions-client";
 import ActionReceipt from "@/components/ActionReceipt";
 import PreviewCard from "@/components/PreviewCard";
 import { usePipelineV2 } from "@/components/PipelineFlag";
@@ -19,8 +29,8 @@ import { Check } from "lucide-react";
 import { captureCopy, prefsOf, type CaptureQuickAction } from "@/lib/personalize";
 import { UNDO_TOAST_MS, openRecentChanges } from "@/lib/undo-events";
 
-/** Quick actions plus "Undo recent change", which opens Recent changes. */
-type QuickAction = CaptureQuickAction | { label: string; kind: "recent"; value: string };
+/** Context actions (lib/context-actions.ts) plus "Undo recent change", which opens Recent changes. */
+type QuickAction = ContextAction | { label: string; detail?: string; kind: "recent"; value: string };
 const UNDO_RECENT: QuickAction = { label: "Undo recent change", kind: "recent", value: "" };
 
 function cleanReply(text: string): string {
@@ -45,16 +55,30 @@ export default function CommandPalette() {
   // no answers these are the palette's original defaults.
   const slipPoint = state?.user?.slipPoint;
   const helpFocus = state?.user?.helpFocus;
-  const { placeholder, quickActions: QUICK_ACTIONS } = useMemo(() => {
-    const copy = captureCopy(prefsOf({ slipPoint, helpFocus }));
-    return { placeholder: copy.placeholder, quickActions: [...copy.quickActions, UNDO_RECENT] as QuickAction[] };
-  }, [slipPoint, helpFocus]);
+  const { placeholder } = useMemo(() => captureCopy(prefsOf({ slipPoint, helpFocus })), [slipPoint, helpFocus]);
+  // Before you type, Tell Tangent offers what it knows matters now
+  // (lib/context-actions.ts) rather than a generic list.
+  const { sets: questionSets } = useQuestionSets();
+  const tz = useUserTimezone();
+  const QUICK_ACTIONS: QuickAction[] = useMemo(() => {
+    const now = localNow(tz);
+    const ctx = contextActions({
+      tasks: state?.tasks ?? [],
+      plans: state?.plans ?? [],
+      questionCount: questionSets.reduce((n, q) => n + q.questions.length, 0),
+      now: { date: now.date, minutes: now.minutes },
+      capacity: state?.user.capacity ?? null,
+    });
+    return [...ctx, { label: "What's on today?", kind: "ask", value: "What's on today?" }, UNDO_RECENT];
+  }, [state, questionSets, tz]);
 
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
   const [highlighted, setHighlighted] = useState(0);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // Where the thing just created lives, so the confirmation can link to it.
+  const [toastLink, setToastLink] = useState<{ href: string; label: string } | null>(null);
   const [receiptId, setReceiptId] = useState<string | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<{ id: string; message: string } | null>(null);
   /** Pipeline V2 (flag on only): a drafted change waiting for Confirm. */
@@ -124,7 +148,7 @@ export default function CommandPalette() {
   // A toast with Undo stays as long as the app-level Undo toast (8 s).
   const showToast = useCallback((text: string, withUndo = false) => {
     setToast(text);
-    window.setTimeout(() => setToast(null), withUndo ? UNDO_TOAST_MS : 5000);
+    window.setTimeout(() => setToast((t) => (t === text ? null : t)), withUndo ? UNDO_TOAST_MS : 6000);
   }, []);
 
   const submitAsk = useCallback(
@@ -133,11 +157,15 @@ export default function CommandPalette() {
       if (!trimmed || busy) return;
       setBusy(true);
       closePalette();
+      // Never close silently: say it's working until the result replaces this.
+      setReceiptId(null);
+      setToastLink(null);
+      setToast("Saving…");
       try {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: [{ role: "user", content: trimmed }] }),
+          body: JSON.stringify({ messages: [{ role: "user", content: trimmed }], capture: true }),
         });
         const data = (await res.json()) as {
           ok?: boolean;
@@ -148,6 +176,10 @@ export default function CommandPalette() {
           error?: string;
           action?: string;
           actionId?: string;
+          taskId?: string;
+          taskDate?: string;
+          projectId?: string;
+          quick?: boolean;
           pending?: { id: string; kind: string; message: string };
           changeSet?: ChangeSet;
           preview?: PreviewPayload;
@@ -167,8 +199,10 @@ export default function CommandPalette() {
         }
         const raw = data.message ?? data.reply ?? data.response ?? data.text ?? "";
         setReceiptId(data.actionId ?? null);
+        setToastLink(data.taskDate ? { href: `/calendar?date=${data.taskDate}`, label: "View" } : data.projectId ? { href: `/projects/${data.projectId}`, label: "Open project" } : null);
         showToast(cleanReply(typeof raw === "string" ? raw : ""), !!data.actionId);
         await refresh();
+        if (data.taskId) void generateQuestions(data.taskId, trimmed, data.quick === true).then(() => refresh());
       } catch (e) {
         setReceiptId(null);
         showToast(e instanceof Error ? e.message : "Something went wrong.");
@@ -212,6 +246,11 @@ export default function CommandPalette() {
         openRecentChanges();
         return;
       }
+      if (action.kind === "event") {
+        closePalette();
+        window.dispatchEvent(new CustomEvent(action.value, { detail: action.eventDetail }));
+        return;
+      }
       if (action.kind === "navigate") {
         closePalette();
         router.push(action.value);
@@ -228,6 +267,33 @@ export default function CommandPalette() {
         inputRef.current?.focus();
         inputRef.current?.setSelectionRange(action.value.length, action.value.length);
       }, 0);
+    },
+    [closePalette, router, submitAsk]
+  );
+
+  // One input, routed (lib/ask-route.ts): questions are talked through on the
+  // AI page, multi-week efforts become Projects, long-range goals become
+  // Tangents, and everything else is saved or acted on right here.
+  const sendRouted = useCallback(
+    (raw: string) => {
+      const text = raw.trim();
+      if (!text) return;
+      const route = routeAsk(text);
+      if (route === "do") {
+        void submitAsk(text);
+        return;
+      }
+      closePalette();
+      if (route === "question") {
+        putAsk("ai", text);
+        router.push("/ai?ask=1");
+      } else if (route === "project") {
+        putAsk("project", text);
+        router.push("/projects?start=1");
+      } else {
+        putNewPathTitle(text);
+        router.push("/tangents?new=1");
+      }
     },
     [closePalette, router, submitAsk]
   );
@@ -257,10 +323,10 @@ export default function CommandPalette() {
         }
       } else if (e.key === "Enter") {
         e.preventDefault();
-        void submitAsk(value);
+        sendRouted(value);
       }
     },
-    [value, highlighted, closePalette, runQuickAction, submitAsk, QUICK_ACTIONS]
+    [value, highlighted, closePalette, runQuickAction, sendRouted, QUICK_ACTIONS]
   );
 
   // Hold Space (400ms) to start voice recording, when no form field is focused and the palette is closed.
@@ -277,6 +343,17 @@ export default function CommandPalette() {
   const { status: voiceStatus, startRecording: startVoiceRecording, stopRecording: stopVoiceRecording } = useVoiceCapture({
     onTranscript: routeVoiceTranscript,
     onError: handleVoiceError,
+  });
+
+  // Say it into Tell Tangent: words fill the box as they're spoken, then the
+  // routing hint shows where Enter will send it.
+  const paletteVoice = useVoiceCapture({
+    live: true,
+    onPartial: (t) => setValue(t),
+    onTranscript: (t) => {
+      setValue(t);
+      window.setTimeout(() => inputRef.current?.focus(), 0);
+    },
   });
 
   // The recorder callbacks change identity with every status change; read them
@@ -327,6 +404,7 @@ export default function CommandPalette() {
       {open && (
         <div className="cmdk-overlay" onClick={closePalette}>
           <div className="cmdk-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal aria-label="Command palette">
+            <div className="cmdk-input-row">
             <input
               ref={inputRef}
               className="cmdk-input"
@@ -337,7 +415,18 @@ export default function CommandPalette() {
               aria-label="Command"
               disabled={busy}
             />
+            <button
+              type="button"
+              className={`cmdk-mic${paletteVoice.status === "recording" ? " is-on" : ""}`}
+              aria-label={paletteVoice.status === "recording" ? "Stop" : "Say it"}
+              disabled={paletteVoice.status === "transcribing"}
+              onClick={() => (paletteVoice.status === "recording" ? paletteVoice.stopRecording() : void paletteVoice.startRecording())}
+            >
+              {paletteVoice.status === "recording" ? <Square size={12} strokeWidth={0} fill="currentColor" aria-hidden="true" /> : <Mic size={16} aria-hidden="true" />}
+            </button>
+            </div>
             <div className="cmdk-list" role="listbox" aria-label="Quick actions">
+              {value.trim().length === 0 && <p className="cmdk-section">From what Tangent knows</p>}
               {value.trim().length === 0 ? (
                 QUICK_ACTIONS.map((action, i) => (
                   <button
@@ -349,11 +438,14 @@ export default function CommandPalette() {
                     role="option"
                     aria-selected={i === highlighted}
                   >
-                    {action.label}
+                    <span className="cmdk-item-label">{action.label}</span>
+                    {action.detail && <span className="cmdk-item-detail">{action.detail}</span>}
                   </button>
                 ))
               ) : (
-                <div className="cmdk-hint">Press Enter to ask TANGENT</div>
+                <div className="cmdk-hint">
+                  <kbd>Enter</kbd> {ROUTE_HINT[routeAsk(value)]}
+                </div>
               )}
             </div>
           </div>
@@ -419,8 +511,13 @@ export default function CommandPalette() {
             />
           ) : (
             <span onClick={() => setToast(null)} style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
-              <Check size={18} strokeWidth={1.75} /> {toast}
+              {busy ? <span className="voice-pill-spinner" aria-hidden="true" /> : <Check size={18} strokeWidth={1.75} />} {toast}
             </span>
+          )}
+          {toastLink && !busy && (
+            <Link href={toastLink.href} className="command-toast-link" onClick={() => setToast(null)}>
+              {toastLink.label} →
+            </Link>
           )}
         </div>
       )}
