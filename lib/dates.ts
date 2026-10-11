@@ -50,3 +50,8 @@ export function isValidTimezone(timeZone: unknown): timeZone is string {
     return false;
   }
 }
+
+/** A Canvas deadline (or anything due at 11:59 PM) is a due date, not a time. */
+export function isDueOnly(task: { source?: string | null; time?: string | null }): boolean {
+  return task.source === "canvas" || task.time === "23:59";
+}

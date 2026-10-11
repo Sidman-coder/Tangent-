@@ -5,7 +5,7 @@ import * as m from "motion/react-m";
 import { Check, Repeat2 } from "lucide-react";
 import { press, spring } from "@/lib/motion";
 import type { Task } from "@/lib/types";
-import { formatTime12 } from "@/lib/dates";
+import { formatTime12, isDueOnly } from "@/lib/dates";
 import TaskTitle from "@/components/ui/TaskTitle";
 import { KIND_LABEL } from "@/lib/task-colors";
 
@@ -89,7 +89,7 @@ export default function TaskRow({
             <time dateTime={`${task.date}T${task.time}`}>
               {showDate ? `${shortDate(task.date)} · ` : ""}
               {/* A due date isn't a time anything happens: "Due", as on the calendar. */}
-              {task.source === "canvas" || task.time === "23:59" ? "Due" : formatTime12(task.time)}
+              {isDueOnly(task) ? "Due" : formatTime12(task.time)}
             </time>
             {task.kind && <span className="ui-task-kind-label">{KIND_LABEL[task.kind as keyof typeof KIND_LABEL] ?? task.kind.replaceAll("-", " ")}</span>}
             {task.recurring?.enabled && (
