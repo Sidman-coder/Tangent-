@@ -1921,3 +1921,80 @@
 .tangents-intake-mic:active {
   transform: scale(0.94);
 }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Tangents, in line with the rest of the app (2026-10-11):
+   - controls that float over the space are Liquid Glass (dark), like the
+     rail and top-bar capsule elsewhere: the back button, New path, delete,
+     the bottom dock and the zoom bar;
+   - big titles in Bricolage, like every other page;
+   - idea cards on Tangent's teal, not a stray dark green.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.tangents-root {
+  --tg-glass: rgb(34 30 54 / 0.46);
+  --tg-glass-edge: rgb(255 255 255 / 0.12);
+  --tg-glass-rim: rgb(255 255 255 / 0.2);
+}
+
+.tangents-back,
+.tangents-bar .path-chip,
+.path-dock,
+.path-zoombar {
+  background: var(--tg-glass);
+  -webkit-backdrop-filter: blur(20px) saturate(170%) brightness(1.1);
+  backdrop-filter: blur(20px) saturate(170%) brightness(1.1);
+  border: 1px solid var(--tg-glass-edge);
+  box-shadow:
+    inset 0 1px 0 var(--tg-glass-rim),
+    0 12px 32px -14px rgb(0 0 0 / 0.6);
+  color: var(--path-ink);
+}
+
+.tangents-back,
+.tangents-bar .path-chip {
+  border-radius: 999px;
+  padding-inline: 14px;
+}
+
+.path-dock,
+.path-zoombar {
+  border-radius: 999px;
+}
+
+.path-filter-pill.is-on,
+.path-filter-pill[aria-pressed="true"],
+.path-filter-pill[aria-checked="true"] {
+  border-radius: 999px;
+}
+
+.tangents-bar h1,
+.tangents-bar-title,
+.tangents-empty h2 {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.path-idea {
+  border-color: rgb(92 200 189 / 0.34);
+  background: #101b1f;
+}
+
+.tangents-sphere-label {
+  border: 1px solid var(--tg-glass-edge);
+  background: rgb(22 19 38 / 0.72);
+  box-shadow: inset 0 1px 0 var(--tg-glass-rim);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .tangents-back,
+  .tangents-bar .path-chip,
+  .path-dock,
+  .path-zoombar {
+    background: #1c1830;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}

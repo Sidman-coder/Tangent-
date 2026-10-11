@@ -84,9 +84,10 @@ function progressOf(p: PathWithCounts): number {
 }
 
 function summary(p: PathWithCounts): string {
-  const parts = [`${p.counts.work} on the circle`];
-  if (p.counts.ideas > 0) parts.push(`${p.counts.ideas} branch${p.counts.ideas === 1 ? "" : "es"}`);
-  return parts.join(", ");
+  // Plain words: what you're doing for it, and the ideas branching off it.
+  const parts = [`${p.counts.work} in motion`];
+  if (p.counts.ideas > 0) parts.push(`${p.counts.ideas} idea${p.counts.ideas === 1 ? "" : "s"}`);
+  return parts.join(" · ");
 }
 
 function Disc({ progress, size, delay, reduced }: { progress: number; size: number; delay: number; reduced: boolean }) {
