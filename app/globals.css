@@ -9030,3 +9030,8 @@ h1, h2, h3, h4, h5, h6 {
   align-self: center;
   border-radius: 999px;
 }
+
+/* Fields in a row keep their own height; a hint under one doesn't stretch the other. */
+.settings-field-grid {
+  align-items: start;
+}
