@@ -80,6 +80,20 @@ function labelMargins(width: number, height: number): { x: number; y: number } {
   };
 }
 
+/** The zoom `fit` would choose for these bounds, before its floor and caps.
+ *  The layout uses it to space cards for the zoom they will be shown at. */
+export function fitScaleFor(
+  bounds: Bounds,
+  size: { width: number; height: number },
+  insets: Partial<{ top: number; right: number; bottom: number; left: number }> = {}
+): number {
+  const inset = { top: 0, right: 0, bottom: 0, left: 0, ...insets };
+  const margin = labelMargins(size.width, size.height);
+  const usableW = Math.max(size.width - inset.left - inset.right - margin.x * 2, 120);
+  const usableH = Math.max(size.height - inset.top - inset.bottom - margin.y * 2, 120);
+  return Math.min(usableW / Math.max(bounds.maxX - bounds.minX, 1), usableH / Math.max(bounds.maxY - bounds.minY, 1));
+}
+
 export function usePathCamera(reduced: boolean): PathCamera {
   const stageRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);

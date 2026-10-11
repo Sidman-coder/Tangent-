@@ -4,10 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { Maximize2, Minus, Plus, Shrink } from "lucide-react";
 import PathAmbient from "./PathAmbient";
-import { usePathCamera } from "./usePathCamera";
+import { fitScaleFor, usePathCamera } from "./usePathCamera";
 import type { Bounds, PathCamera } from "./usePathCamera";
 import { layoutPath, ROOT_RADIUS } from "@/lib/path-layout";
-import type { PathLayout } from "@/lib/path-layout";
+import type { LabelOptions, PathLayout } from "@/lib/path-layout";
 import type { Path, PathNode, TangentStatus } from "@/lib/types";
 
 // The drawing.
@@ -72,6 +72,19 @@ function ZoomReadout({ camera }: { camera: PathCamera }) {
 function clip(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
+
+/** Each label's size on screen, in pixels, estimated from its text (the same
+ *  clipping and widths the CSS gives them). Generous rather than exact: the
+ *  layout uses it to keep cards apart, so erring large only adds air. */
+const labelSize: LabelOptions["size"] = (node, role) => {
+  if (role === "goal") return { w: 150, h: 60 };
+  const title = node?.title ?? "";
+  if (role === "member") return { w: Math.min(28, title.length) * 7.4 + 30, h: 32 };
+  const text = clip(title, 40);
+  const oneLine = text.length * 6.6 + 26;
+  const grows = 30;
+  return oneLine > 216 ? { w: 216 + grows, h: 54 } : { w: oneLine + grows, h: 36 };
+};
 
 /** World bounds of a node plus everything laid out beneath it, including the
  *  full extent of any circle that has been opened under it. */
@@ -162,7 +175,29 @@ export default function PathScene({
   const reduced = useReducedMotion() ?? false;
   const camera = usePathCamera(reduced);
 
-  const layout: PathLayout = useMemo(() => layoutPath(nodes, { expanded }), [nodes, expanded]);
+  // Cards hold their size on screen while the drawing zooms, so whether two of
+  // them collide depends on the zoom the tree is shown at - and that zoom
+  // depends on how wide the tree is. A few rounds settle it: lay out for a
+  // zoom, see what zoom that layout fits at, lay out again for that.
+  const stageW = camera.size.width || 1280;
+  const stageH = camera.size.height || 760;
+  const layout: PathLayout = useMemo(() => {
+    const insets = { top: stageW <= 860 ? 64 : 84, bottom: stageW <= 860 ? 124 : 84 };
+    const size = { width: stageW, height: stageH };
+    // Start from the zoom the bare geometry fits at, and only ever step down:
+    // a layout made for a zoom at or below the one it's shown at never
+    // underestimates how big a card is, so cards never land on each other.
+    let next = layoutPath(nodes, { expanded });
+    let scale = Math.max(fitScaleFor(next.bounds, size, insets), 0.32);
+    for (let round = 0; round < 6; round++) {
+      const unit = Math.min(Math.max(scale, 0.72), 1) / scale;
+      next = layoutPath(nodes, { expanded, labels: { unit, size: labelSize } });
+      const fits = Math.max(fitScaleFor(next.bounds, size, insets), 0.32);
+      if (fits >= scale * 0.97) break;
+      scale = fits * 0.97;
+    }
+    return next;
+  }, [nodes, expanded, stageW, stageH]);
   const live = useMemo(() => branchOf(nodes, focusedId), [nodes, focusedId]);
   const dimming = live.size > 0;
 
@@ -245,7 +280,9 @@ export default function PathScene({
     const stage = camera.stageRef.current;
     if (!stage) return;
     return camera.onZoom((scale) => {
-      const lod = scale < 0.5 ? "far" : "near";
+      // The layout spaces cards for the zoom the tree fits at, so they only
+      // need folding to dots when someone zooms well past that.
+      const lod = scale < 0.3 ? "far" : "near";
       if (stage.dataset.lod !== lod) stage.dataset.lod = lod;
     });
   }, [camera]);
