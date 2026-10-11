@@ -4,6 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppState } from "@/components/AppStateProvider";
 import Link from "next/link";
+import { Mic, Square } from "lucide-react";
+import { contextActions, type ContextAction } from "@/lib/context-actions";
+import { useQuestionSets } from "@/hooks/useQuestionSets";
+import { useUserTimezone } from "@/components/AppStateProvider";
+import { localNow } from "@/lib/time";
 import { routeAsk, ROUTE_HINT } from "@/lib/ask-route";
 import { putAsk } from "@/lib/ask-handoff";
 import { putNewPathTitle } from "@/lib/path-handoff";
@@ -18,7 +23,7 @@ import {
 import { Check } from "lucide-react";
 import { captureCopy, prefsOf, type CaptureQuickAction } from "@/lib/personalize";
 
-type QuickAction = CaptureQuickAction;
+type QuickAction = ContextAction;
 
 function cleanReply(text: string): string {
   if (!text) return "Done! Your request has been processed.";
@@ -42,10 +47,22 @@ export default function CommandPalette() {
   // no answers these are the palette's original defaults.
   const slipPoint = state?.user?.slipPoint;
   const helpFocus = state?.user?.helpFocus;
-  const { placeholder, quickActions: QUICK_ACTIONS } = useMemo(
-    () => captureCopy(prefsOf({ slipPoint, helpFocus })),
-    [slipPoint, helpFocus]
-  );
+  const { placeholder } = useMemo(() => captureCopy(prefsOf({ slipPoint, helpFocus })), [slipPoint, helpFocus]);
+  // Before you type, Tell Tangent offers what it knows matters now
+  // (lib/context-actions.ts) rather than a generic list.
+  const { sets: questionSets } = useQuestionSets();
+  const tz = useUserTimezone();
+  const QUICK_ACTIONS: QuickAction[] = useMemo(() => {
+    const now = localNow(tz);
+    const ctx = contextActions({
+      tasks: state?.tasks ?? [],
+      plans: state?.plans ?? [],
+      questionCount: questionSets.reduce((n, q) => n + q.questions.length, 0),
+      now: { date: now.date, minutes: now.minutes },
+      capacity: state?.user.capacity ?? null,
+    });
+    return [...ctx, { label: "What's on today?", kind: "ask", value: "What's on today?" }];
+  }, [state, questionSets, tz]);
 
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
@@ -191,6 +208,11 @@ export default function CommandPalette() {
 
   const runQuickAction = useCallback(
     (action: QuickAction) => {
+      if (action.kind === "event") {
+        closePalette();
+        window.dispatchEvent(new CustomEvent(action.value, { detail: action.eventDetail }));
+        return;
+      }
       if (action.kind === "navigate") {
         closePalette();
         router.push(action.value);
@@ -285,6 +307,17 @@ export default function CommandPalette() {
     onError: handleVoiceError,
   });
 
+  // Say it into Tell Tangent: words fill the box as they're spoken, then the
+  // routing hint shows where Enter will send it.
+  const paletteVoice = useVoiceCapture({
+    live: true,
+    onPartial: (t) => setValue(t),
+    onTranscript: (t) => {
+      setValue(t);
+      window.setTimeout(() => inputRef.current?.focus(), 0);
+    },
+  });
+
   // The recorder callbacks change identity with every status change; read them
   // through refs so the key listeners (and their `holding` flag) stay mounted
   // for the whole press instead of resetting mid-recording.
@@ -333,6 +366,7 @@ export default function CommandPalette() {
       {open && (
         <div className="cmdk-overlay" onClick={closePalette}>
           <div className="cmdk-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal aria-label="Command palette">
+            <div className="cmdk-input-row">
             <input
               ref={inputRef}
               className="cmdk-input"
@@ -343,7 +377,18 @@ export default function CommandPalette() {
               aria-label="Command"
               disabled={busy}
             />
+            <button
+              type="button"
+              className={`cmdk-mic${paletteVoice.status === "recording" ? " is-on" : ""}`}
+              aria-label={paletteVoice.status === "recording" ? "Stop" : "Say it"}
+              disabled={paletteVoice.status === "transcribing"}
+              onClick={() => (paletteVoice.status === "recording" ? paletteVoice.stopRecording() : void paletteVoice.startRecording())}
+            >
+              {paletteVoice.status === "recording" ? <Square size={12} strokeWidth={0} fill="currentColor" aria-hidden="true" /> : <Mic size={16} aria-hidden="true" />}
+            </button>
+            </div>
             <div className="cmdk-list" role="listbox" aria-label="Quick actions">
+              {value.trim().length === 0 && <p className="cmdk-section">From what Tangent knows</p>}
               {value.trim().length === 0 ? (
                 QUICK_ACTIONS.map((action, i) => (
                   <button
@@ -355,7 +400,8 @@ export default function CommandPalette() {
                     role="option"
                     aria-selected={i === highlighted}
                   >
-                    {action.label}
+                    <span className="cmdk-item-label">{action.label}</span>
+                    {action.detail && <span className="cmdk-item-detail">{action.detail}</span>}
                   </button>
                 ))
               ) : (
