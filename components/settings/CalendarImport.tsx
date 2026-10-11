@@ -11,6 +11,7 @@ import Button from "@/components/ui/Button";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { parseIcs, type IcsEvent } from "@/lib/ics";
 import { addDaysYMD, getUserToday } from "@/lib/time";
+import { formatTime12 } from "@/lib/dates";
 
 const WINDOW_DAYS = 60;
 const MAX_EVENTS = 150;
@@ -132,7 +133,7 @@ export default function CalendarImport() {
             {events.slice(0, 5).map((ev, i) => (
               <li key={`${ev.date}-${ev.time}-${i}`}>
                 <span>{ev.title}</span>
-                <span>{day(ev.date)}{ev.allDay ? "" : ` · ${ev.time}`}</span>
+                <span>{day(ev.date)}{ev.allDay ? " · All day" : ` · ${formatTime12(ev.time)}`}</span>
               </li>
             ))}
             {events.length > 5 && <li className="is-more">and {events.length - 5} more</li>}

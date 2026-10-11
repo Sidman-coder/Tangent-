@@ -45,4 +45,12 @@ test("expands a weekly repeat inside the window and skips cancelled events", () 
   assert.ok(out.every((e) => e.title === "Piano" && e.time === "17:00"));
 });
 
+test("skips occurrences deleted from a repeat (EXDATE), including repeated lines", () => {
+  const text = cal(
+    "BEGIN:VEVENT\r\nSUMMARY:FRC build\r\nDTSTART;TZID=America/New_York:20261013T160000\r\nRRULE:FREQ=WEEKLY;BYDAY=TU,TH;UNTIL=20261023T035959Z\r\nEXDATE;TZID=America/New_York:20261015T160000\r\nEXDATE;TZID=America/New_York:20261020T160000\r\nEND:VEVENT\r\n"
+  );
+  const out = parseIcs(text, "2026-10-11", "2026-12-10");
+  assert.deepEqual(out.map((e) => e.date), ["2026-10-13", "2026-10-22"]);
+});
+
 });

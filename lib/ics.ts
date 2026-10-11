@@ -67,7 +67,11 @@ function blocks(text: string): Raw[] {
       if (i < 0) continue;
       const head = line.slice(0, i);
       const [name, ...params] = head.split(";");
-      cur[name.toUpperCase()] = { value: line.slice(i + 1), params: params.join(";") };
+      const key = name.toUpperCase();
+      const value = line.slice(i + 1);
+      // EXDATE can repeat (one line per skipped occurrence): keep them all.
+      if (key === "EXDATE" && cur[key]) cur[key] = { value: `${cur[key].value},${value}`, params: cur[key].params };
+      else cur[key] = { value, params: params.join(";") };
     }
   }
   return out;
@@ -111,6 +115,14 @@ export function parseIcs(text: string, from: string, to: string, limit = 200): I
     const stop = until < end ? until : end;
     const count = rr.COUNT ? Number(rr.COUNT) : Infinity;
     const byDay = rr.BYDAY ? rr.BYDAY.split(",").map((c) => DAY_CODES.indexOf(c.slice(-2))).filter((n) => n >= 0) : [];
+    // Occurrences deleted from the series (EXDATE), by local date.
+    const skipped = new Set(
+      (raw.EXDATE?.value ?? "")
+        .split(",")
+        .map((v) => parseIcsDate(v, raw.EXDATE?.params))
+        .filter((x): x is { at: Date; allDay: boolean } => x !== null)
+        .map((x) => ymd(x.at))
+    );
     let made = 0;
     for (let day = new Date(dt.at); day <= stop && made < count; day.setDate(day.getDate() + 1)) {
       const daysIn = Math.round((new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime() - new Date(dt.at.getFullYear(), dt.at.getMonth(), dt.at.getDate()).getTime()) / 86_400_000);
@@ -123,6 +135,7 @@ export function parseIcs(text: string, from: string, to: string, limit = 200): I
       }
       if (!hit) continue;
       made++;
+      if (skipped.has(ymd(day))) continue;
       push(new Date(day));
     }
   }
