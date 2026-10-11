@@ -96,8 +96,8 @@ export default function PathDeepView() {
   );
 
   const generate = useCallback(
-    async (parentId: string) => {
-      const data = await run({ action: "generate", parentId }, parentId);
+    async (parentId: string, answers?: { question: string; answer: string }[]) => {
+      const data = await run({ action: "generate", parentId, ...(answers?.length ? { answers } : {}) }, parentId);
       // Opening the circle straight away is the whole reward for asking.
       if (data) setExpanded((prev) => new Set(prev).add(parentId));
     },
@@ -275,7 +275,7 @@ export default function PathDeepView() {
         justKept={!!focused && justKept === focused.id}
         onScheduleChanged={load}
         onClose={() => setFocusedId(null)}
-        onGenerate={(id) => void generate(id)}
+        onGenerate={(id, answers) => void generate(id, answers)}
         onStatus={async (id, status) => {
           const data = await run({ action: "setStatus", id, status }, id);
           // Keeping a branch is its own step; the time picker follows it.
