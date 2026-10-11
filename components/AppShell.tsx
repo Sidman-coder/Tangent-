@@ -11,12 +11,12 @@ import {
   FolderKanban,
   Home,
   MessageSquareText,
-  Search,
+  Mic,
+  Plus,
   Settings,
 } from "lucide-react";
 import NotificationBell from "./NotificationBell";
 import CommandPalette from "./CommandPalette";
-import CaptureDock from "./CaptureDock";
 import GetToKnowYou, { GET_TO_KNOW_EVENT } from "./GetToKnowYou";
 import FirstRun from "./FirstRun";
 import TangentLogo from "@/components/TangentLogo";
@@ -92,6 +92,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const profileInitial = (profileName || "T").charAt(0).toUpperCase();
 
   const openPalette = () => window.dispatchEvent(new Event("tangent:open-palette"));
+  const openListening = () => window.dispatchEvent(new CustomEvent("tangent:open-palette", { detail: { listen: true } }));
 
   // Tangents takes over the window. Returning children bare rather than hiding
   // the chrome with CSS keeps the rail and topbar out of the tree entirely, so
@@ -199,9 +200,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <header className="topbar">
           <div className="topbar-right lg lg-interactive">
             <StorageStatus />
-            <button type="button" className="topbar-search" onClick={openPalette} aria-label="Tell Tangent">
-              <Search size={16} strokeWidth={1.8} aria-hidden="true" />
-              <span>Tell Tangent</span>
+            {/* Adding is the heart of Tangent, so it's the one prominent
+                control up here: Add (type it) and the mic (say it). */}
+            <button type="button" className="topbar-mic" onClick={openListening} aria-label="Say it" title="Say it">
+              <Mic size={16} strokeWidth={2} aria-hidden="true" />
+            </button>
+            <button type="button" className="topbar-add" onClick={openPalette} aria-label="Add or ask">
+              <Plus size={16} strokeWidth={2.4} aria-hidden="true" />
+              <span>Add</span>
               <kbd>⌘K</kbd>
             </button>
             <NotificationBell open={notifOpen} onOpenChange={setNotifOpen} />
@@ -234,10 +240,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       <CommandPalette />
       <GetToKnowYou />
-      {/* Instant capture lives on Today only. Mounted here, not in the page,
-          so it is usable while Today is still loading and a recording isn't
-          cut off when the loading skeleton swaps for the real page. */}
-      {pathname === "/" && <CaptureDock />}
       {!showOnboarding && <DesktopNotifPrompt />}
 
       {showOnboarding && <FirstRun

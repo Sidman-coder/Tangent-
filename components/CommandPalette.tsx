@@ -4,14 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppState } from "@/components/AppStateProvider";
 import Link from "next/link";
-import { Mic, Square } from "lucide-react";
 import { contextActions, type ContextAction } from "@/lib/context-actions";
 import { useQuestionSets } from "@/hooks/useQuestionSets";
 import { useUserTimezone } from "@/components/AppStateProvider";
 import { localNow } from "@/lib/time";
-import { routeAsk, ROUTE_HINT } from "@/lib/ask-route";
-import { putAsk } from "@/lib/ask-handoff";
-import { putNewPathTitle } from "@/lib/path-handoff";
+import AddFlow from "@/components/add/AddFlow";
 import { generateQuestions } from "@/lib/questions-client";
 import ActionReceipt from "@/components/ActionReceipt";
 import PreviewCard from "@/components/PreviewCard";
@@ -74,7 +71,9 @@ export default function CommandPalette() {
 
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
-  const [highlighted, setHighlighted] = useState(0);
+  // What the add sheet opens with: a voice transcript, a tour demo, a quick
+  // action's words, or listening straight away (the top bar's mic).
+  const [seed, setSeed] = useState<{ key: number; text: string; listen: boolean }>({ key: 0, text: "", listen: false });
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   // Where the thing just created lives, so the confirmation can link to it.
@@ -91,14 +90,12 @@ export default function CommandPalette() {
     draftTimer.current = window.setTimeout(() => setDraft(null), phase === "confirmed" ? 8000 : 2500);
   }, []);
 
-  const inputRef = useRef<HTMLInputElement>(null);
   const openRef = useRef(open);
   openRef.current = open;
 
   const closePalette = useCallback(() => {
     setOpen(false);
     setValue("");
-    setHighlighted(0);
   }, []);
 
   // Open via ⌘K / Ctrl+K, or via the topbar command input dispatching this event.
@@ -106,22 +103,14 @@ export default function CommandPalette() {
   // editable, cursor at the end — the student presses Enter to actually ask.
   useEffect(() => {
     const onOpenEvent = (e: Event) => {
-      const prefill = (e as CustomEvent<OpenPaletteDetail>).detail?.prefill;
+      const detail = (e as CustomEvent<OpenPaletteDetail & { listen?: boolean }>).detail;
+      setSeed((s) => ({ key: s.key + 1, text: detail?.prefill ?? "", listen: Boolean(detail?.listen) }));
       setOpen(true);
-      if (prefill) {
-        setValue(prefill);
-        setHighlighted(0);
-        setTimeout(() => {
-          const el = inputRef.current;
-          if (!el) return;
-          el.focus();
-          el.setSelectionRange(prefill.length, prefill.length);
-        }, 30);
-      }
     };
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
+        setSeed((s) => ({ key: s.key + 1, text: "", listen: false }));
         setOpen((o) => !o);
       }
     };
@@ -134,10 +123,13 @@ export default function CommandPalette() {
   }, []);
 
   useEffect(() => {
-    if (open) {
-      setTimeout(() => inputRef.current?.focus(), 20);
-    }
-  }, [open]);
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closePalette();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, closePalette]);
 
   // Pipeline V2: on open, bring back the newest draft still waiting for Confirm.
   const v2 = usePipelineV2();
@@ -260,73 +252,10 @@ export default function CommandPalette() {
         void submitAsk(action.value);
         return;
       }
-      // prefill — keep palette open, let the user finish typing
-      setValue(action.value);
-      setHighlighted(0);
-      setTimeout(() => {
-        inputRef.current?.focus();
-        inputRef.current?.setSelectionRange(action.value.length, action.value.length);
-      }, 0);
+      // prefill — keep the sheet open with the words in the box
+      setSeed((s) => ({ key: s.key + 1, text: action.value, listen: false }));
     },
     [closePalette, router, submitAsk]
-  );
-
-  // One input, routed (lib/ask-route.ts): questions are talked through on the
-  // AI page, multi-week efforts become Projects, long-range goals become
-  // Tangents, and everything else is saved or acted on right here.
-  const sendRouted = useCallback(
-    (raw: string) => {
-      const text = raw.trim();
-      if (!text) return;
-      const route = routeAsk(text);
-      if (route === "do") {
-        void submitAsk(text);
-        return;
-      }
-      closePalette();
-      if (route === "question") {
-        putAsk("ai", text);
-        router.push("/ai?ask=1");
-      } else if (route === "project") {
-        putAsk("project", text);
-        router.push("/projects?start=1");
-      } else {
-        putNewPathTitle(text);
-        router.push("/tangents?new=1");
-      }
-    },
-    [closePalette, router, submitAsk]
-  );
-
-  const onInputKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        closePalette();
-        return;
-      }
-      if (value.trim().length === 0) {
-        if (e.key === "ArrowDown") {
-          e.preventDefault();
-          setHighlighted((h) => (h + 1) % QUICK_ACTIONS.length);
-          return;
-        }
-        if (e.key === "ArrowUp") {
-          e.preventDefault();
-          setHighlighted((h) => (h - 1 + QUICK_ACTIONS.length) % QUICK_ACTIONS.length);
-          return;
-        }
-        if (e.key === "Enter") {
-          e.preventDefault();
-          runQuickAction(QUICK_ACTIONS[highlighted]);
-          return;
-        }
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        sendRouted(value);
-      }
-    },
-    [value, highlighted, closePalette, runQuickAction, sendRouted, QUICK_ACTIONS]
   );
 
   // Hold Space (400ms) to start voice recording, when no form field is focused and the palette is closed.
@@ -343,17 +272,6 @@ export default function CommandPalette() {
   const { status: voiceStatus, startRecording: startVoiceRecording, stopRecording: stopVoiceRecording } = useVoiceCapture({
     onTranscript: routeVoiceTranscript,
     onError: handleVoiceError,
-  });
-
-  // Say it into Tell Tangent: words fill the box as they're spoken, then the
-  // routing hint shows where Enter will send it.
-  const paletteVoice = useVoiceCapture({
-    live: true,
-    onPartial: (t) => setValue(t),
-    onTranscript: (t) => {
-      setValue(t);
-      window.setTimeout(() => inputRef.current?.focus(), 0);
-    },
   });
 
   // The recorder callbacks change identity with every status change; read them
@@ -403,51 +321,27 @@ export default function CommandPalette() {
     <>
       {open && (
         <div className="cmdk-overlay" onClick={closePalette}>
-          <div className="cmdk-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal aria-label="Command palette">
-            <div className="cmdk-input-row">
-            <input
-              ref={inputRef}
-              className="cmdk-input"
-              value={value}
-              onChange={(e) => { setValue(e.target.value); setHighlighted(0); }}
-              onKeyDown={onInputKeyDown}
-              placeholder={placeholder}
-              aria-label="Command"
-              disabled={busy}
+          <div className="cmdk-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal aria-label="Add or ask">
+            <AddFlow
+              key={seed.key}
+              variant="sheet"
+              autoFocus
+              initialText={seed.text}
+              listenOnOpen={seed.listen}
+              onClose={closePalette}
+              onTextChange={setValue}
             />
-            <button
-              type="button"
-              className={`cmdk-mic${paletteVoice.status === "recording" ? " is-on" : ""}`}
-              aria-label={paletteVoice.status === "recording" ? "Stop" : "Say it"}
-              disabled={paletteVoice.status === "transcribing"}
-              onClick={() => (paletteVoice.status === "recording" ? paletteVoice.stopRecording() : void paletteVoice.startRecording())}
-            >
-              {paletteVoice.status === "recording" ? <Square size={12} strokeWidth={0} fill="currentColor" aria-hidden="true" /> : <Mic size={16} aria-hidden="true" />}
-            </button>
-            </div>
-            <div className="cmdk-list" role="listbox" aria-label="Quick actions">
-              {value.trim().length === 0 && <p className="cmdk-section">From what Tangent knows</p>}
-              {value.trim().length === 0 ? (
-                QUICK_ACTIONS.map((action, i) => (
-                  <button
-                    key={action.label}
-                    type="button"
-                    className={`cmdk-item${i === highlighted ? " is-highlighted" : ""}`}
-                    onMouseEnter={() => setHighlighted(i)}
-                    onClick={() => runQuickAction(action)}
-                    role="option"
-                    aria-selected={i === highlighted}
-                  >
+            {value.trim().length === 0 && (
+              <div className="cmdk-list" aria-label="Suggestions">
+                <p className="cmdk-section">From what Tangent knows</p>
+                {QUICK_ACTIONS.map((action) => (
+                  <button key={action.label} type="button" className="cmdk-item" onClick={() => runQuickAction(action)}>
                     <span className="cmdk-item-label">{action.label}</span>
                     {action.detail && <span className="cmdk-item-detail">{action.detail}</span>}
                   </button>
-                ))
-              ) : (
-                <div className="cmdk-hint">
-                  <kbd>Enter</kbd> {ROUTE_HINT[routeAsk(value)]}
-                </div>
-              )}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
