@@ -26,7 +26,8 @@ export default function WeekStrip({ tasks, now, insight }: { tasks: Task[]; now:
       }),
     [now, tasks]
   );
-  const peak = Math.max(4, ...days.map((d) => d.open));
+  // A full day is about five things; a lighter week still shows its shape.
+  const peak = Math.max(5, ...days.map((d) => d.open));
   const { link } = insight;
 
   return (
@@ -49,21 +50,20 @@ export default function WeekStrip({ tasks, now, insight }: { tasks: Task[]; now:
       <div className="week-strip-days">
         {days.map((day, i) => {
           const label = `${day.date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}: ${day.open} open`;
-          const load = day.open / peak;
+          // How full the day is, 0-1: the cell's shade. Heavier days are darker.
+          const load = day.open === 0 ? 0 : Math.max(0.18, day.open / peak);
           return (
             <button
               key={day.ymd}
               type="button"
-              className={`week-strip-day${i === 0 ? " is-today" : ""}${load >= 0.75 ? " is-heavy" : ""}`}
+              className={`week-strip-day${i === 0 ? " is-today" : ""}${load >= 0.55 ? " is-dark" : ""}`}
+              style={{ "--load": load.toFixed(2) } as React.CSSProperties}
               onClick={() => router.push(`/calendar?date=${day.ymd}`)}
               aria-label={label}
               title={label}
             >
               <span className="week-strip-name">{i === 0 ? "Today" : day.date.toLocaleDateString("en-US", { weekday: "short" })}</span>
               <span className="week-strip-num">{day.date.getDate()}</span>
-              <span className="week-strip-bar" aria-hidden="true">
-                <span style={{ transform: `scaleX(${Math.max(day.open ? 0.12 : 0, load)})` }} />
-              </span>
               <span className="week-strip-count">{day.open ? `${day.open} open` : "Free"}</span>
             </button>
           );

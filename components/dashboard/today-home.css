@@ -129,34 +129,34 @@
   margin-top: 10px;
 }
 .week-strip-day {
+  --load: 0;
   display: grid;
   grid-template-columns: 1fr auto;
   grid-template-areas:
     "name num"
-    "bar bar"
     "count count";
   align-items: baseline;
-  gap: 6px 4px;
+  gap: 10px 4px;
   min-width: 0;
-  padding: 10px 10px 9px;
+  padding: 12px 12px 11px;
   border: 1px solid transparent;
   border-radius: 14px;
-  background: rgb(from var(--text) r g b / 0.03);
+  /* The shade is the load: faint for a free day, deep iris for a full one. */
+  background: color-mix(in srgb, var(--accent) calc(var(--load) * 88%), rgb(from var(--text) r g b / 0.03));
   color: var(--text-2);
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease, transform 0.16s ease;
+  transition: filter 0.2s ease, transform 0.16s ease;
 }
 .week-strip-day:hover {
-  background: rgb(from var(--accent) r g b / 0.06);
+  filter: brightness(1.04);
 }
 .week-strip-day:active {
   transform: scale(0.97);
 }
 .week-strip-day.is-today {
-  border-color: rgb(from var(--accent) r g b / 0.28);
-  background: rgb(from var(--accent) r g b / 0.07);
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px rgb(from var(--accent) r g b / 0.55);
 }
 .week-strip-name {
   grid-area: name;
@@ -170,21 +170,6 @@
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
 }
-.week-strip-bar {
-  grid-area: bar;
-  height: 4px;
-  border-radius: 999px;
-  background: rgb(from var(--text) r g b / 0.07);
-  overflow: hidden;
-}
-.week-strip-bar > span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--accent);
-  transform-origin: left center;
-  transition: transform 0.5s cubic-bezier(0.23, 1, 0.32, 1);
-}
 .week-strip-count {
   grid-area: count;
   font-size: 11.5px;
@@ -192,6 +177,15 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.week-strip-day.is-dark .week-strip-name,
+.week-strip-day.is-dark .week-strip-num,
+.week-strip-day.is-dark .week-strip-count {
+  color: var(--accent-ink);
+}
+.week-strip-day.is-dark .week-strip-num,
+.week-strip-day.is-dark .week-strip-count {
+  opacity: 0.85;
 }
 
 /* ─── Setup, one slim line ────────────────────────────────────────────── */

@@ -2128,3 +2128,8 @@ a.tg-next:hover .tg-next-go { color: var(--accent); transform: translate(2px, -2
   display: none;
   animation: none;
 }
+
+/* No pulsing dots: the "next up" dot is a plain marker. */
+.tg-next-dot {
+  animation: none;
+}

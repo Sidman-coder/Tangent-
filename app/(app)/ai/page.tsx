@@ -852,8 +852,8 @@ export default function AiPage() {
             <h2 className="tg-hero-title">
               <span className="tg-hero-ask">{v2 ? "What do you need?" : "What can Tangent help with?"}</span>
             </h2>
-            {today && (
-              today.next ? (
+            {today?.next && (
+              (
                 <Link href={`/calendar?date=${today.next.date}`} className="tg-next">
                   <span className="tg-next-dot" aria-hidden="true" />
                   <span className="tg-next-label">Next up</span>
@@ -862,13 +862,6 @@ export default function AiPage() {
                   {today.left > 1 && <span className="tg-next-more">+{today.left - 1} today</span>}
                   <ArrowUpRight size={14} strokeWidth={2} aria-hidden="true" className="tg-next-go" />
                 </Link>
-              ) : (
-                <p className="tg-next is-clear">
-                  <span className="tg-next-dot" aria-hidden="true" />
-                  {today.left > 0
-                    ? `${today.left} task${today.left === 1 ? "" : "s"} left today, nothing else timed`
-                    : "Your calendar is clear today"}
-                </p>
               )
             )}
             {err && <p className="tg-error" role="alert">{err}</p>}
