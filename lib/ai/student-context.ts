@@ -24,6 +24,8 @@ export type StudentContext = {
   text: string;
   /** False until the student has told Tangent their daily capacity. */
   capacityKnown: boolean;
+  /** Projects under way, for matching a new ask to one (lib/project-match.ts). */
+  projects: { id: string; title: string }[];
 };
 
 export async function buildStudentContext(): Promise<StudentContext> {
@@ -133,5 +135,5 @@ export async function buildStudentContext(): Promise<StudentContext> {
     );
   }
 
-  return { text: sections.join("\n\n"), capacityKnown: known };
+  return { text: sections.join("\n\n"), capacityKnown: known, projects: plans.map((p) => ({ id: p.id, title: p.title })) };
 }

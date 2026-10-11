@@ -8,7 +8,7 @@ import { quickCapture, type QuickCapture } from "@/lib/ai/router";
 import { inferCalendarGroup } from "@/lib/calendars";
 import { dayName } from "@/lib/load";
 import { formatTime12 } from "@/lib/dates";
-import { CAPACITY_QUESTION, capacityFromAnswer, clarifyQuestions, shouldConsiderClarifying } from "@/lib/ai/clarify";
+import { CAPACITY_QUESTION, PROJECT_QUESTION_PREFIX, PROJECT_YES, capacityFromAnswer, clarifyQuestions, shouldConsiderClarifying } from "@/lib/ai/clarify";
 import { buildStudentContext } from "@/lib/ai/student-context";
 import { placeNewTask, reliefSuggestion } from "@/lib/spacing";
 import { addDaysYMD, localNow } from "@/lib/time";
@@ -135,7 +135,7 @@ export const POST = withUser(async (req: Request) => {
 
     console.log("[api/chat] User message:", userText);
 
-    const projectId = typeof body.projectId === "string" && body.projectId ? body.projectId : "";
+    let projectId = typeof body.projectId === "string" && body.projectId ? body.projectId : "";
 
     // Flag off: the Plan/Calendar switch decides, as before. Flag on there is
     // one box and no mode, except the Projects chat, which still talks a
@@ -158,6 +158,10 @@ export const POST = withUser(async (req: Request) => {
     // Answers to Tangent's questions ride along with the original request, so
     // the pipeline sees one complete ask. A capacity answer is saved for good.
     const answers = parseAnswers(body.answers);
+    // "Part of your … project? Yes, add to it": the steps join that project
+    // instead of starting a second one beside it.
+    const joins = answers.find((a) => a.id.startsWith(PROJECT_QUESTION_PREFIX) && a.answer === PROJECT_YES);
+    if (joins && !projectId) projectId = joins.id.slice(PROJECT_QUESTION_PREFIX.length);
     let pipelineText = userText;
     if (answers.length > 0) {
       for (const a of answers) {
@@ -170,7 +174,7 @@ export const POST = withUser(async (req: Request) => {
       // A new project is always grilled first: it's the biggest ask there is.
       const picture = await buildStudentContext().catch(() => null);
       const questions = picture
-        ? await clarifyQuestions(userText, picture.text, { askCapacity: !picture.capacityKnown }).catch(() => [])
+        ? await clarifyQuestions(userText, picture.text, { askCapacity: !picture.capacityKnown, projects: projectId ? [] : picture.projects }).catch(() => [])
         : [];
       if (questions.length > 0) {
         const reply = { ok: true, action: "clarify", message: "A few quick questions so this fits you.", questions };

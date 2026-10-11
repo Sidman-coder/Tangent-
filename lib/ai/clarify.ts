@@ -10,6 +10,12 @@ import "server-only";
 import { callClaude } from "@/lib/ai/call";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import { isClearPlanRequest } from "@/lib/ai/plan";
+import { matchProject } from "@/lib/project-match";
+
+/** Id prefix of the "part of your project?" question; the chat route reads it. */
+export const PROJECT_QUESTION_PREFIX = "project:";
+/** The answer that files the ask under the matched project. */
+export const PROJECT_YES = "Yes, add to it";
 
 export type ClarifyQuestion = {
   id: string;
@@ -62,7 +68,7 @@ When you ask:
 
 Use what you can see, and say so in the question, so it feels like Tangent knows them:
 - If they name a class loosely ("chem", "english"), match it to THEIR CLASSES and name it ("AP Chem"). If a matching test or deadline is in COMING UP FOR SCHOOL, confirm it instead of asking ("Is this the Dec 12 AP Chem final?" with options like "Yes", "No, later").
-- Check PROJECTS ALREADY UNDER WAY first. If one is about the same thing (same club, class, event or goal, even worded differently: "start a robotics club" and "Launching a School Robotics Team" are the same), your FIRST question must ask whether this belongs to it, with that project's name as one option and "Start a new one" as another. This rule wins over ask=false.
+- Don't ask which project something belongs to: Tangent asks that itself. Do use PROJECTS ALREADY UNDER WAY so you don't ask what a project already answers.
 - Every date you offer must be after TODAY. Prefer relative options ("This month", "Before winter break") to years.
 - If the week is already heavy (HOW FULL THE NEXT ... DAYS ARE), you may ask whether to start after the busy days.`;
 
@@ -85,8 +91,15 @@ export function shouldConsiderClarifying(text: string): boolean {
 export async function clarifyQuestions(
   request: string,
   studentContext: string,
-  opts: { askCapacity: boolean }
+  opts: { askCapacity: boolean; projects?: { id: string; title: string }[] }
 ): Promise<ClarifyQuestion[]> {
+  // A project it plausibly belongs to is asked about first, every time, so a
+  // second "robotics club" project never quietly appears beside the first.
+  const match = matchProject(request, opts.projects ?? []);
+  const projectQuestion: ClarifyQuestion[] = match
+    ? [{ id: `${PROJECT_QUESTION_PREFIX}${match.id}`, question: `Part of your “${match.title}” project?`, options: [PROJECT_YES, "Start a new one"] }]
+    : [];
+
   const result = await callClaude(
     "clarify",
     {
@@ -97,26 +110,26 @@ export async function clarifyQuestions(
   );
   if (!result.ok) {
     console.warn("[clarify] model call failed:", result.status);
-    return [];
+    return projectQuestion;
   }
   let parsed: { ask: boolean; questions: { question: string; options: string[] }[] };
   try {
     parsed = extractStructuredJson(result.message);
   } catch {
-    return [];
+    return projectQuestion;
   }
-  if (!parsed.ask) return [];
+  if (!parsed.ask) return projectQuestion;
   const questions: ClarifyQuestion[] = parsed.questions
     .filter((q) => q.question?.trim())
-    .slice(0, 3)
+    .slice(0, 3 - projectQuestion.length)
     .map((q, i) => ({
       id: `q${i + 1}`,
       question: q.question.trim(),
       options: (q.options ?? []).map((o) => o.trim()).filter(Boolean).slice(0, 4),
     }));
   // Capacity only matters once there's real work to spread out.
-  if (questions.length > 0 && opts.askCapacity && questions.length < 3) questions.push(CAPACITY_QUESTION);
-  return questions;
+  if (questions.length > 0 && opts.askCapacity && questions.length + projectQuestion.length < 3) questions.push(CAPACITY_QUESTION);
+  return [...projectQuestion, ...questions];
 }
 
 const CAPTURE_SYSTEM = `You are TANGENT, a planner for high school students that knows them well. The student just captured something and Tangent ALREADY SAVED it as a task (shown below) — nothing is waiting on you. Your job is to ask 1 to 3 short follow-up questions they can answer later, whenever they want.
