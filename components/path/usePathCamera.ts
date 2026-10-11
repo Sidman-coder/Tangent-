@@ -80,6 +80,13 @@ function labelMargins(width: number, height: number): { x: number; y: number } {
   };
 }
 
+/** The lowest zoom "fit everything" goes to; below it the goal is framed
+ *  and the rest is a pan away. The layout spaces cards for the same floor
+ *  (PathScene), so the two never disagree about how big a card is. */
+export function minFitScale(width: number): number {
+  return width < 640 ? 0.42 : 0.32;
+}
+
 /** The zoom `fit` would choose for these bounds, before its floor and caps.
  *  The layout uses it to space cards for the zoom they will be shown at. */
 export function fitScaleFor(
@@ -209,7 +216,7 @@ export function usePathCamera(reduced: boolean): PathCamera {
       // "fit everything" turns a big tree into a pile of cards. Below that
       // floor, frame the goal at a readable zoom and let the person pinch or
       // drag out to the rest.
-      const floor = options.minScale ?? (size.width < 640 ? 0.6 : 0.32);
+      const floor = options.minScale ?? minFitScale(size.width);
       let cx = (bounds.minX + bounds.maxX) / 2;
       let cy = (bounds.minY + bounds.maxY) / 2;
       if (scale < floor) {

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { Maximize2, Minus, Plus, Shrink } from "lucide-react";
 import PathAmbient from "./PathAmbient";
-import { fitScaleFor, usePathCamera } from "./usePathCamera";
+import { fitScaleFor, minFitScale, usePathCamera } from "./usePathCamera";
 import type { Bounds, PathCamera } from "./usePathCamera";
 import { layoutPath, ROOT_RADIUS } from "@/lib/path-layout";
 import type { LabelOptions, PathLayout } from "@/lib/path-layout";
@@ -188,11 +188,12 @@ export default function PathScene({
     // a layout made for a zoom at or below the one it's shown at never
     // underestimates how big a card is, so cards never land on each other.
     let next = layoutPath(nodes, { expanded });
-    let scale = Math.max(fitScaleFor(next.bounds, size, insets), 0.32);
+    const floor = minFitScale(stageW);
+    let scale = Math.max(fitScaleFor(next.bounds, size, insets), floor);
     for (let round = 0; round < 6; round++) {
       const unit = Math.min(Math.max(scale, 0.72), 1) / scale;
       next = layoutPath(nodes, { expanded, labels: { unit, size: labelSize } });
-      const fits = Math.max(fitScaleFor(next.bounds, size, insets), 0.32);
+      const fits = Math.max(fitScaleFor(next.bounds, size, insets), floor);
       if (fits >= scale * 0.97) break;
       scale = fits * 0.97;
     }

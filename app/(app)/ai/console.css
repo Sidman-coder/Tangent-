@@ -2071,7 +2071,8 @@ a.tg-next:hover .tg-next-go { color: var(--accent); transform: translate(2px, -2
 
 @media (max-width: 720px) {
   .tg-hero-title { font-size: 27px; }
-  .tg-examples { justify-content: flex-start; flex-wrap: nowrap; width: 100%; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+  /* Wrap, centred: a sideways scroll cut the last chip off at the edge. */
+  .tg-examples { justify-content: center; flex-wrap: wrap; width: 100%; overflow: visible; padding-bottom: 4px; }
   .tg-examples::-webkit-scrollbar { display: none; }
   .tg-hero .tg-composer-hint { display: none; }
   .tg-next-more { display: none; }

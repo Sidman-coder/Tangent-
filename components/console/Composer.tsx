@@ -47,7 +47,7 @@ export default function Composer({
     placeholder ??
     (mode === "calendar"
       ? "Add or change something on your calendar…"
-      : "Think a plan through — nothing is added until you say so…");
+      : "Think a plan through…");
   // Grow to fit the text, then scroll inside the box past MAX_HEIGHT.
   useLayoutEffect(() => {
     const el = inputRef.current;

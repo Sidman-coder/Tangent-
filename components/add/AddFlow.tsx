@@ -103,6 +103,9 @@ export default function AddFlow({
   const [destChoice, setDestChoice] = useState<Dest | null>(null);
   const [projectId, setProjectId] = useState<string | "new">("new");
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // A phone gets the short prompt, so it fits on one line.
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => setNarrow(window.innerWidth < 520), []);
   const doneTimer = useRef<number | null>(null);
 
   const projects = useMemo(() => (state?.plans ?? []).slice(-6).reverse(), [state?.plans]);
@@ -289,7 +292,7 @@ export default function AddFlow({
           rows={1}
           value={text}
           disabled={busy}
-          placeholder={listening ? "Listening…" : placeholder ?? "Add a task, a project, or ask anything"}
+          placeholder={listening ? "Listening…" : placeholder ?? (narrow ? "Add anything, or ask" : "Add a task, a project, or ask anything")}
           aria-label="What do you want to add?"
           onChange={(e) => {
             setText(e.target.value);
