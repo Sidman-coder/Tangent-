@@ -62,7 +62,8 @@ const token = (s: string, max = 40) => s.replace(/[^a-z0-9_:.-]/gi, "").slice(0,
 export function decisionColumns(d: DecisionInput) {
   const confidence = d.confidence === null || !Number.isFinite(d.confidence) ? null : Math.min(1, Math.max(0, Math.round(d.confidence * 100) / 100));
   return {
-    source: d.source,
+    // The table allows typed and voice only; anything else (e.g. palette) is typed.
+    source: d.source === "voice" ? "voice" : "typed",
     request_text: d.requestText.slice(0, MAX_REQUEST_TEXT),
     route: token(d.route),
     intent: d.intent ? token(d.intent) : null,
