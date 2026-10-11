@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
-import { MessageSquareText, Plus } from "lucide-react";
+import { MessageSquareText } from "lucide-react";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { localNow, wallClockNow } from "@/lib/time";
 import ActionReceipt from "@/components/ActionReceipt";
@@ -12,7 +12,6 @@ import TaskChatModal from "@/components/TaskChatModal";
 import AttentionSection, { type AttentionReceipt } from "@/components/dashboard/AttentionSection";
 import WeekAhead from "@/components/dashboard/WeekAhead";
 import { CanvasCard, PathsCard, StartingIntentCard } from "@/components/dashboard/HomeCards";
-import Button from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
 import TaskRow from "@/components/ui/TaskRow";
 import type { ActionRecord, Task } from "@/lib/types";
@@ -276,11 +275,6 @@ export default function DashboardPage() {
               {dateLabel}
               {trackableToday.length > 0 && <span>{completedToday} of {trackableToday.length} complete</span>}
             </span>
-          }
-          actions={
-            <Button variant="primary" onClick={openCapture} icon={<Plus size={16} aria-hidden="true" />}>
-              New task
-            </Button>
           }
         />
       </m.div>

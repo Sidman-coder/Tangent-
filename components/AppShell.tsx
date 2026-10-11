@@ -1,6 +1,5 @@
 "use client";
 
-import { browserTimezone, zoneAbbreviation } from "@/lib/time";
 import StorageStatus from "@/components/StorageStatus";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -11,7 +10,6 @@ import {
   CalendarDays,
   FolderKanban,
   Home,
-  LogOut,
   MessageSquareText,
   Search,
   Settings,
@@ -54,32 +52,14 @@ const NAV_LINKS = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-/** "9:30 PM EDT" in the student's own timezone (profiles.timezone). */
-function clockFor(d: Date, timeZone: string): string {
-  const time = new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit", hour12: true }).format(d);
-  return `${time} ${zoneAbbreviation(timeZone, d)}`;
-}
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [notifOpen, setNotifOpen] = useState(false);
-  const [clock, setClock] = useState<string | null>(null);
   const { state, refresh } = useAppState();
   const refreshState = refresh;
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const tz = state?.user.timezone ?? browserTimezone();
-  const [today, setToday] = useState<string | null>(null);
 
-  useEffect(() => {
-    const update = () => {
-      const now = new Date();
-      setClock(clockFor(now, tz));
-      setToday(now.toLocaleDateString("en-US", { timeZone: tz, weekday: "short", month: "short", day: "numeric" }));
-    };
-    update();
-    const id = setInterval(update, 60000);
-    return () => clearInterval(id);
-  }, [tz]);
 
   // Onboarding state lives on the student's profile (profiles.onboarded_at).
   // Only opens the flow; FirstRun closes it once its answers are saved.
@@ -141,7 +121,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </Link>
 
         <nav className="rail-nav" aria-label="Primary">
-          {NAV_LINKS.filter((l) => l.href !== "/tangents").map(({ href, label, icon: Icon }) => {
+          {NAV_LINKS.filter((l) => l.href !== "/tangents" && l.href !== "/settings").map(({ href, label, icon: Icon }) => {
             const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
             return (
               <Link
@@ -206,12 +186,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <span>Settings</span>
             </span>
           </Link>
-          <form action="/auth/signout" method="post">
-            <button type="submit" className="rail-signout" aria-label="Sign out" title="Sign out">
-              <LogOut size={16} strokeWidth={1.8} aria-hidden="true" />
-              <span className="rail-signout-label">Sign out</span>
-            </button>
-          </form>
+
         </div>
       </aside>
 
@@ -219,24 +194,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <header className="topbar">
           <div className="topbar-right lg lg-interactive">
             <StorageStatus />
-            <span className="topbar-datetime">
-              {today && <span className="topbar-date">{today}</span>}
-              {clock && (
-                <>
-                  <span className="topbar-date-sep" aria-hidden="true">·</span>
-                  <span className="topbar-time">{clock}</span>
-                </>
-              )}
-            </span>
             <button type="button" className="topbar-search" onClick={openPalette} aria-label="Tell Tangent">
               <Search size={16} strokeWidth={1.8} aria-hidden="true" />
               <span>Tell Tangent</span>
               <kbd>⌘K</kbd>
             </button>
             <NotificationBell open={notifOpen} onOpenChange={setNotifOpen} />
-            <Link href="/settings" className="topbar-avatar" aria-label="Open account settings">
-              {profileInitial}
-            </Link>
           </div>
         </header>
 
