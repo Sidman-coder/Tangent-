@@ -8835,3 +8835,13 @@ h1, h2, h3, h4, h5, h6 {
     border-color: var(--accent);
   }
 }
+
+/* One colour marker everywhere: a dot (lists, calendar, the task card). */
+.ui-task-kind,
+.attention-kind {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  align-self: center;
+  border-radius: 999px;
+}

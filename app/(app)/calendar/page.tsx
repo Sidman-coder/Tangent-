@@ -13,7 +13,7 @@ import Button from "@/components/ui/Button";
 import SidePeek from "@/components/ui/SidePeek";
 import { handleResourceClick } from "@/lib/task-utils";
 import { toYMD, formatTime12 } from "@/lib/dates";
-import { taskColor } from "@/lib/task-colors";
+import { KIND_LABEL, taskColor } from "@/lib/task-colors";
 import { CALENDARS } from "@/lib/calendars";
 import { isOnboardingSchoolTask } from "@/lib/school-block";
 import { baseTitle, useShortTitles } from "@/lib/short-titles";
@@ -53,13 +53,7 @@ function getKindColor(kind?: string): string {
 }
 
 const KIND_SORT_ORDER = ["school", "academic-ec", "commitment", "side-ec", "personal"];
-const KIND_DISPLAY_NAME: Record<string, string> = {
-  school: "School",
-  commitment: "Commitment",
-  "academic-ec": "Academics",
-  "side-ec": "Activities",
-  personal: "Personal time",
-};
+const KIND_DISPLAY_NAME: Record<string, string> = KIND_LABEL;
 const NO_KIND = "__none__";
 
 function sortKindKeys(keys: string[]): string[] {
@@ -442,7 +436,7 @@ export default function CalendarPage() {
             tasksForDay={tasksForDay}
             onOpenTask={(_ymd, id) => openTask(id)}
             labelFor={labelFor}
-            colorFor={(t) => getKindColor(t.kind)}
+            colorFor={getTaskCategoryColor}
             onOpenDay={setSelectedDay}
             onAddAt={(ymd, time) => openAddAt(ymd, time)}
             toYMD={toYMD}
@@ -457,7 +451,7 @@ export default function CalendarPage() {
             days={agendaDays}
             todayYmd={todayYmd}
             tasksForDay={tasksForDay}
-            colorFor={(t) => getKindColor(t.kind)}
+            colorFor={getTaskCategoryColor}
             onOpenDay={setSelectedDay}
             onToggle={(id) => void toggleTask(id)}
             onAdd={(ymd) => openAddAt(ymd)}
@@ -521,7 +515,7 @@ export default function CalendarPage() {
                             <span
                               key={t.id}
                               className={`cal-event${t.completed ? " is-done" : ""}${deadline ? " is-deadline" : ""}`}
-                              style={{ "--chip": getKindColor(t.kind) } as React.CSSProperties}
+                              style={{ "--chip": getTaskCategoryColor(t) } as React.CSSProperties}
                               onClick={(e) => {
                                 // The event opens in the middle, like Google
                                 // Calendar; the date opens the day.

@@ -7,14 +7,8 @@ import { press, spring } from "@/lib/motion";
 import type { Task } from "@/lib/types";
 import { formatTime12 } from "@/lib/dates";
 import TaskTitle from "@/components/ui/TaskTitle";
+import { KIND_LABEL } from "@/lib/task-colors";
 
-const KIND_LABEL: Record<string, string> = {
-  school: "School",
-  "academic-ec": "Academics",
-  "side-ec": "Activities",
-  commitment: "Commitment",
-  personal: "Personal",
-};
 
 type TaskRowProps = {
   task: Task;
@@ -94,9 +88,10 @@ export default function TaskRow({
           <div className="ui-task-meta">
             <time dateTime={`${task.date}T${task.time}`}>
               {showDate ? `${shortDate(task.date)} · ` : ""}
-              {formatTime12(task.time)}
+              {/* A due date isn't a time anything happens: "Due", as on the calendar. */}
+              {task.source === "canvas" || task.time === "23:59" ? "Due" : formatTime12(task.time)}
             </time>
-            {task.kind && <span className="ui-task-kind-label">{KIND_LABEL[task.kind] ?? task.kind.replaceAll("-", " ")}</span>}
+            {task.kind && <span className="ui-task-kind-label">{KIND_LABEL[task.kind as keyof typeof KIND_LABEL] ?? task.kind.replaceAll("-", " ")}</span>}
             {task.recurring?.enabled && (
               <span className="ui-task-recurring"><Repeat2 size={12} aria-hidden="true" /> Recurring</span>
             )}

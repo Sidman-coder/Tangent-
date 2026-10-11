@@ -12,10 +12,11 @@ export const KIND_COLOR: Record<TaskKind, string> = {
   personal: "var(--kind-personal)",
 };
 
+/** The one set of names for task kinds, used everywhere they're shown. */
 export const KIND_LABEL: Record<TaskKind, string> = {
   school: "School",
-  "academic-ec": "Academic EC",
-  "side-ec": "Side EC",
+  "academic-ec": "Academics",
+  "side-ec": "Activities",
   commitment: "Commitment",
   personal: "Personal",
 };
