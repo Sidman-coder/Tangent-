@@ -7,7 +7,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Check } from "lucide-react";
 import Button from "@/components/ui/Button";
-import ImportContext from "@/components/settings/ImportContext";
 import { GET_TO_KNOW_DONE_EVENT, GET_TO_KNOW_EVENT } from "@/components/GetToKnowYou";
 import { TOUR_DONE_KEY, TOUR_EVENT } from "@/components/FeatureTour";
 
@@ -25,19 +24,16 @@ function Status({ done, children }: { done: boolean; children: React.ReactNode }
 export default function OnboardingSection({
   canvasLoaded,
   canvasConnected,
-  onConnectCanvas,
   onRedoSetup,
   redoing,
 }: {
   canvasLoaded: boolean;
   canvasConnected: boolean;
-  onConnectCanvas: () => void;
   onRedoSetup: () => void;
   redoing: boolean;
 }) {
   const [toured, setToured] = useState(false);
   const [facts, setFacts] = useState<number | null>(null);
-  const [importing, setImporting] = useState(false);
 
   const loadFacts = useCallback(() => {
     void fetch("/api/context", { cache: "no-store" })
@@ -94,33 +90,14 @@ export default function OnboardingSection({
           </Button>
         </div>
 
-        <div className="settings-row is-stacked">
-          <div className="settings-row-main">
-            <div className="settings-row-copy">
-              <strong>Bring context from another AI</strong>
-              <span>Paste what ChatGPT or Claude knows about you, and Tangent keeps what&apos;s useful.</span>
-            </div>
-            <Button size="sm" onClick={() => setImporting((v) => !v)}>{importing ? "Close" : "Import"}</Button>
-          </div>
-          {importing && (
-            <ImportContext
-              onDone={() => {
-                setImporting(false);
-                loadFacts();
-                window.dispatchEvent(new Event(GET_TO_KNOW_DONE_EVENT));
-              }}
-            />
-          )}
-        </div>
-
         <div className="settings-row">
           <div className="settings-row-copy">
-            <strong>Connect Canvas</strong>
-            <span>Assignments and due dates flow into your calendar on their own.</span>
-            {canvasLoaded && <Status done={canvasConnected}>{canvasConnected ? "Connected" : "Not connected"}</Status>}
+            <strong>Connect your apps</strong>
+            <span>Canvas, your calendars, Notion and other AIs, so Tangent starts out knowing your week.</span>
+            {canvasLoaded && <Status done={canvasConnected}>{canvasConnected ? "Canvas connected" : "Nothing connected yet"}</Status>}
           </div>
-          <Button size="sm" variant={canvasConnected ? "secondary" : "primary"} onClick={onConnectCanvas} disabled={!canvasLoaded}>
-            {canvasConnected ? "Reconnect" : "Connect"}
+          <Button size="sm" variant={canvasConnected ? "secondary" : "primary"} onClick={() => document.getElementById("connections")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+            Open
           </Button>
         </div>
 

@@ -53,9 +53,9 @@ const STEPS: Step[] = [
   },
   {
     route: "/",
-    target: [".topbar-add"],
-    title: "Add from anywhere",
-    body: "On every page: the Add button, the mic beside it to just start talking, or ⌘K. Questions go to Tangent AI and long-range goals become Tangents, from the same box.",
+    target: [".topbar-mic"],
+    title: "Say it from anywhere",
+    body: "The mic up here is on every page: tap it and talk, and it goes through the same Add flow. Press ⌘K to type instead. Questions go to Tangent AI and long-range goals become Tangents, from the same box.",
   },
   {
     route: "/",
@@ -109,7 +109,7 @@ const STEPS: Step[] = [
     route: "/settings",
     target: ["#onboarding"],
     title: "Set Tangent up in Settings",
-    body: "Everything Tangent needs lives under Onboarding: this tour, its first questions about you, Grill me, context from ChatGPT or Claude, Canvas, and your setup answers.",
+    body: "Onboarding has this tour, Tangent's first questions about you, Grill me and your setup answers. Just below, Connections brings in Canvas, your Google, Apple or Outlook calendar, and notes from Notion, Docs or other AIs.",
   },
   {
     route: "/settings",

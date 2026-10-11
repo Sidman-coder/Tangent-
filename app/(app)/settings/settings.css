@@ -208,3 +208,91 @@
   padding: 0 16px;
   border-radius: 999px;
 }
+
+/* Calendar file import (components/settings/CalendarImport.tsx). */
+.cal-import {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cal-import-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.cal-import-how {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.cal-import-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgb(from var(--text) r g b / 0.04);
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.45;
+  list-style: none;
+}
+.cal-import-steps strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.cal-import-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgb(from var(--text) r g b / 0.04);
+}
+.cal-import-preview p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13.5px;
+}
+.cal-import-preview strong {
+  color: var(--text);
+}
+.cal-import-preview ul {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cal-import-preview li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text);
+  font-size: 13px;
+}
+.cal-import-preview li > span:last-child {
+  flex: none;
+  color: var(--text-3);
+}
+.cal-import-preview li.is-more {
+  color: var(--text-3);
+}
+.cal-import-done {
+  margin: 0;
+  color: var(--green);
+  font-size: 13px;
+}
+.cal-import-error {
+  margin: 0;
+  color: var(--red);
+  font-size: 13px;
+}

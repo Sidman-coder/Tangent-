@@ -7,6 +7,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import CanvasConnectGuide from "@/components/CanvasConnectGuide";
 import WhatTangentKnows from "@/components/settings/WhatTangentKnows";
 import OnboardingSection from "@/components/settings/OnboardingSection";
+import ConnectionsSection from "@/components/settings/ConnectionsSection";
 import "./settings.css";
 import type { AppState, CanvasFeedStatus } from "@/lib/types";
 import {
@@ -207,6 +208,7 @@ export default function SettingsPage() {
       <div className="settings-layout">
         <nav className="settings-nav" aria-label="Settings sections">
           <a href="#onboarding">Onboarding</a>
+          <a href="#connections">Connections</a>
           <a href="#profile">Profile</a>
           <a href="#planning">Planning</a>
           <a href="#what-tangent-knows">What Tangent knows</a>
@@ -219,9 +221,14 @@ export default function SettingsPage() {
           <OnboardingSection
             canvasLoaded={canvasLoaded}
             canvasConnected={Boolean(canvasFeed)}
-            onConnectCanvas={() => setCanvasGuideOpen(true)}
             onRedoSetup={() => void onRestartOnboarding()}
             redoing={redoing}
+          />
+
+          <ConnectionsSection
+            canvasLoaded={canvasLoaded}
+            canvasConnected={Boolean(canvasFeed)}
+            onConnectCanvas={() => setCanvasGuideOpen(true)}
           />
 
           <section id="profile" className="settings-group" aria-labelledby="profile-title">
