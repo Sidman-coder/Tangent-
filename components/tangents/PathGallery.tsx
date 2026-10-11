@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { prefetchPath } from "@/lib/path-prefetch";
 import { AnimatePresence, m, useMotionValue, useReducedMotion, useSpring, useTransform } from "motion/react";
 import { ChevronRight, Plus } from "lucide-react";
 import TangentLogo from "@/components/TangentLogo";
@@ -240,6 +241,8 @@ export default function PathGallery({ paths, onNew, empty = DEFAULT_PATHS_EMPTY,
   const open = useCallback(
     (path: PathWithCounts, origin: { x: number; y: number }) => {
       router.prefetch(`/tangents/${path.id}`);
+      // The path's data loads while the reveal plays (lib/path-prefetch.ts).
+      void prefetchPath(path.id);
       // Tells the path page its goal is already on screen, in the middle,
       // so it opens around it instead of animating a second entrance.
       try {
@@ -406,8 +409,14 @@ export default function PathGallery({ paths, onNew, empty = DEFAULT_PATHS_EMPTY,
             style={{ "--px": `${portal.x}px`, "--py": `${portal.y}px` } as React.CSSProperties}
             initial={{ clipPath: `circle(0px at ${portal.x}px ${portal.y}px)` }}
             animate={{ clipPath: `circle(150vmax at ${portal.x}px ${portal.y}px)` }}
-            transition={{ duration: 0.6, ease: [0.7, 0, 0.2, 1] }}
-            onAnimationComplete={() => router.push(`/tangents/${portal.id}`)}
+            // Ease-out, short: it answers the press at once instead of
+            // winding up. The page is shown once its data is in (or after a
+            // short wait), so it never cuts to a loading skeleton.
+            transition={{ duration: 0.45, ease: [0.32, 0.72, 0, 1] }}
+            onAnimationComplete={() => {
+              const go = () => router.push(`/tangents/${portal.id}`);
+              void Promise.race([prefetchPath(portal.id), new Promise((r) => setTimeout(r, 700))]).then(go);
+            }}
             aria-hidden="true"
           />
         )}
@@ -427,7 +436,7 @@ export default function PathGallery({ paths, onNew, empty = DEFAULT_PATHS_EMPTY,
             scale: 0.9,
             opacity: 1,
           }}
-          transition={{ duration: 0.6, ease: [0.7, 0, 0.2, 1] }}
+          transition={{ duration: 0.45, ease: [0.32, 0.72, 0, 1] }}
           aria-hidden="true"
         >
           <span className="path-goal-node is-focused">

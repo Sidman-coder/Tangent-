@@ -171,7 +171,7 @@ export default function PathScene({
     }, 1600);
     return () => clearTimeout(t);
   }, []);
-  const stage = (base: number, i: number) => (firstPaint.current ? base + Math.min(i * 0.07, 0.6) : 0);
+  const stage = (base: number, i: number) => (firstPaint.current ? base + Math.min(i * 0.05, 0.4) : 0);
   const reduced = useReducedMotion() ?? false;
   const camera = usePathCamera(reduced);
 
@@ -339,7 +339,7 @@ export default function PathScene({
               // Rings ripple out to their radius, deepest last.
               initial={reduced ? false : { r: 0 }}
               animate={{ r: circle.radius }}
-              transition={{ type: "spring", visualDuration: 0.9, bounce: 0.12, delay: stage(0.1, circle.depth) }}
+              transition={{ type: "spring", visualDuration: 0.7, bounce: 0, delay: stage(0.08, circle.depth) }}
               vectorEffect="non-scaling-stroke"
             />
           ))}
@@ -418,7 +418,7 @@ export default function PathScene({
             style={{ left: 0, top: 0 }}
             initial={reduced || fromPortal ? false : { opacity: 0, scale: 0.8, filter: "blur(8px)" }}
             animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-            transition={{ type: "spring", visualDuration: 0.7, bounce: 0.2 }}
+            transition={{ type: "spring", visualDuration: 0.5, bounce: 0 }}
           >
             <div className="path-point-inner">
               <button
@@ -454,7 +454,7 @@ export default function PathScene({
                 initial={reduced ? false : { opacity: 0, scale: 0.6 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.8 }}
-                transition={{ type: "spring", visualDuration: 0.5, bounce: 0.25, delay: stage(0.35, i) }}
+                transition={{ type: "spring", visualDuration: 0.42, bounce: 0.1, delay: stage(0.28, i) }}
               >
                 <div className="path-point-inner">
                   <button
@@ -489,8 +489,8 @@ export default function PathScene({
                   exit={{ opacity: 0, scale: 0.7 }}
                   transition={{
                     type: "spring",
-                    visualDuration: 0.5,
-                    bounce: 0.26,
+                    visualDuration: 0.42,
+                    bounce: 0.1,
                     delay: reduced ? 0 : firstPaint.current ? stage(0.7, i) : Math.min(i * 0.035, 0.3),
                   }}
                 >

@@ -10,6 +10,7 @@ import PathWorkForm from "@/components/path/PathWorkForm";
 import DeletePathDialog from "@/components/tangents/DeletePathDialog";
 import type { Path, PathNode, PathNodeSchedule } from "@/lib/types";
 import { pathMeta } from "@/lib/path-format";
+import { takePrefetchedPath } from "@/lib/path-prefetch";
 import "../tangents.css";
 
 async function post(body: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -28,11 +29,13 @@ export default function PathDeepView() {
   const router = useRouter();
   const pathId = params?.pathId;
 
-  const [path, setPath] = useState<Path | null>(null);
-  const [nodes, setNodes] = useState<PathNode[]>([]);
-  const [scheduled, setScheduled] = useState<Record<string, PathNodeSchedule>>({});
+  // Opened from the gallery, the data is usually already here: draw at once.
+  const [prefetched] = useState(() => (pathId ? takePrefetchedPath(pathId) : null));
+  const [path, setPath] = useState<Path | null>(prefetched?.path ?? null);
+  const [nodes, setNodes] = useState<PathNode[]>(prefetched?.nodes ?? []);
+  const [scheduled, setScheduled] = useState<Record<string, PathNodeSchedule>>(prefetched?.scheduled ?? {});
   const [justKept, setJustKept] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!prefetched);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -69,8 +72,10 @@ export default function PathDeepView() {
   }, [pathId]);
 
   useEffect(() => {
+    // Prefetched: it's fresh enough to draw, and nothing reloads under the entrance.
+    if (prefetched) return;
     void load();
-  }, [load]);
+  }, [load, prefetched]);
 
   const run = useCallback(
     async (body: Record<string, unknown>, busyKey?: string) => {
