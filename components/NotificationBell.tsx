@@ -221,6 +221,16 @@ export default function NotificationBell({ open: openProp, onOpenChange, placeme
     )
   }
 
+  // Escape closes the panel, like every other panel in Tangent.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [open, setOpen])
+
   // In the sidebar, the panel is portalled out so the sidebar's glass (which
   // contains fixed children) can't clip it; it opens beside the sidebar.
   const wrapPanel = (panel: React.ReactNode) =>

@@ -81,6 +81,7 @@ export default function AddFlow({
   onClose,
   onTextChange,
   defaultDest,
+  placeholder,
 }: {
   variant?: "hero" | "sheet";
   autoFocus?: boolean;
@@ -93,6 +94,7 @@ export default function AddFlow({
   onTextChange?: (text: string) => void;
   /** Where it goes until the student picks (Projects starts on Project). */
   defaultDest?: Dest;
+  placeholder?: string;
 }) {
   const router = useRouter();
   const { state, refresh } = useAppState();
@@ -287,7 +289,7 @@ export default function AddFlow({
           rows={1}
           value={text}
           disabled={busy}
-          placeholder={listening ? "Listening…" : "Add a task, a project, or ask anything"}
+          placeholder={listening ? "Listening…" : placeholder ?? "Add a task, a project, or ask anything"}
           aria-label="What do you want to add?"
           onChange={(e) => {
             setText(e.target.value);

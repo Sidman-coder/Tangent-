@@ -676,3 +676,40 @@ body :is(.tg-chip, .tg-clarify-btn, .path-step-chip, .path-chip, .preview-card-b
   justify-content: center;
   line-height: 1;
 }
+
+
+/* Notifications panel: a header that fits on one line; Answer is a glass pill. */
+.notif-panel {
+  width: 360px;
+}
+.notif-panel-header {
+  flex-wrap: nowrap;
+}
+.notif-panel-title {
+  white-space: nowrap;
+}
+.notif-panel-actions,
+.notif-dismiss-all,
+.notif-summary-btn {
+  white-space: nowrap;
+}
+.notif-dismiss-all {
+  color: var(--text-3);
+  font-weight: 500;
+}
+body .notif-item-action {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--lg-edge);
+  border-radius: 999px;
+  background: var(--glass-catch), var(--lg-fill-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 var(--lg-rim-top), 0 6px 16px -10px var(--lg-shade);
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1;
+}

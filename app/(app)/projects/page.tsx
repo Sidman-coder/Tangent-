@@ -77,7 +77,7 @@ export default function ProjectsPage() {
         <section className="projects-new" aria-label="Start a project">
           <h2>What are you working toward?</h2>
           <p>Say it or type it. Tangent asks a few questions, then lays the steps out around your week.</p>
-          <AddFlow variant="hero" defaultDest="project" autoFocus={composing && !handed} initialText={handed ?? ""} />
+          <AddFlow variant="hero" defaultDest="project" placeholder="Prep for my chem final on Dec 12, start a robotics club…" autoFocus={composing && !handed} initialText={handed ?? ""} />
           {composing && projects.length > 0 && (
             <button type="button" className="projects-new-cancel" onClick={() => setComposing(false)}>
               Cancel
