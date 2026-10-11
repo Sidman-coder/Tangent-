@@ -8710,3 +8710,25 @@ h1, h2, h3, h4, h5, h6 {
     backdrop-filter: none;
   }
 }
+
+/* Glass you can actually see: thinner bars over a slightly richer wash, so
+   the iris tint and whatever scrolls past read through them. */
+:root,
+[data-theme="light"] {
+  --wash-iris: rgb(75 58 140 / 0.17);
+  --wash-teal: rgb(31 122 116 / 0.12);
+}
+.topbar,
+.mobile-nav {
+  background: rgb(from var(--surface) r g b / 0.5);
+}
+.rail {
+  background: rgb(from var(--surface) r g b / 0.42);
+}
+@media (prefers-reduced-transparency: reduce) {
+  .topbar,
+  .mobile-nav,
+  .rail {
+    background: var(--surface);
+  }
+}
