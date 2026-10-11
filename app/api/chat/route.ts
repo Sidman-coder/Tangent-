@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { handleVoiceText, type PlanProgress, type VoiceOptions } from "@/lib/voice-handler";
 import { withUser } from "@/lib/request-context";
-import { extractContextFacts } from "@/lib/context-extract";
+import { calendarReply, lastUserMessage, planReply, type CalendarReplyOptions } from "@/lib/chat-reply";
+import { TANGENT_PIPELINE_V2 } from "@/lib/pipeline/flags";
+import { handleRequest } from "@/lib/pipeline/intake";
 import { addTask, getAllPlans, getAllTasks, getUserTimezone, recordAction, setCapacity } from "@/lib/store";
 import { quickCapture, type QuickCapture } from "@/lib/ai/router";
 import { inferCalendarGroup } from "@/lib/calendars";
@@ -10,9 +11,8 @@ import { formatTime12 } from "@/lib/dates";
 import { CAPACITY_QUESTION, capacityFromAnswer, clarifyQuestions, shouldConsiderClarifying } from "@/lib/ai/clarify";
 import { buildStudentContext } from "@/lib/ai/student-context";
 import { placeNewTask, reliefSuggestion } from "@/lib/spacing";
-import { addDaysYMD, localNow, promptDateContext } from "@/lib/time";
-import { callClaude, messageText } from "@/lib/ai/call";
-import { cacheHistory, withDateLast } from "@/lib/ai/cache";
+import { addDaysYMD, localNow } from "@/lib/time";
+import { cleanTitle } from "@/lib/quick-add";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,63 +23,6 @@ export const maxDuration = 60;
 
 /** "calendar" acts on the calendar; "plan" only talks a plan through. */
 type ChatMode = "plan" | "calendar";
-
-const PLAN_SYSTEM = `You are TANGENT AI in Plan mode — a thinking partner for planning time.
-The student's local date and time are given at the end of their latest message.
-In Plan mode you never add, move, or delete anything; you help the user work out what to do and when.
-- Use the student context below: their real overdue work, this week's tasks, deadlines, capacity and goals. Plan from it directly.
-- Ask at most one short clarifying question, and only for something essential the context doesn't already answer.
-- When you propose a schedule, list each session on its own line as "Day, date — time — what", 3 to 10 lines.
-- Keep it under 150 words. Plain text only: no markdown headings, bold, tables, JSON, or code fences. Simple "- " bullets are fine.
-- End a proposed schedule with: "Switch to Calendar and say \"add this plan\" to put it on your calendar."`;
-
-/** Earlier turns, newest last, trimmed — lets Calendar mode resolve "add this plan". */
-function conversationContext(messages: { role: string; content: string }[]): string | undefined {
-  const earlier = messages.slice(0, -1).slice(-4);
-  if (earlier.length === 0) return undefined;
-  const text = earlier.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`).join("\n");
-  return text.length > 2400 ? text.slice(-2400) : text;
-}
-
-async function planReply(messages: { role: "user" | "assistant"; content: string }[], projectNote = ""): Promise<string> {
-  // Static system, settled history cached, date last (lib/ai/cache.ts). The
-  // history breakpoint only takes effect once a long talk passes the minimum.
-  // Plan mode used to know nothing about the student: "plan my week" with ten
-  // overdue items asked them what they needed to do. It now gets the same
-  // picture every other AI step does (lib/ai/student-context.ts).
-  const picture = await buildStudentContext().then((c) => c.text).catch(() => "");
-  const res = await callClaude("chatPlan", {
-    system: picture
-      ? [
-          { type: "text" as const, text: PLAN_SYSTEM },
-          { type: "text" as const, text: `STUDENT CONTEXT — their real schedule, work and goals. Start from this; never ask for anything it already answers:\n${picture}${projectNote ? `\n\n${projectNote}` : ""}` },
-        ]
-      : PLAN_SYSTEM,
-    messages: withDateLast(cacheHistory(messages.slice(-12)), promptDateContext(await getUserTimezone())),
-  });
-  if (!res.ok) throw new Error(res.budgetExceeded ? res.error : `Anthropic error ${res.status}`);
-  const text = messageText(res.message);
-  if (!text) throw new Error("Empty plan reply");
-  return text.replace(/```[\s\S]*?```/g, "").replace(/\*\*(.+?)\*\*/g, "$1").trim();
-}
-
-function lastUserMessage(messages: { role: string; content: string }[]): string {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === "user") return messages[i].content.trim();
-  }
-  return "";
-}
-
-// Fire-and-forget: extract durable facts about the user from this exchange and
-// store them in the rolling context file. Never awaited — must not block the
-// response. Runs in-process so it keeps this request's signed-in student (an
-// HTTP call to /api/context carried no session cookie and was rejected).
-function extractContextFireAndForget(userMessage: string, finalResponse: string): void {
-  void extractContextFacts(`User: ${userMessage}
-Assistant: ${finalResponse}`, "chat").catch((e) => {
-    console.error("[api/chat] context extraction failed:", e instanceof Error ? e.message : e);
-  });
-}
 
 /** What the model needs to know about the project a request was made in. */
 async function projectBrief(projectId: string): Promise<string | null> {
@@ -97,7 +40,8 @@ async function projectBrief(projectId: string): Promise<string | null> {
 async function saveQuickCapture(quick: QuickCapture): Promise<Record<string, unknown>> {
   const placed = await placeNewTask({ date: quick.date ?? null, time: quick.time ?? null, deadline: quick.deadline ?? null });
   const task = await addTask({
-    title: quick.title,
+    // Same lead-in cleanup as every other single add ("I have a ..." → "...").
+    title: cleanTitle(quick.title),
     date: placed.date,
     time: placed.time,
     completed: false,
@@ -139,102 +83,6 @@ function parseAnswers(raw: unknown): Answer[] {
     .map((a) => ({ id: a.id, question: a.question.slice(0, 200), answer: a.answer.trim().slice(0, 300) }));
 }
 
-/** Calendar mode: run the command through the voice pipeline and describe the result. */
-async function calendarReply(
-  messages: { role: "user" | "assistant"; content: string }[],
-  userText: string,
-  onProgress?: (event: PlanProgress) => void,
-  project?: Pick<VoiceOptions, "projectId" | "projectGoal" | "forcePlan">
-): Promise<Record<string, unknown>> {
-  // Step 1 — Execute command via voice pipeline. Called in-process: the old
-  // HTTP self-call to NEXT_PUBLIC_BASE_URL failed whenever the app wasn't on
-  // localhost:3000 (Vercel, another port), silently degrading to plain chat.
-  let voiceResponse = "";
-  let voiceAction = "";
-  let voiceOk = false;
-  let voiceError = "";
-  let voiceActionId: string | undefined;
-  let voicePending: { id: string; kind: string; message: string } | undefined;
-  let voiceSourcesChecked: string[] | undefined;
-  let voicePlan: { id: string; title: string; taskCount: number; color: string } | undefined;
-  let voiceCount: number | undefined;
-  let voiceTaskId: string | undefined;
-  let voiceTaskDate: string | undefined;
-  try {
-    console.log("[api/chat] Calling voice pipeline:", userText);
-    const voiceRes = await handleVoiceText(userText, { context: conversationContext(messages), onProgress, ...project });
-    const voiceData = (await voiceRes.json()) as {
-      response?: string;
-      action?: string;
-      ok?: boolean;
-      error?: string;
-      actionId?: string;
-      pending?: { id: string; kind: string; message: string };
-      sourcesChecked?: string[];
-      plan?: { id: string; title: string; taskCount: number; color: string };
-      count?: number;
-      task?: { id?: string; date?: string };
-    };
-    console.log("[api/chat] Voice pipeline result:", JSON.stringify(voiceData).slice(0, 300));
-    voiceResponse = voiceData.response ?? "";
-    voiceAction = voiceData.action ?? "";
-    voiceOk = voiceData.ok === true;
-    voiceError = voiceData.error ?? "";
-    voiceActionId = voiceData.actionId;
-    voicePending = voiceData.pending;
-    voicePlan = voiceData.plan;
-    voiceCount = voiceData.count;
-    voiceTaskId = voiceData.task?.id;
-    voiceTaskDate = voiceData.task?.date;
-    voiceSourcesChecked = voiceData.sourcesChecked;
-  } catch (err) {
-    console.error("[api/chat] Voice pipeline error:", err);
-  }
-
-  if (voiceOk && voiceAction === "confirm_required" && voicePending) {
-    return {
-      message: voiceResponse.trim(),
-      action: voiceAction,
-      pending: voicePending,
-      ok: true,
-    };
-  }
-
-  if (voiceOk && voiceResponse.trim()) {
-    console.log("[api/chat] Voice pipeline succeeded, skipping Anthropic rephrase:", voiceResponse.slice(0, 100));
-    extractContextFireAndForget(userText, voiceResponse.trim());
-    // New work can tip a day over the student's load: offer one move, never
-    // make it (the student taps to accept; /api/reschedule records Undo).
-    const suggestion =
-      voiceAction === "add_task" || voiceAction === "create_plan" ? await reliefSuggestion() : null;
-    return {
-      message: voiceResponse.trim(),
-      suggestion,
-      // So the client can ask for follow-up questions about it (/api/questions).
-      taskId: voiceAction === "add_task" ? voiceTaskId : undefined,
-      taskDate: voiceAction === "add_task" ? voiceTaskDate : undefined,
-      action: voiceAction,
-      actionId: voiceActionId,
-      sourcesChecked: voiceSourcesChecked,
-      plan: voicePlan,
-      projectId: project?.projectId ?? voicePlan?.id,
-      recurringCount: voiceAction === "add_recurring_task" ? voiceCount : undefined,
-      ok: true,
-    };
-  }
-
-  // Step 2 — The pipeline did not act. Say so plainly: the previous fallback asked
-  // a plain chat model to "confirm it happened", which reported success for
-  // tasks that were never created.
-  const reason = voiceError || voiceResponse || "the task pipeline did not respond";
-  console.error("[api/chat] Voice pipeline did not act:", reason);
-  return {
-    message: `I couldn't add that to your calendar — ${reason}.`,
-    action: "error",
-    ok: true,
-  };
-}
-
 export const POST = withUser(async (req: Request) => {
   try {
     console.log("[api/chat] === CHAT REQUEST START ===");
@@ -252,6 +100,8 @@ export const POST = withUser(async (req: Request) => {
       projectId?: unknown;
       /** "New project" on the Projects page: always builds a plan. */
       newProject?: unknown;
+      /** Pipeline V2: "chat" is the "Just talking, don't add" re-ask. */
+      route?: unknown;
     };
     const mode: ChatMode = body.mode === "plan" ? "plan" : "calendar";
     const raw = body.messages;
@@ -285,10 +135,15 @@ export const POST = withUser(async (req: Request) => {
 
     console.log("[api/chat] User message:", userText);
 
-    if (mode === "plan") {
+    const projectId = typeof body.projectId === "string" && body.projectId ? body.projectId : "";
+
+    // Flag off: the Plan/Calendar switch decides, as before. Flag on there is
+    // one box and no mode, except the Projects chat, which still talks a
+    // project through in Plan mode.
+    if (mode === "plan" && (!TANGENT_PIPELINE_V2 || projectId)) {
       // Asked from inside a project: the talk is about that project.
-      const note = typeof body.projectId === "string" && body.projectId ? (await projectBrief(body.projectId)) ?? "" : "";
-      const reply = await planReply(messages, note);
+      const note = projectId ? (await projectBrief(projectId)) ?? "" : "";
+      const reply = await planReply(messages, { projectNote: note });
       return NextResponse.json({ message: reply, action: "plan_reply", mode, ok: true });
     }
 
@@ -311,7 +166,7 @@ export const POST = withUser(async (req: Request) => {
         if (weekday) await setCapacity({ weekday, weekend: Math.min(720, Math.round(weekday * 1.6)) });
       }
       pipelineText = `${userText}\n\nMy answers to your questions:\n${answers.map((a) => `- ${a.question} ${a.answer}`).join("\n")}`;
-    } else if (body.clarify === true && (body.newProject === true || shouldConsiderClarifying(userText))) {
+    } else if (body.route !== "chat" && body.clarify === true && (body.newProject === true || shouldConsiderClarifying(userText))) {
       // A new project is always grilled first: it's the biggest ask there is.
       const picture = await buildStudentContext().catch(() => null);
       const questions = picture
@@ -329,18 +184,33 @@ export const POST = withUser(async (req: Request) => {
     // Projects: inside one, the request carries the project so the model knows
     // what it's adding to, and its steps join it; a new project always builds
     // a plan, with the student's first words as its goal.
-    let project: Pick<VoiceOptions, "projectId" | "projectGoal" | "forcePlan"> | undefined;
-    if (typeof body.projectId === "string" && body.projectId) {
-      const found = await projectBrief(body.projectId);
+    let project: CalendarReplyOptions["project"];
+    if (projectId) {
+      const found = await projectBrief(projectId);
       if (found) {
-        project = { projectId: body.projectId };
+        project = { projectId };
         pipelineText = `${pipelineText}\n\n${found}`;
       }
     } else if (body.newProject === true) {
       project = { forcePlan: true, projectGoal: userText.slice(0, 300) };
     }
 
-    if (body.stream !== true) return NextResponse.json(await calendarReply(messages, pipelineText, undefined, project));
+    // Pipeline V2: every message goes through the intake (lib/pipeline/intake.ts),
+    // so anything the AI writes is a preview card first; route "chat" is the
+    // "Just talking" re-ask. Project requests skip it: the Projects chat has no
+    // preview card, so they save directly as on main (with Undo).
+    // Flag off: straight to the voice pipeline, as on main.
+    const reply = (onProgress?: Parameters<typeof calendarReply>[2]) =>
+      TANGENT_PIPELINE_V2 && !project
+        ? handleRequest(messages, {
+            onProgress,
+            route: body.route === "chat" ? "chat" : undefined,
+            pipelineText,
+            answered: answers.length > 0,
+          })
+        : calendarReply(messages, pipelineText, onProgress, { project, preview: !project });
+
+    if (body.stream !== true) return NextResponse.json(await reply());
 
     // Streamed: one JSON object per line. Plan progress ({type:"plan_outline"},
     // {type:"plan_task"}) as it's generated, then {type:"result", ...} with the
@@ -350,7 +220,7 @@ export const POST = withUser(async (req: Request) => {
       async start(controller) {
         const send = (line: unknown) => controller.enqueue(encoder.encode(JSON.stringify(line) + "\n"));
         try {
-          const result = await calendarReply(messages, pipelineText, send, project);
+          const result = await reply(send);
           send({ type: "result", ...result });
         } catch (e) {
           const message = e instanceof Error ? e.message : "Unknown error";

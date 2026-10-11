@@ -14,6 +14,11 @@ import { putAsk } from "@/lib/ask-handoff";
 import { putNewPathTitle } from "@/lib/path-handoff";
 import { generateQuestions } from "@/lib/questions-client";
 import ActionReceipt from "@/components/ActionReceipt";
+import PreviewCard from "@/components/PreviewCard";
+import { usePipelineV2 } from "@/components/PipelineFlag";
+import { chatOnly, fetchOpenDrafts } from "@/components/console/pipeline-intake";
+import type { ChangeSet } from "@/lib/pipeline/changeset";
+import type { PreviewPayload } from "@/lib/pipeline/draft";
 import {
   OPEN_PALETTE_EVENT,
   routeVoiceTranscript,
@@ -22,8 +27,11 @@ import {
 } from "@/hooks/useVoiceCapture";
 import { Check } from "lucide-react";
 import { captureCopy, prefsOf, type CaptureQuickAction } from "@/lib/personalize";
+import { UNDO_TOAST_MS, openRecentChanges } from "@/lib/undo-events";
 
-type QuickAction = ContextAction;
+/** Context actions (lib/context-actions.ts) plus "Undo recent change", which opens Recent changes. */
+type QuickAction = ContextAction | { label: string; detail?: string; kind: "recent"; value: string };
+const UNDO_RECENT: QuickAction = { label: "Undo recent change", kind: "recent", value: "" };
 
 function cleanReply(text: string): string {
   if (!text) return "Done! Your request has been processed.";
@@ -61,7 +69,7 @@ export default function CommandPalette() {
       now: { date: now.date, minutes: now.minutes },
       capacity: state?.user.capacity ?? null,
     });
-    return [...ctx, { label: "What's on today?", kind: "ask", value: "What's on today?" }];
+    return [...ctx, { label: "What's on today?", kind: "ask", value: "What's on today?" }, UNDO_RECENT];
   }, [state, questionSets, tz]);
 
   const [open, setOpen] = useState(false);
@@ -73,6 +81,15 @@ export default function CommandPalette() {
   const [toastLink, setToastLink] = useState<{ href: string; label: string } | null>(null);
   const [receiptId, setReceiptId] = useState<string | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<{ id: string; message: string } | null>(null);
+  /** Pipeline V2 (flag on only): a drafted change waiting for Confirm. */
+  const [draft, setDraft] = useState<{ changeSet: ChangeSet; preview: PreviewPayload } | null>(null);
+  const draftTimer = useRef<number | null>(null);
+
+  /** Hide the settled card after a while; long enough to press Undo. */
+  const onDraftSettled = useCallback((phase: string) => {
+    if (draftTimer.current !== null) clearTimeout(draftTimer.current);
+    draftTimer.current = window.setTimeout(() => setDraft(null), phase === "confirmed" ? 8000 : 2500);
+  }, []);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const openRef = useRef(open);
@@ -122,9 +139,16 @@ export default function CommandPalette() {
     }
   }, [open]);
 
-  const showToast = useCallback((text: string) => {
+  // Pipeline V2: on open, bring back the newest draft still waiting for Confirm.
+  const v2 = usePipelineV2();
+  useEffect(() => {
+    if (open && v2) void fetchOpenDrafts().then((d) => d[0] && setDraft((cur) => cur ?? d[0]));
+  }, [open, v2]);
+
+  // A toast with Undo stays as long as the app-level Undo toast (8 s).
+  const showToast = useCallback((text: string, withUndo = false) => {
     setToast(text);
-    window.setTimeout(() => setToast((t) => (t === text ? null : t)), 6000);
+    window.setTimeout(() => setToast((t) => (t === text ? null : t)), withUndo ? UNDO_TOAST_MS : 6000);
   }, []);
 
   const submitAsk = useCallback(
@@ -157,8 +181,17 @@ export default function CommandPalette() {
           projectId?: string;
           quick?: boolean;
           pending?: { id: string; kind: string; message: string };
+          changeSet?: ChangeSet;
+          preview?: PreviewPayload;
         };
         if (!res.ok || !data.ok) throw new Error(data.error || "Request failed");
+        if (data.action === "preview" && data.changeSet && data.preview) {
+          if (draftTimer.current !== null) clearTimeout(draftTimer.current);
+          setReceiptId(null);
+          setToast(null);
+          setDraft({ changeSet: data.changeSet, preview: data.preview });
+          return;
+        }
         if (data.action === "confirm_required" && data.pending) {
           setReceiptId(null);
           setPendingConfirm({ id: data.pending.id, message: data.pending.message });
@@ -167,7 +200,7 @@ export default function CommandPalette() {
         const raw = data.message ?? data.reply ?? data.response ?? data.text ?? "";
         setReceiptId(data.actionId ?? null);
         setToastLink(data.taskDate ? { href: `/calendar?date=${data.taskDate}`, label: "View" } : data.projectId ? { href: `/projects/${data.projectId}`, label: "Open project" } : null);
-        showToast(cleanReply(typeof raw === "string" ? raw : ""));
+        showToast(cleanReply(typeof raw === "string" ? raw : ""), !!data.actionId);
         await refresh();
         if (data.taskId) void generateQuestions(data.taskId, trimmed, data.quick === true).then(() => refresh());
       } catch (e) {
@@ -195,7 +228,7 @@ export default function CommandPalette() {
         const data = (await res.json()) as { ok?: boolean; response?: string; error?: string; actionId?: string };
         if (!res.ok || !data.ok) throw new Error(data.error || "Request failed");
         setReceiptId(confirm ? data.actionId ?? null : null);
-        showToast(data.response ?? (confirm ? "Done." : "Cancelled."));
+        showToast(data.response ?? (confirm ? "Done." : "Cancelled."), confirm && !!data.actionId);
         await refresh();
       } catch (e) {
         showToast(e instanceof Error ? e.message : "Something went wrong.");
@@ -208,6 +241,11 @@ export default function CommandPalette() {
 
   const runQuickAction = useCallback(
     (action: QuickAction) => {
+      if (action.kind === "recent") {
+        closePalette();
+        openRecentChanges();
+        return;
+      }
       if (action.kind === "event") {
         closePalette();
         window.dispatchEvent(new CustomEvent(action.value, { detail: action.eventDetail }));
@@ -442,7 +480,24 @@ export default function CommandPalette() {
         </div>
       )}
 
-      {toast && !pendingConfirm && (
+      {draft && !pendingConfirm && (
+        <PreviewCard
+          key={draft.changeSet.id}
+          className="is-floating"
+          changeSet={draft.changeSet}
+          preview={draft.preview}
+          onChanged={() => void refresh()}
+          onSettled={onDraftSettled}
+          autoFocus
+          onJustChatting={() => {
+            const asked = draft.changeSet.request_text;
+            setDraft(null);
+            void chatOnly([{ role: "user", content: asked }]).then((reply) => showToast(cleanReply(reply)));
+          }}
+        />
+      )}
+
+      {toast && !pendingConfirm && !draft && (
         <div className="command-toast" role="status">
           {receiptId ? (
             <ActionReceipt

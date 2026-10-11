@@ -19,8 +19,9 @@ import { isOnboardingSchoolTask } from "@/lib/school-block";
 import { baseTitle, useShortTitles } from "@/lib/short-titles";
 import "./calendar.css";
 import { initialCalendarView, prefsOf } from "@/lib/personalize";
+import { openRecentChanges } from "@/lib/undo-events";
 import type { Plan, Task } from "@/lib/types";
-import { X, Check, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil } from "lucide-react";
+import { X, Check, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil, Undo2 } from "lucide-react";
 import WeekView from "@/components/calendar/WeekView";
 import AgendaView from "@/components/calendar/AgendaView";
 import TaskTitle from "@/components/ui/TaskTitle";
@@ -379,6 +380,9 @@ export default function CalendarPage() {
                 <button type="button" className="cal-today" onClick={goToday}>Today</button>
                 <button type="button" className="cal-arrow" onClick={() => step(1)} aria-label={`Next ${unitLabel}`}>
                   <ChevronRight size={16} aria-hidden="true" />
+                </button>
+                <button type="button" className="cal-arrow" onClick={openRecentChanges} aria-label="Recent changes" title="Recent changes">
+                  <Undo2 size={16} aria-hidden="true" />
                 </button>
               </div>
         </div>

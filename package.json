@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "node --test lib/*.test.ts lib/ai/*.test.ts"
+    "test": "node --test lib/*.test.ts lib/ai/*.test.ts lib/pipeline/*.test.ts components/console/*.test.ts",
+    "eval:pipeline": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env.local --import ./scripts/eval-hooks.mjs scripts/eval-pipeline.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",

@@ -17,9 +17,9 @@
 import { NextResponse } from "next/server";
 import { inferCalendarGroup, parseCalendarGroup } from "@/lib/calendars";
 import { addTasksToPlan } from "@/lib/store";
-import { addTask, addPlanWithTasks, addRecurringTask, completeTask, deleteTask, updateTask, addVoiceLog, getAppState, getAllTasks, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, addPendingConfirmation, getUserTimezone } from "@/lib/store";
+import { addTask, addPlanWithTasks, addRecurringTask, completeTask, deleteTask, updateTask, addVoiceLog, getAppState, getAllTasks, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, addPendingConfirmation, getUserTimezone, getAllPlans } from "@/lib/store";
 import { addDaysYMD, localNow, promptDateContext, singleRelativeDay, ymdFromParts } from "@/lib/time";
-import type { TaskKind } from "@/lib/types";
+import type { Task, TaskKind } from "@/lib/types";
 import { needsAgentTools, runVoiceAgentToolLoop } from "@/lib/voice-agent-tools";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import { generatePlan, isClearPlanRequest, planDates } from "@/lib/ai/plan";
@@ -33,6 +33,12 @@ import { layeredSystem } from "@/lib/ai/cache";
 import { matchTask, routeCommand, ROUTES, type FastRoute } from "@/lib/ai/router";
 import { getRequestContext, setAiRoute } from "@/lib/request-context";
 import { formatTime12 } from "@/lib/dates";
+import { TANGENT_PIPELINE_V2 } from "@/lib/pipeline/flags";
+import { logEvent } from "@/lib/pipeline/events";
+import { respondWithDraft } from "@/lib/pipeline/drafting";
+import { planOps, taskOp } from "@/lib/pipeline/draft";
+import { ASK_WHICH, bulkDeleteMessage, isFullClearRequest, parseDeleteScope, planBulkDelete } from "@/lib/delete-scope";
+import { cleanTitle, hasTimeWords } from "@/lib/quick-add";
 
 const RESOURCE_ITEM_SCHEMA = {
   type: "object",
@@ -85,32 +91,70 @@ const VOICE_COMMAND_SCHEMA = {
 // intent (action: create_plan); handleVoiceText then re-enters with forcePlan to
 // generate the tasks with the two-stage generator in lib/ai/plan.ts.
 
-/** Clearing the whole schedule always requires confirmation — it's total and irreversible
- *  from the user's perspective without the undo system. Shared by all three call sites
- *  below (instant-detect, LLM-returned action, and the JSON-parse-failed fallback). */
-async function requestClearConfirmation(text: string): Promise<NextResponse> {
-  const existing = await getAllTasks();
-  if (existing.length === 0) {
-    await addVoiceLog({ text, response: "Nothing to clear — schedule is already empty", action: "delete_all_tasks", ok: true });
-    return NextResponse.json({
-      ok: true,
-      action: "delete_all_tasks",
-      response: "Your schedule is already empty.",
-      state: await getAppState(),
-    });
+type DeleteMeta = { text: string; drafting: boolean; source: "typed" | "voice"; today: string };
+
+/** ChangeSet ops are capped at 400 (lib/pipeline/changeset.ts); bigger deletes use a pending confirmation. */
+const MAX_DRAFT_DELETES = 400;
+
+/**
+ * Proposes deleting these tasks and never deletes anything itself. Pipeline V2
+ * drafting: a preview card of delete_task ops (one batch Undo when confirmed).
+ * Otherwise a pending confirmation resolved by app/api/confirm. Either way the
+ * student sees the count and up to five titles first.
+ */
+async function proposeDelete(tasks: Task[], meta: DeleteMeta, scope: { all?: boolean; label?: string } = {}): Promise<NextResponse> {
+  const message = bulkDeleteMessage(tasks.map((t) => t.title), scope);
+  const n = tasks.length;
+  if (meta.drafting && n <= MAX_DRAFT_DELETES) {
+    return respondWithDraft(
+      {
+        source: meta.source,
+        requestText: meta.text,
+        summary: scope.all ? `Clear ALL ${n} tasks from your schedule` : `Delete ${n} task${n === 1 ? "" : "s"}${scope.label ? ` matching "${scope.label}"` : ""}`,
+        intent: "delete_task",
+        ops: tasks.map((t) => ({ op: "delete_task" as const, task_id: t.id })),
+        assumptions: scope.all ? ["This removes every task on your schedule"] : [],
+      },
+      { text: meta.text, today: meta.today, route: scope.all ? "clear" : "delete_scope" }
+    );
   }
-  const pending = await addPendingConfirmation(
-    "delete_all_tasks",
-    `Clear all ${existing.length} tasks from your schedule?`,
-    {}
-  );
-  await addVoiceLog({ text, response: "Awaiting confirmation to clear schedule", action: "confirm_required", ok: true });
+  const pending = scope.all
+    ? await addPendingConfirmation("delete_all_tasks", message, {})
+    : n === 1
+      ? await addPendingConfirmation("delete_task", message, { taskId: tasks[0].id, title: tasks[0].title })
+      : await addPendingConfirmation("delete_task", message, { taskIds: tasks.map((t) => t.id), label: scope.label ?? null });
+  await addVoiceLog({ text: meta.text, response: `Awaiting confirmation to delete ${n} task(s)`, action: "confirm_required", ok: true });
   return NextResponse.json({
     ok: true,
     action: "confirm_required",
     pending: { id: pending.id, kind: pending.kind, message: pending.message },
     response: pending.message,
   });
+}
+
+/** A reply that changes nothing (a question back to the student). */
+async function askBack(text: string, response: string): Promise<NextResponse> {
+  await addVoiceLog({ text, response, action: "clarify", ok: true });
+  return NextResponse.json({ ok: true, action: "clarify", response });
+}
+
+/**
+ * Delete requests about more than one task (or an explicit full clear), before
+ * any model call. Returns null when the text isn't one. Decided by
+ * planBulkDelete (lib/delete-scope.ts): it proposes or asks, never widens.
+ */
+async function handleBulkDelete(meta: DeleteMeta): Promise<NextResponse | null> {
+  const full = isFullClearRequest(meta.text);
+  if (!full && !parseDeleteScope(meta.text)) return null;
+  const [tasks, plans] = await Promise.all([getAllTasks(), full ? Promise.resolve([]) : getAllPlans()]);
+  const plan = planBulkDelete(meta.text, tasks, plans);
+  if (!plan) return null;
+  if (plan.kind === "ask") return askBack(meta.text, plan.message);
+  if (plan.kind === "empty") {
+    await addVoiceLog({ text: meta.text, response: "Nothing to clear — schedule is already empty", action: "delete_all_tasks", ok: true });
+    return NextResponse.json({ ok: true, action: "delete_all_tasks", response: "Your schedule is already empty.", state: await getAppState() });
+  }
+  return proposeDelete(plan.tasks, meta, { all: plan.all, label: plan.label });
 }
 
 /** School or No school (lib/calendars.ts) for a calendar the AI named, falling
@@ -313,7 +357,7 @@ It must be under 20 words.
 It must start with a verb — Watch, Read, Open, Write, Complete, Solve, Review, Draft.
 Never say "Start by" or "Begin with" — just give the direct action.
 
---- CLEAR SCHEDULE COMMAND (use this when user says "clear my schedule", "clean my schedule", "delete all my tasks", "remove everything", "wipe my calendar", "start fresh", "clear everything", "empty my schedule") ---
+--- CLEAR SCHEDULE COMMAND (use this ONLY when the user asks to remove every task: "clear my whole schedule", "delete everything", "delete all my tasks". Never for a group of tasks like "all the SAT tasks" or "my SAT plan") ---
 Return this exact JSON:
 {"action":"delete_all_tasks","response":"confirmation under 15 words"}
 
@@ -328,7 +372,8 @@ Return this exact JSON:
 Required fields: targetCalendarId (string — the id or exact name of the destination calendar). For move_tasks, reuse the "title" field as a keyword to match task titles, and "startDate"/"endDate" as an optional YYYY-MM-DD date range to filter by. Omit them entirely to match all tasks.
 
 Rules:
-- If no date mentioned use the student's local date (given at the end). Default time: 09:00.
+- If no date mentioned use the student's local date (given at the end). If no time is mentioned, omit the time field (the task is untimed). Never pick a time from the current time.
+- Titles are short noun phrases without lead-ins: "I have a dentists appointment" → "Dentists appointment".
 - Choose recurring vs single based on whether the user says a repeating word like "every" or "each".
 - Choose plan vs single based on whether the user wants a multi-step schedule (plan) or one specific task (single).
 - Use delete_all_tasks ONLY for explicit clear/wipe/remove-all commands, never for deleting a single task.
@@ -388,6 +433,8 @@ async function runFastRoute(route: FastRoute, text: string, today: string): Prom
   const done = async (body: Record<string, unknown>) => {
     // Zero-cost ai_usage row so routing distribution can be reported next to model calls.
     void recordUsage({ userId: getRequestContext().userId, feature: "router", model: "none", usage: {}, durationMs: 0, route: `fast:${route.op}` });
+    // Pipeline V2: fast paths stay instant (with undo); they are only counted.
+    if (TANGENT_PIPELINE_V2) logEvent("request_received", { route: `fast:${route.op}`, fast: true });
     await addVoiceLog({ text, response: String(body.response ?? ""), action: String(body.action), ok: true });
     console.log("[router] fast path:", route.op);
     return NextResponse.json({ ok: true, ...body });
@@ -477,6 +524,13 @@ export type VoiceOptions = {
   context?: string;
   /** Called as the plan outline and each task arrive. Nothing is saved until the end. */
   onProgress?: (event: PlanProgress) => void;
+  /** The caller can show a preview card (/api/chat). With TANGENT_PIPELINE_V2
+   *  on, AI-generated tasks and plans are then saved as a draft ChangeSet
+   *  instead of being written; the student confirms them. Ignored when off. */
+  preview?: boolean;
+  /** Where the words came from, recorded on drafts and events. Defaults to
+   *  "typed" when previewing, "voice" otherwise (the pen). */
+  source?: "typed" | "voice";
   /** Inside a Project: new tasks and plan sessions join it instead of
    *  standing alone or starting a new plan. */
   projectId?: string;
@@ -506,16 +560,27 @@ async function handleVoiceTextInner(
     opts.context
       ? `${t}\n\nEarlier in this conversation (use it for what "it", "that", or "this plan" refers to):\n${opts.context}`
       : t;
+  // Pipeline V2 (lib/pipeline). Neither does anything when the flag is off.
+  const drafting = TANGENT_PIPELINE_V2 && opts.preview === true;
+  const received = (route: string) => {
+    if (TANGENT_PIPELINE_V2) logEvent("request_received", { route, fast: false, source: opts.source ?? (opts.preview ? "typed" : "voice"), reentry: !!opts.forcePlan });
+  };
   try {
     const tz = await getUserTimezone();
     const local = localNow(tz);
     console.log("[api/voice] POST received text:", text);
 
-    // Detect clear-schedule commands instantly — no API call needed
-    const lowerText = text.toLowerCase().trim();
-    if (/clear|clean|wipe|empty|delete all|remove all|reset|start fresh|start over/.test(lowerText)) {
-      console.log("[api/voice] Clear schedule detected — requesting confirmation");
-      return await requestClearConfirmation(text);
+    // Deletes of more than one task, before the router or any model call:
+    // an explicit full clear, or a named group ("all of the SAT tasks").
+    // Both are proposed, never applied here (lib/delete-scope.ts).
+    const deleteMeta: DeleteMeta = { text, drafting, source: opts.source ?? (opts.preview ? "typed" : "voice"), today: local.date };
+    if (!opts.forcePlan) {
+      const bulk = await handleBulkDelete(deleteMeta);
+      if (bulk) {
+        console.log("[api/voice] bulk delete request — proposing, not deleting");
+        received("delete_scope");
+        return bulk;
+      }
     }
 
     // ── Deterministic intent classification — runs before any AI plan-generation path ──
@@ -523,6 +588,7 @@ async function handleVoiceTextInner(
     console.log("[intent] classified as:", classifiedIntent, "for:", text);
 
     if (classifiedIntent === "recurring_commitment") {
+      received("recurring");
       const activityName = extractActivityName(text);
       const extractedDays = extractDaysOfWeek(text);
       const daysOfWeek = extractedDays.length > 0 ? extractedDays : [1, 2, 3, 4, 5];
@@ -578,6 +644,7 @@ async function handleVoiceTextInner(
     // Gmail / Canvas commands — routed through a genuine multi-turn Claude tool-use loop
     // so Claude can read real inbox/assignment data, then act using add_task / create_plan.
     if (needsAgentTools(text)) {
+      received("agent");
       routeAs(ROUTES.smart);
       console.log("[api/voice] Detected Gmail/Canvas/Calendar command — running agent tool loop");
       try {
@@ -624,12 +691,14 @@ async function handleVoiceTextInner(
     const isPlanRequest = opts.forcePlan || classifiedIntent === "goal_plan" || isClearPlanRequest(text) || /plan|study|workout|routine|schedule|prepare|curriculum|course|week|month|learn|guide/i.test(text);
 
     if (isPlanRequest) {
+      received("plan");
       routeAs(ROUTES.smart);
       console.log("[api/voice] Detected plan request — using two-step approach");
 
       // FIX 2 — Extract date range from user text
       let startDate = today;
       let endDate = addDaysYMD(today, 7);
+      let rangeGiven = false;
 
       const monthMap: Record<string, number> = {
         january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
@@ -700,10 +769,12 @@ async function handleVoiceTextInner(
       if (foundDates.length >= 2) {
         startDate = ymdFromParts(local.year, foundDates[0].month, foundDates[0].day);
         endDate = ymdFromParts(local.year, foundDates[1].month, foundDates[1].day);
+        rangeGiven = true;
         console.log("[api/voice] Extracted date range from text:", startDate, "to", endDate);
       } else if (foundDates.length === 1) {
         startDate = today;
         endDate = ymdFromParts(local.year, foundDates[0].month, foundDates[0].day);
+        rangeGiven = true;
         console.log("[api/voice] Extracted end date only:", endDate);
       }
 
@@ -725,6 +796,7 @@ async function handleVoiceTextInner(
         if (pattern.test(lowerForDate)) {
           endDate = addDaysYMD(today, days - 1);
           startDate = today;
+          rangeGiven = true;
           console.log("[api/voice] Duration word matched — days:", days, "| endDate:", endDate);
           break;
         }
@@ -774,6 +846,28 @@ async function handleVoiceTextInner(
               resources: t.resources.length > 0 ? t.resources : undefined,
             }));
 
+        if (drafting) {
+          // Pipeline V2: the same tasks, saved as a draft for the student to confirm.
+          const planTitle = resolvePlanTitle(generated.title, text);
+          const assumptions = [`Spread from ${friendlyWhen(startDate, undefined, today)} to ${friendlyWhen(endDate, undefined, today)}`];
+          if (!rangeGiven) assumptions.push("Assumed about a week since no timeframe was given");
+          if (shifted > 0) assumptions.push(`${shifted} session${shifted > 1 ? "s" : ""} moved off days that were already full`);
+          const draftTasks = planTasks.map((t) => ({ ...t, resources: t.resources ?? [] }));
+          return await respondWithDraft(
+            {
+              source: opts.source ?? "typed",
+              requestText: text,
+              summary: opts.projectId ? "Add to project" : "New plan",
+              intent: "new_plan",
+              ops: opts.projectId
+                ? draftTasks.map((t) => taskOp(t, { plan_id: opts.projectId }))
+                : planOps(planTitle, draftTasks, opts.projectGoal),
+              assumptions,
+            },
+            { text, today, route: "plan" }
+          );
+        }
+
         // Inside a Project the sessions join it; otherwise they become a new
         // project of their own (a Plan is what the Projects page lists).
         if (opts.projectId) {
@@ -820,6 +914,19 @@ async function handleVoiceTextInner(
 
       // Fallback: add as a single generic task if plan generation failed
       console.log("[api/voice] Plan generation failed — adding as single task");
+      if (drafting) {
+        return await respondWithDraft(
+          {
+            source: opts.source ?? "typed",
+            requestText: text,
+            summary: "Add a task",
+            intent: "add_task",
+            ops: [taskOp({ title: text.substring(0, 50), date: today, time: "09:00", kind: inferPlanKind(text), notes: "Plan requested: " + text })],
+            assumptions: ["A full plan couldn't be made, so this is a single task", "Assumed today at 9:00 AM"],
+          },
+          { text, today, route: "plan_fallback" }
+        );
+      }
       const fallbackTask = await addTask({
         title: text.substring(0, 50),
         date: today,
@@ -847,6 +954,7 @@ async function handleVoiceTextInner(
     }
 
     // ── Standard single-task / recurring path ─────────────────────────────────
+    received("standard");
     console.log("[api/voice] Calling Anthropic API...");
     routeAs(ROUTES.fast);
     // Memory, school hours, capacity, how full the next two weeks are, what's
@@ -889,9 +997,22 @@ async function handleVoiceTextInner(
             const cmd = retryJson;
             if (cmd.action === "add_task" && typeof cmd.title === "string" && cmd.title) {
               const retryDate = singleRelativeDay(text, tz) ?? (typeof cmd.date === "string" ? cmd.date : today);
-              const retryTime = typeof cmd.time === "string" ? cmd.time : "09:00";
+              const retryTime = hasTimeWords(text) && typeof cmd.time === "string" ? cmd.time : "";
+              if (drafting) {
+                return await respondWithDraft(
+                  {
+                    source: opts.source ?? "typed",
+                    requestText: text,
+                    summary: "Add a task",
+                    intent: "add_task",
+                    ops: [taskOp({ title: cleanTitle(cmd.title), date: retryDate, time: retryTime, notes: "Added after retry: " + text.substring(0, 100) })],
+                    assumptions: retryTime ? [] : ["No time given, so it's untimed (all day)"],
+                  },
+                  { text, today, route: "standard_retry" }
+                );
+              }
               const task = await addTask({
-                title: cmd.title,
+                title: cleanTitle(cmd.title),
                 date: retryDate,
                 time: retryTime,
                 completed: false,
@@ -909,7 +1030,7 @@ async function handleVoiceTextInner(
                 ok: true,
                 action: "add_task",
                 task,
-                response: (cmd.response as string) || "Task added!",
+                response: `Added "${task.title}" for ${friendlyWhen(retryDate, retryTime || undefined, today)}.`,
                 actionId: retryRecord.id,
                 state: await getAppState(),
               });
@@ -967,9 +1088,13 @@ async function handleVoiceTextInner(
 
     const cmd = parsed;
     const action = cmd.action as string;
-    const title = (cmd.title as string | undefined) ?? "";
+    // Quick-add titles are cleaned deterministically ("I have a dentists
+    // appointment" → "Dentists appointment"), and a request with no time in it
+    // stays untimed: the model sometimes invents one (a 9 PM dentist).
+    const rawTitle = (cmd.title as string | undefined) ?? "";
+    const title = action === "add_task" || action === "add_recurring_task" ? cleanTitle(rawTitle) : rawTitle;
     const response = (cmd.response as string | undefined) ?? "";
-    const time = (cmd.time as string | undefined) ?? "09:00";
+    const time = hasTimeWords(text) ? ((cmd.time as string | undefined) ?? "") : "";
 
     console.log("[api/voice] Parsed — action:", action, "| title:", title);
 
@@ -1031,9 +1156,12 @@ async function handleVoiceTextInner(
     }
 
     // ── Clear all tasks ────────────────────────────────────────────────────────
+    // The model's word is never enough to clear everything: only an explicit
+    // full-clear phrase does (checked above, and again here).
     if (action === "delete_all_tasks") {
-      console.log("[api/voice] delete_all_tasks — requesting confirmation");
-      return await requestClearConfirmation(text);
+      if (isFullClearRequest(text)) return (await handleBulkDelete(deleteMeta)) ?? (await askBack(text, ASK_WHICH));
+      console.log("[api/voice] delete_all_tasks from the model without an explicit clear phrase — asking");
+      return await askBack(text, ASK_WHICH);
     }
 
     // ── Get calendars ──────────────────────────────────────────────────────────
@@ -1141,6 +1269,23 @@ async function handleVoiceTextInner(
         console.warn("[api/voice] spacing failed, using the model's time:", e instanceof Error ? e.message : e);
         return { date, time, note: undefined };
       });
+      if (drafting) {
+        return await respondWithDraft(
+          {
+            source: opts.source ?? "typed",
+            requestText: text,
+            summary: "Add a task",
+            intent: "add_task",
+            ops: [taskOp({ title, date: placed.date, time: placed.time, calendarId, notes, startAction, resources }, opts.projectId ? { plan_id: opts.projectId } : {})],
+            assumptions: [
+              ...(!saidTime ? ["No time given, so Tangent picked an open time"] : []),
+              ...(!saidDay ? ["No day given, so Tangent picked the lightest day with room"] : []),
+              ...(placed.note ? [placed.note] : []),
+            ],
+          },
+          { text, today, route: "standard" }
+        );
+      }
       // The title is the title. Every surface renders task.time next to it
       // (TaskRow, the Today hero, the calendar day panel), so folding the time
       // into the title printed it twice: "Study math (15:00)  3:00 PM".

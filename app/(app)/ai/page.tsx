@@ -22,12 +22,17 @@ import {
   type PlanProgressView,
   type Turn,
 } from "@/components/console/turns";
+import { usePipelineV2 } from "@/components/PipelineFlag";
+import { chatOnly, draftShownPlan, fetchOpenDrafts, withOpenDrafts } from "@/components/console/pipeline-intake";
+import type { ChangeSet } from "@/lib/pipeline/changeset";
+import type { PreviewPayload } from "@/lib/pipeline/draft";
 import {
   VOICE_TRANSCRIPT_EVENT,
   type VoiceCaptureStatus,
   type VoiceTranscriptDetail,
 } from "@/hooks/useVoiceCapture";
-import type { ChatSession } from "@/lib/types";
+import type { ChatMessageRefs, ChatSession } from "@/lib/types";
+import { actionIdsOf, announceUndo, withUndoStatus, type UndoRecord } from "@/lib/undo-events";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -149,11 +154,12 @@ export default function AiPage() {
   const [chatsOpen, setChatsOpen] = useState(false);
   const [chatsHidden, setChatsHidden] = useState(false);
   const [chatMode, setChatMode] = useState<ChatMode>("calendar");
+  const v2 = usePipelineV2();
 
   useEffect(() => {
-    if (readStored(MODE_STORAGE_KEY) === "plan") setChatMode("plan");
+    if (readStored(MODE_STORAGE_KEY) === "plan" && !v2) setChatMode("plan");
     if (readStored(CHATS_HIDDEN_KEY) === "1") setChatsHidden(true);
-  }, []);
+  }, [v2]);
 
   const changeMode = useCallback((next: ChatMode) => {
     setChatMode(next);
@@ -247,6 +253,24 @@ export default function AiPage() {
     }
   }, []);
 
+  /** Pipeline V2: open drafts from the last 24 hours come back as cards. */
+  const restoreDrafts = useCallback(async () => {
+    if (!v2) return;
+    const drafts = await fetchOpenDrafts();
+    if (drafts.length) setTurns((prev) => withOpenDrafts(prev, drafts));
+  }, [v2]);
+
+  /** A reopened chat: is each saved change still undoable? (Safety hotfix.) */
+  const recheckUndo = useCallback(async (restored: Turn[]) => {
+    const ids = actionIdsOf(restored);
+    if (!ids.length) return;
+    try {
+      const res = await fetch(`/api/actions?ids=${ids.join(",")}`, { cache: "no-store" });
+      const data = (await res.json()) as { ok?: boolean; actions?: UndoRecord[] };
+      if (res.ok && data.ok) setTurns((prev) => withUndoStatus(prev, data.actions ?? []));
+    } catch {}
+  }, []);
+
   const openSession = useCallback(async (sessionId: string) => {
     try {
       const [res, confirms] = await Promise.all([
@@ -259,7 +283,10 @@ export default function AiPage() {
       const data = (await res.json()) as { ok?: boolean; session?: ChatSession };
       if (data.ok && data.session) {
         setActiveSessionId(data.session.id);
-        setTurns(turnsFromMessages(data.session.messages, confirms));
+        const restored = turnsFromMessages(data.session.messages, confirms);
+        setTurns(restored);
+        void recheckUndo(restored);
+        void restoreDrafts();
         setMode("chat");
         setErr(null);
         window.localStorage.setItem(SESSION_STORAGE_KEY, data.session.id);
@@ -267,7 +294,7 @@ export default function AiPage() {
         window.localStorage.removeItem(SESSION_STORAGE_KEY);
       }
     } catch {}
-  }, []);
+  }, [restoreDrafts, recheckUndo]);
 
   const newChat = useCallback(() => {
     if (busy) return;
@@ -278,8 +305,9 @@ export default function AiPage() {
     setErr(null);
     setMode("chat");
     window.localStorage.removeItem(SESSION_STORAGE_KEY);
+    void restoreDrafts();
     window.setTimeout(() => inputRef.current?.focus(), 0);
-  }, [busy]);
+  }, [busy, restoreDrafts]);
 
   // A question handed over from Cmd-K (/ai?ask=1): open a fresh chat and ask
   // it. Two steps so send() runs with the new, empty chat in scope.
@@ -300,13 +328,13 @@ export default function AiPage() {
 
   /** Appends a message to the saved chat. Awaited so messages land in order;
    *  a failure is shown instead of silently leaving the chat unsaved. */
-  const saveMessage = useCallback(async (sessionId: string | null, role: "user" | "assistant", content: string) => {
+  const saveMessage = useCallback(async (sessionId: string | null, role: "user" | "assistant", content: string, refs: ChatMessageRefs = {}) => {
     if (!sessionId) return;
     try {
       const res = await fetch("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "add_message", sessionId, role, content }),
+        body: JSON.stringify({ action: "add_message", sessionId, role, content, ...refs }),
       });
       if (!res.ok) throw new Error(String(res.status));
     } catch {
@@ -336,8 +364,8 @@ export default function AiPage() {
     if (storedId) {
       setRestoring(true);
       void openSession(storedId).finally(() => setRestoring(false));
-    }
-  }, [loadSessions, openSession]);
+    } else void restoreDrafts();
+  }, [loadSessions, openSession, restoreDrafts]);
 
 
   const send = useCallback(async (
@@ -409,7 +437,8 @@ export default function AiPage() {
           // Big or vague asks get questions first; never on a follow-up.
           clarify: !followUp,
           answers: followUp?.answers,
-          newProject: route === "project" ? true : undefined,
+          // Flag on, a big ask is drafted by the intake (preview first) instead.
+          newProject: route === "project" && !v2 ? true : undefined,
         }),
       });
       // Calendar mode streams NDJSON: plan progress lines, then {type:"result"}.
@@ -427,6 +456,8 @@ export default function AiPage() {
         recurringCount?: number;
         sourcesChecked?: string[];
         pending?: { id: string; kind: string; message: string };
+        changeSet?: ChangeSet;
+        preview?: PreviewPayload;
         questions?: Turn["questions"];
         suggestion?: Turn["suggestion"];
         taskId?: string;
@@ -495,12 +526,15 @@ export default function AiPage() {
           response: reply,
           actionId: data.actionId,
           actionLabel: notif ?? undefined,
+          // Pipeline V2 (flag on only): nothing is saved until the card's Confirm.
+          draft: action === "preview" && data.changeSet && data.preview ? { changeSet: data.changeSet, preview: data.preview } : undefined,
           suggestion: data.suggestion ?? null,
           projectId: data.plan?.id ?? null,
         },
       ]);
 
-      await saveMessage(sessionId, "assistant", reply);
+      await saveMessage(sessionId, "assistant", reply, { actionId: data.actionId, changeSetId: data.changeSet?.id });
+      if (data.actionId) announceUndo({ actionId: data.actionId, label: notif ?? "Change applied", from: "/ai" });
       if (sessionId && isNewSession) {
         void fetch("/api/sessions", {
           method: "POST",
@@ -544,7 +578,34 @@ export default function AiPage() {
       setPlanProgress(null);
       void loadSessions();
     }
-  }, [input, busy, chatMode, activeSessionId, turns, refresh, linkAction, loadSessions, saveMessage]);
+  }, [input, busy, chatMode, activeSessionId, turns, refresh, linkAction, loadSessions, saveMessage, v2]);
+
+  /** Adds an action / change set id to an already-saved assistant message:
+   *  matched by change set id, or by its text (`from`). Best effort. */
+  const attachRefs = useCallback(
+    (body: { actionId?: string; changeSetId?: string; from?: string }) => {
+      if (!activeSessionId) return;
+      void fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "attach", sessionId: activeSessionId, ...body }),
+      }).catch(() => {});
+    },
+    [activeSessionId]
+  );
+
+  /** Pipeline V2: a preview card was confirmed; keep its Undo after a reload
+   *  and offer it app-wide (the card shows its own Undo here). */
+  const cardConfirmed = useCallback(
+    (_turnId: string, changeSetId: string, actionId: string) => {
+      attachRefs({ changeSetId, actionId });
+      announceUndo({ actionId, label: "Change applied", from: "/ai" });
+    },
+    [attachRefs]
+  );
+
+  /** Turns whose "Add to calendar" draft is in flight (one request each). */
+  const draftingPlans = useRef(new Set<string>());
 
   useEffect(() => {
     if (!handedAsk || activeSessionId || turns.length > 0 || busy) return;
@@ -568,11 +629,61 @@ export default function AiPage() {
   /** Plan-mode draft → Calendar: flip the mode and ask for it to be added. */
   const addPlanToCalendar = useCallback(
     (turnId: string) => {
+      // Pipeline V2: draft the plan exactly as shown; saved only on Confirm.
+      // The button stays until the draft exists, so a failure can be retried.
+      const shown = turns.find((t) => t.id === turnId);
+      if (v2 && shown) {
+        if (draftingPlans.current.has(turnId)) return;
+        draftingPlans.current.add(turnId);
+        setErr(null);
+        void draftShownPlan(shown.response, shown.request)
+          .then((r) =>
+            "error" in r
+              ? setErr(r.error)
+              : (setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, planDraft: false, draft: r } : t))),
+                attachRefs({ changeSetId: r.changeSet.id, from: shown.response }))
+          )
+          .finally(() => draftingPlans.current.delete(turnId));
+        return;
+      }
       setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, planDraft: false } : t)));
       changeMode("calendar");
       void send("Add this plan to my calendar", "calendar");
     },
-    [changeMode, send]
+    [changeMode, send, turns, v2, attachRefs]
+  );
+
+  /** Pipeline V2 "Just talking, don't add": answer the turn conversationally.
+   *  The saved preview summary is replaced by the reply (not followed by a
+   *  second assistant message), and sending waits until it is done, so a
+   *  reload pairs every request with its own reply. */
+  const justChatting = useCallback(
+    async (turnId: string) => {
+      if (busy) return;
+      const at = turns.findIndex((t) => t.id === turnId);
+      if (at < 0) return;
+      setBusy(true);
+      try {
+        const history = turns.slice(0, at).flatMap((t) => [
+          { role: "user", content: t.request },
+          { role: "assistant", content: t.response },
+        ]);
+        const reply = cleanMessage(await chatOnly([...history, { role: "user", content: turns[at].request }]));
+        const saved = turns[at].response;
+        setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, response: reply, draft: undefined } : t)));
+        if (!activeSessionId || !saved.trim()) return;
+        const res = await fetch("/api/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "replace_last_assistant", sessionId: activeSessionId, from: saved, content: reply }),
+        }).catch(() => null);
+        const data = res?.ok ? ((await res.json().catch(() => ({}))) as { replaced?: boolean }) : {};
+        if (!data.replaced) setSaveWarning("This reply couldn't be saved to the chat.");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, turns, activeSessionId]
   );
 
   const postSession = useCallback(async (body: Record<string, unknown>) => {
@@ -639,7 +750,9 @@ export default function AiPage() {
         )
       );
 
-      await saveMessage(activeSessionId, "assistant", reply);
+      const applied = confirm && data.ok ? data.actionId : undefined;
+      await saveMessage(activeSessionId, "assistant", reply, { actionId: applied });
+      if (applied) announceUndo({ actionId: applied, label: "Change applied", from: "/ai" });
 
       if (confirm && data.ok) await linkAction(activeSessionId, data.actionId);
       await refresh();
@@ -665,6 +778,7 @@ export default function AiPage() {
       onTranscript={acceptTranscript}
       onVoiceError={setErr}
       mode={chatMode}
+      placeholder={v2 ? "Ask, plan, or add something…" : undefined}
     />
   );
 
@@ -736,7 +850,7 @@ export default function AiPage() {
             </div>
             {greeting && <p className="tg-hero-greeting">{greeting}</p>}
             <h2 className="tg-hero-title">
-              <span className="tg-hero-ask">What can Tangent help with?</span>
+              <span className="tg-hero-ask">{v2 ? "What do you need?" : "What can Tangent help with?"}</span>
             </h2>
             {today && (
               today.next ? (
@@ -791,6 +905,12 @@ export default function AiPage() {
               onUndone={() => void refresh()}
               mode={chatMode}
               onAddPlan={addPlanToCalendar}
+              onJustChatting={v2 ? (id) => void justChatting(id) : undefined}
+              onCardConfirmed={v2 ? cardConfirmed : undefined}
+              onKeepTalking={(id) => {
+                setTurns((prev) => prev.map((t) => (t.id === id ? { ...t, planDraft: false } : t)));
+                inputRef.current?.focus();
+              }}
               onAnswer={answerQuestions}
               onScheduleChanged={() => void refresh()}
               onAnswerLater={(turnId, setId, answers) => {
@@ -809,7 +929,9 @@ export default function AiPage() {
               {saveWarning && <p className="tg-error" role="alert">{saveWarning}</p>}
               <div className="tg-composer-glow">{composer}</div>
               <p className="tg-dock-hint">
-                Ask a question, add something, or start a project. Tangent works out which, and you&apos;ll always see what changed.
+                {v2
+                  ? "Ask a question, add something, or start a project. You’ll see a preview before anything is added."
+                  : <>Ask a question, add something, or start a project. Tangent works out which, and you&apos;ll always see what changed.</>}
               </p>
             </div>
           </>

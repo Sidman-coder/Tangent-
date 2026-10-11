@@ -22,6 +22,8 @@ export type RequestContext = {
   memo?: Map<string, Promise<unknown>>;
   /** How lib/ai/router.ts routed this request; every Claude call records it in ai_usage.route. */
   aiRoute?: string;
+  /** Background writes (lib/pipeline/events.ts) to finish before the response. */
+  pending?: Set<Promise<void>>;
 };
 
 const storage = new AsyncLocalStorage<RequestContext>();
@@ -49,6 +51,40 @@ export function requestMemo<T>(key: string, load: () => Promise<T>): Promise<T> 
   ctx.memo.set(key, p);
   p.catch(() => ctx.memo?.delete(key));
   return p;
+}
+
+/** Longest a response waits for background writes (see trackPending). */
+const PENDING_WAIT_MS = 1500;
+
+/** Registers a background write that must never reject. withUser() and
+ *  runAsUser() wait for it (up to PENDING_WAIT_MS) before returning, so it
+ *  finishes on serverless hosts that freeze the function after the response. */
+export function trackPending(p: Promise<void>): void {
+  const ctx = getRequestContext();
+  const pending = (ctx.pending ??= new Set());
+  pending.add(p);
+  void p.finally(() => pending.delete(p));
+}
+
+async function settlePending(ctx: RequestContext): Promise<void> {
+  if (!ctx.pending?.size) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, PENDING_WAIT_MS);
+  });
+  await Promise.race([Promise.allSettled(Array.from(ctx.pending)), timeout]);
+  clearTimeout(timer);
+}
+
+/** Runs fn in ctx, then waits for its background writes. */
+async function runIn<T>(ctx: RequestContext, fn: () => Promise<T> | T): Promise<T> {
+  return storage.run(ctx, async () => {
+    try {
+      return await fn();
+    } finally {
+      await settlePending(ctx);
+    }
+  });
 }
 
 /** Labels the rest of this request's Claude calls (ai_usage.route). */
@@ -84,7 +120,7 @@ export function withUser(
     if (!isEmailAllowed(user.email)) {
       return NextResponse.json({ ok: false, error: "TANGENT is invite-only right now" }, { status: 403 });
     }
-    return storage.run({ userId: user.id, email: user.email ?? "", db }, () => handler(req));
+    return runIn({ userId: user.id, email: user.email ?? "", db }, () => handler(req));
   };
 }
 
@@ -94,5 +130,5 @@ export async function runAsUser<T>(userId: string, fn: () => Promise<T>): Promis
   const db = createAdminClient();
   const { data, error } = await db.from("profiles").select("email").eq("user_id", userId).single();
   if (error || !data) throw new Error(`runAsUser: no profile for user ${userId}`);
-  return storage.run({ userId, email: data.email ?? "", db }, fn);
+  return runIn({ userId, email: data.email ?? "", db }, fn);
 }

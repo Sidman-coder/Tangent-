@@ -1,21 +1,27 @@
 "use client";
 
 import { useState } from "react";
+import { isExpiredUndoMessage } from "@/lib/undo-events";
 
 export default function ActionReceipt({
   actionId,
   label,
   onUndone,
   initiallyUndone,
+  expired,
   undoable = true,
 }: {
   actionId: string;
   label: string;
   onUndone?: () => void;
   initiallyUndone?: boolean;
+  /** The action record is gone (trimmed or not undoable): "Can't undo anymore". */
+  expired?: boolean;
   undoable?: boolean;
 }) {
-  const [state, setState] = useState<"idle" | "undoing" | "undone" | "error">(initiallyUndone ? "undone" : "idle");
+  const [state, setState] = useState<"idle" | "undoing" | "undone" | "expired" | "error">(
+    initiallyUndone ? "undone" : expired ? "expired" : "idle"
+  );
   const [error, setError] = useState<string | null>(null);
 
   const undo = async () => {
@@ -32,8 +38,13 @@ export default function ActionReceipt({
       setState("undone");
       onUndone?.();
     } catch (e) {
-      setState("error");
-      setError(e instanceof Error ? e.message : "Could not undo");
+      const message = e instanceof Error ? e.message : "Could not undo";
+      if (/already undone/i.test(message)) setState("undone");
+      else if (isExpiredUndoMessage(message)) setState("expired");
+      else {
+        setState("error");
+        setError(message);
+      }
     }
   };
 
@@ -42,6 +53,8 @@ export default function ActionReceipt({
       <span className="action-receipt-label">{label}</span>
       {state === "undone" ? (
         <span className="action-receipt-status">Undone</span>
+      ) : state === "expired" ? (
+        <span className="action-receipt-status">Can&apos;t undo anymore</span>
       ) : state === "error" ? (
         <span className="action-receipt-status is-error">{error}</span>
       ) : undoable ? (

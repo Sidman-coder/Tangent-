@@ -10,7 +10,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowDown, CalendarPlus } from "lucide-react";
 import ActionReceipt from "@/components/ActionReceipt";
+import PreviewCard from "@/components/PreviewCard";
 import PenMark from "@/components/console/PenMark";
+import { usePipelineV2 } from "@/components/PipelineFlag";
 import ClarifyCard, { type ClarifyAnswer } from "@/components/console/ClarifyCard";
 import SuggestionCard from "@/components/console/SuggestionCard";
 import type { ChatMode, PlanProgressView, Turn } from "@/components/console/turns";
@@ -54,6 +56,12 @@ type Props = {
   onAddPlan: (turnId: string) => void;
   /** A plan being generated for the pending request, shown as it arrives. */
   planProgress?: PlanProgressView | null;
+  /** Pipeline V2: the preview card's "Just talking, don't add" chip. */
+  onJustChatting?: (turnId: string) => void;
+  /** Pipeline V2: a preview card was confirmed (keeps Undo after a reload). */
+  onCardConfirmed?: (turnId: string, changeSetId: string, actionId: string) => void;
+  /** Pipeline V2: "Keep talking" on the ready-to-add row. */
+  onKeepTalking?: (turnId: string) => void;
   /** Answers to a turn's questions; null means "Just do it". */
   onAnswer: (turnId: string, answers: ClarifyAnswer[] | null) => void;
   /** A suggested move was accepted or undone: the calendar changed. */
@@ -67,7 +75,8 @@ function shortDate(ymd: string): string {
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
 
-export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onUndone, mode, onAddPlan, planProgress, onAnswer, onScheduleChanged, onAnswerLater }: Props) {
+export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onUndone, mode, onAddPlan, planProgress, onJustChatting, onCardConfirmed, onKeepTalking, onAnswer, onScheduleChanged, onAnswerLater }: Props) {
+  const v2 = usePipelineV2();
   const planDone = planProgress ? planProgress.tasks.filter(Boolean).length : 0;
   const scrollerRef = useRef<HTMLDivElement>(null);
   const latestRef = useRef<HTMLElement>(null);
@@ -168,7 +177,18 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
                         </button>
                       </div>
                     )}
-                    {t.planDraft && (
+                    {t.planDraft && v2 && (
+                      <div className="tg-plan-cta">
+                        <span>Ready to add this to your calendar?</span>
+                        <button type="button" className="tg-btn tg-btn-accent" onClick={() => onAddPlan(t.id)} disabled={busy}>
+                          Yes, show preview
+                        </button>
+                        <button type="button" className="tg-btn" onClick={() => onKeepTalking?.(t.id)} disabled={busy}>
+                          Keep talking
+                        </button>
+                      </div>
+                    )}
+                    {t.planDraft && !v2 && (
                       <div className="tg-plan-cta">
                         <button type="button" className="tg-btn tg-btn-accent" onClick={() => onAddPlan(t.id)} disabled={busy}>
                           <CalendarPlus size={14} strokeWidth={2} aria-hidden="true" />
@@ -176,6 +196,16 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
                         </button>
                         <span>Switches to Calendar mode and adds this plan.</span>
                       </div>
+                    )}
+                    {t.draft && (
+                      <PreviewCard
+                        changeSet={t.draft.changeSet}
+                        preview={t.draft.preview}
+                        onChanged={onUndone}
+                        onConfirmed={onCardConfirmed ? (id) => onCardConfirmed(t.id, t.draft!.changeSet.id, id) : undefined}
+                        autoFocus={t.fresh}
+                        onJustChatting={onJustChatting ? () => onJustChatting(t.id) : undefined}
+                      />
                     )}
                     {t.questions && t.questions.length > 0 && (
                       <ClarifyCard
@@ -185,7 +215,14 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
                       />
                     )}
                     {t.actionId && t.actionLabel && (
-                      <ActionReceipt actionId={t.actionId} label={t.actionLabel} onUndone={onUndone} />
+                      <ActionReceipt
+                        key={`${t.actionId}:${t.undoStatus ?? ""}`}
+                        actionId={t.actionId}
+                        label={t.actionLabel}
+                        onUndone={onUndone}
+                        initiallyUndone={t.undoStatus === "undone"}
+                        expired={t.undoStatus === "expired"}
+                      />
                     )}
                     {t.projectId && (
                       <a className="tg-project-link" href={`/projects/${t.projectId}`}>

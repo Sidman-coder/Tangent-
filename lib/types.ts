@@ -208,7 +208,29 @@ export type ActionKind =
   | "add_recurring_task"
   | "create_plan"
   | "move_tasks"
-  | "reschedule_task";
+  | "reschedule_task"
+  /** A whole Pipeline V2 ChangeSet (lib/pipeline/apply.ts), undone as one. */
+  | "apply_changeset";
+
+/** Task fields an undo puts back. null clears the column. */
+export type RestoredTaskFields = {
+  title?: string;
+  date?: string;
+  time?: string;
+  completed?: boolean;
+  calendarId?: string | null;
+  notes?: string | null;
+  kind?: TaskKind | null;
+};
+
+/** One step that reverses part of an applied ChangeSet. Steps are recorded in
+ *  the order the changes were made and undone in reverse. */
+export type BatchUndoStep =
+  | { type: "delete_tasks"; taskIds: string[] }
+  | { type: "delete_plan"; planId: string }
+  | { type: "restore_tasks"; tasks: Task[] }
+  | { type: "restore_task_fields"; taskId: string; fields: RestoredTaskFields }
+  | { type: "restore_plan"; planId: string; title: string; description: string; taskIds: string[]; taskCount: number };
 
 export type ActionSnapshot = {
   /** Full task objects removed by delete_task / delete_all_tasks — restored on undo. */
@@ -223,6 +245,8 @@ export type ActionSnapshot = {
   moves?: { taskId: string; fromCalendarId: string | null }[];
   /** Prior date/time for a task rescheduled by reschedule_task — restored on undo. */
   rescheduled?: { taskId: string; fromDate: string; fromTime: string };
+  /** Everything an apply_changeset did, reversed step by step on undo. */
+  batch?: { changeSetId: string; steps: BatchUndoStep[] };
 };
 
 export interface ActionRecord {
@@ -246,7 +270,19 @@ export interface PendingConfirmation {
 
 // ─── Chat sessions (console chats) ───────────────────────────────────────────
 
-export type ChatMessage = { role: "user" | "assistant"; content: string; timestamp: string };
+export type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+  /** The change this assistant message made (action_records.id), so Undo
+   *  survives reopening the chat. */
+  actionId?: string;
+  /** Pipeline V2: the change set this message previewed. */
+  changeSetId?: string;
+};
+
+/** What a saved assistant message points at (both optional). */
+export type ChatMessageRefs = { actionId?: string; changeSetId?: string };
 
 export type ChatSession = {
   id: string;
