@@ -8533,3 +8533,180 @@ h1, h2, h3, h4, h5, h6 {
 .ui-button:active:not(:disabled) {
   transform: scale(0.97);
 }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Tangent, through the Apple pass (2026-10-11). The Apple block above made
+   the app clean but anonymous. This puts Tangent back without the noise:
+   - One palette, used everywhere: iris (the accent) and teal (the
+     highlight), with lilac, mauve, deep teal, ochre and rose as companions.
+     No stock Tailwind hues (blue-600, amber-600, red-600…) anywhere.
+   - Neutrals carry a whisper of iris instead of pure grey.
+   - Bricolage Grotesque, the brand's display face, for big titles; the UI
+     itself stays SF.
+   - A soft iris-and-teal wash behind the app — "layered colours, some
+     purple" — which is also what the frosted bars and rail frost.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+:root,
+[data-theme="light"] {
+  --font-display: "Bricolage Grotesque Variable", "Bricolage Grotesque", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+
+  --bg: #f5f4f9;
+  --bg-sunken: #f5f4f9;
+  --surface: #ffffff;
+  --elev-2: #f1eff8;
+  --layer-3: #e3e0ee;
+  --line: #e7e4ef;
+  --line-strong: #d5d1e2;
+  --text: #1c1a26;
+  --text-2: #615d72;
+  --text-3: #8a8699;
+
+  --accent: #4b3a8c;
+  --accent-hover: #3d2e76;
+  --accent-soft: #ece8f6;
+  --accent-line: rgb(75 58 140 / 0.2);
+  --highlight: #1f7a74;
+
+  --green: #1f8f86;
+  --amber: #c48c3a;
+  --red: #c94a5f;
+  --path-danger: #c94a5f;
+
+  --kind-school: #4b3a8c;
+  --kind-academic-ec: #8a78e0;
+  --kind-academic: #8a78e0;
+  --kind-side-ec: #1f8f86;
+  --kind-commitment: #3d6f8a;
+  --kind-personal: #b06a9a;
+  --kind-default: #9a96a8;
+  --cal-all: var(--accent);
+  --cal-work: #3d6f8a;
+  --cal-personal: #b06a9a;
+
+  --glass: rgb(255 255 255 / 0.62);
+  --glass-thick: rgb(255 255 255 / 0.8);
+  --glass-edge: rgb(255 255 255 / 0.7);
+  --wash-iris: rgb(75 58 140 / 0.13);
+  --wash-teal: rgb(31 122 116 / 0.09);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e0d14;
+    --bg-sunken: #0e0d14;
+    --surface: #1a1824;
+    --elev-2: #24212f;
+    --layer-3: #332f42;
+    --line: #2a2735;
+    --line-strong: #383446;
+    --text: #f2f0f8;
+    --text-2: #a7a3b8;
+    --text-3: #8a8699;
+    --accent: #b3a5f0;
+    --accent-hover: #c4b9f5;
+    --accent-soft: #2a2540;
+    --highlight: #5cc8bd;
+    --green: #5cc8bd;
+    --amber: #e0b15c;
+    --red: #f2707f;
+    --path-danger: #f2707f;
+    --kind-school: #b3a5f0;
+    --kind-academic-ec: #9d8ef0;
+    --kind-academic: #9d8ef0;
+    --kind-side-ec: #5cc8bd;
+    --kind-commitment: #7fb3cf;
+    --kind-personal: #e0a2c8;
+    --kind-default: #8a8699;
+    --glass: rgb(26 24 36 / 0.62);
+    --glass-thick: rgb(26 24 36 / 0.82);
+    --glass-edge: rgb(255 255 255 / 0.07);
+    --wash-iris: rgb(122 104 220 / 0.18);
+    --wash-teal: rgb(92 200 189 / 0.08);
+  }
+}
+
+[data-theme="dark"] {
+  --font-display: "Bricolage Grotesque Variable", "Bricolage Grotesque", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+  --bg: #0e0d14;
+  --bg-sunken: #0e0d14;
+  --surface: #1a1824;
+  --elev-2: #24212f;
+  --layer-3: #332f42;
+  --line: #2a2735;
+  --line-strong: #383446;
+  --text: #f2f0f8;
+  --text-2: #a7a3b8;
+  --text-3: #8a8699;
+  --accent: #b3a5f0;
+  --accent-hover: #c4b9f5;
+  --accent-soft: #2a2540;
+  --highlight: #5cc8bd;
+  --green: #5cc8bd;
+  --amber: #e0b15c;
+  --red: #f2707f;
+  --path-danger: #f2707f;
+  --kind-school: #b3a5f0;
+  --kind-academic-ec: #9d8ef0;
+  --kind-academic: #9d8ef0;
+  --kind-side-ec: #5cc8bd;
+  --kind-commitment: #7fb3cf;
+  --kind-personal: #e0a2c8;
+  --kind-default: #8a8699;
+  --glass: rgb(26 24 36 / 0.62);
+  --glass-thick: rgb(26 24 36 / 0.82);
+  --glass-edge: rgb(255 255 255 / 0.07);
+  --wash-iris: rgb(122 104 220 / 0.18);
+  --wash-teal: rgb(92 200 189 / 0.08);
+}
+
+/* The wash: soft light from the top corners, fixed so it stays put while
+   content scrolls past — and gives the glass something to frost. */
+.shell {
+  background:
+    radial-gradient(70% 55% at 0% 0%, var(--wash-iris), transparent 70%),
+    radial-gradient(55% 50% at 100% 0%, var(--wash-teal), transparent 70%),
+    radial-gradient(60% 45% at 60% 100%, var(--wash-iris), transparent 75%),
+    var(--bg);
+  background-attachment: fixed;
+}
+.shell-main,
+.shell-content {
+  background: transparent;
+}
+
+/* The rail is a frosted sidebar over the wash, like a macOS sidebar. */
+.rail {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+  border-right-color: rgb(from var(--text) r g b / 0.07);
+}
+
+/* Big titles speak in the brand's voice. */
+.page-header-title,
+.attention-title,
+.tg-hero-title,
+.project-page .project-head .project-title-input:is(input),
+.calendar-toolbar .cal-month-heading,
+.calendar-page .calendar-toolbar .cal-month-heading,
+.not-found-card h1 {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  letter-spacing: -0.028em;
+}
+
+/* The logo word too. */
+.rail-logo-word {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .rail {
+    background: var(--surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}

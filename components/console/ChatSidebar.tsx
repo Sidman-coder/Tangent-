@@ -13,16 +13,16 @@ import type { AppState } from "@/lib/types";
 import { resolveChatTask, type ChatTask } from "@/components/console/chatTask";
 import TaskColorPopover from "@/components/console/TaskColorPopover";
 
-/** Highlight colors — the app accent first, then calendar-friendly hues. */
+/** Highlight colors — Tangent's palette: iris first, then its companions. */
 export const CHAT_COLORS = [
-  { hex: "#5b3df0", name: "Violet" },
-  { hex: "#3b82f6", name: "Blue" },
-  { hex: "#0ea5a4", name: "Teal" },
-  { hex: "#22a06b", name: "Green" },
-  { hex: "#e5a50a", name: "Amber" },
-  { hex: "#f97316", name: "Orange" },
-  { hex: "#e0567a", name: "Rose" },
-  { hex: "#8a8f98", name: "Slate" },
+  { hex: "#4b3a8c", name: "Iris" },
+  { hex: "#8a78e0", name: "Lilac" },
+  { hex: "#1f8f86", name: "Teal" },
+  { hex: "#3d6f8a", name: "Deep teal" },
+  { hex: "#b06a9a", name: "Mauve" },
+  { hex: "#c48c3a", name: "Ochre" },
+  { hex: "#c94a5f", name: "Rose" },
+  { hex: "#8a8699", name: "Graphite" },
 ] as const;
 
 type Props = {

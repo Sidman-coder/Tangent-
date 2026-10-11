@@ -6,7 +6,7 @@ const THEME_KEY = "tangent-theme";
  *  globals.css are reachable. Removing the attribute instead of setting
  *  "light" left [data-theme="light"] dead and only worked by accident,
  *  because :root happened to carry the same values. */
-const THEME_BG: Record<AppearanceMode, string> = { light: "#f5f3fa", dark: "#13111d" };
+const THEME_BG: Record<AppearanceMode, string> = { light: "#f5f4f9", dark: "#0e0d14" };
 
 function paint(theme: AppearanceMode): void {
   document.documentElement.setAttribute("data-theme", theme);

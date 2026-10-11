@@ -1,12 +1,13 @@
 // One color ramp for urgency, shared by the WebGL orb, its static fallback,
 // and the section glow so all three always agree. Color means urgency here:
-// calm accent violet → amber → red, never decoration.
+// calm iris → ochre → rose (Tangent's palette, not stock violet/amber/red),
+// never decoration.
 
 type RGB = [number, number, number];
 
-const CALM: RGB = [124, 92, 255]; // --accent (dark theme value, reads on both)
-const WARN: RGB = [245, 166, 35]; // --amber
-const HOT: RGB = [239, 68, 68]; //  --red
+const CALM: RGB = [117, 101, 201]; // mid iris, reads on both themes
+const WARN: RGB = [196, 140, 58]; // --amber (ochre)
+const HOT: RGB = [201, 74, 95]; //  --red (rose)
 
 function mix(a: RGB, b: RGB, t: number): RGB {
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];

@@ -43,15 +43,11 @@ function addDays(d: Date, n: number): Date {
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+// The theme's kind tokens (globals.css), so both themes and the brand
+// palette apply here too — these used to be hard-coded Tailwind hues.
 function getKindColor(kind?: string): string {
-  const map: Record<string, string> = {
-    'school':      '#2563eb',
-    'commitment':  '#0d9488',
-    'academic-ec': '#7c3aed',
-    'side-ec':     '#d97706',
-    'personal':    '#64748b',
-  }
-  return map[kind ?? ''] ?? '#9b97a6'
+  const known = ["school", "commitment", "academic-ec", "side-ec", "personal"];
+  return known.includes(kind ?? "") ? `var(--kind-${kind})` : "var(--kind-default)";
 }
 
 const KIND_SORT_ORDER = ["school", "academic-ec", "commitment", "side-ec", "personal"];
@@ -806,7 +802,7 @@ export default function CalendarPage() {
                 className="btn"
                 onClick={() => void confirmRecurDelete(true)}
                 disabled={recurDeleting}
-                style={{ background: "linear-gradient(135deg,#7f1d1d,#991b1b)", borderColor: "#ef4444" }}
+                style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff" }}
               >
                 {recurDeleting ? "Deleting…" : "All occurrences"}
               </button>

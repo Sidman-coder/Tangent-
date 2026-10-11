@@ -825,7 +825,17 @@ export async function restartOnboarding(): Promise<void> {
 
 // ─── Plan functions ───────────────────────────────────────────────────────────
 
-const PLAN_COLORS = ["#38bdf8", "#f472b6", "#fb923c", "#818cf8", "#e879f9", "#06b6d4", "#84cc16"];
+// Tangent's palette, not stock Tailwind hues: iris, teal, lilac, mauve,
+// deep teal-blue and their mid tones. Plans made before this carry an old
+// colour in the database; planFromRow maps those onto this set.
+const PLAN_COLORS = ["#4b3a8c", "#1f8f86", "#8a78e0", "#b06a9a", "#3d6f8a", "#6b5bc4", "#3aa89f"];
+
+function brandColor(color: string, id: string): string {
+  if (PLAN_COLORS.includes(color.toLowerCase())) return color;
+  let h = 0;
+  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return PLAN_COLORS[h % PLAN_COLORS.length];
+}
 
 type PlanRow = {
   id: string;
@@ -843,7 +853,7 @@ function planFromRow(r: PlanRow): Plan {
     title: r.title,
     description: r.description,
     taskIds: [...(r.task_ids ?? [])],
-    color: r.color,
+    color: brandColor(r.color ?? "", r.id),
     createdAt: r.created_at,
     taskCount: r.task_count,
   };
