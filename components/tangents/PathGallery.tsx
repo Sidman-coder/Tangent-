@@ -199,7 +199,7 @@ export default function PathGallery({ paths, onNew, empty = DEFAULT_PATHS_EMPTY,
   const reduced = useReducedMotion() ?? false;
   const stageRef = useRef<HTMLDivElement>(null);
   const [stage, setStage] = useState({ width: 0, height: 0 });
-  const [portal, setPortal] = useState<{ id: string; title: string; target: string; x: number; y: number } | null>(null);
+  const [portal, setPortal] = useState<{ id: string; title: string; target: string; x: number; y: number; reach: number } | null>(null);
 
   // The dust behind the field drifts against the pointer, so the field has
   // depth before anything is touched. A ref, read by the canvas each frame.
@@ -250,7 +250,15 @@ export default function PathGallery({ paths, onNew, empty = DEFAULT_PATHS_EMPTY,
       } catch {
         // Private mode: the path page just plays its normal entrance.
       }
-      setPortal({ id: path.id, title: path.title, target: path.target, ...origin });
+      const reach = Math.ceil(
+        Math.max(
+          Math.hypot(origin.x, origin.y),
+          Math.hypot(window.innerWidth - origin.x, origin.y),
+          Math.hypot(origin.x, window.innerHeight - origin.y),
+          Math.hypot(window.innerWidth - origin.x, window.innerHeight - origin.y)
+        )
+      );
+      setPortal({ id: path.id, title: path.title, target: path.target, ...origin, reach });
     },
     [router]
   );
@@ -407,8 +415,11 @@ export default function PathGallery({ paths, onNew, empty = DEFAULT_PATHS_EMPTY,
             key="portal"
             className="tangents-portal"
             style={{ "--px": `${portal.x}px`, "--py": `${portal.y}px` } as React.CSSProperties}
+            // Same units at both ends: 0px → 150vmax made the animation
+            // interpolate the whole string, centre included, so the reveal
+            // grew from the wrong place. The radius reaches the far corner.
             initial={{ clipPath: `circle(0px at ${portal.x}px ${portal.y}px)` }}
-            animate={{ clipPath: `circle(150vmax at ${portal.x}px ${portal.y}px)` }}
+            animate={{ clipPath: `circle(${portal.reach}px at ${portal.x}px ${portal.y}px)` }}
             // Ease-out, short: it answers the press at once instead of
             // winding up. The page is shown once its data is in (or after a
             // short wait), so it never cuts to a loading skeleton.
