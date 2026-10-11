@@ -42,8 +42,10 @@ export type CallOptions = {
 
 // ─── Budget ──────────────────────────────────────────────────────────────────
 
-/** Features too expensive to run on the FAST model as a budget fallback. */
-const HEAVY_FEATURES: ReadonlySet<Feature> = new Set<Feature>(["plan", "tangent"]);
+/** Features too expensive to run on the FAST model as a budget fallback.
+ *  intentRouter is blocked rather than run: over budget, the free keyword rule
+ *  routes instead (lib/pipeline/intent.ts step d). */
+const HEAVY_FEATURES: ReadonlySet<Feature> = new Set<Feature>(["plan", "tangent", "extendPlan", "intentRouter"]);
 
 export const BUDGET_MESSAGE =
   "You've used today's AI allowance for building plans. It resets at midnight UTC. You can still add tasks, check what's due, and ask quick questions.";

@@ -37,6 +37,50 @@ void (import("./quick-add") as Promise<Mod>).then(({ cleanTitle, hasTimeWords })
     for (const [raw, want] of cases) assert.equal(cleanTitle(raw), want, raw);
   });
 
+  test("trailing filler and when-words the date and time hold are stripped", () => {
+    const cases: [string, string][] = [
+      ["I have a soccer coaching appointment coming up tomorrow 10pm", "Soccer coaching appointment"],
+      ["I have a soccer coaching appointment coming up", "Soccer coaching appointment"],
+      ["I have a test next week", "Test"],
+      ["dentist tomorrow at 3pm", "Dentist"],
+      ["call grandma tonight", "Call grandma"],
+      ["bio quiz on friday", "Bio quiz"],
+      ["essay draft by thursday", "Essay draft"],
+      ["piano practice weekdays", "Piano practice"],
+      ["study for chem later", "Study for chem"],
+      ["return library books soon", "Return library books"],
+      ["schedule a meeting with Ms. Lee at 3", "Meeting with Ms. Lee"],
+      ["put SAT practice on my calendar", "SAT practice"],
+      ["add SAT practice tomorrow", "SAT practice"],
+      ["I need to finish the lab report at 10:30", "Finish the lab report"],
+      ["I've got a chem quiz thursday at 3", "Chem quiz"],
+      ["pizza night friday", "Pizza night"],
+    ];
+    for (const [raw, want] of cases) assert.equal(cleanTitle(raw), want, raw);
+  });
+
+  test("titles that are the task itself stay unchanged", () => {
+    for (const title of [
+      "Add math notes to binder",
+      "Put laundry away",
+      "Study for the SAT",
+      "Read chapter 10",
+      "Soccer coaching appointment",
+      "Plan the week",
+      "Today show recap",
+      "Study for monday",
+      "Plans after friday",
+    ]) {
+      assert.equal(cleanTitle(title), title, title);
+    }
+  });
+
+  test("never leaves fewer than 2 characters", () => {
+    assert.equal(cleanTitle("tomorrow"), "Tomorrow");
+    assert.equal(cleanTitle("a tonight"), "A tonight");
+    assert.equal(cleanTitle("I have a"), "I have a");
+  });
+
   test("a title that is only a lead-in is kept as typed", () => {
     assert.equal(cleanTitle("add"), "Add");
     assert.equal(cleanTitle("  "), "");

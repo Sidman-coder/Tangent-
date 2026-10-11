@@ -624,3 +624,55 @@
   opacity: 0.35;
   cursor: default;
 }
+
+/* Pipeline V2 (A6): a drafted change with Confirm / Discard
+   (components/projects/InlinePreview.tsx). */
+.inline-preview {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px dashed rgb(from var(--accent) r g b / 0.4);
+  border-radius: 12px;
+  background: rgb(from var(--accent) r g b / 0.05);
+}
+.inline-preview-head {
+  margin: 0;
+  color: var(--text);
+  font: 600 14px/1.4 var(--font-body);
+}
+.inline-preview-lines {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text);
+  font: 450 13px/1.5 var(--font-body);
+}
+.inline-preview-more,
+.inline-preview-note {
+  margin: 0;
+  color: var(--text-2);
+  font: 450 13px/1.45 var(--font-body);
+}
+.inline-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.inline-preview-btn {
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: 550 13px/1 var(--font-body);
+  cursor: pointer;
+}
+.inline-preview-btn.is-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.inline-preview-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}

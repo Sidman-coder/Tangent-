@@ -3,6 +3,7 @@ import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import { runProactiveCheck } from "@/lib/proactive";
 import { pollPendingBriefBatch } from "@/lib/daily-brief";
 import { forEachCronUser } from "@/lib/cron-users";
+import { purgeOldDecisions } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,9 @@ export const maxDuration = 60;
 // app/api/cron/daily-brief/route.ts, 12:00 UTC). Without this, a batch submitted
 // by that route wouldn't become a notification until the following day's tick.
 // This route runs three hours later, so it finalizes the batch the same day.
+//
+// Also drops AI decision records older than 90 days (Pipeline V2, B9), once
+// for everyone; a failure there never fails the job.
 export async function GET(request: Request) {
   if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
@@ -29,8 +33,9 @@ export async function GET(request: Request) {
       const briefPoll = await pollPendingBriefBatch();
       return { ...proactive, briefPoll };
     });
+    const decisionsPurged = await purgeOldDecisions();
     const ok = results.every((r) => r.ok && r.result?.ok);
-    return NextResponse.json({ ok, students: results.length, results }, { status: ok ? 200 : 500 });
+    return NextResponse.json({ ok, students: results.length, results, decisionsPurged }, { status: ok ? 200 : 500 });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     console.error("[api/cron/proactive] Error:", message);

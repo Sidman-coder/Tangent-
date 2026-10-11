@@ -33,7 +33,7 @@ export const MODELS = {
 };
 
 /** Feature labels recorded with every call (ai_usage.feature). */
-export type Feature = "plan" | "classify" | "agent" | "chat" | "context" | "brief" | "tangent" | "notif" | "router";
+export type Feature = "plan" | "classify" | "agent" | "chat" | "context" | "brief" | "tangent" | "notif" | "router" | "intentRouter" | "extendPlan";
 
 export type TaskConfig = {
   feature: Feature;
@@ -95,6 +95,11 @@ export const AI_TASKS = {
   contextExtract: { feature: "context", tier: "FAST", maxTokens: 300 },
   /** Compress the context file once it grows past 40 entries. */
   contextCompress: { feature: "context", tier: "FAST", maxTokens: 400 },
+  /** Pipeline V2 intent router (lib/pipeline/intent.ts): one short JSON answer
+   *  per request. No cache: the prompt is under Haiku's 4,096-token minimum. */
+  intentRouter: { feature: "intentRouter", tier: "FAST", maxTokens: 200, temperature: 0 },
+  /** Pipeline V2: only the new tasks for an existing plan (lib/pipeline/extend-plan.ts). */
+  extendPlan: { feature: "extendPlan", tier: "SMART", maxTokens: 1500, thinking: "disabled" },
 } as const satisfies Record<string, TaskConfig>;
 
 export type AiTask = keyof typeof AI_TASKS;

@@ -7,12 +7,14 @@
 import type * as Store from "../store";
 import type { BatchUndoStep, Plan, RestoredTaskFields, Task } from "../types";
 import { parseChangeSet, type ChangeOp, type ChangeSet } from "./changeset";
+import { fieldValues } from "./undo-core";
 
 /** The store functions applyChangeSetWith uses. */
 export type ApplyStore = Pick<
   typeof Store,
   | "addPlanWithTasks"
   | "addTask"
+  | "deletePlan"
   | "deleteTask"
   | "getAllPlans"
   | "getAllTasks"
@@ -62,31 +64,7 @@ const taskKey = (t: { title: string; date: string; time?: string }) => `${t.titl
 
 /** The current value of each field an op is about to change, so undo can put
  *  it back. Absent optional fields come back as null, which clears them. */
-function priorFields(task: Task, keys: (keyof RestoredTaskFields)[]): RestoredTaskFields {
-  const out: RestoredTaskFields = {};
-  for (const k of keys) {
-    switch (k) {
-      case "title":
-      case "date":
-      case "time":
-        out[k] = task[k] ?? "";
-        break;
-      case "completed":
-        out.completed = !!task.completed;
-        break;
-      case "calendarId":
-        out.calendarId = task.calendarId ?? null;
-        break;
-      case "notes":
-        out.notes = task.notes ?? null;
-        break;
-      case "kind":
-        out.kind = task.kind ?? null;
-        break;
-    }
-  }
-  return out;
-}
+const priorFields = fieldValues;
 
 /**
  * Applies a saved draft ChangeSet with the existing store functions and
@@ -123,16 +101,18 @@ export async function applyChangeSetWith(store: ApplyStore, input: ChangeSet): P
     const taskById = new Map(tasks.map((t) => [t.id, t]));
     const planById = new Map(plans.map((p) => [p.id, p]));
     /** Plans this ChangeSet changes: the original (for undo) and the current state. */
-    const touchedPlans = new Map<string, { original: Plan; current: Plan }>();
+    const touchedPlans = new Map<string, { original: Plan; current: Plan; step: Extract<BatchUndoStep, { type: "restore_plan" }> }>();
     const touchPlan = (planId: string) => {
       let entry = touchedPlans.get(planId);
       if (!entry) {
         const plan = planById.get(planId);
         if (!plan) throw new StaleError("A plan in this change no longer exists.");
-        entry = { original: plan, current: { ...plan, taskIds: [...plan.taskIds] } };
-        touchedPlans.set(planId, entry);
         const { title, description, taskIds, taskCount } = plan;
-        steps.push({ type: "restore_plan", planId, title, description, taskIds: [...taskIds], taskCount });
+        // set and addedTaskIds fill in as ops run, so undo reverts only them.
+        const step: Extract<BatchUndoStep, { type: "restore_plan" }> = { type: "restore_plan", planId, title, description, taskIds: [...taskIds], taskCount, set: {}, addedTaskIds: [] };
+        entry = { original: plan, current: { ...plan, taskIds: [...plan.taskIds] }, step };
+        touchedPlans.set(planId, entry);
+        steps.push(step);
       }
       return entry;
     };
@@ -177,6 +157,8 @@ export async function applyChangeSetWith(store: ApplyStore, input: ChangeSet): P
           const updated = await store.updatePlan(op.plan_id, { title: op.title, description: op.notes });
           if (!updated) throw new StaleError("A plan in this change no longer exists.");
           entry.current = { ...entry.current, title: updated.title, description: updated.description };
+          if (op.title !== undefined) entry.step.set!.title = updated.title;
+          if (op.notes !== undefined) entry.step.set!.description = updated.description;
           break;
         }
         case "add_task": {
@@ -192,6 +174,7 @@ export async function applyChangeSetWith(store: ApplyStore, input: ChangeSet): P
           if (entry) {
             entry.current.taskIds.push(created.id);
             entry.current.taskCount += 1;
+            entry.step.addedTaskIds!.push(created.id);
           }
           break;
         }
@@ -204,9 +187,12 @@ export async function applyChangeSetWith(store: ApplyStore, input: ChangeSet): P
           if (op.calendarId !== undefined) patch.calendarId = op.calendarId;
           if (op.notes !== undefined) patch.notes = op.notes;
           if (op.kind !== undefined) patch.kind = op.kind;
-          steps.push({ type: "restore_task_fields", taskId: task.id, fields: priorFields(task, Object.keys(patch) as (keyof RestoredTaskFields)[]) });
+          const keys = Object.keys(patch) as (keyof RestoredTaskFields)[];
+          const step: Extract<BatchUndoStep, { type: "restore_task_fields" }> = { type: "restore_task_fields", taskId: task.id, fields: priorFields(task, keys) };
+          steps.push(step);
           const updated = await store.updateTask(task.id, patch);
           if (!updated) throw new StaleError("A task in this change no longer exists.");
+          step.set = fieldValues(updated, keys);
           taskById.set(task.id, updated);
           break;
         }
@@ -214,16 +200,19 @@ export async function applyChangeSetWith(store: ApplyStore, input: ChangeSet): P
           const task = existingTask(op.task_id);
           const patch: Partial<Omit<Task, "id">> = { date: op.date };
           if (op.time !== undefined) patch.time = op.time;
-          steps.push({ type: "restore_task_fields", taskId: task.id, fields: priorFields(task, Object.keys(patch) as (keyof RestoredTaskFields)[]) });
+          const keys = Object.keys(patch) as (keyof RestoredTaskFields)[];
+          const step: Extract<BatchUndoStep, { type: "restore_task_fields" }> = { type: "restore_task_fields", taskId: task.id, fields: priorFields(task, keys) };
+          steps.push(step);
           const updated = await store.updateTask(task.id, patch);
           if (!updated) throw new StaleError("A task in this change no longer exists.");
+          step.set = fieldValues(updated, keys);
           taskById.set(task.id, updated);
           break;
         }
         case "complete_task": {
           const task = existingTask(op.task_id);
           if (task.completed) break; // already done: nothing to change or undo
-          steps.push({ type: "restore_task_fields", taskId: task.id, fields: { completed: false } });
+          steps.push({ type: "restore_task_fields", taskId: task.id, fields: { completed: false }, set: { completed: true } });
           const updated = await store.updateTask(task.id, { completed: true });
           if (!updated) throw new StaleError("A task in this change no longer exists.");
           taskById.set(task.id, updated);
@@ -234,6 +223,18 @@ export async function applyChangeSetWith(store: ApplyStore, input: ChangeSet): P
           if (!(await store.deleteTask(task.id))) throw new StaleError("A task in this change no longer exists.");
           steps.push({ type: "restore_tasks", tasks: [task] });
           taskById.delete(task.id);
+          break;
+        }
+        case "delete_plan": {
+          const plan = planById.get(op.plan_id);
+          if (!plan) throw new StaleError("A plan in this change no longer exists.");
+          // Every task linked to it, so undo can relink the ones it still finds.
+          const linked = tasks.filter((t) => t.planId === plan.id).map((t) => t.id);
+          const taskIds = Array.from(new Set([...plan.taskIds, ...linked]));
+          if (!(await store.deletePlan(plan.id))) throw new StaleError("A plan in this change no longer exists.");
+          steps.push({ type: "restore_plan_row", plan: { ...plan, taskIds } });
+          planById.delete(plan.id);
+          touchedPlans.delete(plan.id);
           break;
         }
       }

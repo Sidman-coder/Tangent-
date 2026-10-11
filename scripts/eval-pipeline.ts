@@ -112,6 +112,7 @@ async function main() {
       const tasks = c.seed.tasks.filter((t) => t.planId === p.id).map(seedTask);
       const made = await store.addPlanWithTasks({ title: p.title }, tasks);
       ids[p.id] = made.plan.id;
+      for (const alias of p.aliases ?? []) await store.savePlanAlias(made.plan.id, alias);
     }
     for (const t of c.seed.tasks.filter((t) => !t.planId)) await store.addTask(seedTask(t));
     const seedPlans = c.seed.plans.map((p) => ({ id: ids[p.id], title: p.title }));
@@ -128,8 +129,12 @@ async function main() {
       await store.markChangeSet(cs.id, "discarded", { from: "draft" });
     } else if (action === "chat_reply" || action === "plan_reply") {
       graded = { intent: "question", target_plan_id: null, ops: [] };
-    } else if (action === "confirm_required") {
+    } else if (action === "confirm_required" || action === "clarify") {
+      // A question back (A1 "Which plan?", B1 "What did you mean?").
       graded = { intent: "clarify", target_plan_id: null, ops: [] };
+    } else if (action === "route_tangent") {
+      // Handed to Tangents: nothing changes here.
+      graded = { intent: "question", target_plan_id: null, ops: [] };
     } else {
       const route = routeCommand(c.text, tz);
       if (route && data.actionId) graded = fastStandIn(route);

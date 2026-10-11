@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { ContextEntry } from "@/lib/types";
 import { GET_TO_KNOW_DONE_EVENT, GET_TO_KNOW_EVENT } from "@/components/GetToKnowYou";
 import ImportContext from "@/components/settings/ImportContext";
+import { usePipelineV2 } from "@/components/PipelineFlag";
 
 const CATEGORY_LABEL: Record<ContextEntry["category"], string> = {
   goal: "Goals",
@@ -29,6 +30,7 @@ async function post(body: unknown): Promise<boolean> {
 }
 
 export default function WhatTangentKnows() {
+  const v2 = usePipelineV2();
   const [entries, setEntries] = useState<ContextEntry[] | null>(null);
   const [summary, setSummary] = useState("");
   const [draft, setDraft] = useState("");
@@ -74,7 +76,15 @@ export default function WhatTangentKnows() {
       <div className="settings-panel-head">
         <div>
           <h2>What Tangent knows</h2>
-          <p>Everything Tangent has learned about you. It uses this for every plan and answer. Remove anything that&apos;s wrong.</p>
+          <p>
+            Everything Tangent has learned about you. It uses this for every plan and answer. Remove anything that&apos;s wrong.
+            {v2 && (
+              <>
+                {" "}
+                To see what Tangent did, open <a href="#ai-activity">AI Activity</a>.
+              </>
+            )}
+          </p>
         </div>
         <div className="knows-head-actions">
           <button

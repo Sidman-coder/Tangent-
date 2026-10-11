@@ -19,6 +19,7 @@ import { perfCount, perfSpan } from "@/lib/perf";
 import { callClaude } from "@/lib/ai/call";
 import { cacheLastMessage, layeredSystem } from "@/lib/ai/cache";
 import type Anthropic from "@anthropic-ai/sdk";
+import { cleanTitle } from "@/lib/quick-add";
 
 const MAX_TOOL_TURNS = 8;
 
@@ -395,7 +396,7 @@ async function executeTool(name: string, input: Record<string, unknown>, request
     }
 
     case "add_task": {
-      const title = typeof input.title === "string" ? input.title.trim() : "";
+      const title = typeof input.title === "string" ? cleanTitle(input.title) : "";
       if (!title) return { data: { error: "Missing title" } };
       const notes = typeof input.notes === "string" ? input.notes.trim() || undefined : undefined;
       // Whatever the model left out, the spacing brain fills in (lib/spacing.ts)
@@ -432,7 +433,7 @@ async function executeTool(name: string, input: Record<string, unknown>, request
       let skippedDuplicates = 0;
       const planKind = inferPlanKind(planTitle);
       for (const rt of rawTasks) {
-        const taskTitle = typeof rt.title === "string" ? rt.title.trim() : "";
+        const taskTitle = typeof rt.title === "string" ? cleanTitle(rt.title) : "";
         if (!taskTitle) continue;
         const taskDate = typeof rt.date === "string" ? rt.date : today;
         const taskTime = typeof rt.time === "string" ? rt.time : "09:00";

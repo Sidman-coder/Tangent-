@@ -1,0 +1,324 @@
+/* Settings › AI Activity (components/settings/AiActivity.tsx). Sits in a
+   .settings-panel next to What Tangent knows and uses the same tokens. */
+
+.aia-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  color: var(--text);
+  font: 500 13.5px/1.45 var(--font-body);
+}
+
+.aia-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+.aia-select {
+  min-width: 150px;
+}
+.aia-search {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.aia-days {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.aia-days button {
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  font: 600 12.5px/1 var(--font-body);
+  cursor: pointer;
+}
+.aia-days button.is-on {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.aia-empty {
+  padding: 8px 0;
+}
+
+.aia-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--text);
+  font: 450 13.5px/1.4 var(--font-body);
+}
+.aia-table th {
+  padding: 0 10px 8px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-3);
+  font: 600 11.5px/1 var(--font-body);
+  letter-spacing: 0.05em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.aia-table td {
+  padding: 10px 10px 10px 0;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.aia-row.is-open td {
+  border-bottom-color: transparent;
+}
+.aia-when,
+.aia-owner {
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.aia-owner {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.aia-asked {
+  max-width: 320px;
+}
+.aia-expand {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.aia-expand > span:first-child {
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+}
+.aia-expand[aria-expanded="true"] > span:first-child {
+  text-decoration-color: var(--accent);
+}
+.aia-voice,
+.aia-token {
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-3);
+  font: 600 11px/1.2 var(--font-body);
+}
+.aia-token {
+  margin-left: 8px;
+  font-family: var(--font-mono);
+  font-weight: 450;
+}
+.aia-none {
+  color: var(--text-3);
+}
+
+.aia-understood {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+.aia-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+.aia-dot.is-high { background: var(--green); }
+.aia-dot.is-mid { background: var(--amber); }
+.aia-dot.is-low { background: var(--red); }
+
+.aia-chip {
+  display: inline-block;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-2);
+  font: 600 12px/1.2 var(--font-body);
+  white-space: nowrap;
+}
+.aia-chip.is-added,
+.aia-chip.is-instant,
+.aia-chip.is-answered {
+  border-color: rgb(from var(--green) r g b / 0.4);
+  color: var(--green);
+}
+.aia-chip.is-waiting {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.aia-chip.is-removed {
+  border-color: rgb(from var(--amber) r g b / 0.45);
+  color: var(--amber);
+}
+.aia-chip.is-failed {
+  border-color: rgb(from var(--red) r g b / 0.45);
+  color: var(--red);
+}
+
+.aia-why-row td {
+  padding-top: 0;
+}
+.aia-why {
+  display: grid;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: rgb(from var(--accent) r g b / 0.03);
+}
+.aia-why h3 {
+  margin: 0;
+  font: 650 14px/1.2 var(--font-body);
+}
+.aia-why h4 {
+  margin: 0 0 6px;
+  color: var(--text-3);
+  font: 600 11.5px/1 var(--font-body);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.aia-why p,
+.aia-why ul {
+  margin: 0;
+  color: var(--text-2);
+  font: 450 13.5px/1.5 var(--font-body);
+}
+.aia-why ul {
+  display: grid;
+  gap: 4px;
+  padding-left: 18px;
+}
+.aia-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 28px;
+  margin: 0;
+}
+.aia-facts dt {
+  color: var(--text-3);
+  font: 600 11.5px/1.4 var(--font-body);
+}
+.aia-facts dd {
+  margin: 0;
+  color: var(--text);
+}
+.aia-strength {
+  margin-left: 6px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+.aia-strength.is-strong { color: var(--green); }
+.aia-strength.is-possible { color: var(--amber); }
+
+.aia-why-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.aia-link,
+.aia-details {
+  color: var(--accent);
+  font: 600 13px/1 var(--font-body);
+  text-decoration: none;
+}
+.aia-link:hover,
+.aia-details:hover {
+  text-decoration: underline;
+}
+.aia-delete {
+  margin-left: auto;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  font: 600 12px/1.2 var(--font-body);
+  cursor: pointer;
+}
+
+.aia-pages {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 14px;
+  color: var(--text-2);
+  font: 500 13px/1 var(--font-body);
+}
+
+/* Under 640px each row becomes a stacked card. */
+@media (max-width: 640px) {
+  .aia-table thead {
+    display: none;
+  }
+  .aia-table,
+  .aia-table tbody,
+  .aia-table tr,
+  .aia-table td {
+    display: block;
+    width: 100%;
+  }
+  .aia-row {
+    margin-top: 10px;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+  }
+  .aia-row.is-open {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+  .aia-table td {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 5px 0;
+    border: 0;
+  }
+  .aia-table .aia-row td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    color: var(--text-3);
+    font: 600 11.5px/1.6 var(--font-body);
+  }
+  .aia-table td.aia-asked {
+    display: block;
+    max-width: none;
+    padding-bottom: 8px;
+  }
+  .aia-table td.aia-asked::before {
+    display: none;
+  }
+  .aia-why-row td {
+    padding: 0;
+  }
+  .aia-why {
+    border-top: 0;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
+  .aia-select {
+    flex: 1 1 140px;
+  }
+  .aia-delete {
+    margin-left: 0;
+  }
+}

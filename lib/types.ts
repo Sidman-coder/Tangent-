@@ -229,12 +229,30 @@ export type BatchUndoStep =
   | { type: "delete_tasks"; taskIds: string[] }
   | { type: "delete_plan"; planId: string }
   | { type: "restore_tasks"; tasks: Task[] }
-  | { type: "restore_task_fields"; taskId: string; fields: RestoredTaskFields }
-  | { type: "restore_plan"; planId: string; title: string; description: string; taskIds: string[]; taskCount: number };
+  /** `set` is what the change set wrote; undo restores a field only while it
+   *  still holds that value (lib/pipeline/undo-core.ts). Older steps have none. */
+  | { type: "restore_task_fields"; taskId: string; fields: RestoredTaskFields; set?: RestoredTaskFields }
+  | {
+      type: "restore_plan";
+      planId: string;
+      title: string;
+      description: string;
+      taskIds: string[];
+      taskCount: number;
+      /** What the change set wrote to the title or description. */
+      set?: { title?: string; description?: string };
+      /** Tasks the change set added to the plan; undo removes only these. */
+      addedTaskIds?: string[];
+    }
+  /** A plan the change set deleted (delete_plan op): undo puts it back and
+   *  relinks its tasks (plan.taskIds) that are back on the calendar unlinked. */
+  | { type: "restore_plan_row"; plan: Plan };
 
 export type ActionSnapshot = {
   /** Full task objects removed by delete_task / delete_all_tasks — restored on undo. */
   removedTasks?: Task[];
+  /** Plans a confirmed delete left empty and removed with it — restored on undo. */
+  removedPlans?: Plan[];
   /** Ids of tasks added by add_task / create_plan / add_recurring_task — deleted on undo. */
   addedTaskIds?: string[];
   /** Plan id added by create_plan — deleted on undo alongside its tasks. */

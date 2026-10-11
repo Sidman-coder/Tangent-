@@ -6,6 +6,8 @@ import Button from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
 import CanvasConnectGuide from "@/components/CanvasConnectGuide";
 import WhatTangentKnows from "@/components/settings/WhatTangentKnows";
+import AiActivity from "@/components/settings/AiActivity";
+import { usePipelineV2 } from "@/components/PipelineFlag";
 import { CalendarSync } from "lucide-react";
 import type { AppState, CanvasFeedStatus } from "@/lib/types";
 import {
@@ -33,6 +35,7 @@ function capacityOptions(current: number): number[] {
 
 export default function SettingsPage() {
   const { state, saveState, refresh } = useAppState();
+  const v2 = usePipelineV2();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [canvasFeed, setCanvasFeed] = useState<CanvasFeedStatus | null>(null);
@@ -209,6 +212,7 @@ export default function SettingsPage() {
           <a href="#integrations">Integrations</a>
           <a href="#your-tangent">Your Tangent</a>
           <a href="#what-tangent-knows">What Tangent knows</a>
+          {v2 && <a href="#ai-activity">AI Activity</a>}
           <a href="#account">Account</a>
         </nav>
 
@@ -379,6 +383,8 @@ export default function SettingsPage() {
           </section>
 
           <WhatTangentKnows />
+
+          {v2 && <AiActivity />}
 
           <section id="account" className="settings-panel">
             <div className="settings-option-row">

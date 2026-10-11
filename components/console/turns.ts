@@ -3,6 +3,7 @@
 import type { ChangeSet } from "@/lib/pipeline/changeset";
 import type { PreviewPayload } from "@/lib/pipeline/draft";
 import type { UndoStatus } from "@/lib/undo-events";
+import type { PendingQuestion } from "@/lib/pending-question";
 
 export type Turn = {
   id: string;
@@ -19,12 +20,21 @@ export type Turn = {
   pendingConfirm?: { id: string; message: string } | null;
   /** A schedule drafted in Plan mode — offers "Add to calendar". */
   planDraft?: boolean;
+  /** Pipeline V2 (A4): talked through after "Just talking" (components/console/talking.ts). */
+  talking?: boolean;
+  /** Pipeline V2 (A4): the reply is a complete schedule; the chip offers it. */
+  planReady?: boolean;
+  /** Pipeline V2 (A4): that schedule was drafted into a preview or dismissed. */
+  planClosed?: boolean;
   /** Just arrived this session — its reply animates in word by word. */
   fresh?: boolean;
   /** Pipeline V2: a drafted change waiting for Confirm (components/PreviewCard). */
   draft?: { changeSet: ChangeSet; preview: PreviewPayload };
   /** Tangent's questions before acting (lib/ai/clarify.ts); cleared once answered. */
   questions?: { id: string; question: string; options: string[] }[] | null;
+  /** A question Tangent is waiting on ("Which one should I delete?"): sent
+   *  back with the next message until it expires (lib/pending-question.ts). */
+  pendingQuestion?: PendingQuestion | null;
   /** Questions about a task this turn already saved; answering is optional. */
   later?: { id: string; questions: { id: string; question: string; options: string[] }[] } | null;
   /** What Tangent changed after those answers. */

@@ -5,6 +5,7 @@
 // handler saves the result (lib/store.ts saveChangeSet); nothing here writes.
 
 import { parseChangeSet, AddTaskOp, type ChangeOp, type ChangeSet, type Intent } from "./changeset";
+import { cleanTitle } from "../quick-add";
 
 /** A task as the plan generator or the single-task command returns it. */
 export type DraftTask = {
@@ -22,6 +23,7 @@ type AddTask = Extract<ChangeOp, { op: "add_task" }>;
 
 const clip = (s: string, max: number) => (s.length > max ? s.slice(0, max - 1).trimEnd() + "…" : s);
 const HM_RE = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * One add_task op from an AI task. Fields the schema would reject are trimmed
@@ -29,7 +31,7 @@ const HM_RE = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
  * time that is not HH:MM is dropped, and a resource with a bad URL is left out.
  */
 export function taskOp(t: DraftTask, link: { plan_ref?: string; plan_id?: string } = {}): AddTask {
-  const op: AddTask = { op: "add_task", title: clip(t.title.trim() || "Untitled task", 200), date: t.date };
+  const op: AddTask = { op: "add_task", title: clip(cleanTitle(t.title) || "Untitled task", 200), date: t.date };
   if (t.time !== undefined) op.time = HM_RE.test(t.time) ? t.time : "";
   if (t.calendarId) op.calendarId = t.calendarId.slice(0, 64);
   const notes = t.notes?.trim();
@@ -61,6 +63,8 @@ export type DraftInput = {
   requestText: string;
   /** Used when summarize() has no headline for these ops. */
   summary: string;
+  /** Overrides summarize(): "Updating ICF Prep · 6 tasks → 8 tasks" (B4). */
+  headline?: string;
   intent: Intent;
   targetPlanId?: string | null;
   ops: ChangeOp[];
@@ -76,7 +80,7 @@ export function buildDraft(d: DraftInput): { ok: true; changeSet: ChangeSet } | 
     user_id: d.userId,
     source: d.source,
     request_text: d.requestText.slice(0, 4000),
-    summary: summarize(d.ops, clip(d.summary.trim() || "Proposed changes", 200)),
+    summary: d.headline?.trim() ? clip(d.headline.trim(), 200) : summarize(d.ops, clip(d.summary.trim() || "Proposed changes", 200)),
     intent: d.intent,
     target_plan_id: d.targetPlanId ?? null,
     ops: d.ops,
@@ -106,12 +110,17 @@ export type PreviewPayload = {
   lines: string[];
   /** Titles addTask would skip as duplicates of open tasks, if confirmed now. */
   likelyDuplicates: string[];
+  /** Plans this delete leaves with no tasks: the card's "Also remove the plan"
+   *  box, checked while the draft has a delete_plan op for it. */
+  planRemovals?: { planId: string; title: string; checked: boolean }[];
 };
 
 // ─── Preview edits (PATCH /api/changesets/[id]) ─────────────────────────────
 
 export type DraftEdit =
   | { type: "remove"; index: number }
+  /** The "Also remove the plan" box: adds or drops the delete_plan op. */
+  | { type: "plan_removal"; plan_id: string; remove: boolean }
   | { type: "date"; index: number; date: string }
   | { type: "time"; index: number; time: string };
 
@@ -121,6 +130,13 @@ export type DraftEdit =
  * would leave nothing is refused: that is what Discard is for.
  */
 export function editOps(ops: ReadonlyArray<ChangeOp>, edit: DraftEdit): { ok: true; ops: ChangeOp[] } | { ok: false; error: string } {
+  if (edit.type === "plan_removal") {
+    if (!ops.some((o) => o.op === "delete_task")) return { ok: false, error: "Only a delete can remove a plan." };
+    const rest = ops.filter((o) => !(o.op === "delete_plan" && o.plan_id === edit.plan_id));
+    const next: ChangeOp[] = edit.remove ? [...rest, { op: "delete_plan", plan_id: edit.plan_id }] : rest;
+    if (next.length === 0) return { ok: false, error: "That would leave nothing to change. Use Discard instead." };
+    return { ok: true, ops: next };
+  }
   const op = ops[edit.index];
   if (!Number.isInteger(edit.index) || !op) return { ok: false, error: "No such change." };
 
@@ -145,6 +161,11 @@ export function editOps(ops: ReadonlyArray<ChangeOp>, edit: DraftEdit): { ok: tr
 export function parseDraftEdit(body: unknown): DraftEdit | null {
   if (!body || typeof body !== "object") return null;
   const b = body as Record<string, unknown>;
+  if (b.type === "plan_removal") {
+    return typeof b.plan_id === "string" && UUID_RE.test(b.plan_id) && typeof b.remove === "boolean"
+      ? { type: "plan_removal", plan_id: b.plan_id, remove: b.remove }
+      : null;
+  }
   const index = b.index;
   if (typeof index !== "number" || !Number.isInteger(index) || index < 0 || index >= 400) return null;
   if (b.type === "remove") return { type: "remove", index };

@@ -88,6 +88,11 @@ export const CompleteTaskOp = z.strictObject({ op: z.literal("complete_task"), t
 
 export const DeleteTaskOp = z.strictObject({ op: z.literal("delete_task"), task_id: Id });
 
+/** Removes a plan (or Project) itself. Its tasks are deleted by their own
+ *  delete_task ops; tasks left out stay on the calendar, unlinked. Undo puts
+ *  the plan back and relinks them. */
+export const DeletePlanOp = z.strictObject({ op: z.literal("delete_plan"), plan_id: Id });
+
 export const OpSchema = z.discriminatedUnion("op", [
   CreatePlanOp,
   UpdatePlanOp,
@@ -96,11 +101,12 @@ export const OpSchema = z.discriminatedUnion("op", [
   MoveTaskOp,
   CompleteTaskOp,
   DeleteTaskOp,
+  DeletePlanOp,
 ]);
 
 export type ChangeOp = z.infer<typeof OpSchema>;
 export type OpName = ChangeOp["op"];
-export const OP_NAMES = ["create_plan", "update_plan", "add_task", "update_task", "move_task", "complete_task", "delete_task"] as const satisfies readonly OpName[];
+export const OP_NAMES = ["create_plan", "update_plan", "add_task", "update_task", "move_task", "complete_task", "delete_task", "delete_plan"] as const satisfies readonly OpName[];
 
 // ─── The ChangeSet ──────────────────────────────────────────────────────────
 
@@ -242,6 +248,10 @@ export function describeChangeSet(cs: Pick<ChangeSet, "ops">, known: DescribeCon
         return `Complete ${task(op.task_id)}`;
       case "delete_task":
         return `Delete ${task(op.task_id)}`;
+      case "delete_plan": {
+        const name = planTitle(op.plan_id);
+        return `Remove the plan ${name ? `'${name}'` : ""}`.trimEnd();
+      }
     }
   });
 }

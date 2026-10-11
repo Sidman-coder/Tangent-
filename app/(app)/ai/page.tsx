@@ -8,6 +8,7 @@ import ChatThread from "@/components/console/ChatThread";
 import { routeAsk } from "@/lib/ask-route";
 import { takeAsk } from "@/lib/ask-handoff";
 import { putNewPathTitle } from "@/lib/path-handoff";
+import { PENDING_QUESTION_ID } from "@/lib/pending-question";
 import type { ClarifyAnswer } from "@/components/console/ClarifyCard";
 import { answerQuestions as answerLaterQuestions, generateQuestions } from "@/lib/questions-client";
 import Composer from "@/components/console/Composer";
@@ -24,6 +25,8 @@ import {
 } from "@/components/console/turns";
 import { usePipelineV2 } from "@/components/PipelineFlag";
 import { chatOnly, draftShownPlan, fetchOpenDrafts, withOpenDrafts } from "@/components/console/pipeline-intake";
+import { isReadyReply, openPlanTurn, talkingRoute } from "@/components/console/talking";
+import { isAddShownPlan } from "@/lib/pipeline/plan-text";
 import type { ChangeSet } from "@/lib/pipeline/changeset";
 import type { PreviewPayload } from "@/lib/pipeline/draft";
 import {
@@ -38,7 +41,9 @@ import {
   ArrowUpRight,
   BookOpen,
   CalendarClock,
+  CalendarPlus,
   CalendarRange,
+  Clock,
   Flag,
   Hammer,
   History,
@@ -197,6 +202,8 @@ export default function AiPage() {
   }, [firstName, tz]);
 
   const [turns, setTurns] = useState<Turn[]>([]);
+  /** A4: the finished schedule the "Add plan to calendar" chip adds. */
+  const plannable = useMemo(() => openPlanTurn(turns), [turns]);
   const [pendingRequest, setPendingRequest] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -204,10 +211,15 @@ export default function AiPage() {
   const [err, setErr] = useState<string | null>(null);
   const [voiceStatus, setVoiceStatus] = useState<VoiceCaptureStatus>("idle");
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Pipeline V2: the composer holds dictated words (sent as source "voice"),
+  // and the next send is a tapped answer to a pending question.
+  const dictated = useRef(false);
+  const tappedPick = useRef(false);
 
   /** Drops a voice transcript into the composer — visible, editable, cursor at
    *  the end — and stops there. The student presses Enter/Send to submit. */
   const acceptTranscript = useCallback((text: string) => {
+    dictated.current = true;
     setMode("chat");
     setErr(null);
     setInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${text}` : text));
@@ -377,10 +389,19 @@ export default function AiPage() {
   ) => {
     const userText = (text ?? input).trim();
     if (!userText || busy) return;
+    // A question Tangent is waiting on (last turn only, until it expires):
+    // this message answers it, typed or tapped, unless the server decides
+    // it's a new request (app/api/chat).
+    const lastTurn = turns[turns.length - 1];
+    const waiting =
+      lastTurn?.pendingQuestion && Date.parse(lastTurn.pendingQuestion.expiresAt) > Date.now() ? lastTurn.pendingQuestion : null;
     // One input, routed (lib/ask-route.ts): no Plan/Calendar switch to set.
     // A question is talked through; everything else acts. A long-range goal
     // goes to Tangents, a multi-week effort becomes a project.
-    const route = followUp ? "do" : routeAsk(userText);
+    // Pipeline V2 (A4): after "Just talking" the plan is talked through until
+    // the student asks to act (components/console/talking.ts).
+    const talk = v2 && !followUp && !waiting ? talkingRoute(turns, userText) : undefined;
+    const route = followUp || waiting || talk ? "do" : routeAsk(userText);
     if (route === "goal" && !modeOverride) {
       putNewPathTitle(userText);
       setInput("");
@@ -424,7 +445,13 @@ export default function AiPage() {
       { role: "user", content: t.request },
       { role: "assistant", content: t.response },
     ]);
-    history.push({ role: "user", content: followUp?.request ?? userText });
+    history.push({ role: "user", content: waiting ? userText : followUp?.request ?? userText });
+    const source = dictated.current ? "voice" : "typed";
+    dictated.current = false;
+    const tapped = tappedPick.current && !!waiting;
+    tappedPick.current = false;
+    // Answered or dropped either way: only the newest reply can carry one.
+    if (waiting) setTurns((prev) => prev.map((t) => (t.pendingQuestion ? { ...t, pendingQuestion: null } : t)));
 
     try {
       const res = await fetch("/api/chat", {
@@ -436,7 +463,10 @@ export default function AiPage() {
           stream: true,
           // Big or vague asks get questions first; never on a follow-up.
           clarify: !followUp,
-          answers: followUp?.answers,
+          answers: followUp?.answers ?? (tapped ? [{ id: PENDING_QUESTION_ID, question: "", answer: userText }] : undefined),
+          pendingQuestion: waiting ?? undefined,
+          source,
+          route: talk,
           // Flag on, a big ask is drafted by the intake (preview first) instead.
           newProject: route === "project" && !v2 ? true : undefined,
         }),
@@ -459,6 +489,7 @@ export default function AiPage() {
         changeSet?: ChangeSet;
         preview?: PreviewPayload;
         questions?: Turn["questions"];
+        pendingQuestion?: Turn["pendingQuestion"];
         suggestion?: Turn["suggestion"];
         taskId?: string;
       };
@@ -476,9 +507,18 @@ export default function AiPage() {
             sourcesChecked: [],
             response: ask,
             questions: data.questions,
+            pendingQuestion: data.pendingQuestion ?? null,
           },
         ]);
         await saveMessage(sessionId, "assistant", `${ask}\n${data.questions.map((q) => `- ${q.question}`).join("\n")}`);
+        return;
+      }
+
+      // Pipeline V2: the router heard a long-range goal; it opens in Tangents
+      // like routeAsk's "goal" above.
+      if (data.action === "route_tangent") {
+        putNewPathTitle(userText);
+        router.push("/tangents?new=1");
         return;
       }
 
@@ -513,13 +553,22 @@ export default function AiPage() {
             : undefined
       );
 
+      // "Add this plan" drafted the shown schedule: its chip is done.
+      const addedShown = action === "preview" && isAddShownPlan(userText);
       setTurns((prev) => [
-        ...prev.map((t) => (t.fresh ? { ...t, fresh: false } : t)),
+        ...prev.map((t) => {
+          const seen = t.fresh ? { ...t, fresh: false } : t;
+          return addedShown && seen.planReady ? { ...seen, planClosed: true, planDraft: false } : seen;
+        }),
         {
           id: crypto.randomUUID(),
           fresh: true,
           // A reply that only asks a question isn't a plan to add yet.
-          planDraft: action === "plan_reply" && !/\?\s*$/.test(reply.trim()),
+          planDraft: isReadyReply(action, reply),
+          // Pipeline V2: still talking it through; a finished schedule keeps
+          // the "Add plan to calendar" chip until it is added or dismissed.
+          talking: talk === "chat",
+          planReady: v2 && isReadyReply(action, reply),
           request: userText,
           tools: toolsForAction(action),
           sourcesChecked: data.sourcesChecked ?? [],
@@ -530,6 +579,8 @@ export default function AiPage() {
           draft: action === "preview" && data.changeSet && data.preview ? { changeSet: data.changeSet, preview: data.preview } : undefined,
           suggestion: data.suggestion ?? null,
           projectId: data.plan?.id ?? null,
+          // "Which tasks should I remove?" with no buttons: typed answers only.
+          pendingQuestion: data.pendingQuestion ?? null,
         },
       ]);
 
@@ -620,6 +671,14 @@ export default function AiPage() {
       const turn = turns.find((t) => t.id === turnId);
       if (!turn) return;
       setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, questions: null } : t)));
+      // "Which one?" buttons: the tapped choice (or Cancel) is the next
+      // message, and send() attaches the pending question.
+      if (turn.pendingQuestion) {
+        const picked = answers?.[0]?.answer ?? "Cancel";
+        tappedPick.current = true;
+        void send(picked, "calendar");
+        return;
+      }
       const shown = answers && answers.length > 0 ? answers.map((a) => a.answer).join(" · ") : "Just do it";
       void send(shown, "calendar", { request: turn.request, answers: answers ?? undefined, skipClarify: true });
     },
@@ -640,7 +699,9 @@ export default function AiPage() {
           .then((r) =>
             "error" in r
               ? setErr(r.error)
-              : (setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, planDraft: false, draft: r } : t))),
+              : (setTurns((prev) =>
+                  prev.map((t) => (t.id === turnId ? { ...t, planDraft: false, planClosed: true, draft: r } : t))
+                ),
                 attachRefs({ changeSetId: r.changeSet.id, from: shown.response }))
           )
           .finally(() => draftingPlans.current.delete(turnId));
@@ -670,7 +731,8 @@ export default function AiPage() {
         ]);
         const reply = cleanMessage(await chatOnly([...history, { role: "user", content: turns[at].request }]));
         const saved = turns[at].response;
-        setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, response: reply, draft: undefined } : t)));
+        // A4: the conversation stays in talking until the student asks to act.
+        setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, response: reply, draft: undefined, talking: true } : t)));
         if (!activeSessionId || !saved.trim()) return;
         const res = await fetch("/api/sessions", {
           method: "POST",
@@ -800,6 +862,11 @@ export default function AiPage() {
             </div>
           )}
           <div className="tg-head-actions">
+            {v2 && (
+              <Link href="/settings#ai-activity" className="tg-icon-btn" aria-label="AI activity" title="AI activity">
+                <Clock size={17} strokeWidth={1.8} aria-hidden="true" />
+              </Link>
+            )}
             {mode === "chat" && (
               <button
                 type="button"
@@ -925,6 +992,22 @@ export default function AiPage() {
               }}
             />
             <div className="tg-dock">
+              {v2 && plannable && !busy && (
+                <div className="tg-plan-chip">
+                  <button type="button" className="tg-btn tg-btn-accent" onClick={() => addPlanToCalendar(plannable.id)}>
+                    <CalendarPlus size={14} strokeWidth={2} aria-hidden="true" />
+                    Add plan to calendar
+                  </button>
+                  <button
+                    type="button"
+                    className="tg-btn"
+                    aria-label="Dismiss the plan"
+                    onClick={() => setTurns((prev) => prev.map((t) => (t.id === plannable.id ? { ...t, planDraft: false, planClosed: true } : t)))}
+                  >
+                    Not now
+                  </button>
+                </div>
+              )}
               {err && <p className="tg-error" role="alert">{err}</p>}
               {saveWarning && <p className="tg-error" role="alert">{saveWarning}</p>}
               <div className="tg-composer-glow">{composer}</div>

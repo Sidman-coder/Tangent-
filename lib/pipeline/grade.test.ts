@@ -3,6 +3,8 @@
 // a resolve hook adds ".ts" before the modules under test are loaded.
 import * as nodeModule from "node:module";
 import { readFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+import path from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { ChangeOp } from "./changeset";
@@ -10,14 +12,18 @@ import type { ChangeOp } from "./changeset";
 type Resolve = (specifier: string, context: unknown, next: (s: string, c: unknown) => unknown) => unknown;
 (nodeModule as unknown as { registerHooks: (h: { resolve: Resolve }) => void }).registerHooks({
   resolve(specifier, context, next) {
-    if (specifier.startsWith(".") && !/\.[cm]?[jt]s$/.test(specifier)) {
+    // grade.ts reads the router's intents (lib/pipeline/intent.ts), whose
+    // imports use the app's "@/" alias.
+    let s = specifier;
+    if (s.startsWith("@/")) s = pathToFileURL(path.join(path.resolve(import.meta.dirname, "..", ".."), s.slice(2))).href;
+    if ((s.startsWith(".") || s.startsWith("file:")) && !/\.[cm]?[jt]s$/.test(s)) {
       try {
-        return next(`${specifier}.ts`, context);
+        return next(`${s}.ts`, context);
       } catch {
         /* fall through */
       }
     }
-    return next(specifier, context);
+    return next(s, context);
   },
 });
 
@@ -137,11 +143,11 @@ void (import("./grade") as Promise<Mod>).then(({ gradeCase, FixtureFileSchema })
   const raw = JSON.parse(readFileSync(new URL("./fixtures/requests.json", import.meta.url), "utf8"));
   const parsed = FixtureFileSchema.safeParse(raw);
 
-  test("fixtures: valid, 33 cases (30 + 3 voice-style), unique ids", () => {
+  test("fixtures: valid, 47 cases (33 + 14 for the router, matcher and titles), unique ids", () => {
     assert.equal(parsed.success, true, parsed.success ? "" : JSON.stringify(parsed.error.issues.slice(0, 3)));
     if (!parsed.success) return;
     const cases = parsed.data.cases;
-    assert.equal(cases.length, 33);
+    assert.equal(cases.length, 47);
     assert.equal(new Set(cases.map((c) => c.id)).size, cases.length);
   });
 

@@ -40,6 +40,15 @@
         "must_not": [
           "create_plan"
         ]
+      },
+      "router": {
+        "intent": "add_to_plan",
+        "plan_mention": "my iCF prep",
+        "route": "draft",
+        "match": "sure",
+        "match_titles": [
+          "ICF Prep"
+        ]
       }
     },
     {
@@ -79,6 +88,15 @@
         "must_not": [
           "create_plan"
         ]
+      },
+      "router": {
+        "intent": "add_to_plan",
+        "plan_mention": "my eye see eff prep",
+        "route": "draft",
+        "match": "sure",
+        "match_titles": [
+          "ICF Prep"
+        ]
       }
     },
     {
@@ -105,6 +123,10 @@
         "must_not": [
           "create_plan"
         ]
+      },
+      "router": {
+        "intent": "add_task",
+        "route": "draft"
       }
     },
     {
@@ -162,6 +184,10 @@
         "target_plan": "NEW",
         "min_ops": 4,
         "max_ops": 30
+      },
+      "router": {
+        "intent": "new_plan",
+        "route": "draft"
       }
     },
     {
@@ -198,6 +224,10 @@
         "target_plan": null,
         "min_ops": 0,
         "max_ops": 0
+      },
+      "router": {
+        "intent": "question",
+        "route": "chat"
       }
     },
     {
@@ -233,6 +263,11 @@
         "target_plan": null,
         "min_ops": 0,
         "max_ops": 0
+      },
+      "router": {
+        "intent": "clarify",
+        "confidence": 0.5,
+        "route": "clarify"
       }
     },
     {
@@ -273,6 +308,16 @@
         "target_plan": null,
         "min_ops": 0,
         "max_ops": 0
+      },
+      "router": {
+        "intent": "add_to_plan",
+        "plan_mention": "my prep",
+        "route": "draft",
+        "match": "unsure",
+        "match_titles": [
+          "ICF Prep",
+          "SAT Prep"
+        ]
       }
     },
     {
@@ -430,6 +475,15 @@
           "create_plan",
           "add_task",
           "delete_task"
+        ]
+      },
+      "router": {
+        "intent": "change_plan",
+        "plan_mention": "my ICF prep plan",
+        "route": "draft",
+        "match": "sure",
+        "match_titles": [
+          "ICF Prep"
         ]
       }
     },
@@ -966,6 +1020,640 @@
           "create_plan"
         ]
       }
+    },
+    {
+      "id": "transcript-take-out-sat",
+      "text": "Take out all of my SAT tasks",
+      "source": "typed",
+      "note": "The real transcript (A1). Two plans say SAT: ask which, with buttons, and remember the question. No reply may hit the calendar list or create a plan.",
+      "seed": {
+        "plans": [
+          {
+            "id": "11111111-1111-4111-8111-000000000003",
+            "title": "SAT Writing Skills Sprint"
+          },
+          {
+            "id": "11111111-1111-4111-8111-000000000004",
+            "title": "SAT Math Mastery Plan"
+          }
+        ],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000020",
+            "title": "Grammar drill: commas",
+            "date": "2026-10-06",
+            "time": "16:00",
+            "planId": "11111111-1111-4111-8111-000000000003"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000021",
+            "title": "Essay practice",
+            "date": "2026-10-08",
+            "time": "16:00",
+            "planId": "11111111-1111-4111-8111-000000000003"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000022",
+            "title": "Algebra review",
+            "date": "2026-10-06",
+            "time": "17:00",
+            "planId": "11111111-1111-4111-8111-000000000004"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000023",
+            "title": "Geometry practice set",
+            "date": "2026-10-09",
+            "time": "17:00",
+            "planId": "11111111-1111-4111-8111-000000000004"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "clarify",
+        "target_plan": null,
+        "min_ops": 0,
+        "max_ops": 0
+      },
+      "router": {
+        "intent": "delete_plan_tasks",
+        "plan_mention": "SAT",
+        "route": "draft",
+        "match": "unsure",
+        "match_titles": [
+          "SAT Writing Skills Sprint",
+          "SAT Math Mastery Plan"
+        ]
+      },
+      "pending": {
+        "kind": "plan",
+        "answers": [
+          {
+            "text": "the writing stuff",
+            "resolves": "pick",
+            "picks": [
+              "SAT Writing Skills Sprint"
+            ]
+          },
+          {
+            "text": "all of them",
+            "resolves": "pick",
+            "picks": [
+              "SAT Writing Skills Sprint",
+              "SAT Math Mastery Plan"
+            ]
+          },
+          {
+            "text": "All of these",
+            "resolves": "pick",
+            "picks": [
+              "SAT Writing Skills Sprint",
+              "SAT Math Mastery Plan"
+            ]
+          },
+          {
+            "text": "my SAT tasks",
+            "resolves": "unclear"
+          },
+          {
+            "text": "the SAT writing skills sprint one",
+            "resolves": "pick",
+            "picks": [
+              "SAT Writing Skills Sprint"
+            ]
+          },
+          {
+            "text": "math",
+            "resolves": "pick",
+            "picks": [
+              "SAT Math Mastery Plan"
+            ]
+          },
+          {
+            "text": "never mind",
+            "resolves": "cancel"
+          },
+          {
+            "text": "add bio homework tomorrow at 5pm",
+            "resolves": "unrelated"
+          }
+        ]
+      }
+    },
+    {
+      "id": "transcript-delete-writing",
+      "text": "delete my SAT writing skills sprint tasks",
+      "source": "typed",
+      "note": "Where the transcript should end: only that plan's tasks, never a new plan (A1, A2).",
+      "seed": {
+        "plans": [
+          {
+            "id": "11111111-1111-4111-8111-000000000003",
+            "title": "SAT Writing Skills Sprint"
+          },
+          {
+            "id": "11111111-1111-4111-8111-000000000004",
+            "title": "SAT Math Mastery Plan"
+          }
+        ],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000020",
+            "title": "Grammar drill: commas",
+            "date": "2026-10-06",
+            "time": "16:00",
+            "planId": "11111111-1111-4111-8111-000000000003"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000021",
+            "title": "Essay practice",
+            "date": "2026-10-08",
+            "time": "16:00",
+            "planId": "11111111-1111-4111-8111-000000000003"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000022",
+            "title": "Algebra review",
+            "date": "2026-10-06",
+            "time": "17:00",
+            "planId": "11111111-1111-4111-8111-000000000004"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000023",
+            "title": "Geometry practice set",
+            "date": "2026-10-09",
+            "time": "17:00",
+            "planId": "11111111-1111-4111-8111-000000000004"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "delete_task",
+        "target_plan": "SAT Writing Skills Sprint",
+        "min_ops": 2,
+        "max_ops": 3,
+        "must_not": [
+          "create_plan",
+          "add_task"
+        ]
+      },
+      "router": {
+        "intent": "delete_plan_tasks",
+        "plan_mention": "SAT writing skills sprint",
+        "route": "draft",
+        "match": "sure",
+        "match_titles": [
+          "SAT Writing Skills Sprint"
+        ]
+      }
+    },
+    {
+      "id": "alias-icf",
+      "text": "add a mock interview to my icf on saturday",
+      "source": "typed",
+      "note": "Nickname (B3): the student once tapped International Career Fair Prep for 'icf'.",
+      "seed": {
+        "plans": [
+          {
+            "id": "11111111-1111-4111-8111-000000000005",
+            "title": "International Career Fair Prep",
+            "aliases": [
+              "icf"
+            ]
+          }
+        ],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000030",
+            "title": "Research companies",
+            "date": "2026-10-07",
+            "time": "18:00",
+            "planId": "11111111-1111-4111-8111-000000000005"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "add_to_plan",
+        "target_plan": "International Career Fair Prep",
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan"
+        ]
+      },
+      "router": {
+        "intent": "add_to_plan",
+        "plan_mention": "my icf",
+        "route": "draft",
+        "match": "sure",
+        "match_titles": [
+          "International Career Fair Prep"
+        ]
+      }
+    },
+    {
+      "id": "icf-prep-vs-essay",
+      "text": "add a checkpoint to my ICF stuff",
+      "source": "typed",
+      "note": "Two ICF plans: unsure, so ask 'Which plan?' with buttons (and New plan).",
+      "seed": {
+        "plans": [
+          {
+            "id": "11111111-1111-4111-8111-000000000001",
+            "title": "ICF Prep"
+          },
+          {
+            "id": "11111111-1111-4111-8111-000000000006",
+            "title": "ICF Essay"
+          }
+        ],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000005",
+            "title": "ICF checkpoint 1: outline",
+            "date": "2026-10-07",
+            "time": "18:00",
+            "planId": "11111111-1111-4111-8111-000000000001"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000006",
+            "title": "ICF checkpoint 2: draft",
+            "date": "2026-10-09",
+            "time": "18:00",
+            "planId": "11111111-1111-4111-8111-000000000001"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000031",
+            "title": "Essay outline",
+            "date": "2026-10-08",
+            "time": "19:00",
+            "planId": "11111111-1111-4111-8111-000000000006"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "clarify",
+        "target_plan": null,
+        "min_ops": 0,
+        "max_ops": 0
+      },
+      "router": {
+        "intent": "add_to_plan",
+        "plan_mention": "my ICF stuff",
+        "route": "draft",
+        "match": "unsure",
+        "match_titles": [
+          "ICF Prep",
+          "ICF Essay"
+        ]
+      },
+      "pending": {
+        "kind": "match",
+        "answers": [
+          {
+            "text": "the essay",
+            "resolves": "pick",
+            "picks": [
+              "ICF Essay"
+            ]
+          },
+          {
+            "text": "prep",
+            "resolves": "pick",
+            "picks": [
+              "ICF Prep"
+            ]
+          },
+          {
+            "text": "New plan",
+            "resolves": "pick",
+            "picks": [
+              "New plan"
+            ]
+          },
+          {
+            "text": "both",
+            "resolves": "unclear"
+          },
+          {
+            "text": "cancel",
+            "resolves": "cancel"
+          }
+        ]
+      }
+    },
+    {
+      "id": "sat-study-session",
+      "text": "add a study session to my SAT plan",
+      "source": "typed",
+      "note": "Adds to the existing plan; never a second SAT plan; 'SAT' never matches Saturday.",
+      "seed": {
+        "plans": [
+          {
+            "id": "11111111-1111-4111-8111-000000000002",
+            "title": "SAT Prep"
+          },
+          {
+            "id": "11111111-1111-4111-8111-000000000007",
+            "title": "Saturday Chores"
+          }
+        ],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000008",
+            "title": "SAT practice section",
+            "date": "2026-10-06",
+            "time": "17:00",
+            "planId": "11111111-1111-4111-8111-000000000002"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "add_to_plan",
+        "target_plan": "SAT Prep",
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan"
+        ]
+      },
+      "router": {
+        "intent": "add_to_plan",
+        "plan_mention": "my SAT plan",
+        "route": "draft",
+        "match": "sure",
+        "match_titles": [
+          "SAT Prep"
+        ]
+      }
+    },
+    {
+      "id": "rename-icf-finals",
+      "text": "rename my ICF plan to ICF Finals",
+      "source": "typed",
+      "seed": {
+        "plans": [
+          {
+            "id": "11111111-1111-4111-8111-000000000001",
+            "title": "ICF Prep"
+          }
+        ],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000005",
+            "title": "ICF checkpoint 1: outline",
+            "date": "2026-10-07",
+            "time": "18:00",
+            "planId": "11111111-1111-4111-8111-000000000001"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000006",
+            "title": "ICF checkpoint 2: draft",
+            "date": "2026-10-09",
+            "time": "18:00",
+            "planId": "11111111-1111-4111-8111-000000000001"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "change_plan",
+        "target_plan": "ICF Prep",
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan",
+          "add_task",
+          "delete_task"
+        ]
+      },
+      "router": {
+        "intent": "change_plan",
+        "plan_mention": "my ICF plan",
+        "route": "draft",
+        "match": "sure",
+        "match_titles": [
+          "ICF Prep"
+        ]
+      }
+    },
+    {
+      "id": "should-i-schedule",
+      "text": "should I schedule study time?",
+      "source": "typed",
+      "note": "A real question that says 'schedule': answered, nothing changes.",
+      "seed": {
+        "plans": [],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000001",
+            "title": "Math homework",
+            "date": "2026-10-05",
+            "time": "16:00"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "question",
+        "target_plan": null,
+        "min_ops": 0,
+        "max_ops": 0
+      },
+      "router": {
+        "intent": "question",
+        "route": "chat"
+      }
+    },
+    {
+      "id": "project-robotics-portfolio",
+      "text": "start a project to build my robotics portfolio website",
+      "source": "typed",
+      "note": "A multi-step goal for Juann's Projects: drafted as a new plan (a Project is a Plan).",
+      "seed": {
+        "plans": [],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000001",
+            "title": "Math homework",
+            "date": "2026-10-05",
+            "time": "16:00"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "new_plan",
+        "target_plan": "NEW",
+        "min_ops": 3,
+        "max_ops": 30
+      },
+      "router": {
+        "intent": "new_project",
+        "route": "draft"
+      }
+    },
+    {
+      "id": "tangent-mit",
+      "text": "I want to get into MIT someday",
+      "source": "typed",
+      "note": "A big open goal: handed to Juann's Tangents, nothing drafted.",
+      "seed": {
+        "plans": [],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000001",
+            "title": "Math homework",
+            "date": "2026-10-05",
+            "time": "16:00"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "question",
+        "target_plan": null,
+        "min_ops": 0,
+        "max_ops": 0
+      },
+      "router": {
+        "intent": "tangent",
+        "route": "tangent"
+      }
+    },
+    {
+      "id": "low-confidence-prep",
+      "text": "prep stuff",
+      "source": "voice",
+      "note": "Under 0.6: ask 'What did you mean?' with Make a plan / Just add one task / Just talking.",
+      "seed": {
+        "plans": [],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000001",
+            "title": "Math homework",
+            "date": "2026-10-05",
+            "time": "16:00"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "clarify",
+        "target_plan": null,
+        "min_ops": 0,
+        "max_ops": 0
+      },
+      "router": {
+        "intent": "new_plan",
+        "confidence": 0.4,
+        "route": "clarify"
+      }
+    },
+    {
+      "id": "title-soccer-coaching",
+      "text": "I have a soccer coaching appointment coming up tomorrow 10pm",
+      "source": "voice",
+      "no_ai": true,
+      "note": "A3: lead-in and filler stripped; tomorrow at 10:00 PM still used.",
+      "seed": {
+        "plans": [],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000001",
+            "title": "Math homework",
+            "date": "2026-10-05",
+            "time": "16:00"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "add_task",
+        "target_plan": null,
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan"
+        ]
+      },
+      "router": {
+        "intent": "add_task",
+        "route": "fast"
+      },
+      "title": "Soccer coaching appointment"
+    },
+    {
+      "id": "title-dont-forget-library",
+      "text": "don't forget to return library books on friday",
+      "source": "voice",
+      "seed": {
+        "plans": [],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000001",
+            "title": "Math homework",
+            "date": "2026-10-05",
+            "time": "16:00"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "add_task",
+        "target_plan": null,
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan"
+        ]
+      },
+      "title": "Return library books"
+    },
+    {
+      "id": "title-chem-quiz",
+      "text": "I've got a chem quiz thursday at 3",
+      "source": "typed",
+      "seed": {
+        "plans": [],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000001",
+            "title": "Math homework",
+            "date": "2026-10-05",
+            "time": "16:00"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "add_task",
+        "target_plan": null,
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan"
+        ]
+      },
+      "title": "Chem quiz"
+    },
+    {
+      "id": "title-unchanged-binder",
+      "text": "Add math notes to binder",
+      "source": "typed",
+      "note": "A3: a title that starts with a verb the student meant stays as it is.",
+      "seed": {
+        "plans": [],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000001",
+            "title": "Math homework",
+            "date": "2026-10-05",
+            "time": "16:00"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "add_task",
+        "target_plan": null,
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan"
+        ]
+      },
+      "title": "Add math notes to binder"
     }
   ]
 }

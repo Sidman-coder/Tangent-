@@ -8,9 +8,10 @@
 //
 // Keys while the card has focus: Enter confirms, Esc discards.
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeSet } from "@/lib/pipeline/changeset";
-import type { PreviewPayload } from "@/lib/pipeline/draft";
+import type { DraftEdit, PreviewPayload } from "@/lib/pipeline/draft";
 import { useAppState } from "@/components/AppStateProvider";
 
 type Phase = "draft" | "confirmed" | "discarded" | "undone";
@@ -137,7 +138,7 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
       onChanged?.();
     });
 
-  const edit = (body: { type: "remove"; index: number } | { type: "date"; index: number; date: string } | { type: "time"; index: number; time: string }) =>
+  const edit = (body: DraftEdit) =>
     act(async () => {
       const { status, data } = await post(base, body, "PATCH");
       if (!data.ok) return settle(status, data);
@@ -176,6 +177,9 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
           ) : phase === "undone" ? (
             <span className="action-receipt-status">Undone</span>
           ) : null}
+          <Link className="action-receipt-details" href={`/settings?activity=cs:${cs.id}#ai-activity`}>
+            Details
+          </Link>
         </div>
         {phase === "confirmed" && result && result.skipped.length > 0 && !nothing && (
           <p className="preview-card-note">Skipped, already on your calendar: {result.skipped.join(", ")}</p>
@@ -213,6 +217,8 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
       <ul className="preview-card-lines">
         {view.lines.map((line, i) => {
           const op = cs.ops[i];
+          // A plan removal shows as its checkbox below, not as a line.
+          if (op?.op === "delete_plan") return null;
           const movable = op && (op.op === "add_task" || op.op === "move_task");
           return (
             <li key={`${i}-${line}`}>
@@ -252,6 +258,18 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
           );
         })}
       </ul>
+
+      {view.planRemovals?.map((r) => (
+        <label key={r.planId} className="preview-card-check">
+          <input
+            type="checkbox"
+            checked={r.checked}
+            disabled={busy}
+            onChange={(e) => void edit({ type: "plan_removal", plan_id: r.planId, remove: e.target.checked })}
+          />
+          Also remove the plan &ldquo;{r.title}&rdquo;
+        </label>
+      ))}
 
       {cs.assumptions.length > 0 && (
         <ul className="preview-card-assumptions">

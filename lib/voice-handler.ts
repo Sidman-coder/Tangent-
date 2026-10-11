@@ -19,7 +19,7 @@ import { inferCalendarGroup, parseCalendarGroup } from "@/lib/calendars";
 import { addTasksToPlan } from "@/lib/store";
 import { addTask, addPlanWithTasks, addRecurringTask, completeTask, deleteTask, updateTask, addVoiceLog, getAppState, getAllTasks, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, addPendingConfirmation, getUserTimezone, getAllPlans } from "@/lib/store";
 import { addDaysYMD, localNow, promptDateContext, singleRelativeDay, ymdFromParts } from "@/lib/time";
-import type { Task, TaskKind } from "@/lib/types";
+import type { Plan, Task, TaskKind } from "@/lib/types";
 import { needsAgentTools, runVoiceAgentToolLoop } from "@/lib/voice-agent-tools";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import { generatePlan, isClearPlanRequest, planDates } from "@/lib/ai/plan";
@@ -37,7 +37,8 @@ import { TANGENT_PIPELINE_V2 } from "@/lib/pipeline/flags";
 import { logEvent } from "@/lib/pipeline/events";
 import { respondWithDraft } from "@/lib/pipeline/drafting";
 import { planOps, taskOp } from "@/lib/pipeline/draft";
-import { ASK_WHICH, bulkDeleteMessage, isFullClearRequest, parseDeleteScope, planBulkDelete } from "@/lib/delete-scope";
+import { ASK_WHICH, bulkDeleteMessage, emptiedPlans, isFullClearRequest, parseDeleteScope, planBulkDelete, planRemovalNote, titleList } from "@/lib/delete-scope";
+import { asksForCalendars, makePendingQuestion, pendingQuestionCard, resolvePendingAnswer, taskCandidates, type PendingQuestion } from "@/lib/pending-question";
 import { cleanTitle, hasTimeWords } from "@/lib/quick-add";
 
 const RESOURCE_ITEM_SCHEMA = {
@@ -102,27 +103,40 @@ const MAX_DRAFT_DELETES = 400;
  * Otherwise a pending confirmation resolved by app/api/confirm. Either way the
  * student sees the count and up to five titles first.
  */
-async function proposeDelete(tasks: Task[], meta: DeleteMeta, scope: { all?: boolean; label?: string } = {}): Promise<NextResponse> {
-  const message = bulkDeleteMessage(tasks.map((t) => t.title), scope);
+async function proposeDelete(
+  tasks: Task[],
+  meta: DeleteMeta,
+  scope: { all?: boolean; label?: string } = {},
+  calendar?: { tasks: Task[]; plans: Plan[] }
+): Promise<NextResponse> {
+  // Plans left with no tasks go too (A2): checked by default in the preview,
+  // named in the confirmation text otherwise.
+  const { tasks: allTasks, plans } = calendar ?? { tasks: await getAllTasks(), plans: await getAllPlans() };
+  const emptied = emptiedPlans(tasks, allTasks, plans);
+  const message = bulkDeleteMessage(tasks.map((t) => t.title), { ...scope, plans: emptied.map((p) => p.title) });
   const n = tasks.length;
-  if (meta.drafting && n <= MAX_DRAFT_DELETES) {
+  if (meta.drafting && n + emptied.length <= MAX_DRAFT_DELETES) {
     return respondWithDraft(
       {
         source: meta.source,
         requestText: meta.text,
         summary: scope.all ? `Clear ALL ${n} tasks from your schedule` : `Delete ${n} task${n === 1 ? "" : "s"}${scope.label ? ` matching "${scope.label}"` : ""}`,
         intent: "delete_task",
-        ops: tasks.map((t) => ({ op: "delete_task" as const, task_id: t.id })),
+        ops: [
+          ...tasks.map((t) => ({ op: "delete_task" as const, task_id: t.id })),
+          ...emptied.map((p) => ({ op: "delete_plan" as const, plan_id: p.id })),
+        ],
         assumptions: scope.all ? ["This removes every task on your schedule"] : [],
       },
       { text: meta.text, today: meta.today, route: scope.all ? "clear" : "delete_scope" }
     );
   }
+  const planIds = emptied.map((p) => p.id);
   const pending = scope.all
-    ? await addPendingConfirmation("delete_all_tasks", message, {})
+    ? await addPendingConfirmation("delete_all_tasks", message, { planIds })
     : n === 1
-      ? await addPendingConfirmation("delete_task", message, { taskId: tasks[0].id, title: tasks[0].title })
-      : await addPendingConfirmation("delete_task", message, { taskIds: tasks.map((t) => t.id), label: scope.label ?? null });
+      ? await addPendingConfirmation("delete_task", message, { taskId: tasks[0].id, title: tasks[0].title, planIds })
+      : await addPendingConfirmation("delete_task", message, { taskIds: tasks.map((t) => t.id), label: scope.label ?? null, planIds });
   await addVoiceLog({ text: meta.text, response: `Awaiting confirmation to delete ${n} task(s)`, action: "confirm_required", ok: true });
   return NextResponse.json({
     ok: true,
@@ -132,10 +146,78 @@ async function proposeDelete(tasks: Task[], meta: DeleteMeta, scope: { all?: boo
   });
 }
 
-/** A reply that changes nothing (a question back to the student). */
-async function askBack(text: string, response: string): Promise<NextResponse> {
+/** A one-task delete's confirmation. A plan the delete leaves empty is named
+ *  in the text and removed on confirm (A2), as in proposeDelete. */
+async function confirmSingleDelete(found: Task) {
+  const [tasks, plans] = await Promise.all([getAllTasks(), getAllPlans()]);
+  const emptied = emptiedPlans([found], tasks, plans);
+  return addPendingConfirmation(
+    "delete_task",
+    `Delete "${found.title}" from your schedule?${planRemovalNote(emptied.map((p) => p.title))}`,
+    { taskId: found.id, title: found.title, planIds: emptied.map((p) => p.id) }
+  );
+}
+
+/** A reply that changes nothing (a question back to the student). With a
+ *  pending question (A1), the reply carries it and, when there are choices,
+ *  Juann's question card with a button per choice. */
+async function askBack(text: string, response: string, pending?: PendingQuestion): Promise<NextResponse> {
   await addVoiceLog({ text, response, action: "clarify", ok: true });
-  return NextResponse.json({ ok: true, action: "clarify", response });
+  if (!pending) return NextResponse.json({ ok: true, action: "clarify", response });
+  if (TANGENT_PIPELINE_V2) logEvent("clarify_shown", { reason: "pending_question", options: pending.candidates.length });
+  return NextResponse.json({
+    ok: true,
+    action: "clarify",
+    response,
+    pendingQuestion: pending,
+    questions: pending.candidates.length ? [pendingQuestionCard(pending, response)] : undefined,
+  });
+}
+
+/** "Which one?" for a delete: the candidates as buttons, held for ten minutes. */
+function askWhich(text: string, response: string, kind: PendingQuestion["kind"], candidates: { id: string; title: string }[]) {
+  return askBack(text, response, makePendingQuestion(kind, candidates, text, new Date()));
+}
+
+/**
+ * The student's reply to a pending question (A1), before any routing: a
+ * resolved delete goes to the delete preview (a ChangeSet with the pipeline
+ * on, the confirmation otherwise); it never creates a plan or reaches a fast
+ * path. Returns null for a reply that is a new request, which the caller then
+ * routes as usual (the question is dropped).
+ */
+export async function handlePendingAnswer(text: string, q: PendingQuestion, opts: VoiceOptions = {}): Promise<NextResponse | null> {
+  const answer = resolvePendingAnswer(text, q);
+  const local = localNow(await getUserTimezone());
+  const meta: DeleteMeta = { text: q.request || text, drafting: TANGENT_PIPELINE_V2 && opts.preview === true, source: opts.source ?? "typed", today: local.date };
+  if (TANGENT_PIPELINE_V2) logEvent("pending_question_resolved", { how: answer.kind });
+  switch (answer.kind) {
+    case "unrelated":
+      return null;
+    case "cancel":
+      await addVoiceLog({ text, response: "Cancelled, nothing deleted", action: "cancel", ok: true });
+      return NextResponse.json({ ok: true, action: "cancelled", response: "Okay, I didn't delete anything." });
+    case "unclear":
+      if (q.reasked >= 1) return askBack(text, "I still couldn't tell which one, so I didn't delete anything.");
+      return askBack(text, `Sorry, which one? ${titleList(q.candidates.map((c) => c.title))}${q.candidates.length > 1 ? `, or "all of these"` : ""}.`, { ...q, reasked: 1 });
+    case "scope": {
+      const scoped = await handleBulkDelete({ ...meta, text: `delete ${answer.words}` });
+      return scoped ?? askBack(text, `I couldn't find tasks matching "${answer.words}", so I didn't delete anything.`);
+    }
+    case "pick": {
+      const ids = new Set(answer.candidates.map((c) => c.id));
+      const [tasks, plans] = await Promise.all([getAllTasks(), getAllPlans()]);
+      const chosen = tasks.filter((t) => (q.kind === "plan" ? !!t.planId && ids.has(t.planId) : ids.has(t.id)));
+      if (chosen.length === 0) return askBack(text, "Those are already gone, so there was nothing to delete.");
+      const label = answer.candidates.length === 1 ? answer.candidates[0].title : undefined;
+      if (chosen.length === 1 && q.kind === "task" && !meta.drafting) {
+        const pending = await confirmSingleDelete(chosen[0]);
+        await addVoiceLog({ text, response: "Awaiting confirmation to delete task", action: "confirm_required", ok: true });
+        return NextResponse.json({ ok: true, action: "confirm_required", pending: { id: pending.id, kind: pending.kind, message: pending.message }, response: pending.message });
+      }
+      return proposeDelete(chosen, meta, { label }, { tasks, plans });
+    }
+  }
 }
 
 /**
@@ -146,15 +228,19 @@ async function askBack(text: string, response: string): Promise<NextResponse> {
 async function handleBulkDelete(meta: DeleteMeta): Promise<NextResponse | null> {
   const full = isFullClearRequest(meta.text);
   if (!full && !parseDeleteScope(meta.text)) return null;
-  const [tasks, plans] = await Promise.all([getAllTasks(), full ? Promise.resolve([]) : getAllPlans()]);
-  const plan = planBulkDelete(meta.text, tasks, plans);
+  const [tasks, plans] = await Promise.all([getAllTasks(), getAllPlans()]);
+  const plan = planBulkDelete(meta.text, tasks, full ? [] : plans);
   if (!plan) return null;
-  if (plan.kind === "ask") return askBack(meta.text, plan.message);
+  if (plan.kind === "ask") {
+    return plan.candidates?.length
+      ? askWhich(meta.text, plan.message, "plan", plan.candidates)
+      : askWhich(meta.text, plan.message, "scope", []);
+  }
   if (plan.kind === "empty") {
     await addVoiceLog({ text: meta.text, response: "Nothing to clear — schedule is already empty", action: "delete_all_tasks", ok: true });
     return NextResponse.json({ ok: true, action: "delete_all_tasks", response: "Your schedule is already empty.", state: await getAppState() });
   }
-  return proposeDelete(plan.tasks, meta, { all: plan.all, label: plan.label });
+  return proposeDelete(plan.tasks, meta, { all: plan.all, label: plan.label }, { tasks, plans });
 }
 
 /** School or No school (lib/calendars.ts) for a calendar the AI named, falling
@@ -458,14 +544,17 @@ async function runFastRoute(route: FastRoute, text: string, today: string): Prom
   }
 
   if (route.op === "add") {
-    const calendarId = inferCalendarGroup(route.title);
+    // The router keeps "I have a" and "coming up"; cleanTitle drops them. The
+    // date and time the student said stand as given.
+    const title = cleanTitle(route.title);
+    const calendarId = inferCalendarGroup(title);
     // Same rule as the AI path below: task.time is rendered on its own.
-    const task = await addTask({ title: route.title, date: route.date, time: route.time, completed: false, calendarId });
+    const task = await addTask({ title, date: route.date, time: route.time, completed: false, calendarId });
     if (task.wasDuplicate) {
       return done({ action: "add_task", task, response: `Skipped 1 duplicate (already have "${task.title}" around ${task.time}).`, state: await getAppState() });
     }
     const record = await recordAction("add_task", `Added "${task.title}"`, { addedTaskIds: [task.id] });
-    return done({ action: "add_task", task, response: `Added ${route.title} for ${friendlyWhen(route.date, route.time, today)}.`, actionId: record.id, state: await getAppState() });
+    return done({ action: "add_task", task, response: `Added ${title} for ${friendlyWhen(route.date, route.time, today)}.`, actionId: record.id, state: await getAppState() });
   }
 
   const tasks = await getAllTasks();
@@ -490,7 +579,7 @@ async function runFastRoute(route: FastRoute, text: string, today: string): Prom
     const found = matchTask(tasks, route.title, { date: route.date, time: route.time });
     if (!found) return null;
     // Same confirmation as the model's delete_task.
-    const pending = await addPendingConfirmation("delete_task", `Delete "${found.title}" from your schedule?`, { taskId: found.id, title: found.title });
+    const pending = await confirmSingleDelete(found);
     return done(confirmBody(pending));
   }
 
@@ -521,6 +610,9 @@ export type PlanProgress =
 
 export type VoiceOptions = {
   forcePlan?: boolean;
+  /** Pipeline V2 (B1): the student tapped "Just add one task", so the plan
+   *  generator is skipped even when the words sound like a plan. */
+  forceTask?: boolean;
   context?: string;
   /** Called as the plan outline and each task arrive. Nothing is saved until the end. */
   onProgress?: (event: PlanProgress) => void;
@@ -589,7 +681,7 @@ async function handleVoiceTextInner(
 
     if (classifiedIntent === "recurring_commitment") {
       received("recurring");
-      const activityName = extractActivityName(text);
+      const activityName = cleanTitle(extractActivityName(text));
       const extractedDays = extractDaysOfWeek(text);
       const daysOfWeek = extractedDays.length > 0 ? extractedDays : [1, 2, 3, 4, 5];
       const time = extractTime(text) ?? "";
@@ -688,7 +780,7 @@ async function handleVoiceTextInner(
     const today = local.date;
 
     // ── Two-step plan approach (FIX 1 + FIX 2) ───────────────────────────────
-    const isPlanRequest = opts.forcePlan || classifiedIntent === "goal_plan" || isClearPlanRequest(text) || /plan|study|workout|routine|schedule|prepare|curriculum|course|week|month|learn|guide/i.test(text);
+    const isPlanRequest = !opts.forceTask && (opts.forcePlan || classifiedIntent === "goal_plan" || isClearPlanRequest(text) || /plan|study|workout|routine|schedule|prepare|curriculum|course|week|month|learn|guide/i.test(text));
 
     if (isPlanRequest) {
       received("plan");
@@ -835,7 +927,7 @@ async function handleVoiceTextInner(
         for (const id of Array.from(new Set(generated.tasks.map((t) => t.calendarId)))) calendarIds.set(id, await resolveCalendarId(id, generated.title));
         // One insert for every task, with plan_id already set (store.addPlanWithTasks).
         const planTasks = generated.tasks.map((t) => ({
-              title: t.title,
+              title: cleanTitle(t.title),
               date: t.date,
               time: timeByDate.get(t.date) ?? t.time,
               kind: planKind,
@@ -921,14 +1013,14 @@ async function handleVoiceTextInner(
             requestText: text,
             summary: "Add a task",
             intent: "add_task",
-            ops: [taskOp({ title: text.substring(0, 50), date: today, time: "09:00", kind: inferPlanKind(text), notes: "Plan requested: " + text })],
+            ops: [taskOp({ title: cleanTitle(text).substring(0, 50), date: today, time: "09:00", kind: inferPlanKind(text), notes: "Plan requested: " + text })],
             assumptions: ["A full plan couldn't be made, so this is a single task", "Assumed today at 9:00 AM"],
           },
           { text, today, route: "plan_fallback" }
         );
       }
       const fallbackTask = await addTask({
-        title: text.substring(0, 50),
+        title: cleanTitle(text).substring(0, 50),
         date: today,
         time: "09:00",
         kind: inferPlanKind(text),
@@ -1150,7 +1242,7 @@ async function handleVoiceTextInner(
     // VOICE_COMMAND_SCHEMA cannot carry a tasks array, so the model can only signal
     // plan intent here. Hand off to the plan generator (lib/ai/plan.ts) instead
     // of creating a plan with no tasks.
-    if (action === "create_plan") {
+    if (action === "create_plan" && !opts.forceTask) {
       console.log("[api/voice] create_plan from standard path — delegating to plan generator");
       return handleVoiceText(text, { ...opts, forcePlan: true });
     }
@@ -1159,13 +1251,19 @@ async function handleVoiceTextInner(
     // The model's word is never enough to clear everything: only an explicit
     // full-clear phrase does (checked above, and again here).
     if (action === "delete_all_tasks") {
-      if (isFullClearRequest(text)) return (await handleBulkDelete(deleteMeta)) ?? (await askBack(text, ASK_WHICH));
+      if (isFullClearRequest(text)) return (await handleBulkDelete(deleteMeta)) ?? (await askWhich(text, ASK_WHICH, "scope", []));
       console.log("[api/voice] delete_all_tasks from the model without an explicit clear phrase — asking");
-      return await askBack(text, ASK_WHICH);
+      return await askWhich(text, ASK_WHICH, "scope", []);
     }
 
     // ── Get calendars ──────────────────────────────────────────────────────────
     if (action === "get_calendars") {
+      // Only when the student asked about calendars: "my SAT tasks" (an
+      // answer to "Which tasks?") once came back as this list (A1).
+      if (!asksForCalendars(text)) {
+        console.log("[api/voice] get_calendars without a calendar question — asking instead");
+        return await askBack(text, `I'm not sure what you'd like me to do with that, so nothing changed. Try something like "delete my SAT tasks" or "what's due this week".`);
+      }
       const calendars = await getCalendars();
       const msg = `You have ${calendars.length} calendars: ${calendars.map((c) => c.name).join(", ")}`;
       await addVoiceLog({ text, response: msg, action, ok: true });
@@ -1306,10 +1404,7 @@ async function handleVoiceTextInner(
 
     if (action === "complete_task") {
       const found = await findTaskByTitle(title);
-      if (!found) {
-        await addVoiceLog({ text, response: `Task not found: ${title}`, action, ok: false });
-        return NextResponse.json({ ok: false, error: `Task not found: ${title}` }, { status: 404 });
-      }
+      if (!found) return await askBack(text, `I couldn't find a task called "${title}", so nothing changed.`);
       const task = await completeTask(found.id);
       const completeRecord = await recordAction("complete_task", `Completed "${found.title}"`, { completedTaskId: found.id });
       console.log("[api/voice] complete_task success:", found.id);
@@ -1318,18 +1413,18 @@ async function handleVoiceTextInner(
     }
 
     if (action === "delete_task") {
-      const found = await findTaskByTitle(title);
-      if (!found) {
-        await addVoiceLog({ text, response: `Task not found: ${title}`, action, ok: false });
-        return NextResponse.json({ ok: false, error: `Task not found: ${title}` }, { status: 404 });
+      // Several tasks fit and none is named exactly: ask which (A1), never pick one.
+      const all = await getAllTasks();
+      const exact = all.filter((t) => t.title.trim().toLowerCase() === title.trim().toLowerCase());
+      const fits = exact.length === 1 ? exact : taskCandidates(all, title);
+      if (fits.length > 1) {
+        return await askWhich(text, `More than one task fits "${title}": ${titleList(fits.map((t) => t.title))}. Which one should I delete?`, "task", fits);
       }
+      const found = fits[0] ?? (await findTaskByTitle(title));
+      if (!found) return await askBack(text, `I couldn't find a task called "${title}", so I didn't delete anything.`);
       // Deleting a task that already exists on the calendar is a destructive change to
       // existing content, not new creation — always confirm before it happens.
-      const pending = await addPendingConfirmation(
-        "delete_task",
-        `Delete "${found.title}" from your schedule?`,
-        { taskId: found.id, title: found.title }
-      );
+      const pending = await confirmSingleDelete(found);
       await addVoiceLog({ text, response: "Awaiting confirmation to delete task", action: "confirm_required", ok: true });
       return NextResponse.json({
         ok: true,

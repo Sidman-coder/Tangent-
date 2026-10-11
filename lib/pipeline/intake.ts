@@ -5,8 +5,9 @@
 //   - "add this plan" right after a shown schedule saves that schedule as a
 //     draft, read from the reply text (no AI, nothing regenerated);
 //   - a clear question or brainstorm gets a chat reply and no ChangeSet;
-//   - everything else goes through the voice handler with preview on, so
-//     anything the AI wrote is a preview card first.
+//   - everything else is understood first (lib/pipeline/understand.ts: the
+//     fast paths, then the intent router, then the old rule) and sent where
+//     that says, so anything the AI wrote is a preview card first.
 //
 // The pen (/api/voice) has no screen and still calls handleVoiceText directly.
 
@@ -21,7 +22,7 @@ import { planOps } from "./draft";
 import { respondWithDraft } from "./drafting";
 import { logEvent } from "./events";
 import { countScheduleLines, isAddShownPlan, isCompleteSchedule, parsePlanText, skippedNotes, stripModeSwitchLine } from "./plan-text";
-import { routeRequest } from "./route-request";
+import { understandAndRoute } from "./understand";
 
 export type IntakeOptions = {
   onProgress?: (event: PlanProgress) => void;
@@ -35,6 +36,8 @@ export type IntakeOptions = {
   /** Answers came back for questions Tangent asked, so this is an ask to act. */
   answered?: boolean;
   project?: CalendarReplyOptions["project"];
+  /** The client can show Juann's question card (app/api/chat body.clarify). */
+  clarify?: boolean;
 };
 
 /**
@@ -79,9 +82,10 @@ export async function handleRequest(messages: ChatMessage[], opts: IntakeOptions
     return { message: String(data.response ?? ""), action: "preview", changeSet: data.changeSet, preview: data.preview, ok: true };
   }
 
-  const route =
-    opts.route === "chat" ? "chat" : opts.answered || opts.project?.forcePlan ? "draft" : routeRequest(userText, await getUserTimezone());
-  if (route === "chat") {
+  if (opts.route !== "chat" && !opts.answered && !opts.project?.forcePlan) {
+    return understandAndRoute(messages, userText, { source, onProgress: opts.onProgress, pipelineText: opts.pipelineText ?? userText, clarify: opts.clarify });
+  }
+  if (opts.route === "chat") {
     logEvent("request_received", { route: "chat", fast: false, source });
     // The Plan prompt plus the one-question-at-a-time rules; its "Switch to
     // Calendar…" line is cut here. Only a complete schedule offers adding it.

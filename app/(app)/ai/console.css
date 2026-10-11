@@ -2128,3 +2128,17 @@ a.tg-next:hover .tg-next-go { color: var(--accent); transform: translate(2px, -2
   display: none;
   animation: none;
 }
+
+/* Pipeline V2 (A4): a finished schedule stays one tap from the calendar
+   until it is added or dismissed (components/console/talking.ts). */
+.tg-plan-chip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.tg-plan-chip .tg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}

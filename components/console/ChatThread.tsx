@@ -211,6 +211,7 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
                       <ClarifyCard
                         questions={t.questions}
                         disabled={busy}
+                        skipLabel={t.pendingQuestion ? "Cancel" : undefined}
                         onSubmit={(answers) => onAnswer(t.id, answers)}
                       />
                     )}

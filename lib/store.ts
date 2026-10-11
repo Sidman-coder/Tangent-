@@ -37,7 +37,11 @@ import type {
   BatchUndoStep,
 } from "./types";
 import { parseChangeSet } from "./pipeline/changeset";
+import { undoStepsWith } from "./pipeline/undo-core";
 import type { ChangeSet, ChangeSetStatus } from "./pipeline/changeset";
+import { canTransition, decisionColumns, isOutcome, type DecisionInput, type Outcome } from "./pipeline/decisions";
+import { aliasFor } from "./pipeline/match";
+import { createAdminClient } from "./supabase/admin";
 
 export type { ChatMessage, ChatSession } from "./types";
 
@@ -998,6 +1002,379 @@ export async function addTasksToPlan(
   return { tasks: inserted, skippedDuplicates };
 }
 
+export async function getPlanById(planId: string): Promise<Plan | null> {
+  if (!isUuid(planId)) return null;
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("plans").select("*").eq("user_id", userId).eq("id", planId).maybeSingle();
+  if (error) fail("getPlanById", error);
+  return data ? planFromRow(data as PlanRow) : null;
+}
+
+// ─── Plan nicknames (Pipeline V2, B3) ───────────────────────────────────────
+// The student's own words for a plan ("eye see eff prep" → ICF Prep), saved
+// when they confirm or tap a match, so the next request is sure at once.
+// Owner-only RLS; at most PLAN_ALIAS_CAP per plan (also a trigger).
+
+export const PLAN_ALIAS_CAP = 10;
+let warnedNoAliases = false;
+
+/** Saved nicknames by plan id. Empty (and a single warning) when the table
+ *  isn't there yet, so matching works before the migration is applied. */
+export async function getPlanAliases(): Promise<Map<string, string[]>> {
+  const { db, userId } = ctx();
+  const out = new Map<string, string[]>();
+  const { data, error } = await db.from("plan_aliases").select("plan_id, alias_normalized").eq("user_id", userId).limit(1000);
+  if (error) {
+    if (!warnedNoAliases) console.warn("[store] getPlanAliases: skipped:", error.message);
+    warnedNoAliases = true;
+    return out;
+  }
+  for (const r of (data ?? []) as { plan_id: string; alias_normalized: string }[]) {
+    out.set(r.plan_id, [...(out.get(r.plan_id) ?? []), r.alias_normalized]);
+  }
+  return out;
+}
+
+/** Saves the student's words as a nickname for their plan. Skips words that
+ *  are only filler or the plan's own title, a nickname already saved, and a
+ *  plan at the cap. Never throws: a nickname is a convenience. */
+export async function savePlanAlias(planId: string, words: string): Promise<boolean> {
+  try {
+    if (!isUuid(planId)) return false;
+    const alias = aliasFor(words);
+    if (!alias || alias.length > 120) return false;
+    const plan = await getPlanById(planId);
+    if (!plan || aliasFor(plan.title) === alias) return false;
+    const { db, userId } = ctx();
+    const { count, error: countError } = await db
+      .from("plan_aliases")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("plan_id", planId);
+    if (countError || (count ?? 0) >= PLAN_ALIAS_CAP) return false;
+    const { error } = await db.from("plan_aliases").insert({ user_id: userId, plan_id: planId, alias_normalized: alias });
+    if (error && (error as DbError).code !== "23505") console.warn("[store] savePlanAlias:", error.message);
+    return !error;
+  } catch (e) {
+    console.warn("[store] savePlanAlias:", e instanceof Error ? e.message : e);
+    return false;
+  }
+}
+
+// ─── AI decision records (Pipeline V2, B9) ──────────────────────────────────
+// One ai_decisions row per intake request: what Tangent understood and how it
+// ended (lib/pipeline/decisions.ts). Students can read and delete their rows
+// (RLS); only the server writes them, so inserts and updates use the
+// service-role client with user_id set explicitly. Deleting a row never
+// touches calendar data. Never throws: the record must not break a request.
+
+/**
+ * The pipeline's only use of the service-role client: ai_decisions writes
+ * (students may read and delete their own rows, but not write them) and the
+ * retention purge. user_id always comes from the request context (withUser's
+ * signed-in student, or runAsUser for cron), never from a request body.
+ * plan_aliases, change_sets and events use the session client.
+ */
+const decisionsAdmin = {
+  forStudent() {
+    const { userId } = ctx();
+    const db = createAdminClient();
+    return { userId, table: () => db.from("ai_decisions") };
+  },
+  purge: () => createAdminClient().rpc("purge_old_ai_decisions"),
+};
+
+let warnedNoDecisions = false;
+function warnDecisions(where: string, e: unknown) {
+  if (warnedNoDecisions) return;
+  warnedNoDecisions = true;
+  const message = e instanceof Error ? e.message : (e as { message?: string } | null)?.message ?? String(e);
+  console.warn(`[store] ${where}: decision not recorded:`, message);
+}
+
+/** Deletes every student's decision rows older than RETENTION_DAYS (the
+ *  migration's purge_old_ai_decisions). Daily, from /api/cron/proactive.
+ *  Needs no request context. Returns rows removed, or null if it couldn't. */
+export async function purgeOldDecisions(): Promise<number | null> {
+  try {
+    const { data, error } = await decisionsAdmin.purge();
+    if (error) {
+      warnDecisions("purgeOldDecisions", error);
+      return null;
+    }
+    return typeof data === "number" ? data : 0;
+  } catch (e) {
+    warnDecisions("purgeOldDecisions", e);
+    return null;
+  }
+}
+
+/** Inserts the request's decision row; its id, or null if it couldn't. */
+export async function recordDecision(input: DecisionInput): Promise<string | null> {
+  try {
+    const { userId, table } = decisionsAdmin.forStudent();
+    // user_id goes last: nothing in the input can name another student.
+    const { data, error } = await table()
+      .insert({ ...decisionColumns(input), user_id: userId })
+      .select("id")
+      .single();
+    if (error) {
+      warnDecisions("recordDecision", error);
+      return null;
+    }
+    return (data as { id: string }).id;
+  } catch (e) {
+    warnDecisions("recordDecision", e);
+    return null;
+  }
+}
+
+/**
+ * Moves the student's decision row (found by its id, ChangeSet or undo entry)
+ * to `outcome` when OUTCOME_TRANSITIONS allows it; otherwise leaves it. The
+ * update is conditional on the outcome read, so racing writers can't skip a
+ * step. `link` fills in the ChangeSet, undo entry or chosen plan.
+ */
+export async function setDecisionOutcome(
+  where: { id?: string | null; changeSetId?: string | null; actionId?: string | null },
+  outcome: Outcome,
+  link: { changeSetId?: string | null; actionId?: string | null; chosenPlanId?: string | null } = {}
+): Promise<boolean> {
+  try {
+    const key: [string, string] | null = isUuid(where.id)
+      ? ["id", where.id]
+      : isUuid(where.changeSetId)
+        ? ["change_set_id", where.changeSetId]
+        : isUuid(where.actionId)
+          ? ["action_id", where.actionId]
+          : null;
+    if (!key) return false;
+    const { userId, table } = decisionsAdmin.forStudent();
+    const { data: row, error } = await table()
+      .select("id, outcome")
+      .eq("user_id", userId)
+      .eq(key[0], key[1])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      warnDecisions("setDecisionOutcome", error);
+      return false;
+    }
+    const found = row as { id: string; outcome: unknown } | null;
+    if (!found || !isOutcome(found.outcome) || !canTransition(found.outcome, outcome)) return false;
+    const patch: Record<string, unknown> = { outcome, updated_at: new Date().toISOString() };
+    if (isUuid(link.changeSetId)) patch.change_set_id = link.changeSetId;
+    if (isUuid(link.actionId)) patch.action_id = link.actionId;
+    if (isUuid(link.chosenPlanId)) patch.chosen_plan_id = link.chosenPlanId;
+    const { data: moved, error: updateError } = await table()
+      .update(patch)
+      .eq("user_id", userId)
+      .eq("id", found.id)
+      .eq("outcome", found.outcome)
+      .select("id");
+    if (updateError) warnDecisions("setDecisionOutcome", updateError);
+    return (moved?.length ?? 0) > 0;
+  } catch (e) {
+    warnDecisions("setDecisionOutcome", e);
+    return false;
+  }
+}
+
+// Settings › AI Activity (step 3B) reads and deletes decision rows as the
+// student (session client: RLS plus an explicit user_id filter). Deleting a
+// row only ever touches ai_decisions, never tasks, plans, projects or
+// change_sets.
+
+const DECISION_COLUMNS =
+  "id, created_at, updated_at, source, request_text, route, intent, confidence, via, plan_match, chosen_plan_id, pending_question, change_set_id, action_id, models, outcome";
+
+export type DecisionRecord = {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  source: "typed" | "voice";
+  requestText: string;
+  route: string;
+  intent: string | null;
+  confidence: number | null;
+  via: string;
+  planMatch: { decision?: string; candidates?: { id: string; score: number }[] } | null;
+  chosenPlanId: string | null;
+  pendingQuestion: { action?: string; kind?: string; candidates?: number } | null;
+  changeSetId: string | null;
+  actionId: string | null;
+  models: string[];
+  outcome: string;
+};
+
+type DecisionRow = {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  source: "typed" | "voice";
+  request_text: string | null;
+  route: string;
+  intent: string | null;
+  confidence: number | null;
+  via: string;
+  plan_match: DecisionRecord["planMatch"];
+  chosen_plan_id: string | null;
+  pending_question: DecisionRecord["pendingQuestion"];
+  change_set_id: string | null;
+  action_id: string | null;
+  models: unknown;
+  outcome: string;
+};
+
+function decisionFromRow(r: DecisionRow): DecisionRecord {
+  return {
+    id: r.id,
+    createdAt: iso(r.created_at),
+    updatedAt: iso(r.updated_at),
+    source: r.source,
+    requestText: r.request_text ?? "",
+    route: r.route,
+    intent: r.intent,
+    confidence: r.confidence,
+    via: r.via,
+    planMatch: r.plan_match,
+    chosenPlanId: r.chosen_plan_id,
+    pendingQuestion: r.pending_question,
+    changeSetId: r.change_set_id,
+    actionId: r.action_id,
+    models: Array.isArray(r.models) ? r.models.filter((m): m is string => typeof m === "string") : [],
+    outcome: r.outcome,
+  };
+}
+
+/** The student's decision rows since `sinceIso`, newest first (at most 1000).
+ *  `pattern` is an ILIKE pattern on the request text. Empty when the table
+ *  isn't there yet (migration not applied). */
+export async function listDecisions(sinceIso: string, pattern?: string): Promise<DecisionRecord[]> {
+  const { db, userId } = ctx();
+  let q = db.from("ai_decisions").select(DECISION_COLUMNS).eq("user_id", userId).gte("created_at", sinceIso);
+  if (pattern) q = q.ilike("request_text", pattern);
+  const { data, error } = await q.order("created_at", { ascending: false }).limit(PAGE);
+  if (error) {
+    warnDecisions("listDecisions", error);
+    return [];
+  }
+  return ((data ?? []) as DecisionRow[]).map(decisionFromRow);
+}
+
+/** Deletes one of the student's decision rows. True when it was theirs and is gone. */
+export async function deleteDecision(id: string): Promise<boolean> {
+  if (!isUuid(id)) return false;
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("ai_decisions").delete().eq("user_id", userId).eq("id", id).select("id");
+  if (error) fail("deleteDecision", error);
+  return (data?.length ?? 0) > 0;
+}
+
+/** Deletes all of the student's decision rows. Returns how many. */
+export async function clearDecisions(): Promise<number> {
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("ai_decisions").delete().eq("user_id", userId).select("id");
+  if (error) fail("clearDecisions", error);
+  return data?.length ?? 0;
+}
+
+/** The student's own ai_usage rows in [fromIso, toIso] (owner columns). */
+export async function getUsageBetween(
+  fromIso: string,
+  toIso: string
+): Promise<{ createdAt: string; model: string; inputTokens: number; outputTokens: number; costUsd: number }[]> {
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("ai_usage")
+    .select("created_at, model, input_tokens, output_tokens, est_cost_usd")
+    .eq("user_id", userId)
+    .gte("created_at", fromIso)
+    .lte("created_at", toIso)
+    .limit(PAGE);
+  if (error) {
+    console.warn("[store] getUsageBetween:", error.message);
+    return [];
+  }
+  return (
+    (data ?? []) as { created_at: string; model: string; input_tokens: number | null; output_tokens: number | null; est_cost_usd: number | string | null }[]
+  ).map((r) => ({
+    createdAt: iso(r.created_at),
+    model: r.model,
+    inputTokens: r.input_tokens ?? 0,
+    outputTokens: r.output_tokens ?? 0,
+    costUsd: Number(r.est_cost_usd ?? 0),
+  }));
+}
+
+/** Duplicates skipped when each of these ChangeSets was confirmed (the
+ *  changeset_confirmed event's duplicates_skipped). */
+export async function getSkippedDuplicates(changeSetIds: string[]): Promise<Map<string, number>> {
+  const ids = changeSetIds.filter(isUuid);
+  const out = new Map<string, number>();
+  if (ids.length === 0) return out;
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("events")
+    .select("change_set_id, props")
+    .eq("user_id", userId)
+    .eq("type", "changeset_confirmed")
+    .in("change_set_id", ids.slice(0, 100));
+  if (error) {
+    console.warn("[store] getSkippedDuplicates:", error.message);
+    return out;
+  }
+  for (const r of (data ?? []) as { change_set_id: string | null; props: Record<string, unknown> | null }[]) {
+    const n = r.props?.duplicates_skipped;
+    if (r.change_set_id && typeof n === "number") out.set(r.change_set_id, n);
+  }
+  return out;
+}
+
+/** Puts a deleted plan back with its original id, title, colour and task list
+ *  (undo of a delete_plan op). Its tasks are relinked by the caller. */
+async function restorePlanRow(plan: Plan): Promise<void> {
+  if (!isUuid(plan.id)) return;
+  const { db, userId } = ctx();
+  const { error } = await db.from("plans").upsert(
+    {
+      id: plan.id,
+      user_id: userId,
+      title: plan.title,
+      description: plan.description ?? "",
+      task_ids: plan.taskIds.filter(isUuid),
+      task_count: plan.taskCount,
+      color: plan.color,
+      created_at: plan.createdAt,
+    },
+    { onConflict: "id", ignoreDuplicates: true }
+  );
+  if (error) fail("restorePlanRow", error);
+}
+
+/** Deletes the plans in `planIds` that no task links to any more (a confirmed
+ *  delete that emptied them, A2) and returns them for the undo snapshot. A
+ *  plan that gained a task since the confirmation was shown stays. */
+export async function deleteEmptiedPlans(planIds: readonly string[]): Promise<Plan[]> {
+  const ids = planIds.filter(isUuid);
+  if (ids.length === 0) return [];
+  const { db, userId } = ctx();
+  const [plans, linked] = await Promise.all([
+    db.from("plans").select("*").eq("user_id", userId).in("id", ids),
+    db.from("tasks").select("plan_id").eq("user_id", userId).in("plan_id", ids),
+  ]);
+  if (plans.error) fail("deleteEmptiedPlans", plans.error);
+  if (linked.error) fail("deleteEmptiedPlans", linked.error);
+  const stillUsed = new Set((linked.data ?? []).map((r: { plan_id: string }) => r.plan_id));
+  const removed: Plan[] = [];
+  for (const row of (plans.data ?? []) as PlanRow[]) {
+    if (stillUsed.has(row.id)) continue;
+    if (await deletePlan(row.id)) removed.push(planFromRow(row));
+  }
+  return removed;
+}
+
 export async function deletePlan(planId: string): Promise<boolean> {
   if (!isUuid(planId)) return false;
   const { db, userId } = ctx();
@@ -1923,6 +2300,8 @@ export async function undoAction(id: string): Promise<{ ok: boolean; message: st
     throw e;
   }
   console.log("[store] undoAction:", id, record.kind);
+  // An instant change's decision record (B9); a ChangeSet's follows markChangeSet.
+  await setDecisionOutcome({ actionId: id }, "undone");
   return { ok: true, message: "Undone." };
 }
 
@@ -1938,6 +2317,8 @@ async function applyUndo(record: ActionRecord): Promise<void> {
     }
     case "delete_task":
     case "delete_all_tasks": {
+      // Plans first, so the tasks come back linked to them.
+      for (const plan of snap.removedPlans ?? []) await restorePlanRow(plan);
       await restoreTasks(snap.removedTasks ?? []);
       break;
     }
@@ -1965,34 +2346,29 @@ async function applyUndo(record: ActionRecord): Promise<void> {
   }
 }
 
-/** Reverses a Pipeline V2 batch: the steps run last-first. Also used by
- *  lib/pipeline/apply.ts to roll back a ChangeSet that failed partway. */
+/** Reverses a Pipeline V2 batch: the steps run last-first, and each field
+ *  goes back only if it still holds what the batch wrote (compare-and-restore,
+ *  lib/pipeline/undo-core.ts). Also used by lib/pipeline/apply.ts to roll back
+ *  a ChangeSet that failed partway. */
 export async function undoBatchSteps(steps: BatchUndoStep[]): Promise<void> {
-  for (const step of [...steps].reverse()) {
-    switch (step.type) {
-      case "delete_tasks":
-        await deleteTaskIds("undoBatchSteps", step.taskIds);
-        break;
-      case "delete_plan":
-        await deletePlan(step.planId);
-        break;
-      case "restore_tasks":
-        await restoreTasks(step.tasks);
-        break;
-      case "restore_task_fields":
-        // null clears a column (taskPatchToRow maps null and undefined alike).
-        await updateTask(step.taskId, step.fields as Partial<Omit<Task, "id">>);
-        break;
-      case "restore_plan":
-        await updatePlan(step.planId, {
-          title: step.title,
-          description: step.description,
-          taskIds: step.taskIds,
-          taskCount: step.taskCount,
-        });
-        break;
-    }
-  }
+  await undoStepsWith(
+    {
+      getTasksByIds: async (ids) => {
+        const valid = ids.filter(isUuid);
+        return valid.length ? selectTasks("undoBatchSteps", (q) => q.in("id", valid)) : [];
+      },
+      getPlan: getPlanById,
+      deleteTasks: async (ids) => {
+        await deleteTaskIds("undoBatchSteps", ids);
+      },
+      deletePlan,
+      restoreTasks,
+      restorePlan: restorePlanRow,
+      updateTask,
+      updatePlan,
+    },
+    steps
+  );
 }
 
 // ─── Confirm-tier gating (delete_all_tasks, large move_tasks) ────────────────
@@ -2200,7 +2576,23 @@ export async function markChangeSet(
   if (error) fail("markChangeSet", error);
   const changed = (data?.length ?? 0) > 0;
   if (changed) console.log("[store] markChangeSet:", id, "→", status);
+  // The request's decision record follows its ChangeSet (B9).
+  if (changed) {
+    const outcome: Outcome | null =
+      status === "discarded" ? "discarded" : status === "undone" ? "undone" : status === "confirmed" && opts.applied ? "confirmed" : null;
+    if (outcome) await setDecisionOutcome({ changeSetId: id }, outcome, { actionId: opts.actionId ?? null });
+  }
   return changed;
+}
+
+/** The student's ChangeSets with these ids (any status). */
+export async function getChangeSetsByIds(ids: string[]): Promise<ChangeSet[]> {
+  const wanted = ids.filter(isUuid).slice(0, 100);
+  if (wanted.length === 0) return [];
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("change_sets").select(CHANGE_SET_COLUMNS).eq("user_id", userId).in("id", wanted);
+  if (error) fail("getChangeSetsByIds", error);
+  return ((data ?? []) as ChangeSetRow[]).map(changeSetFromRow);
 }
 
 /** The student's drafts created at or after `sinceIso`, newest first (at most 20). */

@@ -22,6 +22,8 @@ import ActionReceipt from "@/components/ActionReceipt";
 import { useAppState } from "@/components/AppStateProvider";
 import { useVoiceCapture } from "@/hooks/useVoiceCapture";
 import { generateQuestions } from "@/lib/questions-client";
+import { putAsk } from "@/lib/ask-handoff";
+import { putNewPathTitle } from "@/lib/path-handoff";
 import "./capture-dock.css";
 
 type Phase =
@@ -79,10 +81,19 @@ export default function CaptureDock() {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: [{ role: "user", content: text }], capture: true }),
+          body: JSON.stringify({ messages: [{ role: "user", content: text }], capture: true, source: "voice" }),
         });
         const data = (await res.json()) as ChatReply;
         if (!res.ok || !data.ok) throw new Error(data.error || "Couldn't save that.");
+        // Pipeline V2: a long-range goal opens in Tangents; "What did you
+        // mean?" needs the AI page's tap card.
+        if (data.action === "route_tangent" || data.action === "clarify") {
+          setPhase({ kind: "idle" });
+          if (data.action === "route_tangent") putNewPathTitle(text);
+          else putAsk("ai", text);
+          router.push(data.action === "route_tangent" ? "/tangents?new=1" : "/ai?ask=1");
+          return;
+        }
         if (data.action === "confirm_required" && data.pending) {
           setPhase({ kind: "confirm", id: data.pending.id, message: data.pending.message });
           return;
@@ -95,7 +106,7 @@ export default function CaptureDock() {
         setPhase({ kind: "error", message: e instanceof Error ? e.message : "Couldn't save that." });
       }
     },
-    [refresh]
+    [refresh, router]
   );
 
   const { status, startRecording, stopRecording, cancelRecording, getLevel } = useVoiceCapture({

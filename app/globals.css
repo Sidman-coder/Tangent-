@@ -3771,6 +3771,30 @@ textarea:focus {
   color: var(--red);
 }
 
+/* Pipeline V2: "Details" opens the row in Settings › AI Activity. */
+.action-receipt-details {
+  flex-shrink: 0;
+  color: var(--text-2);
+  font: 600 12px/1 var(--font-body);
+  text-decoration: none;
+}
+
+.action-receipt-details:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.cmdk-item:has(> .action-receipt-details) {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.cmdk-item:has(> .action-receipt-details) > .action-receipt {
+  flex: 1;
+  min-width: 0;
+}
+
 /* ── Preview card (Pipeline V2: AI changes wait for Confirm) ──────────────────── */
 
 .preview-card {
@@ -3877,6 +3901,19 @@ textarea:focus {
   padding-left: 16px;
   color: var(--text-3);
   font-size: 12.5px;
+}
+
+.preview-card-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-2);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.preview-card-check input {
+  accent-color: var(--purple, #7c3aed);
 }
 
 .preview-card-note,

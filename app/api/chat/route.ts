@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { withUser } from "@/lib/request-context";
-import { calendarReply, lastUserMessage, planReply, type CalendarReplyOptions } from "@/lib/chat-reply";
+import { calendarReply, lastUserMessage, pendingAnswerReply, planReply, type CalendarReplyOptions } from "@/lib/chat-reply";
+import { parsePendingQuestion, PENDING_QUESTION_ID } from "@/lib/pending-question";
 import { TANGENT_PIPELINE_V2 } from "@/lib/pipeline/flags";
 import { handleRequest } from "@/lib/pipeline/intake";
+import { routeAnswerReply } from "@/lib/pipeline/understand";
 import { addTask, getAllPlans, getAllTasks, getUserTimezone, recordAction, setCapacity } from "@/lib/store";
 import { quickCapture, type QuickCapture } from "@/lib/ai/router";
 import { inferCalendarGroup } from "@/lib/calendars";
@@ -102,6 +104,11 @@ export const POST = withUser(async (req: Request) => {
       newProject?: unknown;
       /** Pipeline V2: "chat" is the "Just talking, don't add" re-ask. */
       route?: unknown;
+      /** A question Tangent is waiting on ("Which one should I delete?"),
+       *  sent back with the next message (lib/pending-question.ts). */
+      pendingQuestion?: unknown;
+      /** Pipeline V2: "voice" when the text was dictated in the browser. */
+      source?: unknown;
     };
     const mode: ChatMode = body.mode === "plan" ? "plan" : "calendar";
     const raw = body.messages;
@@ -137,6 +144,28 @@ export const POST = withUser(async (req: Request) => {
 
     const projectId = typeof body.projectId === "string" && body.projectId ? body.projectId : "";
 
+    // An answer to a pending question (A1), flag on and off: resolved before
+    // any other routing, so it never becomes a plan or hits a fast path. A
+    // tapped button arrives as the card's answer; a typed reply as the text.
+    // A new request instead of an answer drops the question and goes on below.
+    const source = body.source === "voice" ? "voice" : "typed";
+    const pendingQuestion = parsePendingQuestion(body.pendingQuestion, new Date());
+    // Route questions ("What did you mean?", "Which plan?") exist only with
+    // Pipeline V2 on (lib/pipeline/understand.ts); with it off one is dropped.
+    if (pendingQuestion && (pendingQuestion.action === "delete" || TANGENT_PIPELINE_V2)) {
+      const tapped = parseAnswers(body.answers).find((a) => a.id === PENDING_QUESTION_ID);
+      const resolved =
+        pendingQuestion.action === "route"
+          ? await routeAnswerReply(tapped?.answer ?? userText, pendingQuestion, messages, { source, tapped: !!tapped })
+          : await pendingAnswerReply(tapped?.answer ?? userText, pendingQuestion, { preview: !projectId || TANGENT_PIPELINE_V2, source });
+      if (resolved) {
+        if (body.stream !== true) return NextResponse.json(resolved);
+        return new Response(JSON.stringify({ type: "result", ...resolved }) + "\n", {
+          headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" },
+        });
+      }
+    }
+
     // Flag off: the Plan/Calendar switch decides, as before. Flag on there is
     // one box and no mode, except the Projects chat, which still talks a
     // project through in Plan mode.
@@ -157,7 +186,7 @@ export const POST = withUser(async (req: Request) => {
 
     // Answers to Tangent's questions ride along with the original request, so
     // the pipeline sees one complete ask. A capacity answer is saved for good.
-    const answers = parseAnswers(body.answers);
+    const answers = parseAnswers(body.answers).filter((a) => a.id !== PENDING_QUESTION_ID);
     let pipelineText = userText;
     if (answers.length > 0) {
       for (const a of answers) {
@@ -197,9 +226,11 @@ export const POST = withUser(async (req: Request) => {
 
     // Pipeline V2: every message goes through the intake (lib/pipeline/intake.ts),
     // so anything the AI writes is a preview card first; route "chat" is the
-    // "Just talking" re-ask. Project requests skip it: the Projects chat has no
-    // preview card, so they save directly as on main (with Undo).
-    // Flag off: straight to the voice pipeline, as on main.
+    // "Just talking" re-ask. Project requests skip the intake but are drafted
+    // too (A6): a ChangeSet of add_task ops with plan_id, confirmed inline
+    // (components/projects/InlinePreview.tsx).
+    // Flag off: straight to the voice pipeline, as on main; project requests
+    // save directly (with Undo).
     const reply = (onProgress?: Parameters<typeof calendarReply>[2]) =>
       TANGENT_PIPELINE_V2 && !project
         ? handleRequest(messages, {
@@ -207,8 +238,10 @@ export const POST = withUser(async (req: Request) => {
             route: body.route === "chat" ? "chat" : undefined,
             pipelineText,
             answered: answers.length > 0,
+            source,
+            clarify: body.clarify === true,
           })
-        : calendarReply(messages, pipelineText, onProgress, { project, preview: !project });
+        : calendarReply(messages, pipelineText, onProgress, { project, preview: !project || TANGENT_PIPELINE_V2 });
 
     if (body.stream !== true) return NextResponse.json(await reply());
 

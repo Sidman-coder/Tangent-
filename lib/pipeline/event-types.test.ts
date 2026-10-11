@@ -21,14 +21,24 @@ type Resolve = (specifier: string, context: unknown, next: (s: string, c: unknow
 type Mod = typeof import("./event-types");
 
 void (import("./event-types") as Promise<Mod>).then(({ EVENT_TYPES, isEventType, sanitizeEventProps }) => {
-test("the seven Pipeline V2 event types", () => {
+test("the Pipeline V2 event types", () => {
   assert.deepEqual(
     [...EVENT_TYPES].sort(),
     [
+      "activity_cleared",
+      "activity_row_expanded",
+      "activity_viewed",
       "changeset_confirmed",
       "changeset_discarded",
       "changeset_drafted",
       "changeset_undone",
+      "clarify_answered",
+      "clarify_shown",
+      "intent_classified",
+      "match_confirmed",
+      "match_corrected",
+      "match_proposed",
+      "pending_question_resolved",
       "preview_edited",
       "preview_shown",
       "request_received",
@@ -37,6 +47,8 @@ test("the seven Pipeline V2 event types", () => {
   assert.equal(isEventType("preview_shown"), true);
   assert.equal(isEventType("page_view"), false);
   assert.equal(isEventType(42), false);
+  // The events table's check: ^[a-z_]{1,64}$ (20261006000000_pipeline_v2_change_sets_and_events.sql).
+  for (const t of EVENT_TYPES) assert.match(t, /^[a-z_]{1,64}$/);
 });
 
 test("structured props pass through", () => {

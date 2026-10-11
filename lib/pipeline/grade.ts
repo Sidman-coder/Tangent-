@@ -6,13 +6,23 @@
 
 import { z } from "zod";
 import { INTENTS, OP_NAMES, type ChangeSet } from "./changeset";
+import { ROUTER_INTENTS } from "./intent";
 
 // ─── Fixture file ───────────────────────────────────────────────────────────
 
 const Ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 export const SeedSchema = z.strictObject({
-  plans: z.array(z.strictObject({ id: z.string(), title: z.string().min(1) })),
+  plans: z.array(
+    z.strictObject({
+      id: z.string(),
+      title: z.string().min(1),
+      /** Saved nicknames (plan_aliases.alias_normalized, B3). */
+      aliases: z.array(z.string().min(1)).optional(),
+      /** ISO time last created or changed, for the matcher's recency bonus. */
+      activeAt: z.string().optional(),
+    })
+  ),
   tasks: z.array(
     z.strictObject({
       id: z.string(),
@@ -40,6 +50,34 @@ export const ExpectedSchema = z
   .refine((e) => e.min_ops <= e.max_ops, "min_ops must be ≤ max_ops");
 export type Expected = z.infer<typeof ExpectedSchema>;
 
+/**
+ * Pipeline V2 step 3 (B6): what the router and matcher should do, checked
+ * WITHOUT the AI by lib/pipeline/fixtures.test.ts. `answer` is the mocked
+ * router's reply (skipped when the case takes a no-AI fast path); the rest
+ * is what the code must then decide.
+ */
+export const RouterExpectSchema = z.strictObject({
+  /** The mocked router's intent and confidence (default 0.95). */
+  intent: z.enum(ROUTER_INTENTS),
+  confidence: z.number().min(0).max(1).optional(),
+  plan_mention: z.string().min(1).nullable().optional(),
+  /** Where intake sends it (lib/pipeline/intent.ts IntakeRoute). */
+  route: z.enum(["fast", "chat", "tangent", "clarify", "draft"]),
+  /** The matcher's decision on plan_mention (or the text) against the seed. */
+  match: z.enum(["sure", "unsure", "none"]).optional(),
+  /** Sure: the target's title. Unsure: the candidate titles, best first. */
+  match_titles: z.array(z.string().min(1)).optional(),
+});
+export type RouterExpect = z.infer<typeof RouterExpectSchema>;
+
+/** A typed or tapped reply to the question the case raises (A1). */
+export const AnswerExpectSchema = z.strictObject({
+  text: z.string().min(1),
+  resolves: z.enum(["pick", "cancel", "unrelated", "unclear", "scope"]),
+  /** For "pick": the titles chosen. */
+  picks: z.array(z.string().min(1)).optional(),
+});
+
 export const FixtureCaseSchema = z.strictObject({
   id: z.string().regex(/^[a-z0-9-]+$/),
   text: z.string().min(1),
@@ -49,6 +87,17 @@ export const FixtureCaseSchema = z.strictObject({
   note: z.string().optional(),
   seed: SeedSchema,
   expected: ExpectedSchema,
+  router: RouterExpectSchema.optional(),
+  /** The pending question this case raises ("delete" plans or tasks, or a
+   *  route "match"), and replies to it, each read on its own. */
+  pending: z
+    .strictObject({
+      kind: z.enum(["task", "plan", "match"]),
+      answers: z.array(AnswerExpectSchema).min(1),
+    })
+    .optional(),
+  /** The clean task title (A3) every capture path must produce. */
+  title: z.string().min(1).optional(),
 });
 export type FixtureCase = z.infer<typeof FixtureCaseSchema>;
 

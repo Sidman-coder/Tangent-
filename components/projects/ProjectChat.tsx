@@ -15,7 +15,11 @@ import ClarifyCard, { type ClarifyAnswer, type ClarifyQuestion } from "@/compone
 import PenMark from "@/components/console/PenMark";
 import SuggestionCard, { type Suggestion } from "@/components/console/SuggestionCard";
 import { applyPlanProgress, readChatReply, type PlanProgressView } from "@/components/console/turns";
+import InlinePreview from "@/components/projects/InlinePreview";
 import { routeAsk } from "@/lib/ask-route";
+import type { PendingQuestion } from "@/lib/pending-question";
+import type { ChangeSet } from "@/lib/pipeline/changeset";
+import type { PreviewPayload } from "@/lib/pipeline/draft";
 import type { ChatSession } from "@/lib/types";
 
 type Msg = {
@@ -27,6 +31,10 @@ type Msg = {
   /** The ask the questions are about, re-run with the answers. */
   request?: string;
   suggestion?: Suggestion | null;
+  /** Pipeline V2 (A6): a drafted change, saved only on Confirm. */
+  draft?: { changeSet: ChangeSet; preview: PreviewPayload } | null;
+  /** "Which one should I delete?" (A1): sent back with the next message. */
+  pendingQuestion?: PendingQuestion | null;
 };
 
 type Reply = {
@@ -38,6 +46,9 @@ type Reply = {
   actionId?: string;
   questions?: ClarifyQuestion[];
   suggestion?: Suggestion | null;
+  changeSet?: ChangeSet;
+  preview?: PreviewPayload;
+  pendingQuestion?: PendingQuestion | null;
 };
 
 const STARTERS = ["What should I do next?", "Break the next step down", "Add a review session before the deadline", "Am I on track?"];
@@ -105,11 +116,18 @@ export default function ProjectChat({ projectId, projectTitle, onChanged }: { pr
       setBusy(true);
       setInput("");
       setProgress(null);
-      setMsgs((m) => [...m.map((x) => ({ ...x, questions: null })), { id: crypto.randomUUID(), role: "user", content: shown }]);
+      // A question Tangent is waiting on (the last reply, until it expires).
+      const last = msgs[msgs.length - 1];
+      const waiting =
+        last?.pendingQuestion && Date.parse(last.pendingQuestion.expiresAt) > Date.now() ? last.pendingQuestion : null;
+      setMsgs((m) => [
+        ...m.map((x) => ({ ...x, questions: null, pendingQuestion: null })),
+        { id: crypto.randomUUID(), role: "user", content: shown },
+      ]);
       void save("user", shown);
 
       // A question is talked through; anything else can change the project.
-      const mode = !followUp && routeAsk(request) === "question" ? "plan" : "calendar";
+      const mode = !followUp && !waiting && routeAsk(request) === "question" ? "plan" : "calendar";
       const history = msgs.slice(-10).map((m) => ({ role: m.role, content: m.content }));
       try {
         const res = await fetch("/api/chat", {
@@ -122,18 +140,23 @@ export default function ProjectChat({ projectId, projectTitle, onChanged }: { pr
             projectId,
             clarify: !followUp,
             answers: followUp?.answers ?? undefined,
+            pendingQuestion: waiting ?? undefined,
           }),
         });
         const data = (await readChatReply(res, (line) => setProgress((v) => applyPlanProgress(v, line)))) as Reply;
         if (!res.ok || !data.ok) throw new Error(data.error || "Something went wrong.");
-        if (data.action === "clarify" && data.questions?.length) {
+        if (data.action === "clarify" && (data.questions?.length || data.pendingQuestion)) {
           const ask = data.message ?? "A few quick questions first.";
-          setMsgs((m) => [...m, { id: crypto.randomUUID(), role: "assistant", content: ask, questions: data.questions, request }]);
+          setMsgs((m) => [
+            ...m,
+            { id: crypto.randomUUID(), role: "assistant", content: ask, questions: data.questions ?? null, request, pendingQuestion: data.pendingQuestion ?? null },
+          ]);
           void save("assistant", ask);
           return;
         }
         const reply = (data.message ?? data.response ?? "Done.").replace(/\*\*(.+?)\*\*/g, "$1");
-        setMsgs((m) => [...m, { id: crypto.randomUUID(), role: "assistant", content: reply, actionId: data.actionId, suggestion: data.suggestion }]);
+        const draft = data.action === "preview" && data.changeSet && data.preview ? { changeSet: data.changeSet, preview: data.preview } : null;
+        setMsgs((m) => [...m, { id: crypto.randomUUID(), role: "assistant", content: reply, actionId: data.actionId, suggestion: data.suggestion, draft }]);
         void save("assistant", reply);
         if (data.actionId) onChanged();
       } catch (e) {
@@ -183,11 +206,15 @@ export default function ProjectChat({ projectId, projectTitle, onChanged }: { pr
                 <ClarifyCard
                   questions={m.questions}
                   disabled={busy}
+                  skipLabel={m.pendingQuestion ? "Cancel" : undefined}
                   onSubmit={(answers) =>
-                    void send(answers && answers.length ? answers.map((a) => a.answer).join(" · ") : "Just do it", { request: m.request!, answers })
+                    m.pendingQuestion
+                      ? void send(answers?.[0]?.answer ?? "Cancel")
+                      : void send(answers && answers.length ? answers.map((a) => a.answer).join(" · ") : "Just do it", { request: m.request!, answers })
                   }
                 />
               )}
+              {m.draft && <InlinePreview changeSet={m.draft.changeSet} preview={m.draft.preview} onChanged={onChanged} />}
               {m.actionId && <ActionReceipt actionId={m.actionId} label="Changed your project." onUndone={onChanged} />}
               {m.suggestion && <SuggestionCard suggestion={m.suggestion} onMoved={onChanged} />}
             </div>

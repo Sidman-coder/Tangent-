@@ -9,6 +9,11 @@
 //    matches plan titles first, then task titles. No match or an ambiguous one
 //    means asking, never a wider delete.
 //  - Every delete of existing tasks is confirmed first (bulkDeleteMessage).
+//  - Pipeline V2 (B2): when no title has every word, the plan matcher
+//    (lib/pipeline/match.ts) may still name ONE plan it is sure of ("my eye
+//    see eff prep tasks" → ICF Prep). Never a second guess, never wider.
+
+import { matchPlan } from "./pipeline/match";
 
 /** Lowercase, apostrophes dropped, other punctuation to spaces, leading filler removed. */
 function normalize(text: string): string {
@@ -71,12 +76,12 @@ function stem(w: string): string {
 const tokens = (title: string) => new Set(normalize(title).split(" ").filter(Boolean).map(stem));
 
 type ScopeTask = { id: string; title: string; planId?: string | null };
-type ScopePlan = { id: string; title: string };
+export type ScopePlan = { id: string; title: string };
 
 export type ScopeMatch<T extends ScopeTask> =
   | { kind: "match"; tasks: T[]; via: "plan" | "title"; label: string }
   | { kind: "none" }
-  | { kind: "ambiguous"; options: string[] };
+  | { kind: "ambiguous"; options: ScopePlan[] };
 
 /**
  * Plans whose title contains every scope word come first (all their tasks);
@@ -93,7 +98,7 @@ export function matchScope<T extends ScopeTask>(words: string[], tasks: readonly
   const matchedPlans = plans.filter((p) => hasAll(p.title));
   if (matchedPlans.length > 1) {
     const withTasks = matchedPlans.filter((p) => tasks.some((t) => t.planId === p.id));
-    if (withTasks.length > 1) return { kind: "ambiguous", options: withTasks.map((p) => p.title) };
+    if (withTasks.length > 1) return { kind: "ambiguous", options: withTasks.map((p) => ({ id: p.id, title: p.title })) };
     if (withTasks.length === 1) matchedPlans.splice(0, matchedPlans.length, withTasks[0]);
   }
   if (matchedPlans.length === 1) {
@@ -103,6 +108,13 @@ export function matchScope<T extends ScopeTask>(words: string[], tasks: readonly
   }
   const byTitle = tasks.filter((t) => hasAll(t.title));
   if (byTitle.length > 0) return { kind: "match", tasks: byTitle, via: "title", label: words.join(" ") };
+  // Nothing has every word: a plan the matcher is sure of (sound-alikes,
+  // typos, spelled letters), with tasks in it.
+  const fuzzy = matchPlan(words.join(" "), plans.filter((p) => tasks.some((t) => t.planId === p.id)));
+  if (fuzzy.decision === "sure") {
+    const plan = plans.find((p) => p.id === fuzzy.target.id);
+    if (plan) return { kind: "match", tasks: tasks.filter((t) => t.planId === plan.id), via: "plan", label: plan.title };
+  }
   return { kind: "none" };
 }
 
@@ -113,20 +125,43 @@ export function titleList(titles: readonly string[], max = 5): string {
   return rest > 0 ? `${shown.join(", ")} and ${rest} more` : shown.join(", ");
 }
 
-/** The confirmation text: the count and up to five titles. */
-export function bulkDeleteMessage(titles: readonly string[], opts: { all?: boolean; label?: string } = {}): string {
+/** The confirmation text: the count and up to five titles, then the plans
+ *  that go too because none of their tasks would be left. */
+export function bulkDeleteMessage(titles: readonly string[], opts: { all?: boolean; label?: string; plans?: readonly string[] } = {}): string {
   const n = titles.length;
   const noun = `${n} task${n === 1 ? "" : "s"}`;
-  if (opts.all) return `Clear ALL ${noun} from your schedule? This removes everything: ${titleList(titles)}.`;
+  const also = planRemovalNote(opts.plans ?? []);
+  if (opts.all) return `Clear ALL ${noun} from your schedule? This removes everything: ${titleList(titles)}.${also}`;
   const from = opts.label ? ` matching "${opts.label}"` : "";
-  return `Delete ${noun}${from}? ${titleList(titles)}.`;
+  return `Delete ${noun}${from}? ${titleList(titles)}.${also}`;
+}
+
+/** " This also removes the plan "SAT Prep"." or "" when no plan goes. */
+export function planRemovalNote(planTitles: readonly string[]): string {
+  if (planTitles.length === 0) return "";
+  const noun = planTitles.length === 1 ? "the plan" : "the plans";
+  return ` This also removes ${noun} ${titleList(planTitles)}.`;
+}
+
+/**
+ * Plans this delete would leave with no tasks: every task linked to them is
+ * in `deleting`. Those plans are removed too by default (the preview's "Also
+ * remove the plan" box, or the confirmation text with the pipeline off).
+ */
+export function emptiedPlans<P extends ScopePlan>(deleting: readonly ScopeTask[], all: readonly ScopeTask[], plans: readonly P[]): P[] {
+  const gone = new Set(deleting.map((t) => t.id));
+  return plans.filter((p) => {
+    const linked = all.filter((t) => t.planId === p.id);
+    return linked.length > 0 && linked.every((t) => gone.has(t.id));
+  });
 }
 
 export type BulkDeletePlan<T extends ScopeTask> =
   /** Ask for confirmation of exactly these tasks. */
   | { kind: "propose"; tasks: T[]; all: boolean; label?: string }
-  /** Delete nothing; send this question back. */
-  | { kind: "ask"; message: string }
+  /** Delete nothing; send this question back. `candidates` are the plans it
+   *  could mean (the pending question's buttons, lib/pending-question.ts). */
+  | { kind: "ask"; message: string; candidates?: ScopePlan[] }
   /** Nothing deleted yet, nothing to clear. */
   | { kind: "empty" };
 
@@ -146,7 +181,11 @@ export function planBulkDelete<T extends ScopeTask>(text: string, tasks: readonl
     return { kind: "ask", message: `I couldn't find any tasks or plans matching "${scope.phrase}", so I didn't delete anything. Which tasks did you mean?` };
   }
   if (match.kind === "ambiguous") {
-    return { kind: "ask", message: `"${scope.phrase}" matches more than one plan: ${titleList(match.options)}. Which one should I delete?` };
+    return {
+      kind: "ask",
+      message: `"${scope.phrase}" matches more than one plan: ${titleList(match.options.map((p) => p.title))}. Which one should I delete?`,
+      candidates: match.options,
+    };
   }
   return { kind: "propose", tasks: match.tasks, all: false, label: match.label };
 }

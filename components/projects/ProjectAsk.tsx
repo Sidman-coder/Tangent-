@@ -10,6 +10,9 @@ import { ArrowUp } from "lucide-react";
 import ActionReceipt from "@/components/ActionReceipt";
 import ClarifyCard, { type ClarifyAnswer, type ClarifyQuestion } from "@/components/console/ClarifyCard";
 import SuggestionCard, { type Suggestion } from "@/components/console/SuggestionCard";
+import InlinePreview from "@/components/projects/InlinePreview";
+import type { ChangeSet } from "@/lib/pipeline/changeset";
+import type { PreviewPayload } from "@/lib/pipeline/draft";
 import { applyPlanProgress, readChatReply, type PlanProgressView } from "@/components/console/turns";
 import { generateQuestions } from "@/lib/questions-client";
 
@@ -23,6 +26,8 @@ type Reply = {
   projectId?: string;
   questions?: ClarifyQuestion[];
   suggestion?: Suggestion | null;
+  changeSet?: ChangeSet;
+  preview?: PreviewPayload;
 };
 
 type Phase =
@@ -30,6 +35,8 @@ type Phase =
   | { kind: "working"; request: string }
   | { kind: "questions"; request: string; questions: ClarifyQuestion[] }
   | { kind: "done"; message: string; actionId?: string; suggestion?: Suggestion | null }
+  /** Pipeline V2 (A6): drafted, saved only on Confirm. */
+  | { kind: "preview"; message: string; changeSet: ChangeSet; preview: PreviewPayload }
   | { kind: "error"; message: string };
 
 type Props = {
@@ -72,6 +79,11 @@ export default function ProjectAsk({ placeholder, context, submitLabel = "Ask", 
         if (!res.ok || !data.ok) throw new Error(data.error || "Something went wrong.");
         if (data.action === "clarify" && data.questions?.length) {
           setPhase({ kind: "questions", request, questions: data.questions });
+          return;
+        }
+        if (data.action === "preview" && data.changeSet && data.preview) {
+          setPhase({ kind: "preview", message: data.message ?? "", changeSet: data.changeSet, preview: data.preview });
+          setText("");
           return;
         }
         setPhase({ kind: "done", message: data.message ?? "Done.", actionId: data.actionId, suggestion: data.suggestion });
@@ -163,6 +175,17 @@ export default function ProjectAsk({ placeholder, context, submitLabel = "Ask", 
             <p>{phase.message}</p>
           )}
           {phase.suggestion && <SuggestionCard suggestion={phase.suggestion} onMoved={() => onChanged?.()} />}
+        </div>
+      )}
+
+      {phase.kind === "preview" && (
+        <div className="project-ask-result" role="status">
+          <InlinePreview
+            changeSet={phase.changeSet}
+            preview={phase.preview}
+            onChanged={onChanged}
+            onConfirmed={({ planId }) => onDone?.({ projectId: planId ?? phase.changeSet.target_plan_id ?? undefined })}
+          />
         </div>
       )}
 

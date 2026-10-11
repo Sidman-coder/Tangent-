@@ -3,7 +3,8 @@
 // a Next route file can only export route handlers.
 
 import "server-only";
-import { handleVoiceText, type PlanProgress, type VoiceOptions } from "@/lib/voice-handler";
+import { handlePendingAnswer, handleVoiceText, type PlanProgress, type VoiceOptions } from "@/lib/voice-handler";
+import type { PendingQuestion } from "@/lib/pending-question";
 import { extractContextFacts } from "@/lib/context-extract";
 import { getUserTimezone } from "@/lib/store";
 import { promptDateContext } from "@/lib/time";
@@ -89,6 +90,9 @@ export type CalendarReplyOptions = {
   /** Offer a preview card (Pipeline V2, flag on only). Off for surfaces that
    *  can't show one, like the Projects chat. Default on. */
   preview?: boolean;
+  /** Pipeline V2 (B1): one task, never a plan ("Just add one task", or the
+   *  router's add_task). */
+  forceTask?: boolean;
 };
 
 /** Calendar mode: run the command through the voice pipeline and describe the result. */
@@ -98,7 +102,38 @@ export async function calendarReply(
   onProgress?: (event: PlanProgress) => void,
   opts: CalendarReplyOptions = {}
 ): Promise<Record<string, unknown>> {
-  const { source, project, preview = true } = opts;
+  const { source, project, preview = true, forceTask } = opts;
+  let voiceRes: Response | null = null;
+  try {
+    console.log("[api/chat] Calling voice pipeline:", userText);
+    voiceRes = await handleVoiceText(userText, { context: conversationContext(messages), onProgress, preview, source, forceTask, ...project });
+  } catch (err) {
+    console.error("[api/chat] Voice pipeline error:", err);
+  }
+  return replyFromVoice(voiceRes, userText, project);
+}
+
+/**
+ * The reply to an answer to a pending question (lib/pending-question.ts, A1),
+ * or null when the answer is a new request: the caller then routes it as
+ * usual and the question is dropped.
+ */
+export async function pendingAnswerReply(
+  answer: string,
+  question: PendingQuestion,
+  opts: CalendarReplyOptions = {}
+): Promise<Record<string, unknown> | null> {
+  const { source, preview = true } = opts;
+  const res = await handlePendingAnswer(answer, question, { preview, source });
+  return res ? replyFromVoice(res, answer, undefined) : null;
+}
+
+/** Describes a voice-pipeline result in the chat reply's shape. */
+async function replyFromVoice(
+  voiceRes: Response | null,
+  userText: string,
+  project: CalendarReplyOptions["project"]
+): Promise<Record<string, unknown>> {
   // Step 1 — Execute command via voice pipeline. Called in-process: the old
   // HTTP self-call to NEXT_PUBLIC_BASE_URL failed whenever the app wasn't on
   // localhost:3000 (Vercel, another port), silently degrading to plain chat.
@@ -115,9 +150,10 @@ export async function calendarReply(
   let voiceTaskDate: string | undefined;
   let voiceChangeSet: unknown;
   let voicePreview: unknown;
+  let voiceQuestions: unknown;
+  let voicePendingQuestion: unknown;
   try {
-    console.log("[api/chat] Calling voice pipeline:", userText);
-    const voiceRes = await handleVoiceText(userText, { context: conversationContext(messages), onProgress, preview, source, ...project });
+    if (!voiceRes) throw new Error("no response");
     const voiceData = (await voiceRes.json()) as {
       response?: string;
       action?: string;
@@ -131,6 +167,8 @@ export async function calendarReply(
       task?: { id?: string; date?: string };
       changeSet?: unknown;
       preview?: unknown;
+      questions?: unknown;
+      pendingQuestion?: unknown;
     };
     console.log("[api/chat] Voice pipeline result:", JSON.stringify(voiceData).slice(0, 300));
     voiceResponse = voiceData.response ?? "";
@@ -146,6 +184,8 @@ export async function calendarReply(
     voiceSourcesChecked = voiceData.sourcesChecked;
     voiceChangeSet = voiceData.changeSet;
     voicePreview = voiceData.preview;
+    voiceQuestions = voiceData.questions;
+    voicePendingQuestion = voiceData.pendingQuestion;
   } catch (err) {
     console.error("[api/chat] Voice pipeline error:", err);
   }
@@ -166,6 +206,18 @@ export async function calendarReply(
       action: voiceAction,
       changeSet: voiceChangeSet,
       preview: voicePreview,
+      ok: true,
+    };
+  }
+
+  // "Which one?" (A1): Juann's question card with a button per choice; the
+  // client sends pendingQuestion back with the next message.
+  if (voiceOk && voiceAction === "clarify" && voicePendingQuestion) {
+    return {
+      message: voiceResponse.trim(),
+      action: "clarify",
+      questions: voiceQuestions,
+      pendingQuestion: voicePendingQuestion,
       ok: true,
     };
   }
@@ -199,7 +251,7 @@ export async function calendarReply(
   const reason = voiceError || voiceResponse || "the task pipeline did not respond";
   console.error("[api/chat] Voice pipeline did not act:", reason);
   return {
-    message: `I couldn't add that to your calendar — ${reason}.`,
+    message: `I couldn't do that — ${reason}.`,
     action: "error",
     ok: true,
   };

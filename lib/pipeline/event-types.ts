@@ -13,6 +13,20 @@ export const EVENT_TYPES = [
   "changeset_discarded",
   "changeset_undone",
   "preview_edited",
+  // Step 3: understanding (lib/pipeline/intent.ts, match.ts, lib/pending-question.ts).
+  // The events table checks only the name's shape (^[a-z_]{1,64}$), so new
+  // types need no migration.
+  "intent_classified",
+  "match_proposed",
+  "match_confirmed",
+  "match_corrected",
+  "clarify_shown",
+  "clarify_answered",
+  "pending_question_resolved",
+  // Step 3B: Settings › AI Activity (lib/pipeline/activity.ts).
+  "activity_viewed",
+  "activity_row_expanded",
+  "activity_cleared",
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 

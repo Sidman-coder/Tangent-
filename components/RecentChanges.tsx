@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import ActionReceipt from "@/components/ActionReceipt";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
+import { usePipelineV2 } from "@/components/PipelineFlag";
 import { OPEN_RECENT_CHANGES_EVENT, changeTime, recentUndoable, type UndoRecord } from "@/lib/undo-events";
 
 /**
@@ -17,9 +19,18 @@ export default function RecentChanges() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<UndoRecord[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Pipeline V2: undo entries Tangent AI made get a Details link to Settings › AI Activity.
+  const v2 = usePipelineV2();
+  const [aiIds, setAiIds] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     setError(null);
+    if (v2) {
+      void fetch("/api/ai-activity?only=action_ids", { cache: "no-store" })
+        .then((r) => (r.ok ? (r.json() as Promise<{ actionIds?: string[] }>) : null))
+        .then((d) => setAiIds(new Set(d?.actionIds ?? [])))
+        .catch(() => {});
+    }
     try {
       const res = await fetch("/api/actions?limit=50", { cache: "no-store" });
       const data = (await res.json()) as { ok?: boolean; actions?: UndoRecord[] };
@@ -29,7 +40,7 @@ export default function RecentChanges() {
       setItems([]);
       setError("Couldn't load your recent changes.");
     }
-  }, []);
+  }, [v2]);
 
   useEffect(() => {
     const onOpen = () => {
@@ -62,6 +73,11 @@ export default function RecentChanges() {
             items.map((r) => (
               <div key={r.id} className="cmdk-item">
                 <ActionReceipt actionId={r.id} label={`${r.summary} · ${changeTime(r.createdAt, new Date(), tz)}`} onUndone={() => void refresh()} />
+                {aiIds.has(r.id) && (
+                  <Link className="action-receipt-details" href={`/settings?activity=action:${r.id}#ai-activity`} onClick={() => setOpen(false)}>
+                    Details
+                  </Link>
+                )}
               </div>
             ))
           )}
