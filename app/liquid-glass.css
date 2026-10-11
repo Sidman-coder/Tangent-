@@ -482,70 +482,70 @@
 
 
 /* ═════════════════════════════════════════════════════════════════════════
-   Add, in the top bar (2026-10-11): the most important control in Tangent,
-   so it's the one prominent (iris) glass button up here, with the mic as a
-   clear glass circle beside it. Both open the same Add sheet.
+   The top bar is one thing: the mic, a Liquid Glass circle (2026-10-11).
+   Say anything from any page; it opens Add listening. ⌘K opens it to type.
    ═════════════════════════════════════════════════════════════════════════ */
-.topbar-add,
-.topbar-mic {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  height: 36px;
-  border-radius: 999px;
-  font: inherit;
-  cursor: pointer;
-  transition: transform 0.16s cubic-bezier(0.23, 1, 0.32, 1), filter 0.2s ease;
+.topbar-right {
+  gap: 10px;
 }
-.topbar-add {
-  padding: 0 8px 0 13px;
-  border: 1px solid rgb(255 255 255 / 0.28);
-  background: rgb(from var(--accent) r g b / 0.9);
-  -webkit-backdrop-filter: var(--lg-filter);
-  backdrop-filter: var(--lg-filter);
-  color: var(--accent-ink);
-  font-size: 14px;
-  font-weight: 600;
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.4),
-    inset 0 -1px 0 rgb(0 0 0 / 0.1),
-    0 8px 22px -10px rgb(from var(--accent) r g b / 0.65);
-}
-.topbar-add kbd {
-  padding: 2px 6px;
-  border-radius: 999px;
-  background: rgb(255 255 255 / 0.18);
-  color: inherit;
-  font: inherit;
-  font-size: 11px;
-  font-weight: 500;
-  opacity: 0.85;
-}
-.topbar-mic {
-  width: 36px;
+.topbar-mic.lg {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
   padding: 0;
   border: 1px solid var(--lg-edge);
-  background: var(--lg-fill-strong);
-  -webkit-backdrop-filter: var(--lg-filter);
-  backdrop-filter: var(--lg-filter);
+  border-radius: 999px;
   color: var(--accent);
-  box-shadow: inset 0 1px 0 var(--lg-rim-top);
+  cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim-top),
+    inset 0 -1px 0 var(--lg-rim-bottom),
+    0 10px 28px -12px var(--lg-shade);
+  transition: transform 0.18s cubic-bezier(0.23, 1, 0.32, 1), color 0.2s ease;
 }
-.topbar-add:hover,
-.topbar-mic:hover {
-  filter: brightness(1.05);
+.topbar-mic.lg:hover {
+  color: var(--accent-hover, var(--accent));
 }
-.topbar-add:active,
-.topbar-mic:active {
-  transform: scale(0.96);
+.topbar-mic.lg:active {
+  transform: scale(0.94);
 }
-@media (max-width: 860px) {
-  .topbar-add kbd {
-    display: none;
-  }
-  .topbar-add {
-    padding-right: 14px;
+
+/* The bell, as a row in the sidebar; its panel opens beside the sidebar. */
+.notif-bell-wrapper.is-rail {
+  position: relative;
+  margin-bottom: 6px;
+}
+.notif-bell-wrapper.is-rail .notif-rail-btn {
+  position: relative;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.notif-bell-wrapper.is-rail .notif-rail-btn svg {
+  flex: none;
+}
+.notif-bell-wrapper.is-rail .notif-bell-badge {
+  position: static;
+  margin-left: auto;
+}
+.notif-rail-layer .notif-panel {
+  position: fixed;
+  z-index: 160;
+  top: auto;
+  right: auto;
+  bottom: 22px;
+  left: calc(var(--rail-w) + 30px);
+  max-height: min(560px, calc(100vh - 44px));
+}
+@media (max-width: 1024px) {
+  .notif-bell-wrapper.is-rail .notif-bell-badge {
+    position: absolute;
+    top: 4px;
+    right: 10px;
+    margin: 0;
   }
 }
 
@@ -559,4 +559,101 @@
 }
 .cmdk-panel:has(.add-flow) .cmdk-list {
   padding: 4px 4px 2px;
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   One Liquid Glass recipe for every button (2026-10-11, final pass).
+   Earlier passes gave prominent buttons an almost opaque iris fill, which
+   read as a flat button. Real Liquid Glass is translucent, bends what's
+   behind it, and catches light: a soft highlight across the top, a bright
+   rim, a faint shade underneath. Applied last, through body :is(...), so no
+   older or more specific rule can flatten a button again, hover included.
+   ═════════════════════════════════════════════════════════════════════════ */
+:root {
+  --glass-catch: radial-gradient(120% 95% at 50% -10%, rgb(255 255 255 / 0.42), rgb(255 255 255 / 0.08) 52%, rgb(255 255 255 / 0) 70%);
+  --glass-blur: blur(16px) saturate(190%) brightness(1.04);
+}
+
+/* Prominent: the one main action. Iris, translucent, lit from above. */
+body :is(
+  .lg-tint, .ui-button--primary, .surface-action-primary, .calendar-toolbar-primary, .neu-btn-primary,
+  .tg-clarify-btn.is-primary, .tg-btn-accent, .tg-brief-pill, .tg-mic.is-idle, .tg-send:not(:disabled), .tg-chip.is-on,
+  .knows-gtk, .knows-add-btn:not(:disabled), .gtk-primary, .gtk-send, .gtk-mic.is-on, .cmdk-mic.is-on,
+  .tour-primary, .pchat-send:not(:disabled), .preview-card-btn.is-primary, .not-found-home,
+  .add-send:not(:disabled), .add-mic.is-on, .add-projects button.is-on, .setup-nudge-go
+) {
+  border: 1px solid rgb(255 255 255 / 0.38);
+  background: var(--glass-catch), rgb(from var(--accent) r g b / 0.76);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.6),
+    inset 0 -1px 1px rgb(0 0 0 / 0.12),
+    0 10px 26px -12px rgb(from var(--accent) r g b / 0.7);
+}
+body :is(
+  .lg-tint, .ui-button--primary, .surface-action-primary, .calendar-toolbar-primary, .neu-btn-primary,
+  .tg-clarify-btn.is-primary, .tg-btn-accent, .tg-brief-pill, .tg-send, .knows-gtk, .knows-add-btn, .gtk-primary,
+  .gtk-send, .tour-primary, .pchat-send, .preview-card-btn.is-primary, .not-found-home, .add-send, .setup-nudge-go
+):hover:not(:disabled) {
+  background: var(--glass-catch), rgb(from var(--accent) r g b / 0.86);
+}
+
+/* Regular: everything else. Clear glass, lit from above. */
+body :is(
+  .ui-button--secondary, .surface-action-secondary, .btn-ghost,
+  .tg-clarify-btn:not(.is-primary), .tg-btn:not(.tg-btn-accent):not(.tg-btn-danger), .tg-chip:not(.is-on), .tg-new-chat,
+  .knows-secondary, .knows-forget, .gtk-mic:not(.is-on), .cmdk-mic:not(.is-on), .tour-secondary,
+  .attention-defer, .ui-task-help, .action-receipt-undo, .calendar-task-remove, .import-ctx-prompt button,
+  .td-icon, .td-secondary, .notif-summary-btn, .side-peek-close, .resource-link, .preview-card-btn:not(.is-primary),
+  .add-mic:not(.is-on), .topbar-mic
+) {
+  border: 1px solid var(--lg-edge);
+  background: var(--glass-catch), var(--lg-fill-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim-top),
+    inset 0 -1px 0 var(--lg-rim-bottom),
+    0 6px 18px -10px var(--lg-shade);
+}
+body :is(
+  .ui-button--secondary, .surface-action-secondary, .btn-ghost, .tg-clarify-btn:not(.is-primary), .tg-new-chat,
+  .knows-secondary, .knows-forget, .tour-secondary, .attention-defer, .ui-task-help, .action-receipt-undo,
+  .calendar-task-remove, .td-icon, .td-secondary, .notif-summary-btn, .side-peek-close, .resource-link, .topbar-mic
+):hover:not(:disabled) {
+  background: var(--glass-catch), rgb(from var(--surface) r g b / 0.82);
+}
+
+/* Destructive: rose glass. */
+body :is(.ui-button--danger, .tg-btn-danger, .project-delete-yes) {
+  border: 1px solid rgb(255 255 255 / 0.32);
+  background: var(--glass-catch), rgb(from var(--red) r g b / 0.78);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.5), 0 10px 26px -12px rgb(from var(--red) r g b / 0.6);
+}
+
+/* On Tangents' dark space: the same recipe in its own colours. */
+.tangents-root .path-btn.is-primary,
+.tangents-root .path-ask .path-step-chip.is-on {
+  border: 1px solid rgb(255 255 255 / 0.3);
+  background: radial-gradient(120% 95% at 50% -10%, rgb(255 255 255 / 0.35), rgb(255 255 255 / 0) 62%), rgb(from var(--path-work) r g b / 0.72);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.45), 0 10px 26px -12px rgb(from var(--path-work) r g b / 0.6);
+}
+.tangents-root :is(.path-btn:not(.is-primary):not(.is-danger), .path-chip:not(.is-danger), .path-step-chip:not(.is-on), .path-dock-btn.is-on, .path-filter-btn.is-on) {
+  background: radial-gradient(120% 95% at 50% -10%, rgb(255 255 255 / 0.16), rgb(255 255 255 / 0) 62%), rgb(255 255 255 / 0.06);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  body :is(.lg-tint, .ui-button--primary, .add-send, .add-mic, .setup-nudge-go, .tour-primary, .gtk-primary, .gtk-send) {
+    background: var(--accent);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
