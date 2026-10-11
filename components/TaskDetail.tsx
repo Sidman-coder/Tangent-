@@ -8,14 +8,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
-import { CalendarDays, Check, MessageSquareText, Trash2, X } from "lucide-react";
+import { Check, MessageSquareText, Trash2, X } from "lucide-react";
 import ActionReceipt from "@/components/ActionReceipt";
 import TaskChatModal from "@/components/TaskChatModal";
 import { useAppState } from "@/components/AppStateProvider";
 import { splitCourse } from "@/lib/course";
+import { generateQuestions } from "@/lib/questions-client";
 import { formatTime12 } from "@/lib/dates";
 import { KIND_LABEL, taskColor } from "@/lib/task-colors";
 import type { Task } from "@/lib/types";
@@ -28,13 +28,29 @@ export function openTask(taskId: string) {
   window.dispatchEvent(new CustomEvent(OPEN_TASK_EVENT, { detail: { taskId } }));
 }
 
+/** Tangent's notes come as "GOAL: … FOCUS: … TIME: …"; show them as parts. */
+function noteParts(notes: string): { label: string; text: string }[] | null {
+  const LABELS: Record<string, string> = { GOAL: "Goal", FOCUS: "What to do", TIME: "Time" };
+  const re = /(GOAL|FOCUS|TIME):\s*/g;
+  const hits = Array.from(notes.matchAll(re));
+  if (hits.length < 2) return null;
+  return hits
+    .map((h, i) => ({
+      label: LABELS[h[1]],
+      text: notes.slice((h.index ?? 0) + h[0].length, i + 1 < hits.length ? hits[i + 1].index : undefined).trim(),
+    }))
+    .filter((p) => p.text);
+}
+
+/** Tasks already given steps this session, so a card never asks twice. */
+const planned = new Set<string>();
+
 function longDate(ymd: string): string {
   const [y, mo, d] = ymd.split("-").map(Number);
   return new Date(y, mo - 1, d).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 }
 
 export default function TaskDetail() {
-  const router = useRouter();
   const { state, refresh } = useAppState();
   const [taskId, setTaskId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -44,6 +60,22 @@ export default function TaskDetail() {
   const cardRef = useRef<HTMLDivElement>(null);
 
   const task = taskId ? state?.tasks.find((t) => t.id === taskId) ?? null : null;
+  const [planning, setPlanning] = useState(false);
+
+  // A task added with just a title ("Research GRITS FRC") gets a goal, what
+  // to do, a time estimate and a first step the first time it's opened,
+  // through the same tidy step quick adds use (/api/questions, enrich).
+  const needsPlan = Boolean(
+    task && !task.completed && !task.notes?.trim() && !task.startAction?.trim() && task.source !== "canvas" && task.kind !== "school" && !task.recurring?.enabled
+  );
+  useEffect(() => {
+    if (!task || !needsPlan || planned.has(task.id)) return;
+    planned.add(task.id);
+    setPlanning(true);
+    void generateQuestions(task.id, task.title, true)
+      .then(() => refresh())
+      .finally(() => setPlanning(false));
+  }, [task, needsPlan, refresh]);
   const plan = task?.planId ? state?.plans.find((p) => p.id === task.planId) ?? null : null;
 
   useEffect(() => {
@@ -191,7 +223,20 @@ export default function TaskDetail() {
                       </div>
                     )}
 
-                    {task.notes && (
+                    {planning && needsPlan && (
+                      <p className="td-planning" role="status">
+                        <span className="add-spinner" aria-hidden="true" /> Working out the steps…
+                      </p>
+                    )}
+
+                    {task.notes && noteParts(task.notes)?.map((part) => (
+                      <div key={part.label} className="td-section">
+                        <h3>{part.label}</h3>
+                        <p>{part.text}</p>
+                      </div>
+                    ))}
+
+                    {task.notes && !noteParts(task.notes) && (
                       <div className="td-section">
                         <h3>Notes</h3>
                         <p className={`td-notes${moreNotes ? " is-open" : ""}`}>{task.notes}</p>
@@ -219,16 +264,6 @@ export default function TaskDetail() {
                     )}
 
                     <div className="td-actions">
-                      <button
-                        type="button"
-                        className="td-secondary lg lg-interactive"
-                        onClick={() => {
-                          close();
-                          router.push(`/calendar?date=${task.date}`);
-                        }}
-                      >
-                        <CalendarDays size={15} aria-hidden="true" /> See the day
-                      </button>
                       <button type="button" className={`td-primary lg lg-tint lg-interactive${task.completed ? " is-done" : ""}`} onClick={() => void toggle()} disabled={busy}>
                         <Check size={15} strokeWidth={2.6} aria-hidden="true" />
                         {task.completed ? "Done — undo" : "Mark done"}
