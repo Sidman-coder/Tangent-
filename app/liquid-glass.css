@@ -579,8 +579,8 @@
 }
 
 /* Prominent: the one main action. Iris, translucent, lit from above. */
-body :is(
-  .lg-tint, .ui-button--primary, .surface-action-primary, .calendar-toolbar-primary, .neu-btn-primary,
+body :is(button, a, [role="button"]):is(
+  .lg-tint, .ui-button--primary, .surface-action-primary, .neu-btn-primary,
   .tg-clarify-btn.is-primary, .tg-btn-accent, .tg-brief-pill, .tg-mic.is-idle, .tg-send:not(:disabled), .tg-chip.is-on,
   .knows-gtk, .knows-add-btn:not(:disabled), .gtk-primary, .gtk-send, .gtk-mic.is-on, .cmdk-mic.is-on,
   .tour-primary, .pchat-send:not(:disabled), .preview-card-btn.is-primary, .not-found-home,
@@ -596,8 +596,8 @@ body :is(
     inset 0 -1px 1px rgb(0 0 0 / 0.12),
     0 10px 26px -12px rgb(from var(--accent) r g b / 0.7);
 }
-body :is(
-  .lg-tint, .ui-button--primary, .surface-action-primary, .calendar-toolbar-primary, .neu-btn-primary,
+body :is(button, a, [role="button"]):is(
+  .lg-tint, .ui-button--primary, .surface-action-primary, .neu-btn-primary,
   .tg-clarify-btn.is-primary, .tg-btn-accent, .tg-brief-pill, .tg-send, .knows-gtk, .knows-add-btn, .gtk-primary,
   .gtk-send, .tour-primary, .pchat-send, .preview-card-btn.is-primary, .not-found-home, .add-send, .setup-nudge-go
 ):hover:not(:disabled) {
@@ -605,7 +605,7 @@ body :is(
 }
 
 /* Regular: everything else. Clear glass, lit from above. */
-body :is(
+body :is(button, a, [role="button"]):is(
   .ui-button--secondary, .surface-action-secondary, .btn-ghost,
   .tg-clarify-btn:not(.is-primary), .tg-btn:not(.tg-btn-accent):not(.tg-btn-danger), .tg-chip:not(.is-on), .tg-new-chat,
   .knows-secondary, .knows-forget, .gtk-mic:not(.is-on), .cmdk-mic:not(.is-on), .tour-secondary,
@@ -622,7 +622,7 @@ body :is(
     inset 0 -1px 0 var(--lg-rim-bottom),
     0 6px 18px -10px var(--lg-shade);
 }
-body :is(
+body :is(button, a, [role="button"]):is(
   .ui-button--secondary, .surface-action-secondary, .btn-ghost, .tg-clarify-btn:not(.is-primary), .tg-new-chat,
   .knows-secondary, .knows-forget, .tour-secondary, .attention-defer, .ui-task-help, .action-receipt-undo,
   .calendar-task-remove, .td-icon, .td-secondary, .notif-summary-btn, .side-peek-close, .resource-link, .topbar-mic
@@ -631,7 +631,7 @@ body :is(
 }
 
 /* Destructive: rose glass. */
-body :is(.ui-button--danger, .tg-btn-danger, .project-delete-yes) {
+body :is(button, a, [role="button"]):is(.ui-button--danger, .tg-btn-danger, .project-delete-yes) {
   border: 1px solid rgb(255 255 255 / 0.32);
   background: var(--glass-catch), rgb(from var(--red) r g b / 0.78);
   -webkit-backdrop-filter: var(--glass-blur);
@@ -665,4 +665,14 @@ body :is(.ui-button--danger, .tg-btn-danger, .project-delete-yes) {
 /* Icon buttons are circles, whatever older rule says. */
 body :is(.tg-icon-btn, .tg-mic, .tg-send, .tg-chat-more, .td-icon, .side-peek-close, .path-inspector-close, .path-zoombar-btn) {
   border-radius: 999px;
+}
+
+/* Words sit dead centre in every pill: chips in Tangent's questions, Grill
+   me, path questions, pill buttons. A fixed-height pill with line-height 1
+   put the text on the baseline, a pixel or two low. */
+body :is(.tg-chip, .tg-clarify-btn, .path-step-chip, .path-chip, .preview-card-btn, .add-seg button, .add-projects button, .attention-chip, .setup-nudge-go, .ui-task-help, .attention-defer, .action-receipt-undo, .cal-segment, .knows-forget) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
