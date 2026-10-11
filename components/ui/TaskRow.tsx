@@ -23,6 +23,8 @@ type TaskRowProps = {
   hasQuestions?: boolean;
   /** Lists that span days (a project's steps) show the day, not just the time. */
   showDate?: boolean;
+  /** A short status chip in the meta line ("2 days overdue", "Due in 5 hr"). */
+  flag?: ReactNode;
 };
 
 function shortDate(ymd: string): string {
@@ -41,6 +43,7 @@ export default function TaskRow({
   children,
   hasQuestions = false,
   showDate = false,
+  flag,
 }: TaskRowProps) {
   const questionDot = hasQuestions ? <span className="task-question-dot" title="Tangent has a question about this" /> : null;
   return (
@@ -91,6 +94,7 @@ export default function TaskRow({
               {/* A due date isn't a time anything happens: "Due", as on the calendar. */}
               {isDueOnly(task) ? "Due" : formatTime12(task.time)}
             </time>
+            {flag}
             {task.kind && <span className="ui-task-kind-label">{KIND_LABEL[task.kind as keyof typeof KIND_LABEL] ?? task.kind.replaceAll("-", " ")}</span>}
             {task.recurring?.enabled && (
               <span className="ui-task-recurring"><Repeat2 size={12} aria-hidden="true" /> Recurring</span>

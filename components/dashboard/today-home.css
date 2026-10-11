@@ -1,0 +1,261 @@
+/* ═════════════════════════════════════════════════════════════════════════
+   Today (2026-10-11): Add leads; then one Today card (attention and the day
+   in one list); then a quiet one-row week. Everything shares one card style
+   and one rhythm (24px between sections).
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.today-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.today-page > * {
+  margin-block: 0;
+}
+
+.today-add {
+  margin-top: -4px;
+}
+
+/* ─── One card for today ──────────────────────────────────────────────── */
+.today-card,
+.week-strip {
+  padding: 18px 20px;
+  border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  border-radius: 22px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(26 23 32 / 0.04), 0 12px 32px -20px rgb(26 23 32 / 0.16);
+}
+.today-card-head,
+.week-strip-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.today-card-head h2,
+.week-strip-head h2 {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.today-card-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-3);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.today-card-urgent {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgb(from var(--red) r g b / 0.1);
+  color: var(--red);
+  font-weight: 600;
+}
+.today-card-list {
+  display: flex;
+  flex-direction: column;
+}
+.today-card-row + .today-card-row {
+  border-top: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+}
+.today-card .ui-task-row {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.today-card .ui-task-meta .attention-chip {
+  margin: 0;
+}
+.today-card-empty {
+  margin: 8px 0 4px;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.today-card-empty strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.today-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+/* ─── The week, in one row ────────────────────────────────────────────── */
+.week-strip-head {
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+.week-strip-head p {
+  flex: 1 1 320px;
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: right;
+}
+.week-strip-head p strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.week-strip-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.week-strip-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+}
+.week-strip-day {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "name num"
+    "bar bar"
+    "count count";
+  align-items: baseline;
+  gap: 6px 4px;
+  min-width: 0;
+  padding: 10px 10px 9px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: rgb(from var(--text) r g b / 0.03);
+  color: var(--text-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.16s ease;
+}
+.week-strip-day:hover {
+  background: rgb(from var(--accent) r g b / 0.06);
+}
+.week-strip-day:active {
+  transform: scale(0.97);
+}
+.week-strip-day.is-today {
+  border-color: rgb(from var(--accent) r g b / 0.28);
+  background: rgb(from var(--accent) r g b / 0.07);
+}
+.week-strip-name {
+  grid-area: name;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+.week-strip-num {
+  grid-area: num;
+  font-size: 12px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.week-strip-bar {
+  grid-area: bar;
+  height: 4px;
+  border-radius: 999px;
+  background: rgb(from var(--text) r g b / 0.07);
+  overflow: hidden;
+}
+.week-strip-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transform-origin: left center;
+  transition: transform 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.week-strip-day.is-heavy .week-strip-bar > span {
+  background: var(--secondary, var(--accent));
+}
+.week-strip-count {
+  grid-area: count;
+  font-size: 11.5px;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ─── Setup, one slim line ────────────────────────────────────────────── */
+.setup-nudge {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 10px 10px 16px;
+  border: 1px solid var(--lg-edge);
+  border-radius: 999px;
+  background: var(--lg-fill);
+  -webkit-backdrop-filter: var(--lg-filter);
+  backdrop-filter: var(--lg-filter);
+  color: var(--text-2);
+  font-size: 13.5px;
+}
+.setup-nudge > span {
+  flex: 1;
+  min-width: 0;
+}
+.setup-nudge-go {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid rgb(255 255 255 / 0.28);
+  border-radius: 999px;
+  background: rgb(from var(--accent) r g b / 0.9);
+  color: var(--accent-ink);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.setup-nudge-close {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.setup-nudge-close:hover {
+  background: rgb(from var(--text) r g b / 0.06);
+}
+
+@media (max-width: 720px) {
+  .week-strip-days {
+    grid-template-columns: repeat(7, 64px);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .week-strip-head p {
+    text-align: left;
+  }
+  .setup-nudge {
+    border-radius: 18px;
+    flex-wrap: wrap;
+  }
+}
