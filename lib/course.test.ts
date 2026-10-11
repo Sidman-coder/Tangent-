@@ -32,6 +32,8 @@ test("strips period codes, surnames and years", () => {
   assert.equal(cleanCourse("P7-AP Calculus BC-BARTHOLOMEW"), "AP Calculus BC");
   assert.equal(cleanCourse("Super Chem 2026"), "Super Chem");
   assert.equal(courseChip("AP World History"), "AP World");
+  assert.equal(courseChip(cleanCourse("P1 - APCSP - Mecha")), "AP CS");
+  assert.equal(courseChip("Robotics - Mecha"), "Robotics Mecha");
 });
 
 test("leaves non-Canvas titles alone", () => {
