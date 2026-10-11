@@ -2113,3 +2113,12 @@
     backdrop-filter: none;
   }
 }
+
+/* The inspector opens under the bar, not over it: at the top it sat beneath
+   the Delete button and hid its own close. Phones keep the bottom sheet. */
+@media (min-width: 861px) {
+  .path-inspector {
+    top: 78px;
+    max-height: calc(100% - 96px);
+  }
+}

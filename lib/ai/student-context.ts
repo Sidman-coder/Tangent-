@@ -38,6 +38,11 @@ export async function buildStudentContext(): Promise<StudentContext> {
 
   const sections: string[] = [];
 
+  // Today, so nothing offers a date that has already passed.
+  const [ty, tm, td] = now.date.split("-").map(Number);
+  const today = new Date(ty, tm - 1, td).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+  sections.push(`TODAY: ${today} (${now.date})`);
+
   if (memory && memory !== "No user context yet.") {
     sections.push(`WHAT YOU KNOW ABOUT THEM (from past conversations):\n${memory}`);
   }

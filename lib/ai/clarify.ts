@@ -62,7 +62,8 @@ When you ask:
 
 Use what you can see, and say so in the question, so it feels like Tangent knows them:
 - If they name a class loosely ("chem", "english"), match it to THEIR CLASSES and name it ("AP Chem"). If a matching test or deadline is in COMING UP FOR SCHOOL, confirm it instead of asking ("Is this the Dec 12 AP Chem final?" with options like "Yes", "No, later").
-- If the request overlaps a project in PROJECTS ALREADY UNDER WAY, your first question asks whether it belongs there, with that project's name as an option and "New project" as another.
+- Check PROJECTS ALREADY UNDER WAY first. If one is about the same thing (same club, class, event or goal, even worded differently: "start a robotics club" and "Launching a School Robotics Team" are the same), your FIRST question must ask whether this belongs to it, with that project's name as one option and "Start a new one" as another. This rule wins over ask=false.
+- Every date you offer must be after TODAY. Prefer relative options ("This month", "Before winter break") to years.
 - If the week is already heavy (HOW FULL THE NEXT ... DAYS ARE), you may ask whether to start after the busy days.`;
 
 /** Cheap gate before spending a model call: plans and goals, or anything long
