@@ -96,13 +96,18 @@ function Disc({ progress, size, delay, reduced }: { progress: number; size: numb
       <circle className="tangents-sphere-halo" r={48} />
       <circle className="tangents-sphere-ring" r={44} />
       {progress > 0 && (
-        <m.circle
-          className="tangents-sphere-arc"
-          r={44}
-          initial={reduced ? false : { pathLength: 0 }}
-          animate={{ pathLength: progress }}
-          transition={{ duration: 1.1, ease: EASE_OUT, delay: delay + 0.35 }}
-        />
+        // Rotated by an SVG transform, about the disc's centre (0,0): a CSS
+        // rotate with transform-origin: center resolved against the viewBox
+        // corner in Chrome and threw the arc a whole disc below, onto the label.
+        <g transform="rotate(-90)">
+          <m.circle
+            className="tangents-sphere-arc"
+            r={44}
+            initial={reduced ? false : { pathLength: 0 }}
+            animate={{ pathLength: progress }}
+            transition={{ duration: 1.1, ease: EASE_OUT, delay: delay + 0.35 }}
+          />
+        </g>
       )}
       <circle className="tangents-sphere-core" r={11} />
     </svg>

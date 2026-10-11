@@ -1044,9 +1044,7 @@
   stroke: var(--path-idea);
   stroke-width: 2.5;
   stroke-linecap: round;
-  /* Start the arc at the top rather than at three o'clock. */
-  transform: rotate(-90deg);
-  transform-origin: center;
+  /* Starts at the top: rotated by the <g> around it in PathGallery. */
 }
 .tangents-sphere-core {
   fill: var(--path-goal);
@@ -1994,6 +1992,123 @@
   .path-dock,
   .path-zoombar {
     background: #1c1830;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Tangents, all the way into Liquid Glass (2026-10-11, second pass).
+   The first pass did the floating bars; this does everything else, in the
+   same three kinds the rest of the app uses, on dark glass:
+   - surfaces (inspector, new path, add work, delete): one thick dark glass;
+   - prominent (the one primary action): iris-tinted glass;
+   - regular: clear dark glass; destructive: rose-tinted glass.
+   Every control is a capsule or a circle. Idea cards stay opaque on purpose:
+   when two branches end near each other, words must not bleed through.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.path-inspector,
+.path-form,
+.tangents-intake,
+.tangents-confirm {
+  border: 1px solid var(--tg-glass-edge, rgb(255 255 255 / 0.12));
+  border-radius: 22px;
+  background: rgb(22 18 40 / 0.72);
+  -webkit-backdrop-filter: blur(28px) saturate(170%) brightness(1.05);
+  backdrop-filter: blur(28px) saturate(170%) brightness(1.05);
+  box-shadow:
+    inset 0 1px 0 var(--tg-glass-rim, rgb(255 255 255 / 0.2)),
+    0 24px 60px -20px rgb(0 0 0 / 0.7);
+}
+
+.path-btn,
+.path-chip,
+.path-step-chip,
+.path-dock-btn,
+.path-filter-btn,
+.path-filter-pill,
+.path-zoombar-btn,
+.path-inspector-close {
+  border-radius: 999px;
+}
+
+.path-btn:not(.is-primary):not(.is-danger),
+.path-step-chip,
+.path-chip:not(.is-danger) {
+  border: 1px solid var(--tg-glass-edge, rgb(255 255 255 / 0.12));
+  background: rgb(255 255 255 / 0.07);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  backdrop-filter: blur(16px) saturate(160%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.14);
+  color: var(--path-ink);
+}
+.path-btn:not(.is-primary):not(.is-danger):hover:not(:disabled),
+.path-step-chip:hover,
+.path-chip:not(.is-danger):hover {
+  background: rgb(255 255 255 / 0.12);
+}
+
+.path-btn.is-primary {
+  border: 1px solid rgb(255 255 255 / 0.26);
+  background: rgb(from var(--path-work) r g b / 0.9);
+  -webkit-backdrop-filter: blur(16px) saturate(170%);
+  backdrop-filter: blur(16px) saturate(170%);
+  color: #16122a;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.5),
+    0 10px 26px -12px rgb(from var(--path-work) r g b / 0.7);
+}
+.path-btn.is-primary:hover:not(:disabled) {
+  background: rgb(from var(--path-work) r g b / 1);
+}
+
+.path-btn.is-danger,
+.path-chip.is-danger:hover {
+  border: 1px solid rgb(255 255 255 / 0.16);
+  background: rgb(from var(--path-danger) r g b / 0.22);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  backdrop-filter: blur(16px) saturate(160%);
+  color: #ffd9de;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.14);
+}
+
+/* The accent action (Draft three more) keeps its teal: ideas are teal. */
+.path-btn.is-accent:not(.is-primary) {
+  border-color: rgb(92 200 189 / 0.42);
+  color: var(--path-idea);
+}
+/* Quiet stays quieter than its neighbours, on the same glass. */
+.path-btn.is-quiet:not(.is-primary):not(.is-danger) {
+  color: var(--path-ink-2);
+}
+.path-btn.is-quiet:not(.is-primary):not(.is-danger):hover {
+  color: var(--path-ink);
+}
+
+.path-inspector-close {
+  display: inline-grid;
+  place-items: center;
+}
+.path-inspector-close:hover {
+  background: rgb(255 255 255 / 0.1);
+}
+
+.path-btn:active:not(:disabled),
+.path-chip:active,
+.path-step-chip:active,
+.path-dock-btn:active,
+.path-zoombar-btn:active,
+.path-inspector-close:active {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .path-inspector,
+  .path-form,
+  .tangents-intake,
+  .tangents-confirm {
+    background: #16122a;
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }

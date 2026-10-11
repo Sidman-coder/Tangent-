@@ -98,16 +98,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // nothing in them can catch a pointer or a tab stop over the canvas.
   if (pathname.startsWith("/tangents")) {
     return (
-      // Opacity only: a lift or blur here would move the goal card off the
-      // spot the field's portal delivered it to.
-      <m.div
-        key={pathname}
-        className="tangents-route"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1, transition: { duration: 0.22 } }}
-      >
-        {children}
-      </m.div>
+      <>
+        {/* The dark is there from the first frame, so the fade below goes
+            dark-to-scene instead of passing through grey over the light app. */}
+        <div className="tangents-backdrop" aria-hidden="true" />
+        {/* Opacity only: a lift or blur here would move the goal card off the
+            spot the field's portal delivered it to. */}
+        <m.div
+          key={pathname}
+          className="tangents-route"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1, transition: { duration: 0.22 } }}
+        >
+          {children}
+        </m.div>
+      </>
     );
   }
 
