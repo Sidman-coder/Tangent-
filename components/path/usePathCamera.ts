@@ -256,6 +256,9 @@ export function usePathCamera(reduced: boolean): PathCamera {
   useEffect(() => {
     const el = stageRef.current;
     if (!el) return;
+    // Measure now; the observer's first report waits for a painted frame.
+    const first = el.getBoundingClientRect();
+    if (first.width > 0) setSize({ width: first.width, height: first.height });
     const observer = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect;
       setSize({ width, height });
