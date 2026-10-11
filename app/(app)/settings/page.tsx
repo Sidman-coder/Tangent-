@@ -6,7 +6,8 @@ import Button from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
 import CanvasConnectGuide from "@/components/CanvasConnectGuide";
 import WhatTangentKnows from "@/components/settings/WhatTangentKnows";
-import { CalendarSync } from "lucide-react";
+import OnboardingSection from "@/components/settings/OnboardingSection";
+import "./settings.css";
 import type { AppState, CanvasFeedStatus } from "@/lib/types";
 import {
   type AppearanceMode,
@@ -21,7 +22,7 @@ import {
   setDesktopNotifSetting,
 } from "@/lib/desktop-notifications";
 import { getInAppPopupsEnabled, setInAppPopupsEnabled } from "@/lib/notification-popups";
-import { DAY_VIEW_OPTIONS, HELP_FOCUS_OPTIONS, formatSchoolHours } from "@/lib/onboarding";
+import { HELP_FOCUS_OPTIONS, formatSchoolHours } from "@/lib/onboarding";
 import { prefsOf } from "@/lib/personalize";
 import { DEFAULT_CAPACITY, formatMinutes } from "@/lib/load";
 
@@ -197,199 +198,203 @@ export default function SettingsPage() {
     }
   };
 
+  const nameChanged = Boolean(state && name.trim() && name.trim() !== state.user.displayName);
+
   return (
     <div className="settings-page">
-      <PageHeader title="Settings" description="Manage your profile and how Tangent feels." />
+      <PageHeader title="Settings" description="How Tangent fits you, and everything it knows." />
 
       <div className="settings-layout">
         <nav className="settings-nav" aria-label="Settings sections">
+          <a href="#onboarding">Onboarding</a>
           <a href="#profile">Profile</a>
-          <a href="#appearance">Appearance</a>
-          <a href="#notifications">Notifications</a>
-          <a href="#integrations">Integrations</a>
-          <a href="#your-tangent">Your Tangent</a>
+          <a href="#planning">Planning</a>
           <a href="#what-tangent-knows">What Tangent knows</a>
+          <a href="#notifications">Notifications</a>
+          <a href="#appearance">Appearance</a>
           <a href="#account">Account</a>
         </nav>
 
         <div className="settings-content">
-          <section id="profile" className="settings-panel">
-            <div className="settings-panel-head">
-              <div><h2>Profile</h2><p>Used to personalize greetings and your workspace.</p></div>
-            </div>
-            <div className="settings-field-grid">
-              <div className="field">
-                <label htmlFor="dn">Display name</label>
-                <input id="dn" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
-              </div>
-              <div className="field">
-                <label htmlFor="em">Email</label>
-                <input id="em" type="email" value={email} readOnly aria-describedby="em-hint" />
-                <span id="em-hint" className="settings-field-hint">From your sign-in account.</span>
-              </div>
-            </div>
-            <div className="settings-panel-actions">
-              <Button variant="primary" loading={saving} loadingLabel="Saving…" onClick={() => void onSave()}>Save changes</Button>
-              {msg && <p className="settings-status" role="status">{msg}</p>}
-            </div>
-          </section>
+          <OnboardingSection
+            canvasLoaded={canvasLoaded}
+            canvasConnected={Boolean(canvasFeed)}
+            onConnectCanvas={() => setCanvasGuideOpen(true)}
+            onRedoSetup={() => void onRestartOnboarding()}
+            redoing={redoing}
+          />
 
-          <section id="appearance" className="settings-panel">
-            <div className="settings-panel-head"><div><h2>Appearance</h2><p>Choose a comfortable theme and reading style.</p></div></div>
-            <div className="settings-option-row">
-              <div><strong>Dark mode</strong><span>Switch workspace colors across every page.</span></div>
-              <button type="button" className={`toggle-switch${appearance === "dark" ? " on" : ""}`} role="switch" aria-checked={appearance === "dark"} aria-label="Dark mode" onClick={onToggleAppearance}>
-                <span className="toggle-knob" />
-              </button>
-            </div>
-          </section>
-
-          <section id="notifications" className="settings-panel">
-            <div className="settings-panel-head"><div><h2>Notifications</h2><p>Choose how new alerts reach you while a Tangent tab is open.</p></div></div>
-            <div className="settings-option-row">
-              <div><strong>In-app popups</strong><span>Show a short popup inside Tangent when a new notification arrives. Each one pops once.</span></div>
-              <button
-                type="button"
-                className={`toggle-switch${inAppPopups ? " on" : ""}`}
-                role="switch"
-                aria-checked={inAppPopups}
-                aria-label="Toggle in-app popups"
-                onClick={onToggleInAppPopups}
-                disabled={!accountEmail}
-              >
-                <span className="toggle-knob" />
-              </button>
-            </div>
-            <div className="settings-option-row">
-              <div><strong>Desktop notifications</strong><span>{desktopNotifHint}</span></div>
-              <button
-                type="button"
-                className={`toggle-switch${desktopNotifEnabled ? " on" : ""}`}
-                role="switch"
-                aria-checked={desktopNotifEnabled}
-                aria-label="Toggle desktop notifications"
-                onClick={() => void onToggleDesktopNotif()}
-                disabled={!desktopNotifSupported || desktopNotifPermission === "denied"}
-              >
-                <span className="toggle-knob" />
-              </button>
-            </div>
-          </section>
-
-          <section id="integrations" className="settings-panel settings-integration-panel">
-            <div className="settings-option-row">
-              <div className="settings-integration-copy">
-                <span className="settings-integration-icon" aria-hidden="true"><CalendarSync size={19} /></span>
-                <div>
-                  <strong>Canvas calendar</strong>
-                  <span>
-                    {!canvasLoaded
-                      ? <span className="settings-skeleton" aria-label="Checking Canvas" />
-                      : canvasFeed
-                      ? `Connected · ${canvasFeed.maskedUrl}${canvasFeed.lastSyncedAt ? ` · ${canvasFeed.lastSyncCount} items last sync` : ""}`
-                      : "Bring assignments and due dates into your Tangent calendar."}
-                  </span>
+          <section id="profile" className="settings-group" aria-labelledby="profile-title">
+            <h2 id="profile-title" className="settings-group-title">Profile</h2>
+            <div className="settings-card">
+              <div className="settings-row">
+                <label htmlFor="dn" className="settings-row-copy">
+                  <strong>Name</strong>
+                  <span>What Tangent calls you.</span>
+                </label>
+                <div className="settings-row-control">
+                  <input id="dn" className="settings-input" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
+                  {nameChanged && (
+                    <Button size="sm" variant="primary" loading={saving} loadingLabel="Saving…" onClick={() => void onSave()}>Save</Button>
+                  )}
                 </div>
               </div>
-              <Button variant="primary" onClick={() => setCanvasGuideOpen(true)} disabled={!canvasLoaded}>{canvasFeed ? "Reconnect Canvas" : "Connect Canvas"}</Button>
+              <div className="settings-row">
+                <div className="settings-row-copy">
+                  <strong>Email</strong>
+                  <span>From your sign-in account.</span>
+                </div>
+                <span className="settings-row-value">{email}</span>
+              </div>
             </div>
+            {msg && <p className="settings-status" role="status">{msg}</p>}
           </section>
 
-          <section id="your-tangent" className="settings-panel">
-            <div className="settings-panel-head">
-              <div><h2>Your Tangent</h2><p>Your answers from setup. Change one here, or go through setup again.</p></div>
-            </div>
-            <div className="settings-option-row">
-              <div><strong>What Tangent helps with</strong><span>Shapes the examples you see and what Home shows.</span></div>
-              <select
-                className="settings-select"
-                aria-label="What Tangent helps with"
-                value={prefs.helpFocus ?? ""}
-                onChange={(e) => void onChangePreference("helpFocus", e.target.value)}
-                disabled={!state}
-              >
-                {!prefs.helpFocus && <option value="">Not set</option>}
-                {HELP_FOCUS_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </div>
-            <div className="settings-option-row">
-              <div><strong>Starting view</strong><span>What Home puts first. Nothing is hidden either way.</span></div>
-              <select
-                className="settings-select"
-                aria-label="Starting view"
-                value={prefs.dayView ?? ""}
-                onChange={(e) => void onChangePreference("dayView", e.target.value)}
-                disabled={!state}
-              >
-                {!prefs.dayView && <option value="">Not set</option>}
-                {DAY_VIEW_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </div>
-            <div className="settings-option-row">
-              <div>
-                <strong>School hours</strong>
-                <span>{state?.user.schoolHours ? formatSchoolHours(state.user.schoolHours) : "Not set. Add them by going through setup again."}</span>
+          <section id="planning" className="settings-group" aria-labelledby="planning-title">
+            <h2 id="planning-title" className="settings-group-title">Planning</h2>
+            <p className="settings-group-note">How Tangent places work, so no day gets more than you can handle.</p>
+            <div className="settings-card">
+              <div className="settings-row">
+                <div className="settings-row-copy">
+                  <strong>Work per school night</strong>
+                  <span>Past this, new work moves to a lighter day.</span>
+                </div>
+                <select
+                  className="settings-select"
+                  aria-label="Work per school night"
+                  value={String(capacity.weekday)}
+                  onChange={(e) => void onChangeCapacity({ ...capacity, weekday: Number(e.target.value) })}
+                  disabled={!state}
+                >
+                  {capacityOptions(capacity.weekday).map((m) => (
+                    <option key={m} value={m}>{formatMinutes(m)}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="settings-row">
+                <div className="settings-row-copy">
+                  <strong>Work per weekend day</strong>
+                  <span>The same, for Saturdays and Sundays.</span>
+                </div>
+                <select
+                  className="settings-select"
+                  aria-label="Work per weekend day"
+                  value={String(capacity.weekend)}
+                  onChange={(e) => void onChangeCapacity({ ...capacity, weekend: Number(e.target.value) })}
+                  disabled={!state}
+                >
+                  {capacityOptions(capacity.weekend).map((m) => (
+                    <option key={m} value={m}>{formatMinutes(m)}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="settings-row">
+                <div className="settings-row-copy">
+                  <strong>School hours</strong>
+                  <span>Tangent never plans work inside them.</span>
+                </div>
+                <span className="settings-row-value">
+                  {state?.user.schoolHours ? formatSchoolHours(state.user.schoolHours) : "Not set"}
+                </span>
+              </div>
+              <div className="settings-row">
+                <div className="settings-row-copy">
+                  <strong>What Tangent helps with</strong>
+                  <span>Shapes its examples and suggestions.</span>
+                </div>
+                <select
+                  className="settings-select"
+                  aria-label="What Tangent helps with"
+                  value={prefs.helpFocus ?? ""}
+                  onChange={(e) => void onChangePreference("helpFocus", e.target.value)}
+                  disabled={!state}
+                >
+                  {!prefs.helpFocus && <option value="">Not set</option>}
+                  {HELP_FOCUS_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
               </div>
             </div>
-            <div className="settings-option-row">
-              <div>
-                <strong>Work per school night</strong>
-                <span>How much Tangent plans on one evening before it moves work to a lighter day.</span>
-              </div>
-              <select
-                className="settings-select"
-                aria-label="Work per school night"
-                value={String(capacity.weekday)}
-                onChange={(e) => void onChangeCapacity({ ...capacity, weekday: Number(e.target.value) })}
-                disabled={!state}
-              >
-                {capacityOptions(capacity.weekday).map((m) => (
-                  <option key={m} value={m}>{formatMinutes(m)}</option>
-                ))}
-              </select>
-            </div>
-            <div className="settings-option-row">
-              <div><strong>Work per weekend day</strong><span>Same, for Saturdays and Sundays.</span></div>
-              <select
-                className="settings-select"
-                aria-label="Work per weekend day"
-                value={String(capacity.weekend)}
-                onChange={(e) => void onChangeCapacity({ ...capacity, weekend: Number(e.target.value) })}
-                disabled={!state}
-              >
-                {capacityOptions(capacity.weekend).map((m) => (
-                  <option key={m} value={m}>{formatMinutes(m)}</option>
-                ))}
-              </select>
-            </div>
-            <div className="settings-option-row">
-              <div><strong>Take the tour</strong><span>A two-minute walk through everything Tangent does.</span></div>
-              <Button variant="secondary" onClick={() => window.dispatchEvent(new Event("tangent:tour"))}>Start tour</Button>
-            </div>
-            <div className="settings-option-row">
-              <div><strong>Redo setup</strong><span>Go through the questions again with your answers filled in.</span></div>
-              <Button variant="secondary" loading={redoing} loadingLabel="Opening…" onClick={() => void onRestartOnboarding()}>Redo setup</Button>
-            </div>
-            {prefMsg && <p className="settings-status" role="status">{prefMsg}</p>}
-            {capMsg && <p className="settings-status" role="status">{capMsg}</p>}
+            {(prefMsg || capMsg) && <p className="settings-status" role="status">{prefMsg ?? capMsg}</p>}
           </section>
 
           <WhatTangentKnows />
 
-          <section id="account" className="settings-panel">
-            <div className="settings-option-row">
-              <div><strong>Sign out</strong><span>Sign out of Tangent on this device.</span></div>
-              <form action="/auth/signout" method="post">
-                <Button type="submit" variant="secondary">Sign out</Button>
-              </form>
+          <section id="notifications" className="settings-group" aria-labelledby="notifications-title">
+            <h2 id="notifications-title" className="settings-group-title">Notifications</h2>
+            <div className="settings-card">
+              <div className="settings-row">
+                <div className="settings-row-copy">
+                  <strong>In-app popups</strong>
+                  <span>A short popup inside Tangent when something new arrives.</span>
+                </div>
+                <button
+                  type="button"
+                  className={`toggle-switch${inAppPopups ? " on" : ""}`}
+                  role="switch"
+                  aria-checked={inAppPopups}
+                  aria-label="In-app popups"
+                  onClick={onToggleInAppPopups}
+                  disabled={!accountEmail}
+                >
+                  <span className="toggle-knob" />
+                </button>
+              </div>
+              <div className="settings-row">
+                <div className="settings-row-copy">
+                  <strong>Desktop notifications</strong>
+                  <span>{desktopNotifHint}</span>
+                </div>
+                <button
+                  type="button"
+                  className={`toggle-switch${desktopNotifEnabled ? " on" : ""}`}
+                  role="switch"
+                  aria-checked={desktopNotifEnabled}
+                  aria-label="Desktop notifications"
+                  onClick={() => void onToggleDesktopNotif()}
+                  disabled={!desktopNotifSupported || desktopNotifPermission === "denied"}
+                >
+                  <span className="toggle-knob" />
+                </button>
+              </div>
             </div>
-            <div className="settings-option-row">
-              <div><strong>Delete all my data</strong><span>Removes your tasks, plans, chats and history. Your account stays.</span></div>
-              <Button variant="danger" loading={resetting} loadingLabel="Deleting…" onClick={() => void onResetData()}>Delete data</Button>
+          </section>
+
+          <section id="appearance" className="settings-group" aria-labelledby="appearance-title">
+            <h2 id="appearance-title" className="settings-group-title">Appearance</h2>
+            <div className="settings-card">
+              <div className="settings-row">
+                <div className="settings-row-copy">
+                  <strong>Dark mode</strong>
+                  <span>Across every page.</span>
+                </div>
+                <button type="button" className={`toggle-switch${appearance === "dark" ? " on" : ""}`} role="switch" aria-checked={appearance === "dark"} aria-label="Dark mode" onClick={onToggleAppearance}>
+                  <span className="toggle-knob" />
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section id="account" className="settings-group" aria-labelledby="account-title">
+            <h2 id="account-title" className="settings-group-title">Account</h2>
+            <div className="settings-card">
+              <div className="settings-row">
+                <div className="settings-row-copy">
+                  <strong>Sign out</strong>
+                  <span>On this device.</span>
+                </div>
+                <form action="/auth/signout" method="post">
+                  <Button type="submit" size="sm">Sign out</Button>
+                </form>
+              </div>
+              <div className="settings-row">
+                <div className="settings-row-copy">
+                  <strong>Delete all my data</strong>
+                  <span>Removes your tasks, projects, chats and history. Your account stays.</span>
+                </div>
+                <Button size="sm" variant="danger" loading={resetting} loadingLabel="Deleting…" onClick={() => void onResetData()}>Delete data</Button>
+              </div>
             </div>
           </section>
         </div>

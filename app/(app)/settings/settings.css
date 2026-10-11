@@ -1,0 +1,203 @@
+/* ═════════════════════════════════════════════════════════════════════════
+   Settings, as grouped lists (2026-10-11): a group title, an optional note,
+   then one inset card of identical rows - label and hint on the left, one
+   control on the right - like System Settings. Scoped under .settings-page
+   so the older panel rules in globals.css can't leak in.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.settings-page .settings-layout {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 720px);
+  gap: 40px;
+  align-items: start;
+}
+
+.settings-page .settings-nav {
+  position: sticky;
+  top: calc(var(--topbar-h, 64px) + 16px);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.settings-page .settings-nav a {
+  padding: 7px 12px;
+  border-radius: 999px;
+  color: var(--text-2);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.settings-page .settings-nav a:hover {
+  background: rgb(from var(--text) r g b / 0.05);
+  color: var(--text);
+}
+
+.settings-page .settings-content {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.settings-group {
+  scroll-margin-top: calc(var(--topbar-h, 64px) + 16px);
+}
+.settings-group-title {
+  margin: 0 0 4px;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.settings-group-note {
+  margin: 0 0 12px;
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.settings-group-title + .settings-card {
+  margin-top: 10px;
+}
+
+.settings-card {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(26 23 32 / 0.04), 0 12px 32px -22px rgb(26 23 32 / 0.16);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 60px;
+  padding: 14px 18px;
+}
+.settings-row + .settings-row {
+  border-top: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+}
+.settings-row.is-stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+.settings-row-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.settings-row-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.settings-row-copy strong {
+  color: var(--text);
+  font-size: 14.5px;
+  font-weight: 600;
+}
+.settings-row-copy > span {
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.settings-row > :last-child:not(.settings-row-copy) {
+  flex: none;
+}
+.settings-row-value {
+  color: var(--text-2);
+  font-size: 13.5px;
+  text-align: right;
+}
+.settings-row-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-status-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 500;
+}
+.settings-status-line.is-done {
+  color: var(--secondary, var(--accent));
+}
+
+/* Controls: one height (32px), capsules, past the global input reset. */
+.settings-page .settings-row .settings-input:is(input) {
+  width: 220px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgb(from var(--text) r g b / 0.03);
+  font-size: 14px;
+}
+.settings-page .settings-row .settings-select:is(select) {
+  min-width: 0;
+  width: auto;
+  max-width: 240px;
+  height: 34px;
+  padding: 0 34px 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background-color: rgb(from var(--text) r g b / 0.03);
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.settings-page .ui-button--sm {
+  height: 32px;
+  padding-inline: 14px;
+  font-size: 13px;
+}
+
+.settings-page .settings-status {
+  margin: 8px 4px 0 !important;
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+
+/* What Tangent knows, inside its card. */
+.knows-card .knows-groups,
+.knows-card .knows-empty,
+.knows-card .settings-skeleton {
+  padding: 14px 18px 4px;
+}
+.knows-card .knows-add {
+  margin: 0;
+  padding: 12px 18px 14px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+}
+
+@media (max-width: 860px) {
+  .settings-page .settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+  .settings-page .settings-nav {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .settings-page .settings-nav a {
+    white-space: nowrap;
+  }
+  .settings-row,
+  .settings-row-main {
+    flex-wrap: wrap;
+  }
+  .settings-page .settings-row .settings-input:is(input) {
+    width: 100%;
+  }
+}
