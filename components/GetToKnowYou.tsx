@@ -11,20 +11,26 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
-import { ArrowUp, X } from "lucide-react";
+import { ArrowUp, Mic, Square, X } from "lucide-react";
 import PenMark from "@/components/console/PenMark";
 import { useAppState } from "@/components/AppStateProvider";
 import { capacityFromAnswer } from "@/lib/capacity-answer";
+import { useVoiceCapture } from "@/hooks/useVoiceCapture";
 import "./get-to-know-you.css";
 import "./console/clarify-card.css";
 
 export const GET_TO_KNOW_EVENT = "tangent:get-to-know";
+/** Detail for GET_TO_KNOW_EVENT: "grill" skips the basics and goes straight
+ *  to Tangent's own questions, for as long as the student wants. */
+export type GetToKnowDetail = { mode?: "setup" | "grill" } | undefined;
 /** Fired when the conversation closes, so the feature tour can follow it. */
 export const GET_TO_KNOW_DONE_EVENT = "tangent:get-to-know-done";
 
 type Category = "goal" | "commitment" | "work" | "habit" | "preference" | "general";
 type Step = {
   id: string;
+  /** Asked by Tangent from what it knows (app/api/grill), not the fixed set. */
+  ai?: boolean;
   ask: string;
   why: string;
   chips: string[];
@@ -108,6 +114,9 @@ async function remember(fact: string, category: Category) {
 export default function GetToKnowYou() {
   const { state, refresh } = useAppState();
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"setup" | "grill">("setup");
+  const [extra, setExtra] = useState<Step[]>([]);
+  const [thinking, setThinking] = useState(false);
   const [index, setIndex] = useState(0);
   const [picked, setPicked] = useState<string[]>([]);
   const [text, setText] = useState("");
@@ -115,19 +124,58 @@ export default function GetToKnowYou() {
   const inputRef = useRef<HTMLInputElement>(null);
   const capacityKnown = Boolean(state?.user.capacity);
 
-  const steps = STEPS.filter((s) => !(s.capacity && capacityKnown));
+  const base = mode === "grill" ? [] : STEPS.filter((s) => !(s.capacity && capacityKnown));
+  const steps = [...base, ...extra];
   const step = steps[index];
 
   useEffect(() => {
-    const onOpen = () => {
+    const onOpen = (e: Event) => {
+      const m = (e as CustomEvent<GetToKnowDetail>).detail?.mode ?? "setup";
+      setMode(m);
+      setExtra([]);
       setIndex(0);
       setLog([]);
       setPicked([]);
       setText("");
       setOpen(true);
+      if (m === "grill") void askMore([]);
     };
     window.addEventListener(GET_TO_KNOW_EVENT, onOpen);
     return () => window.removeEventListener(GET_TO_KNOW_EVENT, onOpen);
+  }, []);
+
+  // One more question from Tangent, aimed at what it knows least.
+  const askMore = useCallback(async (asked: string[]) => {
+    setThinking(true);
+    try {
+      const res = await fetch("/api/grill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ asked }),
+      });
+      const data = (await res.json()) as {
+        ok?: boolean;
+        question?: { question: string; why: string; chips: string[]; category: Category };
+      };
+      if (data.ok && data.question) {
+        const q = data.question;
+        setExtra((x) => [
+          ...x,
+          {
+            id: `ai-${x.length}`,
+            ai: true,
+            ask: q.question,
+            why: q.why,
+            chips: q.chips,
+            placeholder: "Type or tap the mic and say it",
+            category: q.category,
+            remember: (a: string) => `${q.question.replace(/\?\s*$/, "")}: ${a}`,
+          },
+        ]);
+      }
+    } finally {
+      setThinking(false);
+    }
   }, []);
 
   const close = useCallback(() => {
@@ -171,10 +219,27 @@ export default function GetToKnowYou() {
       setPicked([]);
       setText("");
       setIndex((i) => i + 1);
+      // Grill mode keeps going: the next question is fetched as this one closes.
+      if (mode === "grill" || step.ai) void askMore([...log.map((l) => l.ask), step.ask]);
       window.setTimeout(() => inputRef.current?.focus(), 50);
     },
-    [step]
+    [step, mode, log, askMore]
   );
+
+  // Answer out loud: words fill the field as they're spoken, and the answer
+  // goes when the student stops.
+  const nextRef = useRef(next);
+  nextRef.current = next;
+  const pickedRef = useRef(picked);
+  pickedRef.current = picked;
+  const voice = useVoiceCapture({
+    live: true,
+    onPartial: setText,
+    onTranscript: (t) => {
+      const parts = [...pickedRef.current, t.trim()].filter(Boolean);
+      nextRef.current(parts.length ? parts.join(", ") : null);
+    },
+  });
 
   const submit = () => {
     const parts = [...picked, text.trim()].filter(Boolean);
@@ -182,7 +247,7 @@ export default function GetToKnowYou() {
   };
 
   if (!open || typeof document === "undefined") return null;
-  const done = index >= steps.length;
+  const done = index >= steps.length && !thinking;
 
   return createPortal(
     <div className="gtk-scrim" role="dialog" aria-modal="true" aria-labelledby="gtk-title">
@@ -193,8 +258,8 @@ export default function GetToKnowYou() {
         transition={{ type: "spring", visualDuration: 0.35, bounce: 0 }}
       >
         <header className="gtk-head">
-          <h2 id="gtk-title">Let Tangent get to know you</h2>
-          <span className="gtk-progress">{done ? "Done" : `${index + 1} of ${steps.length}`}</span>
+          <h2 id="gtk-title">{mode === "grill" ? "Grill me" : "Let Tangent get to know you"}</h2>
+          <span className="gtk-progress">{mode === "grill" || step?.ai ? `${log.length} answered` : done ? "Done" : `${index + 1} of ${steps.length}`}</span>
           <button type="button" className="gtk-close" onClick={close} aria-label="Close">
             <X size={16} aria-hidden="true" />
           </button>
@@ -216,6 +281,18 @@ export default function GetToKnowYou() {
                   <p className="gtk-ask">
                     Thanks. That&apos;s saved. Tangent will use it for every plan, and you can change any of it in Settings › What Tangent knows.
                   </p>
+                </div>
+                <div className="gtk-chips">
+                  <button type="button" className="tg-chip" onClick={() => void askMore(log.map((l) => l.ask))}>
+                    Keep going — ask me more
+                  </button>
+                </div>
+              </m.div>
+            ) : !step ? (
+              <m.div key="thinking" className="gtk-turn" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                <div className="gtk-ask-row">
+                  <PenMark className="gtk-mark" />
+                  <p className="gtk-why">Thinking of a good question…</p>
                 </div>
               </m.div>
             ) : (
@@ -258,7 +335,7 @@ export default function GetToKnowYou() {
         </div>
 
         <footer className="gtk-foot">
-          {done ? (
+          {done || !step ? (
             <button type="button" className="gtk-primary" onClick={close}>
               Done
             </button>
@@ -275,10 +352,19 @@ export default function GetToKnowYou() {
                   ref={inputRef}
                   value={text}
                   onChange={(e) => setText(e.target.value)}
-                  placeholder={step.placeholder}
+                  placeholder={voice.status === "recording" ? "Listening…" : step.placeholder}
                   aria-label={step.ask}
                   autoFocus
                 />
+                <button
+                  type="button"
+                  className={`gtk-mic${voice.status === "recording" ? " is-on" : ""}`}
+                  aria-label={voice.status === "recording" ? "Stop and answer" : "Answer out loud"}
+                  disabled={voice.status === "transcribing"}
+                  onClick={() => (voice.status === "recording" ? voice.stopRecording() : void voice.startRecording())}
+                >
+                  {voice.status === "recording" ? <Square size={12} strokeWidth={0} fill="currentColor" aria-hidden="true" /> : <Mic size={16} aria-hidden="true" />}
+                </button>
                 <button type="submit" className="gtk-send" aria-label="Answer" disabled={!text.trim() && picked.length === 0}>
                   <ArrowUp size={16} strokeWidth={2.2} aria-hidden="true" />
                 </button>
@@ -286,6 +372,11 @@ export default function GetToKnowYou() {
               <button type="button" className="gtk-skip" onClick={() => next(null)}>
                 Skip
               </button>
+              {(mode === "grill" || step.ai) && (
+                <button type="button" className="gtk-skip" onClick={close}>
+                  Done
+                </button>
+              )}
             </>
           )}
         </footer>

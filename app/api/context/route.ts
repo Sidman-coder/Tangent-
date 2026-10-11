@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { addContextEntry, getUserContext, getContextAsString, removeContextEntry } from "@/lib/store";
 import { extractContextFacts } from "@/lib/context-extract";
+import { factsFromText } from "@/lib/ai/import-context";
 import { withUser } from "@/lib/request-context";
 
 export const runtime = "nodejs";
@@ -27,6 +28,26 @@ export const POST = withUser(async (request: Request) => {
       const category = CATEGORIES.find((c) => c === body.category) ?? "general";
       const entry = await addContextEntry({ category, fact, source: "manual" });
       return NextResponse.json({ ok: true, entry });
+    }
+    // "Bring your context": preview facts from pasted text; nothing is saved.
+    if (body.action === "import_preview") {
+      const text = String(body.text ?? "").trim().slice(0, 80000);
+      if (text.length < 20) return NextResponse.json({ ok: false, error: "Paste a bit more than that." }, { status: 400 });
+      const facts = await factsFromText(text);
+      return NextResponse.json({ ok: true, facts });
+    }
+    // …then save the ones the student kept.
+    if (body.action === "remember_many") {
+      const CATS = ["preference", "habit", "commitment", "goal", "person", "work", "general"] as const;
+      const items = (Array.isArray(body.facts) ? body.facts : []).slice(0, 60) as { category?: string; fact?: string }[];
+      let saved = 0;
+      for (const f of items) {
+        const fact = String(f.fact ?? "").trim().slice(0, 300);
+        if (!fact) continue;
+        await addContextEntry({ category: CATS.find((c) => c === f.category) ?? "general", fact, source: "manual" });
+        saved++;
+      }
+      return NextResponse.json({ ok: true, saved });
     }
     if (body.action === "forget") {
       const removed = await removeContextEntry(String(body.id ?? ""));

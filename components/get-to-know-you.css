@@ -255,3 +255,135 @@
   font: 550 13px/1 var(--font-body);
   cursor: pointer;
 }
+
+/* Answer out loud. */
+.gtk-mic {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(from var(--accent) r g b / 0.1);
+  color: var(--accent);
+  cursor: pointer;
+  transition: background-color 150ms ease, transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.gtk-mic.is-on {
+  background: var(--red);
+  color: #fff;
+}
+.gtk-mic:active {
+  transform: scale(0.94);
+}
+
+/* Settings › What Tangent knows: head actions and Bring your context. */
+.knows-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.knows-secondary {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font: 600 13px/1 var(--font-body);
+  cursor: pointer;
+}
+.import-ctx {
+  display: grid;
+  gap: 10px;
+  margin: 4px 0 18px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: rgb(from var(--accent) r g b / 0.03);
+}
+.import-ctx-step {
+  margin: 0;
+  color: var(--text-2);
+  font: 450 13.5px/1.45 var(--font-body);
+}
+.import-ctx-step strong {
+  color: var(--text);
+}
+.import-ctx-prompt {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font: 450 13px/1.45 var(--font-body);
+}
+.import-ctx-prompt span {
+  flex: 1;
+}
+.import-ctx-prompt button {
+  flex: none;
+  padding: 4px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--accent);
+  font: 600 12px/1 var(--font-body);
+  cursor: pointer;
+}
+.import-ctx .import-ctx-text:is(textarea) {
+  width: 100%;
+  resize: vertical;
+  font: 450 13.5px/1.5 var(--font-body);
+}
+.import-ctx-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.import-ctx-spacer {
+  flex: 1;
+}
+.import-ctx-file {
+  position: relative;
+  color: var(--accent);
+  font: 600 13px/1 var(--font-body);
+  cursor: pointer;
+}
+.import-ctx-file input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.import-ctx-facts {
+  display: grid;
+  gap: 2px;
+  max-height: 320px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.import-ctx-facts label {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 7px 4px;
+  color: var(--text);
+  font: 450 14px/1.4 var(--font-body);
+  cursor: pointer;
+}
+.import-ctx-facts input {
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+.import-ctx-error {
+  margin: 0;
+  color: var(--red);
+  font: 500 13px/1.4 var(--font-body);
+}

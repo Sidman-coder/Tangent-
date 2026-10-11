@@ -9,6 +9,7 @@ import "@/components/get-to-know-you.css";
 import { useCallback, useEffect, useState } from "react";
 import type { ContextEntry } from "@/lib/types";
 import { GET_TO_KNOW_DONE_EVENT, GET_TO_KNOW_EVENT } from "@/components/GetToKnowYou";
+import ImportContext from "@/components/settings/ImportContext";
 
 const CATEGORY_LABEL: Record<ContextEntry["category"], string> = {
   goal: "Goals",
@@ -32,6 +33,7 @@ export default function WhatTangentKnows() {
   const [summary, setSummary] = useState("");
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -74,10 +76,28 @@ export default function WhatTangentKnows() {
           <h2>What Tangent knows</h2>
           <p>Everything Tangent has learned about you. It uses this for every plan and answer. Remove anything that&apos;s wrong.</p>
         </div>
-        <button type="button" className="knows-gtk" onClick={() => window.dispatchEvent(new Event(GET_TO_KNOW_EVENT))}>
-          Answer a few questions
-        </button>
+        <div className="knows-head-actions">
+          <button
+            type="button"
+            className="knows-gtk"
+            onClick={() => window.dispatchEvent(new CustomEvent(GET_TO_KNOW_EVENT, { detail: { mode: "grill" } }))}
+          >
+            Grill me
+          </button>
+          <button type="button" className="knows-secondary" onClick={() => setImporting((v) => !v)}>
+            Bring context from another AI
+          </button>
+        </div>
       </div>
+
+      {importing && (
+        <ImportContext
+          onDone={() => {
+            setImporting(false);
+            void load();
+          }}
+        />
+      )}
 
       {entries === null ? (
         <span className="settings-skeleton" aria-label="Loading" />

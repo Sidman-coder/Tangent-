@@ -81,6 +81,10 @@ export const AI_TASKS = {
    *  (lib/ai/clarify.ts). SMART because the questions are the product; thinking
    *  off to keep the pause short. */
   clarify: { feature: "chat", tier: "SMART", maxTokens: 700, thinking: "disabled" },
+  /** Facts pulled from text the student pastes from another AI (lib/ai/import-context.ts). */
+  contextImport: { feature: "context", tier: "SMART", maxTokens: 3000, thinking: "disabled" },
+  /** The next "grill me" question, aimed at what Tangent doesn't know yet. */
+  grillNext: { feature: "chat", tier: "SMART", maxTokens: 400, thinking: "disabled" },
   /** Short calendar labels for long task titles (app/api/short-titles). */
   shortTitles: { feature: "classify", tier: "FAST", maxTokens: 3000, temperature: 0 },
   /** Applies the student's answers to a saved task (lib/ai/refine.ts). */
