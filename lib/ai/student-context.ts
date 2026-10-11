@@ -6,7 +6,8 @@ import "server-only";
 // toward. This is what lets Tangent skip questions it already knows the
 // answer to, and place work around a heavy week instead of on top of it.
 
-import { getAllTasks, getContextAsString, getPathGoals } from "@/lib/store";
+import { getAllPlans, getAllTasks, getContextAsString, getPathGoals } from "@/lib/store";
+import { cleanCourse } from "@/lib/course";
 import { describeLoad, formatMinutes } from "@/lib/load";
 import { schoolHoursFromTasks } from "@/lib/school-block";
 import { isSchoolBlock } from "@/lib/schedule-slots";
@@ -26,12 +27,13 @@ export type StudentContext = {
 };
 
 export async function buildStudentContext(): Promise<StudentContext> {
-  const [tasks, memory, goals, { cap, known }, now] = await Promise.all([
+  const [tasks, memory, goals, { cap, known }, now, plans] = await Promise.all([
     getAllTasks(),
     getContextAsString().catch(() => ""),
     getPathGoals().catch(() => []),
     studentCapacity(),
     studentNow(),
+    getAllPlans().catch(() => []),
   ]);
 
   const sections: string[] = [];
@@ -85,6 +87,35 @@ export async function buildStudentContext(): Promise<StudentContext> {
       `OPEN THIS WEEK (${week.length}):\n${week
         .slice(0, MAX_LISTED)
         .map((t) => `- ${t.date}${t.time && t.time !== "23:59" ? ` ${t.time}` : ""}: ${t.title}${t.source === "canvas" ? " (due)" : ""}`)
+        .join("\n")}`
+    );
+  }
+
+  // Their classes, by the names Canvas uses, so "my chem final" can be matched
+  // to the real class instead of asking which one.
+  const classes = new Set<string>();
+  for (const t of tasks) {
+    if (t.source !== "canvas") continue;
+    const m = /\[([^\]]+)\]?\s*$/.exec(t.title);
+    const name = m ? cleanCourse(m[1]) : "";
+    if (name) classes.add(name);
+  }
+  if (classes.size > 0) {
+    sections.push(`THEIR CLASSES: ${Array.from(classes).slice(0, 12).join("; ")}`);
+  }
+
+  // Projects already under way, so a new ask that overlaps one is recognised
+  // as part of it rather than started again from nothing.
+  if (plans.length > 0) {
+    sections.push(
+      `PROJECTS ALREADY UNDER WAY:\n${plans
+        .slice(0, 10)
+        .map((p) => {
+          const steps = tasks.filter((t) => t.planId === p.id);
+          const done = steps.filter((t) => t.completed).length;
+          const next = steps.filter((t) => !t.completed).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))[0];
+          return `- ${p.title} (${done}/${steps.length} steps done${next ? `; next: ${next.title} on ${next.date}` : ""})`;
+        })
         .join("\n")}`
     );
   }

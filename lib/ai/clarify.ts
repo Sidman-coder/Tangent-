@@ -58,7 +58,12 @@ When you ask:
 - At most 3 questions, most important first. Fewer is better.
 - Each under 12 words, plain and direct, like a sharp older friend — not a form.
 - 2–4 options each, under 4 words, the likely answers. Use what you know about them to make the options specific (their actual classes, their actual deadlines).
-- Don't number them.`;
+- Don't number them.
+
+Use what you can see, and say so in the question, so it feels like Tangent knows them:
+- If they name a class loosely ("chem", "english"), match it to THEIR CLASSES and name it ("AP Chem"). If a matching test or deadline is in COMING UP FOR SCHOOL, confirm it instead of asking ("Is this the Dec 12 AP Chem final?" with options like "Yes", "No, later").
+- If the request overlaps a project in PROJECTS ALREADY UNDER WAY, your first question asks whether it belongs there, with that project's name as an option and "New project" as another.
+- If the week is already heavy (HOW FULL THE NEXT ... DAYS ARE), you may ask whether to start after the busy days.`;
 
 /** Cheap gate before spending a model call: plans and goals, or anything long
  *  enough to be more than one simple task. */
@@ -66,7 +71,9 @@ export function shouldConsiderClarifying(text: string): boolean {
   const t = text.trim();
   if (/\b(just do it|don'?t ask|no questions)\b/i.test(t)) return false;
   if (isClearPlanRequest(t)) return true;
-  if (/\b(plan|prep|prepare|study for|get better|learn|improve|catch up|organi[sz]e|help me|figure out|finals?|midterms?|project)\b/i.test(t)) {
+  // Bigger efforts too ("start a robotics club", "apply to summer programs"):
+  // with Pipeline V2 on there's no separate New project route to flag them.
+  if (/\b(plan|prep|prepare|study for|get better|learn|improve|catch up|organi[sz]e|help me|figure out|finals?|midterms?|project|start|launch|found|build|apply|applications?|research|train|practice for|get into|compete|run for)\b/i.test(t)) {
     return true;
   }
   return t.split(/\s+/).length >= 14;
