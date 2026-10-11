@@ -2133,3 +2133,8 @@ a.tg-next:hover .tg-next-go { color: var(--accent); transform: translate(2px, -2
 .tg-next-dot {
   animation: none;
 }
+
+/* The hero was 2px wider than its box and showed a horizontal scrollbar. */
+.tg-hero {
+  overflow-x: clip;
+}

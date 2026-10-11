@@ -661,3 +661,8 @@ body :is(.ui-button--danger, .tg-btn-danger, .project-delete-yes) {
     backdrop-filter: none;
   }
 }
+
+/* Icon buttons are circles, whatever older rule says. */
+body :is(.tg-icon-btn, .tg-mic, .tg-send, .tg-chat-more, .td-icon, .side-peek-close, .path-inspector-close, .path-zoombar-btn) {
+  border-radius: 999px;
+}
