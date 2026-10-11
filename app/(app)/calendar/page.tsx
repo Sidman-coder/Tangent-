@@ -372,7 +372,7 @@ export default function CalendarPage() {
               {headingSpan && <span className="cal-heading-span">{headingSpan}</span>}
             </h1>
             <div className="cal-nav-group">
-              <div className="cal-view-switch" role="tablist" aria-label="Calendar view">
+              <div className="cal-view-switch lg lg-interactive" role="tablist" aria-label="Calendar view">
                 {VIEWS.map((v) => (
                   <button
                     key={v.id}
@@ -389,7 +389,7 @@ export default function CalendarPage() {
                   </button>
                 ))}
               </div>
-              <div className="cal-arrows">
+              <div className="cal-arrows lg lg-interactive">
                 <button type="button" className="cal-arrow" onClick={() => step(-1)} aria-label={`Previous ${unitLabel}`}>
                   <ChevronLeft size={16} aria-hidden="true" />
                 </button>
@@ -400,7 +400,7 @@ export default function CalendarPage() {
               </div>
             </div>
           </div>
-          <div className="cal-segment-bar" role="tablist" aria-label="Filter by calendar">
+          <div className="cal-segment-bar lg lg-interactive" role="tablist" aria-label="Filter by calendar">
             {calendars.map((cal, idx) => (
               <button
                 key={cal.id}

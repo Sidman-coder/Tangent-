@@ -234,7 +234,7 @@ export default function CaptureDock() {
         layout
         transition={DOCK_SPRING}
         style={{ borderRadius: 999 }}
-        className={`capture-dock is-${phase.kind}`}
+        className={`capture-dock is-${phase.kind}${phase.kind === "idle" ? "" : " lg lg-strong"}`}
         role={phase.kind === "idle" ? undefined : "status"}
         aria-live="polite"
       >
@@ -244,7 +244,7 @@ export default function CaptureDock() {
               key="mic"
               {...SWAP}
               type="button"
-              className="capture-mic"
+              className="capture-mic lg lg-tint lg-interactive"
               aria-label="Capture — tap and speak"
               title="Tap and speak"
               onPointerDown={onMicPointerDown}

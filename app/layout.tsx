@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 // face, Bricolage Grotesque, is kept for big titles — the brand's voice.
 import "@fontsource-variable/bricolage-grotesque/opsz.css";
 import "./globals.css";
+import "./liquid-glass.css";
 
 export const metadata: Metadata = {
   title: "Tangent",

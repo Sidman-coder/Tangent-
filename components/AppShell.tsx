@@ -134,7 +134,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="shell">
       <a href="#main-content" className="skip-link">Skip to main content</a>
-      <aside className="rail" aria-label="Primary navigation">
+      <aside className="rail lg lg-interactive" aria-label="Primary navigation">
         <Link href="/" className="rail-logo" aria-label="Tangent home">
           <TangentLogo />
           <span className="rail-logo-word">Tangent</span>
@@ -217,7 +217,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className="shell-main">
         <header className="topbar">
-          <div className="topbar-right">
+          <div className="topbar-right lg lg-interactive">
             <StorageStatus />
             <span className="topbar-datetime">
               {today && <span className="topbar-date">{today}</span>}
@@ -247,7 +247,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
 
-      <nav className="mobile-nav" aria-label="Primary mobile navigation">
+      <nav className="mobile-nav lg" aria-label="Primary mobile navigation">
         {NAV_LINKS.map(({ href, label, icon: Icon }) => {
           const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
           return (
