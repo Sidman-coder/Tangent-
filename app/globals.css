@@ -9035,3 +9035,42 @@ h1, h2, h3, h4, h5, h6 {
 .settings-field-grid {
   align-items: start;
 }
+
+/* Behind Tangents from the first frame (see AppShell). */
+.tangents-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background: #0a0812;
+}
+.tangents-route {
+  position: relative;
+  z-index: 1;
+}
+
+/* The last floating surfaces that were solid: the task card, the tour card,
+   Grill me and the task Help chat. Same thick glass as Tell Tangent and the
+   bell. Scoped through body so their own stylesheets can't win on load order. */
+body .td-card,
+body .tour-card,
+body .gtk-sheet,
+body .task-chat-modal {
+  background: var(--glass-thick);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid rgb(from var(--text) r g b / 0.08);
+  box-shadow:
+    inset 0 0.5px 0 var(--glass-edge),
+    0 24px 60px -18px rgb(0 0 0 / 0.32);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  body .td-card,
+  body .tour-card,
+  body .gtk-sheet,
+  body .task-chat-modal {
+    background: var(--surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
