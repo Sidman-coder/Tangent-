@@ -13,8 +13,7 @@ import Button from "@/components/ui/Button";
 import SidePeek from "@/components/ui/SidePeek";
 import { handleResourceClick } from "@/lib/task-utils";
 import { toYMD, formatTime12 } from "@/lib/dates";
-import { KIND_LABEL, taskColor } from "@/lib/task-colors";
-import { CALENDARS } from "@/lib/calendars";
+import { KIND_LABEL, TASK_GROUPS, taskColor, taskGroup, type TaskGroup } from "@/lib/task-colors";
 import { isOnboardingSchoolTask } from "@/lib/school-block";
 import { baseTitle, useShortTitles } from "@/lib/short-titles";
 import "./calendar.css";
@@ -124,7 +123,7 @@ export default function CalendarPage() {
 
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
-  const [calIdx, setCalIdx] = useState(0);
+  const [group, setGroup] = useState<TaskGroup | "all">("all");
   const [view, setView] = useState<CalView>("month");
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -146,8 +145,6 @@ export default function CalendarPage() {
   const [dayChatInput, setDayChatInput] = useState("");
   const [dayChatBusy, setDayChatBusy] = useState(false);
 
-  const calendars = state?.calendars ?? CALENDARS;
-  const activeCal = calendars[calIdx] ?? calendars[0];
   const plans: Plan[] = state?.plans ?? [];
 
   const getPlan = useCallback((planId: string | null | undefined): Plan | null => {
@@ -164,10 +161,10 @@ export default function CalendarPage() {
     // The onboarding School block stores the student's school hours for the
     // scheduler; it is not something to do, so it is never drawn.
     let tasks = (state?.tasks ?? []).filter((t) => !isOnboardingSchoolTask(t));
-    if (activeCal.category !== "ALL") tasks = tasks.filter((t) => t.calendarId === activeCal.id);
+    if (group !== "all") tasks = tasks.filter((t) => taskGroup(t) === group);
     if (planFilter) tasks = tasks.filter((t) => t.planId === planFilter);
     return tasks.filter((t) => t.date === ymd);
-  }, [state, activeCal, planFilter]);
+  }, [state, group, planFilter]);
 
   const wholeDayTasks = selectedDay
     ? tasksForDay(selectedDay).slice().sort((a, b) => a.time.localeCompare(b.time))
@@ -386,20 +383,17 @@ export default function CalendarPage() {
                 </button>
               </div>
         </div>
-          <div className="cal-segment-bar" role="tablist" aria-label="Filter by calendar">
-            {calendars.map((cal, idx) => (
+          <div className="cal-segment-bar" role="tablist" aria-label="Show">
+            {[{ id: "all" as const, label: "All" }, ...TASK_GROUPS].map((g) => (
               <button
-                key={cal.id}
+                key={g.id}
                 type="button"
                 role="tab"
-                aria-selected={idx === calIdx}
-                className={`cal-segment${idx === calIdx ? " is-active" : ""}`}
-                onClick={() => setCalIdx(idx)}
+                aria-selected={group === g.id}
+                className={`cal-segment${group === g.id ? " is-active" : ""}`}
+                onClick={() => setGroup(g.id)}
               >
-                {cal.category !== "ALL" && (cal as { color?: string }).color && (
-                  <span className="cal-segment-dot" style={{ background: (cal as { color?: string }).color }} />
-                )}
-                {cal.name}
+                {g.label}
               </button>
             ))}
           </div>
@@ -758,7 +752,7 @@ export default function CalendarPage() {
         <AddTaskModal
           initialDate={addModalDate}
           initialTime={addModalTime}
-          initialCalendarId={activeCal.category !== "ALL" ? activeCal.id : null}
+          initialCalendarId={null}
           onClose={() => {
             setShowAddModal(false);
             setAddModalTime(undefined);

@@ -27,3 +27,19 @@ export function taskColor(task: Pick<Task, "planId" | "kind">, plans: Plan[]): s
   // School / No school is a filter, not a color: the kind says more.
   return KIND_COLOR[task.kind ?? "personal"];
 }
+
+/** How the calendar groups work: school (classes and Canvas), projects
+ *  (steps of a project), and short-term (everything else you added). */
+export type TaskGroup = "school" | "projects" | "short";
+
+export const TASK_GROUPS: { id: TaskGroup; label: string }[] = [
+  { id: "school", label: "School" },
+  { id: "projects", label: "Projects" },
+  { id: "short", label: "Short-term" },
+];
+
+export function taskGroup(task: Pick<Task, "planId" | "kind" | "source">): TaskGroup {
+  if (task.planId) return "projects";
+  if (task.source === "canvas" || task.kind === "school") return "school";
+  return "short";
+}
