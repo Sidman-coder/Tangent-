@@ -11,6 +11,7 @@ import type { Task } from "./types";
 const KEY = "tangent-short-titles-v1";
 const SHORT_ENOUGH = 26;
 const MAX_CACHE = 1500;
+const BATCH = 30;
 
 type Cache = Record<string, string>;
 
@@ -63,25 +64,30 @@ export function useShortTitles(tasks: Pick<Task, "id" | "title" | "source">[]): 
 
     let cancelled = false;
     inflight = (async () => {
-      for (let i = 0; i < missing.length; i += 60) {
-        const batch = missing.slice(i, i + 60);
+      // Short keys ("0", "1", …), not task ids: the model echoes every key
+      // back, and 36-character ids made a full batch overflow its reply.
+      for (let i = 0; i < missing.length; i += BATCH) {
+        const batch = missing.slice(i, i + BATCH);
         try {
           const res = await fetch("/api/short-titles", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ items: batch }),
+            body: JSON.stringify({ items: batch.map((b, k) => ({ id: String(k), title: b.title })) }),
           });
           const data = (await res.json()) as { ok?: boolean; labels?: Record<string, string> };
-          if (!data.ok || !data.labels) break;
+          if (!data.ok || !data.labels) continue;
           const next = readCache();
-          for (const item of batch) {
-            const label = data.labels[item.id];
-            if (label) next[`${item.id}:${item.title}`] = label;
-          }
+          const fresh: Record<string, string> = {};
+          batch.forEach((item, k) => {
+            const label = data.labels![String(k)];
+            if (!label) return;
+            next[`${item.id}:${item.title}`] = label;
+            fresh[item.id] = label;
+          });
           writeCache(next);
-          if (!cancelled) setLabels((prev) => ({ ...prev, ...data.labels }));
+          if (!cancelled) setLabels((prev) => ({ ...prev, ...fresh }));
         } catch {
-          break;
+          continue;
         }
       }
     })().finally(() => {

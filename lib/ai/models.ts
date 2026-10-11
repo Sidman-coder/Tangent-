@@ -82,7 +82,7 @@ export const AI_TASKS = {
    *  off to keep the pause short. */
   clarify: { feature: "chat", tier: "SMART", maxTokens: 700, thinking: "disabled" },
   /** Short calendar labels for long task titles (app/api/short-titles). */
-  shortTitles: { feature: "classify", tier: "FAST", maxTokens: 2000, temperature: 0 },
+  shortTitles: { feature: "classify", tier: "FAST", maxTokens: 3000, temperature: 0 },
   /** Applies the student's answers to a saved task (lib/ai/refine.ts). */
   refineTask: { feature: "chat", tier: "FAST", maxTokens: 600, temperature: 0 },
   /** Durable-fact extraction from a chat turn. */
