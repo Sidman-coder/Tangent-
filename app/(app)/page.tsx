@@ -150,8 +150,6 @@ export default function DashboardPage() {
     () => doable.filter((t) => t.date === today).sort((a, b) => a.time.localeCompare(b.time)),
     [doable, today]
   );
-  const trackableToday = todaysTasks.filter(tracksCompletion);
-  const completedToday = trackableToday.filter((t) => t.completed).length;
   // Today's list shows what the attention section doesn't, open work first.
   const dayline = useMemo(
     () =>
@@ -270,12 +268,7 @@ export default function DashboardPage() {
       <m.div variants={riseIn}>
         <PageHeader
           title={greeting || "Today"}
-          description={
-            <span className="today-date-line">
-              {dateLabel}
-              {trackableToday.length > 0 && <span>{completedToday} of {trackableToday.length} complete</span>}
-            </span>
-          }
+          description={<span className="today-date-line">{dateLabel}</span>}
         />
       </m.div>
 

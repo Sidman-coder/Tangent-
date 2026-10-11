@@ -185,9 +185,6 @@
   transform-origin: left center;
   transition: transform 0.5s cubic-bezier(0.23, 1, 0.32, 1);
 }
-.week-strip-day.is-heavy .week-strip-bar > span {
-  background: var(--secondary, var(--accent));
-}
 .week-strip-count {
   grid-area: count;
   font-size: 11.5px;

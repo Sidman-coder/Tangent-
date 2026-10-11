@@ -309,9 +309,11 @@ export default function AddFlow({
           <m.div
             key="dest"
             className="add-dest"
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto", transition: { type: "spring", visualDuration: 0.25, bounce: 0 } }}
-            exit={{ opacity: 0, height: 0, transition: { duration: 0.12 } }}
+            // Opacity only: animating height to "auto" stalled half-open when
+            // the tab was in the background, clipping the row.
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1, transition: { duration: 0.16 } }}
+            exit={{ opacity: 0, transition: { duration: 0.1 } }}
           >
             {hint ? (
               <p className="add-hint">

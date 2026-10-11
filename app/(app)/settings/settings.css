@@ -130,7 +130,7 @@
   font-weight: 500;
 }
 .settings-status-line.is-done {
-  color: var(--secondary, var(--accent));
+  color: var(--green);
 }
 
 /* Controls: one height (32px), capsules, past the global input reset. */
@@ -200,4 +200,11 @@
   .settings-page .settings-row .settings-input:is(input) {
     width: 100%;
   }
+}
+
+/* Past the global input reset (0,3,1). */
+.settings-page .knows-card .knows-add input:not([type="checkbox"]) {
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
 }
