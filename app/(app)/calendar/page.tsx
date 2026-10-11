@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
+import { createPortal } from "react-dom";
 import { m, useReducedMotion } from "motion/react";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { wallClockNow } from "@/lib/time";
@@ -130,6 +131,8 @@ export default function CalendarPage() {
   const [month, setMonth] = useState(now.getMonth());
   const [calIdx, setCalIdx] = useState(0);
   const [view, setView] = useState<CalView>("month");
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const [weekStart, setWeekStart] = useState(() => startOfWeek(now));
   const [agendaStart, setAgendaStart] = useState(() => new Date(now.getFullYear(), now.getMonth(), now.getDate()));
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
@@ -352,20 +355,10 @@ export default function CalendarPage() {
   const openAddAt = (ymd: string, time?: string) => { setAddModalDate(ymd); setAddModalTime(time); setShowAddModal(true); };
   const activePlan = planFilter ? getPlan(planFilter) : null;
 
-  return (
-    <>
-      <div className="calendar-page">
-        <section className="calendar-toolbar" aria-label="Calendar controls">
-          <div className="calendar-toolbar-primary">
-            <h1 className="cal-month-heading">
-              <span>{headingMonth}</span> <span className="cal-heading-year">{headingYear}</span>
-              {headingSpan && <span className="cal-heading-span">{headingSpan}</span>}
-            </h1>
-          </div>
-      </section>
-
-      {/* The island: every calendar control on one floating glass capsule
-          at the bottom centre, so the grid gets the whole page. */}
+  // The island: every calendar control on one floating glass capsule at the
+  // bottom centre, so the grid gets the whole page. Portalled to <body>: the
+  // page's entrance transform would otherwise make "fixed" relative to it.
+  const island = (
       <div className="cal-island lg lg-interactive" role="toolbar" aria-label="Calendar controls">
         <div className="cal-island-group">
               <div className="cal-view-switch" role="tablist" aria-label="Calendar view">
@@ -413,6 +406,20 @@ export default function CalendarPage() {
             ))}
           </div>
       </div>
+  );
+
+  return (
+    <>
+      {mounted && createPortal(island, document.body)}
+      <div className="calendar-page">
+        <section className="calendar-toolbar" aria-label="Calendar controls">
+          <div className="calendar-toolbar-primary">
+            <h1 className="cal-month-heading">
+              <span>{headingMonth}</span> <span className="cal-heading-year">{headingYear}</span>
+              {headingSpan && <span className="cal-heading-span">{headingSpan}</span>}
+            </h1>
+          </div>
+      </section>
 
       {activePlan && (
         <div className="plan-filter-banner" style={{ borderLeft: `3px solid ${activePlan.color}` }}>
