@@ -30,7 +30,7 @@ const SCHEMA = {
   additionalProperties: false,
 } as const;
 
-const SYSTEM = `You write calendar labels for a high school student's tasks. Each label must fit a narrow calendar cell, so it is 2 to 5 words and at most 32 characters, and still says exactly what the thing is.
+const SYSTEM = `You write calendar labels for a high school student's tasks. Each label must fit a narrow calendar cell, so it is 2 to 4 words and at most 22 characters, and still says exactly what the thing is.
 
 - Keep what identifies it: the subject, the kind of work (quiz, test, essay, lab, reading, practice), and numbers that matter (chapter, unit, lesson).
 - Drop course codes, section numbers that mean nothing alone (1.14a), teacher names, emojis, brackets, dates, times, and filler like "Assignment", "Submission", "Please complete".
@@ -38,9 +38,11 @@ const SYSTEM = `You write calendar labels for a high school student's tasks. Eac
 - Never invent details. Match the original language's meaning; translate other languages to English only if it makes the label clearer.
 
 Examples:
-"1.14a Les relations personnelles PBA Summative Assessment" → "French PBA: relationships"
+"1.14a Les relations personnelles PBA Summative Assessment" → "French PBA"
 "Envelope Quotes, Chapter 4 [English 10]" → "Envelope quotes ch. 4"
 "Test continuity across pen circuits" → "Test pen circuits"
+"Scene Study Reflection (AP Lit/Comp - 23.26 - Scenna - 7)" → "Scene study reflection"
+"Replace faulty tangent pen circuit board" → "Replace pen board"
 "Molarity POGIL [Super Chem 2026]" → "Molarity POGIL"
 "Hold inaugural team kickoff meeting" → "Team kickoff meeting"`;
 
@@ -68,7 +70,7 @@ export const POST = withUser(async (req: Request) => {
     const known = new Set(items.map((i) => i.id));
     for (const l of parsed.labels) {
       const label = l.label?.trim();
-      if (known.has(l.id) && label && label.length <= 40) labels[l.id] = label;
+      if (known.has(l.id) && label && label.length <= 30) labels[l.id] = label;
     }
   } catch {
     return NextResponse.json({ ok: false, error: "Couldn't read the labels" }, { status: 502 });

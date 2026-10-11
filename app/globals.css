@@ -8493,3 +8493,43 @@ h1, h2, h3, h4, h5, h6 {
   height: 1px;
   background: var(--line);
 }
+
+/* ── Apple pass, round two ────────────────────────────────────────────── */
+
+/* Sidebar selection: a soft fill, no outline — like Notes and Mail. */
+.rail-active-pill {
+  background: rgb(from var(--accent) r g b / 0.1);
+  box-shadow: none;
+}
+.rail-btn.is-active {
+  color: var(--text);
+}
+.rail-btn.is-active svg:not(.nav-orbit) {
+  color: var(--accent);
+}
+
+/* To-dos are circles, as in Reminders. */
+.ui-task-check {
+  border-radius: 999px;
+}
+
+/* Month titles are plain, like Calendar; the year stays quiet. */
+.calendar-toolbar .cal-month-heading,
+.calendar-page .calendar-toolbar .cal-month-heading {
+  color: var(--text);
+}
+
+/* Section labels: Apple's small grey caps, a touch quieter. */
+.today-section-label,
+.projects-finished h2,
+.project-steps h2 {
+  letter-spacing: 0.03em;
+}
+
+/* Primary buttons are capsules; their press is quick and small. */
+.ui-button--primary {
+  border-radius: 999px;
+}
+.ui-button:active:not(:disabled) {
+  transform: scale(0.97);
+}

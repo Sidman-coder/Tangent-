@@ -8,8 +8,8 @@ import { useEffect, useState } from "react";
 import { splitCourse } from "./course";
 import type { Task } from "./types";
 
-const KEY = "tangent-short-titles-v1";
-const SHORT_ENOUGH = 26;
+const KEY = "tangent-short-titles-v2";
+const SHORT_ENOUGH = 22;
 const MAX_CACHE = 1500;
 const BATCH = 30;
 

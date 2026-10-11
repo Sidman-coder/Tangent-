@@ -480,7 +480,8 @@
 .pchat {
   display: flex;
   flex-direction: column;
-  height: min(640px, calc(100dvh - var(--topbar-h) - 48px));
+  height: calc(100dvh - var(--topbar-h) - 120px);
+  min-height: 420px;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--r-lg);

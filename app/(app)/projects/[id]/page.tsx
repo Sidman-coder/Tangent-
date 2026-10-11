@@ -91,38 +91,39 @@ export default function ProjectPage() {
     <div className="project-page" style={{ "--project-color": plan.color } as React.CSSProperties}>
       <Link href="/projects" className="project-back"><ChevronLeft size={16} aria-hidden="true" /> Projects</Link>
 
-      <header className="project-head">
-        <input
-          className="project-title-input"
-          value={title}
-          aria-label="Project name"
-          onChange={(e) => setTitle(e.target.value)}
-          onBlur={() => void save({ title })}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-          }}
-        />
-        <textarea
-          className="project-goal-input"
-          value={goal}
-          rows={2}
-          placeholder="What's the goal? Tangent uses it for every step."
-          aria-label="Project goal"
-          onChange={(e) => setGoal(e.target.value)}
-          onBlur={() => void save({ description: goal })}
-        />
-        <div className="project-head-progress">
-          <div className="project-progress" aria-hidden="true">
-            <span style={{ width: `${pct}%` }} />
-          </div>
-          <span>
-            {done.length} of {steps.length} done
-          </span>
-        </div>
-      </header>
+
 
       <div className="project-layout">
         <div className="project-main">
+        <header className="project-head">
+          <input
+            className="project-title-input"
+            value={title}
+            aria-label="Project name"
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={() => void save({ title })}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            }}
+          />
+          <textarea
+            className="project-goal-input"
+            value={goal}
+            rows={2}
+            placeholder="What's the goal? Tangent uses it for every step."
+            aria-label="Project goal"
+            onChange={(e) => setGoal(e.target.value)}
+            onBlur={() => void save({ description: goal })}
+          />
+          <div className="project-head-progress">
+            <div className="project-progress" aria-hidden="true">
+              <span style={{ width: `${pct}%` }} />
+            </div>
+            <span>
+              {done.length} of {steps.length} done
+            </span>
+          </div>
+        </header>
 
       <section className="project-steps" aria-labelledby="project-next">
         <h2 id="project-next">{open.length > 0 ? "Up next" : "All done"}</h2>
