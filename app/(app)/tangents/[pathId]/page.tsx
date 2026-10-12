@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Trash2 } from "lucide-react";
+import { ArrowLeft, ListChecks, Orbit, Trash2 } from "lucide-react";
 import PathScene from "@/components/path/PathScene";
 import PathInspector from "@/components/path/PathInspector";
 import PathWorkForm from "@/components/path/PathWorkForm";
+import PathPlan from "@/components/path/PathPlan";
 import DeletePathDialog from "@/components/tangents/DeletePathDialog";
 import type { Path, PathNode, PathNodeSchedule } from "@/lib/types";
 import { pathMeta } from "@/lib/path-format";
@@ -43,6 +45,8 @@ export default function PathDeepView() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [formParent, setFormParent] = useState<{ parentId: string | null } | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // Plan is the readable default; the circle map is a toggle.
+  const [view, setView] = useState<"plan" | "map">("plan");
   const [deleting, setDeleting] = useState(false);
 
   const fitRef = useRef<(() => void) | null>(null);
@@ -188,142 +192,166 @@ export default function PathDeepView() {
 
   if (loading) {
     return (
-      <div className="tangents-root is-centred">
-        <div className="path-skeleton" aria-hidden="true">
-          <span className="path-skeleton-ring" />
-          <span className="path-skeleton-ring is-outer" />
-        </div>
-        <p className="path-loading-note">Drawing this path…</p>
+      <div className="pplan-page tangents-light" aria-busy="true">
+        <p className="pplan-loading">Loading this path…</p>
       </div>
     );
   }
 
   if (!path) {
     return (
-      <div className="tangents-root is-centred">
-        <div className="tangents-empty">
-          <h2>That path isn&apos;t here</h2>
-          <p>It may have been removed, or the link is from another workspace.</p>
-          <Link href="/tangents" className="path-btn is-primary">
-            Back to your paths
-          </Link>
+      <div className="pplan-page tangents-light">
+        <div className="pplan-empty">
+          <strong>That path isn&apos;t here</strong>
+          <span>It may have been removed, or the link is from another account.</span>
+          <Link href="/tangents" className="pplan-back">Back to Tangents</Link>
         </div>
       </div>
     );
   }
 
-  const hasWork = nodes.some((n) => n.parentId === null && n.status !== "dismissed");
+
+  const alive = nodes.filter((n) => n.status !== "dismissed");
+  const counts2 = {
+    doing: alive.filter((n) => n.parentId === null).length,
+    kept: alive.filter((n) => n.kind === "idea" && n.status === "accepted").length,
+    done: alive.filter((n) => n.kind === "idea" && n.status === "done").length,
+  };
 
   return (
-    <div className="tangents-root path-page">
-      <header className="tangents-bar is-over">
-        <Link href="/tangents" className="tangents-back" aria-label="All paths">
-          <ArrowLeft size={16} aria-hidden="true" />
-          <span className="tangents-back-label">All paths</span>
+    <div className="pplan-page tangents-light">
+      <header className="pplan-header">
+        <Link href="/tangents" className="pplan-back">
+          <ArrowLeft size={15} aria-hidden="true" /> Tangents
         </Link>
-        {/* The deadline sits under the title: on the right it collided with
-            the inspector, and repeating the title there said nothing. */}
-        <div className="tangents-bar-title">
-          <h1>{path.title}</h1>
-          {pathMeta(path) && <span className="tangents-bar-meta">{pathMeta(path)}</span>}
+        <div className="pplan-title-row">
+          <div>
+            <h1>{path.title}</h1>
+            <p className="pplan-meta">
+              {[path.target && path.target !== path.title ? path.target : null, pathMeta(path)].filter(Boolean).join(" · ")}
+            </p>
+          </div>
+          <div className="pplan-header-actions">
+            <div className="pplan-seg" role="radiogroup" aria-label="View">
+              <button type="button" role="radio" aria-checked={view === "plan"} className={view === "plan" ? "is-on" : ""} onClick={() => setView("plan")}>
+                <ListChecks size={14} aria-hidden="true" /> Plan
+              </button>
+              <button type="button" role="radio" aria-checked={view === "map"} className={view === "map" ? "is-on" : ""} onClick={() => setView("map")}>
+                <Orbit size={14} aria-hidden="true" /> Map
+              </button>
+            </div>
+            <button type="button" className="pplan-icon" onClick={() => setConfirmingDelete(true)} aria-label="Delete this path" title="Delete this path">
+              <Trash2 size={15} aria-hidden="true" />
+            </button>
+          </div>
         </div>
-        {/* Deleting a path belongs where you can see what you are deleting, not
-            on the field of discs. Fills the bar's empty third column. */}
-        <button
-          type="button"
-          className="path-chip is-danger"
-          onClick={() => setConfirmingDelete(true)}
-          aria-label="Delete this path"
-          title="Delete this path"
-        >
-          <Trash2 size={15} aria-hidden="true" />
-        </button>
+        <div className="pplan-progress" aria-label="Progress">
+          <span><strong>{counts2.doing}</strong> you already do</span>
+          <span><strong>{counts2.kept}</strong> kept</span>
+          <span><strong>{counts2.done}</strong> done</span>
+        </div>
       </header>
 
-      <PathScene
-        path={path}
-        nodes={nodes}
-        focusedId={focusedId}
-        expanded={expanded}
-        onFocus={setFocusedId}
-        onToggleExpand={toggleExpand}
-        onAddWork={(parentId) => setFormParent({ parentId })}
-        onTidy={tidy}
-        registerFit={registerFit}
-      />
+      {view === "plan" ? (
+        <PathPlan
+          path={path}
+          nodes={nodes}
+          scheduled={scheduled}
+          busyId={busyId}
+          justKept={justKept}
+          onGenerate={(id, answers) => void generate(id, answers)}
+          onStatus={async (id, status) => {
+            const data = await run({ action: "setStatus", id, status }, id);
+            setJustKept(data && status === "accepted" ? id : null);
+          }}
+          onAddWork={(parentId) => setFormParent({ parentId })}
+          onRemove={(id) => void run({ action: "removeNode", id }, id)}
+          onScheduleChanged={load}
+        />
+      ) : (
+        <div className="tangents-root path-page pplan-map">
+          <PathScene
+            path={path}
+            nodes={nodes}
+            focusedId={focusedId}
+            expanded={expanded}
+            onFocus={setFocusedId}
+            onToggleExpand={toggleExpand}
+            onAddWork={(parentId) => setFormParent({ parentId })}
+            onTidy={tidy}
+            registerFit={registerFit}
+          />
+          <PathInspector
+            path={path}
+            node={focused}
+            ancestry={ancestry}
+            childCount={childCount}
+            busy={busyId === focusedId}
+            schedule={focused ? scheduled[focused.id] : undefined}
+            justKept={!!focused && justKept === focused.id}
+            onScheduleChanged={load}
+            onClose={() => setFocusedId(null)}
+            onGenerate={(id, answers) => void generate(id, answers)}
+            onStatus={async (id, status) => {
+              const data = await run({ action: "setStatus", id, status }, id);
+              // Keeping a branch is its own step; the time picker follows it.
+              setJustKept(data && status === "accepted" ? id : null);
+            }}
+            onAddWork={(parentId) => setFormParent({ parentId })}
+            onRemove={(id) => {
+              setFocusedId(null);
+              void run({ action: "removeNode", id }, id);
+            }}
+            onSelectAncestor={setFocusedId}
+          />
 
-      {!hasWork && (
-        <div className="path-empty">
-          <h2>Put one real thing on the circle</h2>
-          <p>
-            Something you already do toward this. Tangent branches off what is already there, so it needs one
-            thing to branch from.
-          </p>
-          <button type="button" className="path-btn is-primary" onClick={() => setFormParent({ parentId: null })}>
-            Add the first
-          </button>
         </div>
       )}
 
-      <PathInspector
-        path={path}
-        node={focused}
-        ancestry={ancestry}
-        childCount={childCount}
-        busy={busyId === focusedId}
-        schedule={focused ? scheduled[focused.id] : undefined}
-        justKept={!!focused && justKept === focused.id}
-        onScheduleChanged={load}
-        onClose={() => setFocusedId(null)}
-        onGenerate={(id, answers) => void generate(id, answers)}
-        onStatus={async (id, status) => {
-          const data = await run({ action: "setStatus", id, status }, id);
-          // Keeping a branch is its own step; the time picker follows it.
-          setJustKept(data && status === "accepted" ? id : null);
-        }}
-        onAddWork={(parentId) => setFormParent({ parentId })}
-        onRemove={(id) => {
-          setFocusedId(null);
-          void run({ action: "removeNode", id }, id);
-        }}
-        onSelectAncestor={setFocusedId}
-      />
-
-      {formParent && (
-        <PathWorkForm
-          parentId={formParent.parentId}
-          onCancel={() => setFormParent(null)}
-          onSubmit={async (payload) => {
-            const data = await run({
-              action: "addNode",
-              ...payload,
-              pathId: path.id,
-              parentId: formParent.parentId,
-            });
-            if (data) {
-              setFormParent(null);
-              if (formParent.parentId) setExpanded((prev) => new Set(prev).add(formParent.parentId!));
-            }
-            return Boolean(data);
-          }}
-        />
-      )}
-
-      {confirmingDelete && (
-        <DeletePathDialog
-          path={path}
-          counts={counts}
-          busy={deleting}
-          onCancel={() => setConfirmingDelete(false)}
-          onConfirm={() => void remove()}
-        />
-      )}
-
-      {error && (
-        <p className="path-error is-floating" role="status">
-          {error}
-        </p>
-      )}
+      {/* Dialogs and messages sit above the page, attached to the body: the
+          page's entrance transform would otherwise trap fixed elements. */}
+      {typeof document !== "undefined" &&
+        createPortal(
+          <div className="tangents-light tangents-layer">
+            {formParent && (
+              <>
+                <div className="tangents-layer-scrim" onClick={() => setFormParent(null)} aria-hidden="true" />
+                <PathWorkForm
+                  parentId={formParent.parentId}
+                  onCancel={() => setFormParent(null)}
+                  onSubmit={async (payload) => {
+                    const data = await run({
+                      action: "addNode",
+                      ...payload,
+                      pathId: path.id,
+                      parentId: formParent.parentId,
+                    });
+                    if (data) {
+                      setFormParent(null);
+                      if (formParent.parentId) setExpanded((prev) => new Set(prev).add(formParent.parentId!));
+                    }
+                    return Boolean(data);
+                  }}
+                />
+              </>
+            )}
+            {confirmingDelete && (
+              <DeletePathDialog
+                path={path}
+                counts={counts}
+                busy={deleting}
+                onCancel={() => setConfirmingDelete(false)}
+                onConfirm={() => void remove()}
+              />
+            )}
+            {error && (
+              <p className="path-error is-floating" role="status">
+                {error}
+              </p>
+            )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

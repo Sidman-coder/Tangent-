@@ -1,17 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Plus } from "lucide-react";
-import PathGallery from "@/components/tangents/PathGallery";
-import type { PathWithCounts } from "@/components/tangents/PathGallery";
+import { ArrowRight, Plus } from "lucide-react";
+import Button from "@/components/ui/Button";
+import PageHeader from "@/components/ui/PageHeader";
+import type { Path } from "@/lib/types";
+import { formatDeadline } from "@/lib/path-format";
+import { prefetchPath } from "@/lib/path-prefetch";
 import NewPathDialog from "@/components/tangents/NewPathDialog";
 import type { PathDraft } from "@/components/tangents/NewPathDialog";
 import { useAppState } from "@/components/AppStateProvider";
 import { takeNewPathTitle } from "@/lib/path-handoff";
 import { initialPathKind, pathsEmptyCopy, prefsOf } from "@/lib/personalize";
 import "./tangents.css";
+
+type PathWithCounts = Path & {
+  counts: { work: number; ideas: number; kept: number; done: number };
+};
 
 export default function TangentsPage() {
   const router = useRouter();
@@ -85,57 +93,109 @@ export default function TangentsPage() {
     }
   };
 
+  const empty = pathsEmptyCopy(prefs);
+
   return (
-    <div className="tangents-root is-gallery">
-      <header className="tangents-bar">
-        <Link href="/" className="tangents-back" aria-label="Back to Tangent">
-          <ArrowLeft size={16} aria-hidden="true" />
-          <span className="tangents-back-label">Back to Tangent</span>
-        </Link>
-        <h1>Tangents</h1>
-        <button type="button" className="path-chip" onClick={() => setCreating(true)}>
-          <Plus size={15} aria-hidden="true" />
-          New path
-        </button>
-      </header>
+    <div className="tangents-gallery tangents-light">
+      <PageHeader
+        title="Tangents"
+        description="Where you want to be in a year or more. Tangent maps the moves from what you already do."
+        actions={
+          paths && paths.length > 0 ? (
+            <Button variant="primary" onClick={() => setCreating(true)}>
+              <Plus size={16} aria-hidden="true" /> New path
+            </Button>
+          ) : undefined
+        }
+      />
 
-      <div className="tangents-space">
-        {paths === null ? (
-          <div className="path-skeleton" aria-label="Loading your paths">
-            <span className="path-skeleton-ring" />
-            <span className="path-skeleton-ring is-outer" />
-          </div>
-        ) : (
-          <PathGallery
-            paths={paths}
-            onNew={() => setCreating(true)}
-            empty={pathsEmptyCopy(prefs)}
-            suggestions={suggestions}
-            onStartFrom={(title) => {
-              setSeedTitle(title);
-              setCreating(true);
-            }}
-          />
+      {paths === null ? (
+        <p className="pplan-loading">Loading your paths…</p>
+      ) : paths.length === 0 ? (
+        <section className="pplan-empty is-large">
+          <strong>{empty.title}</strong>
+          <span>{empty.body}</span>
+          {suggestions.length > 0 && (
+            <div className="tg-paths-suggest">
+              <span>From what Tangent knows about you</span>
+              <div>
+                {suggestions.map((title) => (
+                  <button
+                    key={title}
+                    type="button"
+                    className="tg-chip"
+                    onClick={() => {
+                      setSeedTitle(title);
+                      setCreating(true);
+                    }}
+                  >
+                    {title}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <Button variant="primary" onClick={() => setCreating(true)}>
+            <Plus size={16} aria-hidden="true" /> {empty.cta}
+          </Button>
+        </section>
+      ) : (
+        <div className="tg-paths">
+          {paths.map((p) => {
+            const when = formatDeadline(p.deadline);
+            const moves = p.counts.kept + p.counts.done;
+            const progress = p.counts.ideas ? Math.min(1, (p.counts.kept + p.counts.done * 2) / (p.counts.ideas * 2)) : 0;
+            return (
+              <Link
+                key={p.id}
+                href={`/tangents/${p.id}`}
+                className="tg-path-card"
+                onMouseEnter={() => void prefetchPath(p.id)}
+                onFocus={() => void prefetchPath(p.id)}
+              >
+                <div className="tg-path-top">
+                  <h2>{p.title}</h2>
+                  {when && <span className="tg-path-when">{when}</span>}
+                </div>
+                {p.target && p.target !== p.title && <p className="tg-path-target">{p.target}</p>}
+                <div className="tg-path-bar" aria-hidden="true">
+                  <span style={{ transform: `scaleX(${progress})` }} />
+                </div>
+                <div className="tg-path-foot">
+                  <span>
+                    {p.counts.work} you already do · {moves} move{moves === 1 ? "" : "s"} kept
+                    {p.counts.done ? ` · ${p.counts.done} done` : ""}
+                  </span>
+                  <ArrowRight size={16} aria-hidden="true" />
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
+      {typeof document !== "undefined" &&
+        createPortal(
+          <div className="tangents-light tangents-layer">
+            {error && (
+              <p className="path-error is-floating" role="status">
+                {error}
+              </p>
+            )}
+            {creating && (
+              <NewPathDialog
+                onCancel={() => {
+                  setCreating(false);
+                  setSeedTitle(null);
+                }}
+                onCreate={create}
+                initialTitle={seedTitle}
+                initialKind={initialPathKind(prefs)}
+              />
+            )}
+          </div>,
+          document.body
         )}
-      </div>
-
-      {error && (
-        <p className="path-error is-floating" role="status">
-          {error}
-        </p>
-      )}
-
-      {creating && (
-        <NewPathDialog
-          onCancel={() => {
-            setCreating(false);
-            setSeedTitle(null);
-          }}
-          onCreate={create}
-          initialTitle={seedTitle}
-          initialKind={initialPathKind(prefs)}
-        />
-      )}
     </div>
   );
 }

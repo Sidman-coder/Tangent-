@@ -2200,3 +2200,619 @@
     font-size: 12.5px;
   }
 }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Tangents, light and inside the app (2026-10-12). The gallery and a path's
+   plan sit on the app's own page, cards and glass, like every other page.
+   The circle map keeps its night sky, but as a card you switch to (Plan |
+   Map), not a takeover. Dialogs render in a body-level light layer.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/* Path tokens, re-pointed at the app's palette (the map card re-darkens via
+   .tangents-root, which sets its own values). */
+.tangents-light {
+  --path-ink: var(--text);
+  --path-ink-2: var(--text-2);
+  --path-edge: color-mix(in srgb, var(--line) 80%, transparent);
+  --path-edge-strong: var(--line-strong);
+  --path-work: var(--accent);
+  --path-goal: var(--accent);
+  --path-idea: #1f7a74;
+  --path-idea-soft: rgb(31 122 116 / 0.12);
+  --path-panel: rgb(255 255 255 / 0.92);
+  --path-danger: var(--red);
+  --path-danger-soft: rgb(from var(--red) r g b / 0.1);
+  --tg-glass-edge: var(--lg-edge);
+  --tg-glass-rim: var(--lg-rim-top);
+  color: var(--text);
+}
+
+/* ─── Gallery ─────────────────────────────────────────────────────────── */
+.tg-paths {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+.tg-path-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  border-radius: 22px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(26 23 32 / 0.04), 0 12px 32px -20px rgb(26 23 32 / 0.16);
+  color: var(--text);
+  text-decoration: none;
+  transition: transform 0.2s cubic-bezier(0.23, 1, 0.32, 1), box-shadow 0.2s ease;
+}
+.tg-path-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 1px 2px rgb(26 23 32 / 0.04), 0 18px 40px -20px rgb(26 23 32 / 0.22);
+}
+.tg-path-card:active {
+  transform: scale(0.99);
+}
+.tg-path-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.tg-path-top h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.tg-path-when {
+  flex: none;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgb(31 122 116 / 0.1);
+  color: #1f7a74;
+  font-size: 12px;
+  font-weight: 600;
+}
+.tg-path-target {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 14px;
+}
+.tg-path-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: rgb(from var(--text) r g b / 0.07);
+  overflow: hidden;
+}
+.tg-path-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), #1f7a74);
+  transform-origin: left center;
+}
+.tg-path-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--text-3);
+  font-size: 13px;
+}
+.tg-paths-suggest {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tg-paths-suggest > span {
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+.tg-paths-suggest > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ─── A path's page ───────────────────────────────────────────────────── */
+.pplan-page {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.pplan-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.pplan-back:hover {
+  color: var(--accent);
+}
+.pplan-header {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pplan-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+}
+.pplan-title-row h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(30px, 3.4vw, 40px);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+}
+.pplan-meta {
+  margin: 6px 0 0;
+  color: var(--text-2);
+  font-size: 14px;
+}
+.pplan-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pplan-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--lg-edge);
+  border-radius: 999px;
+  background: var(--glass-catch), var(--lg-fill-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 var(--lg-rim-top);
+}
+.pplan-seg button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pplan-seg button.is-on {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgb(28 26 38 / 0.12), inset 0 1px 0 var(--lg-rim-top);
+}
+body :is(button).pplan-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--lg-edge);
+  border-radius: 999px;
+  background: var(--glass-catch), var(--lg-fill-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  color: var(--text-2);
+  cursor: pointer;
+}
+body :is(button).pplan-icon:hover {
+  color: var(--red);
+}
+.pplan-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pplan-progress span {
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgb(from var(--text) r g b / 0.05);
+  color: var(--text-2);
+  font-size: 13px;
+}
+.pplan-progress strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.pplan {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 920px;
+}
+.pplan-next {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 18px 18px 22px;
+  border: 1px solid rgb(from var(--accent) r g b / 0.18);
+  border-radius: 22px;
+  background: linear-gradient(135deg, rgb(from var(--accent) r g b / 0.09), rgb(31 122 116 / 0.06));
+}
+.pplan-next > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+.pplan-label {
+  color: var(--accent);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.pplan-next strong {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+.pplan-next > div > span:last-child {
+  color: var(--text-2);
+  font-size: 13.5px;
+}
+.pplan-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+}
+.pplan-head h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.pplan-works {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.pplan-work {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px;
+  border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  border-radius: 22px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(26 23 32 / 0.04), 0 12px 32px -20px rgb(26 23 32 / 0.16);
+  scroll-margin: 120px;
+}
+.pplan-work-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.pplan-work-head h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+}
+.pplan-facts {
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+.pplan-confirm {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+.pplan-detail {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.pplan-detail.is-unknown {
+  color: var(--text-3);
+  font-style: italic;
+}
+.pplan-ideas {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pplan-ideas.is-nested {
+  margin-top: 10px;
+}
+.pplan-idea {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 16px;
+  background: rgb(from var(--text) r g b / 0.02);
+  scroll-margin: 120px;
+}
+.pplan-idea.is-suggested {
+  border-style: dashed;
+  border-color: rgb(31 122 116 / 0.35);
+  background: rgb(31 122 116 / 0.04);
+}
+.pplan-idea.is-accepted {
+  border-color: rgb(from var(--accent) r g b / 0.25);
+  background: rgb(from var(--accent) r g b / 0.04);
+}
+.pplan-idea.is-done {
+  opacity: 0.7;
+}
+.pplan-idea-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pplan-idea-head strong {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+}
+.pplan-branch {
+  color: var(--text-3);
+}
+.pplan-status {
+  flex: none;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.pplan-status.is-suggested {
+  background: rgb(31 122 116 / 0.1);
+  color: #1f7a74;
+}
+.pplan-status.is-accepted {
+  background: rgb(from var(--accent) r g b / 0.12);
+  color: var(--accent);
+}
+.pplan-status.is-done {
+  background: rgb(from var(--text) r g b / 0.07);
+  color: var(--text-2);
+}
+.pplan-idea-summary {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.pplan-idea-parts {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+.pplan-idea-parts > div {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  gap: 10px;
+}
+.pplan-idea-parts dt {
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding-top: 2px;
+}
+.pplan-idea-parts dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.pplan-idea-actions,
+.pplan-work-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pplan-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 22px;
+  border: 1px dashed color-mix(in srgb, var(--line) 90%, transparent);
+  border-radius: 22px;
+  background: rgb(255 255 255 / 0.5);
+}
+.pplan-empty strong {
+  font-size: 16px;
+  font-weight: 700;
+}
+.pplan-empty > span {
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.pplan-empty.is-large {
+  max-width: 640px;
+  padding: 28px;
+}
+.pplan-loading {
+  color: var(--text-3);
+  font-size: 14px;
+}
+
+/* The map: the night sky, as a card. */
+.pplan-page .pplan-map.tangents-root {
+  position: relative;
+  min-height: 0;
+  height: max(520px, calc(100dvh - 300px));
+  overflow: hidden;
+  border-radius: 22px;
+  box-shadow: 0 20px 50px -24px rgb(10 8 18 / 0.5);
+}
+.pplan-page .pplan-map .path-inspector {
+  top: 18px;
+  max-height: calc(100% - 36px);
+}
+
+/* The scheduler inside the light plan. */
+.pplan-schedule .path-inspector-part,
+.pplan-schedule .path-step {
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+}
+.pplan-schedule h3 {
+  margin: 0 0 6px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.pplan-schedule p,
+.pplan-schedule .path-step-hint {
+  color: var(--text-2);
+}
+.pplan-schedule .path-step-link {
+  color: var(--accent);
+}
+
+/* Buttons and chips used by the old dark pieces, in light glass. */
+.tangents-light :is(.path-btn, .path-step-chip, .tangents-intake-chip, .tangents-kind):not(.is-primary):not(.is-danger):not(.is-on) {
+  border: 1px solid var(--lg-edge);
+  background: var(--glass-catch), var(--lg-fill-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 var(--lg-rim-top), 0 6px 16px -10px var(--lg-shade);
+  color: var(--text);
+}
+.tangents-light :is(.path-btn.is-primary, .path-step-chip.is-on, .tangents-intake-chip.is-on, .tangents-kind.is-on) {
+  border: 1px solid rgb(255 255 255 / 0.38);
+  background: var(--glass-catch), rgb(from var(--accent) r g b / 0.78);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.6), 0 10px 24px -12px rgb(from var(--accent) r g b / 0.6);
+  color: #fff;
+}
+.tangents-light .path-btn.is-danger {
+  border: 1px solid rgb(255 255 255 / 0.32);
+  background: var(--glass-catch), rgb(from var(--red) r g b / 0.8);
+  color: #fff;
+}
+.tangents-light .path-btn.is-quiet:not(.is-primary):not(.is-danger) {
+  color: var(--text-2);
+}
+
+/* ─── The body-level layer: dialogs, the add-work form, messages ──────── */
+.tangents-layer {
+  position: relative;
+  z-index: 400;
+}
+.tangents-layer-scrim,
+.tangents-layer .tangents-intake-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  background: rgb(26 23 32 / 0.22);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+.tangents-layer .tangents-intake-scrim {
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+.tangents-layer :is(.tangents-intake, .tangents-confirm, .path-form) {
+  border: 1px solid var(--lg-edge);
+  border-radius: 24px;
+  background: var(--glass-thick, rgb(255 255 255 / 0.9));
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+  box-shadow: inset 0 1px 0 var(--lg-rim-top), 0 30px 70px -24px rgb(26 23 32 / 0.35);
+  color: var(--text);
+}
+.tangents-layer .path-form {
+  position: fixed;
+  z-index: 410;
+  left: 50%;
+  top: 50%;
+  bottom: auto;
+  width: min(480px, calc(100vw - 32px));
+  transform: translate(-50%, -50%);
+}
+.tangents-layer :is(.tangents-intake, .tangents-confirm, .path-form) :is(h2, h3, strong, label > span) {
+  color: var(--text);
+}
+.tangents-layer :is(.tangents-intake, .tangents-confirm, .path-form) p {
+  color: var(--text-2);
+}
+.tangents-layer.tangents-light .tangents-intake .tangents-intake-input:is(input, textarea),
+.tangents-layer.tangents-light .path-form label :is(input, select) {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgb(255 255 255 / 0.85);
+  color: var(--text);
+  box-shadow: none;
+}
+.tangents-layer.tangents-light .tangents-intake .tangents-intake-input:is(input, textarea)::placeholder,
+.tangents-layer.tangents-light .path-form label input::placeholder {
+  color: var(--text-3);
+}
+.tangents-layer :is(.tangents-intake-progress, .tangents-intake-step, .tangents-intake-known, .tangents-intake-skip) {
+  color: var(--text-3);
+}
+.tangents-layer .tangents-kind-icon {
+  color: var(--accent);
+}
+.tangents-layer .path-inspector-close {
+  color: var(--text-2);
+}
+.tangents-layer .path-error.is-floating {
+  position: fixed;
+  z-index: 420;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  padding: 10px 16px;
+  border: 1px solid rgb(from var(--red) r g b / 0.3);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.92);
+  color: var(--red);
+  box-shadow: 0 12px 30px -14px rgb(26 23 32 / 0.3);
+}
+
+@media (max-width: 720px) {
+  .pplan-next {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .pplan-idea-parts > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+  .pplan-page .pplan-map.tangents-root {
+    height: calc(100dvh - 260px);
+  }
+}

@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { AnimatePresence, m } from "motion/react";
 import { Check, Plus, Sparkles, Trash2, X } from "lucide-react";
 import type { Path, PathNode, PathNodeSchedule } from "@/lib/types";
 import { splitNodeDetail } from "@/lib/path-format";
 import PathStepScheduler from "./PathStepScheduler";
+import { AskFirstPanel, useAskFirst } from "./AskFirst";
 
 // The panel beside the drawing.
 //
@@ -41,55 +41,6 @@ const CATEGORY_LABEL: Record<string, string> = {
   project: "Project",
 };
 
-type ItemQuestion = { question: string; chips: string[] };
-
-/** Before drafting off an item, ask what Tangent would otherwise guess
- *  (/api/path-intake nodeQuestions). Nothing to ask: draft straight away. */
-function useAskFirst(nodeId: string | null, onGenerate: Props["onGenerate"]) {
-  const [phase, setPhase] = useState<"idle" | "checking" | "asking">("idle");
-  const [questions, setQuestions] = useState<ItemQuestion[]>([]);
-  const [answers, setAnswers] = useState<string[]>([]);
-
-  useEffect(() => {
-    setPhase("idle");
-    setQuestions([]);
-    setAnswers([]);
-  }, [nodeId]);
-
-  const start = async () => {
-    if (!nodeId) return;
-    setPhase("checking");
-    try {
-      const res = await fetch("/api/path-intake", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "nodeQuestions", nodeId }),
-      });
-      const data = (await res.json()) as { questions?: ItemQuestion[] };
-      const qs = data.questions ?? [];
-      if (qs.length === 0) {
-        setPhase("idle");
-        onGenerate(nodeId);
-        return;
-      }
-      setQuestions(qs);
-      setAnswers(qs.map(() => ""));
-      setPhase("asking");
-    } catch {
-      setPhase("idle");
-      onGenerate(nodeId);
-    }
-  };
-
-  const submit = (skip = false) => {
-    if (!nodeId) return;
-    const given = skip ? [] : questions.map((q, i) => ({ question: q.question, answer: answers[i].trim() })).filter((a) => a.answer);
-    setPhase("idle");
-    onGenerate(nodeId, given);
-  };
-
-  return { phase, questions, answers, setAnswers, start, submit };
-}
 
 export default function PathInspector({
   path,
@@ -197,49 +148,7 @@ export default function PathInspector({
             </dl>
           )}
 
-          {ask.phase === "asking" && (
-            <section className="path-ask" aria-label="What Tangent needs to know first">
-              <h3>Before I suggest anything about {node.title}</h3>
-              {ask.questions.map((q, i) => (
-                <div key={q.question} className="path-ask-q">
-                  <p>{q.question}</p>
-                  {q.chips.length > 0 && (
-                    <div className="path-ask-chips">
-                      {q.chips.map((c) => (
-                        <button
-                          key={c}
-                          type="button"
-                          className={`path-step-chip${ask.answers[i] === c ? " is-on" : ""}`}
-                          onClick={() => ask.setAnswers((a) => a.map((v, j) => (j === i ? c : v)))}
-                        >
-                          {c}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <input
-                    className="path-ask-input"
-                    value={q.chips.includes(ask.answers[i]) ? "" : ask.answers[i]}
-                    placeholder={q.chips.length ? "Or say it in your words" : "Tell Tangent"}
-                    aria-label={q.question}
-                    onChange={(e) => ask.setAnswers((a) => a.map((v, j) => (j === i ? e.target.value : v)))}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") ask.submit();
-                    }}
-                  />
-                </div>
-              ))}
-              <div className="path-ask-actions">
-                <button type="button" className="path-btn is-primary" onClick={() => ask.submit()} disabled={!ask.answers.some((a) => a.trim())}>
-                  <Sparkles size={15} aria-hidden="true" />
-                  Suggest moves
-                </button>
-                <button type="button" className="path-btn is-quiet" onClick={() => ask.submit(true)}>
-                  Skip, just draft
-                </button>
-              </div>
-            </section>
-          )}
+          <AskFirstPanel ask={ask} title={node.title} />
 
           <div className="path-inspector-actions">
             {node.kind === "idea" && node.status === "suggested" && (

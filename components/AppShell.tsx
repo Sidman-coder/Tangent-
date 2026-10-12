@@ -101,29 +101,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const openListening = () => window.dispatchEvent(new CustomEvent("tangent:open-palette", { detail: { listen: true } }));
 
-  // Tangents takes over the window. Returning children bare rather than hiding
-  // the chrome with CSS keeps the rail and topbar out of the tree entirely, so
-  // nothing in them can catch a pointer or a tab stop over the canvas.
-  if (pathname.startsWith("/tangents")) {
-    return (
-      <>
-        {/* The dark is there from the first frame, so the fade below goes
-            dark-to-scene instead of passing through grey over the light app. */}
-        <div className="tangents-backdrop" aria-hidden="true" />
-        {/* Opacity only: a lift or blur here would move the goal card off the
-            spot the field's portal delivered it to. */}
-        <m.div
-          key={pathname}
-          className="tangents-route"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1, transition: { duration: 0.22 } }}
-        >
-          {children}
-        </m.div>
-      </>
-    );
-  }
-
   return (
     <div className="shell">
       <a href="#main-content" className="skip-link">Skip to main content</a>
