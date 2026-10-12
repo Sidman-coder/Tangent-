@@ -11,6 +11,7 @@ import { QUESTIONS_EVENT } from "@/lib/questions-client"
 import { claimPopups, getInAppPopupsEnabled, planToasts, popupCandidates, type Toast } from "@/lib/notification-popups"
 import NotificationToasts from "@/components/NotificationToasts"
 import { humanizeTimestamps } from "@/lib/humanize"
+import { collapseDuplicates } from "@/lib/notification-dedupe"
 
 type NotificationBellProps = {
   open?: boolean
@@ -45,9 +46,11 @@ export default function NotificationBell({ open: openProp, onOpenChange, placeme
     try {
       const r = await fetch("/api/notifications")
       const data = await r.json()
-      const list: Notification[] = data.notifications || []
+      const raw: Notification[] = data.notifications || []
+      // One per reminder: the reminder job can repeat itself (lib/notification-dedupe.ts).
+      const list = collapseDuplicates(raw)
       setNotifications(list)
-      setUnreadCount(data.unreadCount || 0)
+      setUnreadCount(list.filter(n => !n.read).length)
       // Desktop notifications piggyback on this same poll — no extra fetch.
       // See lib/desktop-notifications.ts for the opt-in + anti-spam rules.
       notifyNewDesktopNotifications(list)
@@ -130,11 +133,13 @@ export default function NotificationBell({ open: openProp, onOpenChange, placeme
   }, [open, setOpen])
 
   const handleDismiss = async (id: string) => {
-    await fetch("/api/notifications", {
+    // Its hidden copies go with it, so an older twin doesn't take its place.
+    const twins = (notifications.find(n => n.id === id) as (Notification & { duplicateIds?: string[] }) | undefined)?.duplicateIds ?? []
+    await Promise.all([id, ...twins].map(one => fetch("/api/notifications", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "dismiss", id })
-    })
+      body: JSON.stringify({ action: "dismiss", id: one })
+    })))
     fetchNotifications()
   }
 
