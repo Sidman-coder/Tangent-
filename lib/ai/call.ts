@@ -1,6 +1,6 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
-import { AI_TASKS, estimateCostUsd, modelParams, type AiTask, type TaskConfig, type Feature, type Tier, type UsageTokens } from "@/lib/ai/models";
+import { AI_TASKS, FALLBACK_MODELS, estimateCostUsd, modelParams, type AiTask, type TaskConfig, type Feature, type Tier, type UsageTokens } from "@/lib/ai/models";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { perfClaude } from "@/lib/perf";
 import { isOwnerEmail } from "@/lib/auth/access";
@@ -159,7 +159,34 @@ function currentContext(): RequestContext | null {
 
 type Prepared =
   | { blocked: ClaudeResult }
-  | { blocked?: undefined; cfg: TaskConfig; userId: string | null; route?: string; model: string; body: Anthropic.MessageCreateParamsNonStreaming };
+  | { blocked?: undefined; cfg: TaskConfig; userId: string | null; route?: string; tier: Tier; model: string; body: Anthropic.MessageCreateParamsNonStreaming };
+
+type Ready = Exclude<Prepared, { blocked: ClaudeResult }>;
+
+/** Request body for `task` on one model. Cloned: cache rules depend on the
+ *  model, and callers reuse requests across models (FAST → SMART escalation,
+ *  the not-found fallback). */
+function buildBody(task: AiTask, request: ClaudeRequest, opts: CallOptions, tier: Tier, model?: string): { model: string; body: Anthropic.MessageCreateParamsNonStreaming } {
+  const params = modelParams(task, { tier, model, format: opts.format as Record<string, unknown> | undefined });
+  const { max_tokens, ...rest } = request;
+  const body = structuredClone({ ...rest, ...params, max_tokens: max_tokens ?? params.max_tokens }) as Anthropic.MessageCreateParamsNonStreaming;
+  const cache = enforceCacheRules(body as Parameters<typeof enforceCacheRules>[0], params.model);
+  if (cache.dropped > 0 && process.env.NODE_ENV !== "production") {
+    console.log(`[ai] ${task}: ${cache.dropped} cache breakpoint(s) below ${params.model}'s minimum, not sent`);
+  }
+  return { model: params.model, body };
+}
+
+/** A 404 from the Messages API means the model id isn't available to this key
+ *  (new model not rolled out, or retired). Retry once on the tier's previous
+ *  model rather than failing the student's request. */
+function notFoundFallback(task: AiTask, request: ClaudeRequest, opts: CallOptions, p: Ready, e: unknown): Ready | null {
+  if (!(e instanceof Anthropic.APIError) || e.status !== 404) return null;
+  const model = FALLBACK_MODELS[p.tier];
+  if (model === p.model) return null;
+  console.warn(`[ai] ${p.model} not found; ${task} retried once on ${model}`);
+  return { ...p, ...buildBody(task, request, opts, p.tier, model) };
+}
 
 /** Budget check and request body shared by callClaude and streamClaude. */
 async function prepare(task: AiTask, request: ClaudeRequest, opts: CallOptions): Promise<Prepared> {
@@ -181,19 +208,10 @@ async function prepare(task: AiTask, request: ClaudeRequest, opts: CallOptions):
     route = "budget:fast";
   }
 
-  const params = modelParams(task, { tier, format: opts.format as Record<string, unknown> | undefined });
-  const { max_tokens, ...rest } = request;
-  // Cloned: cache rules depend on the model, and callers reuse requests
-  // across models (FAST → SMART escalation).
-  const body = structuredClone({ ...rest, ...params, max_tokens: max_tokens ?? params.max_tokens }) as Anthropic.MessageCreateParamsNonStreaming;
-  const cache = enforceCacheRules(body as Parameters<typeof enforceCacheRules>[0], params.model);
-  if (cache.dropped > 0 && process.env.NODE_ENV !== "production") {
-    console.log(`[ai] ${task}: ${cache.dropped} cache breakpoint(s) below ${params.model}'s minimum, not sent`);
-  }
-  return { cfg, userId, route, model: params.model, body };
+  return { cfg, userId, route, tier, ...buildBody(task, request, opts, tier) };
 }
 
-async function finish(task: AiTask, p: Exclude<Prepared, { blocked: ClaudeResult }>, opts: CallOptions, message: Anthropic.Message, durationMs: number): Promise<ClaudeResult> {
+async function finish(task: AiTask, p: Ready, opts: CallOptions, message: Anthropic.Message, durationMs: number): Promise<ClaudeResult> {
   perfClaude(
     opts.label ?? task,
     message.model,
@@ -218,14 +236,22 @@ function failure(task: AiTask, model: string, opts: CallOptions, e: unknown, sta
 /** Calls Claude for `task`. Never throws for API errors: returns ok:false with
  *  the HTTP status so callers keep their existing fallback paths. */
 export async function callClaude(task: AiTask, request: ClaudeRequest, opts: CallOptions = {}): Promise<ClaudeResult> {
-  const p = await prepare(task, request, opts);
-  if (p.blocked) return p.blocked;
+  const prepared = await prepare(task, request, opts);
+  if (prepared.blocked) return prepared.blocked;
+  let p: Ready = prepared;
   const start = Date.now();
   let message: Anthropic.Message;
   try {
     message = await anthropic().messages.create(p.body);
   } catch (e) {
-    return failure(task, p.model, opts, e, start);
+    const retry = notFoundFallback(task, request, opts, p, e);
+    if (!retry) return failure(task, p.model, opts, e, start);
+    p = retry;
+    try {
+      message = await anthropic().messages.create(p.body);
+    } catch (e2) {
+      return failure(task, p.model, opts, e2, start);
+    }
   }
   return finish(task, p, opts, message, Date.now() - start);
 }
@@ -238,13 +264,13 @@ export async function streamClaude(
   request: ClaudeRequest,
   opts: CallOptions & { onText: (textSoFar: string) => void }
 ): Promise<ClaudeResult> {
-  const p = await prepare(task, request, opts);
-  if (p.blocked) return p.blocked;
+  const prepared = await prepare(task, request, opts);
+  if (prepared.blocked) return prepared.blocked;
+  let p: Ready = prepared;
   const start = Date.now();
-  let message: Anthropic.Message;
-  try {
-    const stream = anthropic().messages.stream(p.body);
-    let text = "";
+  let text = "";
+  const run = (body: Anthropic.MessageCreateParamsNonStreaming) => {
+    const stream = anthropic().messages.stream(body);
     stream.on("text", (delta) => {
       text += delta;
       try {
@@ -254,9 +280,21 @@ export async function streamClaude(
         console.warn("[ai] onText callback failed:", e instanceof Error ? e.message : e);
       }
     });
-    message = await stream.finalMessage();
+    return stream.finalMessage();
+  };
+  let message: Anthropic.Message;
+  try {
+    message = await run(p.body);
   } catch (e) {
-    return failure(task, p.model, opts, e, start);
+    // Only retry before anything streamed; a 404 arrives before the first delta.
+    const retry = text ? null : notFoundFallback(task, request, opts, p, e);
+    if (!retry) return failure(task, p.model, opts, e, start);
+    p = retry;
+    try {
+      message = await run(p.body);
+    } catch (e2) {
+      return failure(task, p.model, opts, e2, start);
+    }
   }
   return finish(task, p, opts, message, Date.now() - start);
 }

@@ -1,0 +1,95 @@
+/* Master fix Phase 5: the calendar's task tooltip (components/calendar/TaskTip). */
+.task-tip {
+  position: fixed;
+  z-index: 1000;
+  max-width: 260px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.14);
+  color: var(--text);
+  font: 400 12px/1.4 var(--font-body);
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+  animation: task-tip-in 0.12s ease-out;
+}
+
+.task-tip.is-below {
+  transform: translate(-50%, 0);
+}
+
+.task-tip p {
+  margin: 0;
+}
+
+.task-tip-title {
+  font-weight: 600;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.task-tip-when {
+  margin-top: 2px;
+  color: var(--text-2);
+}
+
+.task-tip-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-top: 6px;
+  color: var(--text-2);
+}
+
+.task-tip-project {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.task-tip-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 999px;
+}
+
+.task-tip-cal {
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+@keyframes task-tip-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-tip {
+    animation: none;
+  }
+}
+
+/* Master fix Phase 5: "+N more" opens the day; the day panel's Remove chips. */
+.cal-event-more {
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cal-event-more:hover {
+    color: var(--accent);
+    text-decoration: underline;
+  }
+}
+
+.calendar-remove-pick {
+  margin: 6px 0 10px;
+}

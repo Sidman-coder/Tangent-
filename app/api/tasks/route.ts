@@ -49,6 +49,7 @@ export const POST = withUser(async (req: Request) => {
       updateAll?: boolean;
       patch?: Record<string, unknown>;
       notes?: string;
+      ids?: unknown;
     };
 
     console.log("[api/tasks] POST action:", body.action, "| title:", body.title, "| date:", body.date);
@@ -98,6 +99,24 @@ export const POST = withUser(async (req: Request) => {
       const record = before ? await recordAction("delete_task", `Removed "${before.title}"`, { removedTasks: [before] }) : null;
       console.log("[api/tasks] delete_task success:", body.id);
       return NextResponse.json({ ok: true, actionId: record?.id, state: await getAppState() });
+    }
+
+    // Master fix Phase 5: the calendar's Remove with several tasks picked.
+    // One undo record restores them all.
+    if (action === "delete_tasks") {
+      const ids: string[] = Array.isArray(body.ids) ? body.ids.filter((x: unknown): x is string => typeof x === "string") : [];
+      if (ids.length === 0) {
+        return NextResponse.json({ ok: false, error: "ids are required" }, { status: 400 });
+      }
+      const removedTasks = [];
+      for (const id of ids.slice(0, 100)) {
+        const before = await updateTask(id, {});
+        if (before && (await deleteTask(id))) removedTasks.push(before);
+      }
+      if (removedTasks.length === 0) return NextResponse.json({ ok: false, error: "Tasks not found" }, { status: 404 });
+      const label = removedTasks.length === 1 ? `Removed "${removedTasks[0].title}"` : `Removed ${removedTasks.length} tasks`;
+      const record = await recordAction("delete_task", label, { removedTasks });
+      return NextResponse.json({ ok: true, actionId: record?.id, removed: removedTasks.length, state: await getAppState() });
     }
 
     if (action === "toggle_task") {

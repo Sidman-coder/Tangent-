@@ -58,6 +58,15 @@ export const AddTaskOp = z
     plan_id: Id.optional(),
     /** A plan created by a create_plan op earlier in this ChangeSet. */
     plan_ref: Ref.optional(),
+    /** A recurring task (master fix B1): `date` is the first one, and the
+     *  store expands the series when the student confirms. */
+    repeat: z
+      .strictObject({
+        frequency: z.enum(["daily", "weekly", "monthly", "yearly"]),
+        daysOfWeek: z.array(z.int().min(0).max(6)).max(7).optional(),
+        endDate: Ymd.optional(),
+      })
+      .optional(),
   })
   .refine((o) => !(o.plan_id && o.plan_ref), "add_task takes plan_id or plan_ref, not both");
 
@@ -191,6 +200,20 @@ export type DescribeContext = {
 const DAY_MS = 86_400_000;
 const utcNoon = (ymd: string) => new Date(`${ymd}T12:00:00Z`);
 
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** "every Mon, Wed", "every weekday", "every day", "every month". */
+export function repeatLabel(r: { frequency: "daily" | "weekly" | "monthly" | "yearly"; daysOfWeek?: number[] }): string {
+  if (r.frequency === "daily") return "every day";
+  if (r.frequency === "monthly") return "every month";
+  if (r.frequency === "yearly") return "every year";
+  const days = Array.from(new Set(r.daysOfWeek ?? [])).sort((a, b) => a - b);
+  if (days.length === 0) return "every week";
+  if (days.join() === "1,2,3,4,5") return "every weekday";
+  if (days.length === 7) return "every day";
+  return `every ${days.map((d) => DAY_NAMES[d]).join(", ")}`;
+}
+
 function when(date: string, time: string | undefined, today?: string): string {
   const d = utcNoon(date);
   const weekday = d.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
@@ -230,6 +253,7 @@ export function describeChangeSet(cs: Pick<ChangeSet, "ops">, known: DescribeCon
         const plan = op.plan_ref ? newPlans.get(op.plan_ref) : op.plan_id ? planTitle(op.plan_id) : undefined;
         // Tasks of a plan created in this ChangeSet are obviously in it; say so only for existing plans.
         const into = op.plan_id && plan ? ` to '${plan}'` : "";
+        if (op.repeat) return `Add '${op.title}'${into} · ${repeatLabel(op.repeat)}, from ${when(op.date, op.time, known.today)}`;
         return `Add '${op.title}'${into} · ${when(op.date, op.time, known.today)}`;
       }
       case "update_task": {

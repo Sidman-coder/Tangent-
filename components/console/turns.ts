@@ -4,6 +4,7 @@ import type { ChangeSet } from "@/lib/pipeline/changeset";
 import type { PreviewPayload } from "@/lib/pipeline/draft";
 import type { UndoStatus } from "@/lib/undo-events";
 import type { PendingQuestion } from "@/lib/pending-question";
+import type { ClarifyQuestion } from "./ClarifyCard";
 
 export type Turn = {
   id: string;
@@ -31,7 +32,7 @@ export type Turn = {
   /** Pipeline V2: a drafted change waiting for Confirm (components/PreviewCard). */
   draft?: { changeSet: ChangeSet; preview: PreviewPayload };
   /** Tangent's questions before acting (lib/ai/clarify.ts); cleared once answered. */
-  questions?: { id: string; question: string; options: string[] }[] | null;
+  questions?: ClarifyQuestion[] | null;
   /** A question Tangent is waiting on ("Which one should I delete?"): sent
    *  back with the next message until it expires (lib/pending-question.ts). */
   pendingQuestion?: PendingQuestion | null;
@@ -43,7 +44,21 @@ export type Turn = {
   projectId?: string | null;
   /** One move the spacing brain suggests for an overloaded day. */
   suggestion?: { taskId: string; title: string; toDate: string; toTime: string; message: string } | null;
+  /** Master fix Phase 4: its preview card was confirmed this session. */
+  applied?: boolean;
+  /** The reply streamed in as it was written (no word-by-word reveal after). */
+  streamed?: boolean;
+  /** Thumbs on this reply (logged as chat_feedback). */
+  feedback?: "up" | "down";
+  /** The student pressed Stop: the reply is what had arrived. */
+  stopped?: boolean;
 };
+
+/** Master fix Phase 4: Retry / Edit may replace this turn. Never one that
+ *  changed (or may change) the calendar: it keeps its own Undo instead. */
+export function redoable(t: Turn): boolean {
+  return !t.actionId && !t.applied && !t.changeSetId && !t.pendingConfirm && !t.projectId && !t.draft && !t.later;
+}
 
 /** A plan being generated: its title as soon as the outline is back, then
  *  each session as it's written (slots fill in any order). Not saved yet. */
@@ -68,16 +83,47 @@ export function applyPlanProgress(view: PlanProgressView | null, line: Record<st
   return view;
 }
 
+/** Master fix B3: a question card saved with its message, so a reopened chat
+ *  shows the card again instead of bullet text. A hidden HTML comment at the
+ *  end (URI-encoded, so it can't close early); the text before it is what the
+ *  thread and the model see. */
+export type SavedCard = { questions: ClarifyQuestion[]; pendingQuestion?: PendingQuestion | null };
+
+const CARD_RE = /\n*<!-- tangent:card (\S*) -->\s*$/;
+
+export function withCard(text: string, card: SavedCard): string {
+  return `${text}\n\n<!-- tangent:card ${encodeURIComponent(JSON.stringify(card))} -->`;
+}
+
+/** The message's text and its saved card, if any (a bad marker is dropped). */
+export function splitCard(content: string): { text: string; card: SavedCard | null } {
+  const m = CARD_RE.exec(content);
+  if (!m) return { text: content, card: null };
+  const text = content.slice(0, m.index);
+  try {
+    const card = JSON.parse(decodeURIComponent(m[1])) as SavedCard;
+    const ok =
+      Array.isArray(card?.questions) &&
+      card.questions.every((q) => q && typeof q.id === "string" && typeof q.question === "string" && Array.isArray(q.options));
+    return { text, card: ok ? card : null };
+  } catch {
+    return { text, card: null };
+  }
+}
+
 /** "calendar" acts on the calendar; "plan" only talks a plan through. */
 export type ChatMode = "plan" | "calendar";
 
 /** Rebuilds chronological turns from a session's [user, assistant, …] messages.
  *  A confirm prompt followed by its outcome saves two assistant messages in a
  *  row; the later one wins, matching what the live console showed. A turn whose
- *  reply is still an open confirmation's prompt gets its Confirm/Cancel back. */
+ *  reply is still an open confirmation's prompt gets its Confirm/Cancel back.
+ *  The last turn's saved question card comes back live (its pending question
+ *  only until it expires); older cards were answered, so only their text shows. */
 export function turnsFromMessages(
   messages: { role: "user" | "assistant"; content: string; actionId?: string; changeSetId?: string }[],
-  openConfirms: { id: string; message: string }[] = []
+  openConfirms: { id: string; message: string }[] = [],
+  now: Date = new Date()
 ): Turn[] {
   const result: Turn[] = [];
   for (let i = 0; i < messages.length; i++) {
@@ -87,9 +133,10 @@ export function turnsFromMessages(
     // The saved change ids come back with the reply, so Undo survives a reload.
     let actionId: string | undefined;
     let changeSetId: string | undefined;
+    let card: SavedCard | null = null;
     while (messages[i + 1]?.role === "assistant") {
       const m = messages[++i];
-      response = m.content;
+      ({ text: response, card } = splitCard(m.content));
       actionId = m.actionId ?? actionId;
       changeSetId = m.changeSetId ?? changeSetId;
     }
@@ -101,6 +148,7 @@ export function turnsFromMessages(
       response,
       ...(actionId ? { actionId } : {}),
       ...(changeSetId ? { changeSetId } : {}),
+      ...(card && i === messages.length - 1 ? liveCard(card, now) : {}),
     });
   }
   // Newest turns claim the newest matching confirmation; each is used once.
@@ -112,6 +160,14 @@ export function turnsFromMessages(
     unclaimed.splice(k, 1);
   }
   return result;
+}
+
+function liveCard(card: SavedCard, now: Date): Pick<Turn, "questions" | "pendingQuestion"> {
+  const pending = card.pendingQuestion;
+  if (!pending) return { questions: card.questions };
+  // An expired "Which one?" can't be answered any more: show the text only.
+  if (!(Date.parse(pending.expiresAt) > now.getTime())) return {};
+  return { questions: card.questions, pendingQuestion: pending };
 }
 
 export function cleanMessage(text: string): string {

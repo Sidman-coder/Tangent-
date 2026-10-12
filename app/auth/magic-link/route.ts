@@ -1,36 +1,38 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { isEmailAllowed } from "@/lib/auth/access";
-import { safeNext } from "@/lib/auth/safe-next";
+import { NOT_INVITED, isEmailAllowed, normalizeEmail } from "@/lib/auth/access";
+import { authCallbackUrl, originHeaders, requestOrigin } from "@/lib/auth/redirect";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Sends a magic sign-in link — but only to invited emails, so strangers can't
-// create Supabase Auth users by typing an address. The response is identical
-// either way, so it doesn't reveal who is on the invite list.
+// Sends one email with both a 6-digit code and a sign-in link, only to invited
+// emails, so strangers can't create Supabase Auth users by typing an address.
+// Uninvited addresses are told so before anything is sent (the product asks for
+// that over hiding who is invited).
 export async function POST(request: Request) {
+  const started = Date.now();
   const body = (await request.json().catch(() => ({}))) as { email?: unknown; next?: unknown };
-  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  const email = typeof body.email === "string" ? normalizeEmail(body.email) : "";
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json({ ok: false, error: "Enter a valid email address." }, { status: 400 });
   }
-
-  if (isEmailAllowed(email)) {
-    const origin = new URL(request.url).origin;
-    const next = safeNext(typeof body.next === "string" ? body.next : null);
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}` },
-    });
-    if (error) {
-      console.warn("[auth/magic-link] send failed:", error.message);
-      const status = error.status === 429 ? 429 : 500;
-      const message = status === 429 ? "Too many requests — wait a minute and try again." : "Could not send the link. Try again.";
-      return NextResponse.json({ ok: false, error: message }, { status });
-    }
+  if (!isEmailAllowed(email)) {
+    return NextResponse.json({ ok: false, notInvited: true, error: NOT_INVITED }, { status: 403 });
   }
 
+  const redirectTo = authCallbackUrl(requestOrigin(originHeaders(request), request.url), typeof body.next === "string" ? body.next : null);
+  const supabase = createClient();
+  const sendStart = Date.now();
+  const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo } });
+  // Hop timing for sign-in slowness (no email or token is logged).
+  console.log(`[auth] magic-link: supabase send ${Date.now() - sendStart}ms, total ${Date.now() - started}ms`);
+  if (error) {
+    console.warn("[auth/magic-link] send failed:", error.message);
+    const status = error.status === 429 ? 429 : 500;
+    const message =
+      status === 429 ? "Too many sign-in emails. Wait a minute, then try again." : "Couldn't send the email. Try again in a moment.";
+    return NextResponse.json({ ok: false, error: message }, { status });
+  }
   return NextResponse.json({ ok: true });
 }

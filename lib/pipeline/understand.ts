@@ -20,6 +20,7 @@ import { AI_TASKS, modelFor } from "../ai/models";
 import { callClaude } from "../ai/call";
 import { buildStudentContext } from "../ai/student-context";
 import { clarifyQuestions } from "../ai/clarify";
+import { pickCandidates } from "../ai/pick-candidate";
 import { extractStructuredJson } from "../anthropic-json";
 import { calendarReply, planReply, type CalendarReplyOptions, type ChatMessage } from "../chat-reply";
 import type { PlanProgress } from "../voice-handler";
@@ -49,7 +50,9 @@ type Reply = Record<string, unknown>;
 export async function callIntentRouter(system: string, user: string): Promise<unknown | null> {
   const result = await callClaude(
     "intentRouter",
-    { system, messages: [{ role: "user", content: user }] },
+    // The system prompt is identical for every student: one 1-hour cache
+    // entry serves all of them (dropped on models whose minimum it's under).
+    { system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }], messages: [{ role: "user", content: user }] },
     { format: { type: "json_schema", schema: ROUTER_JSON_SCHEMA } }
   );
   if (!result.ok) {
@@ -82,8 +85,9 @@ async function fromDraft(res: Response): Promise<Reply> {
   return { message: String(data.response ?? ""), action: "preview", changeSet: data.changeSet, preview: data.preview, ok: true };
 }
 
-async function talk(messages: ChatMessage[]): Promise<Reply> {
-  const reply = stripModeSwitchLine(await planReply(messages, { followUp: true }));
+async function talk(messages: ChatMessage[], onProgress?: UnderstandOptions["onProgress"]): Promise<Reply> {
+  const onText = onProgress ? (text: string) => onProgress({ type: "reply_text", text: stripModeSwitchLine(text) }) : undefined;
+  const reply = stripModeSwitchLine(await planReply(messages, { followUp: true, onText }));
   return { message: reply, action: isCompleteSchedule(reply) ? "plan_reply" : "chat_reply", ok: true };
 }
 
@@ -160,7 +164,7 @@ export async function understandAndRoute(messages: ChatMessage[], userText: stri
     case "fast":
       return done(await voice());
     case "chat":
-      return done(await talk(messages));
+      return done(await talk(messages, opts.onProgress));
     case "tangent":
       // Juann's Tangents page; the client hands the words over and navigates.
       return done({ message: "That sounds like a long-range goal, so I'll open it in Tangents.", action: "route_tangent", ok: true });
@@ -177,7 +181,8 @@ export async function understandAndRoute(messages: ChatMessage[], userText: stri
   // fired, so this only adds the router's cases).
   if (u.needsQuestions && opts.clarify && (u.intent === "new_plan" || u.intent === "new_project")) {
     const picture = await buildStudentContext().catch(() => null);
-    const questions = picture ? await clarifyQuestions(userText, picture.text, { askCapacity: !picture.capacityKnown }).catch(() => []) : [];
+    const chat = messages.slice(0, -1).filter((m) => m.role === "user").map((m) => m.content).join("\n").slice(-2000);
+    const questions = picture ? await clarifyQuestions(userText, picture.text, { askCapacity: !picture.capacityKnown, chat }).catch(() => []) : [];
     if (questions.length > 0) return done({ ok: true, action: "clarify", message: "A few quick questions so this fits you.", questions });
   }
 
@@ -244,39 +249,45 @@ export async function routeAnswerReply(
       return null;
     case "cancel":
       return settle({ message: "Okay, I left it.", action: "cancelled", ok: true });
-    case "scope":
-    case "unclear": {
-      if (q.reasked >= 1) return settle({ message: "I still couldn't tell, so I left it.", action: "cancelled", ok: true });
-      const again: PendingQuestion = { ...q, reasked: 1 };
-      const options = q.candidates.map((c) => c.title).join(", ");
-      return asking(again, `Sorry, which one? ${options}.`);
-    }
     case "pick":
       break;
+    default: {
+      // Master fix B5: one look from the FAST model (it picks among these
+      // options or none), then the buttons stay up. Never a give-up.
+      if (q.reasked < 1) {
+        const ids = await pickCandidates(q.kind === "intent" ? "What did you mean?" : "Which plan should this go in?", text, q.candidates);
+        const hit = q.candidates.filter((c) => ids?.includes(c.id));
+        if (hit.length === 1) return routePick(hit[0]);
+      }
+      const again: PendingQuestion = { ...q, reasked: 1 };
+      return asking(again, q.reasked >= 1 ? "Pick one below, or tap Other… to type it." : "I couldn't tell which one you meant. Pick one below, or tap Other… to type it.");
+    }
   }
+  return routePick(answer.candidates[0]);
 
-  const pick = answer.candidates[0];
-  const voice = (extra: CalendarReplyOptions) =>
-    calendarReply(messages, q.request, opts.onProgress, { source: opts.source, ...extra });
+  async function routePick(pick: Candidate): Promise<Reply> {
+    const voice = (extra: CalendarReplyOptions) =>
+      calendarReply(messages, q.request, opts.onProgress, { source: opts.source, ...extra });
 
-  if (q.kind === "intent") {
-    logEvent("clarify_answered", { choice: pick.id });
-    // Talked through: the original request, not the tap, is what's discussed.
-    if (pick.id === "talk") return settle(await talk([...messages.slice(0, -1), { role: "user", content: q.request }]));
-    if (pick.id === "task") return settle(await voice({ forceTask: true }));
-    return settle(await voice({ project: { forcePlan: true } }));
+    if (q.kind === "intent") {
+      logEvent("clarify_answered", { choice: pick.id });
+      // Talked through: the original request, not the tap, is what's discussed.
+      if (pick.id === "talk") return settle(await talk([...messages.slice(0, -1), { role: "user", content: q.request }], opts.onProgress));
+      if (pick.id === "task") return settle(await voice({ forceTask: true }));
+      return settle(await voice({ project: { forcePlan: true } }));
+    }
+
+    // "Which plan?": the first candidate was the matcher's best guess.
+    const method = opts.tapped ? "tap" : "typed";
+    if (pick.id === NEW_PLAN_ID) {
+      logEvent("match_corrected", { method, to: "new" });
+      return settle(await voice({ project: { forcePlan: true } }));
+    }
+    if (pick.id === q.candidates[0]?.id) logEvent("match_confirmed", { method });
+    else logEvent("match_corrected", { method, to: "other" });
+    const reply = await addToPlan(pick.id, q.request, opts.source);
+    // Their words become the plan's nickname, so next time it's sure (B3).
+    if (q.mention && reply.action === "preview") await savePlanAlias(pick.id, q.mention);
+    return settle(reply, pick.id);
   }
-
-  // "Which plan?": the first candidate was the matcher's best guess.
-  const method = opts.tapped ? "tap" : "typed";
-  if (pick.id === NEW_PLAN_ID) {
-    logEvent("match_corrected", { method, to: "new" });
-    return settle(await voice({ project: { forcePlan: true } }));
-  }
-  if (pick.id === q.candidates[0]?.id) logEvent("match_confirmed", { method });
-  else logEvent("match_corrected", { method, to: "other" });
-  const reply = await addToPlan(pick.id, q.request, opts.source);
-  // Their words become the plan's nickname, so next time it's sure (B3).
-  if (q.mention && reply.action === "preview") await savePlanAlias(pick.id, q.mention);
-  return settle(reply, pick.id);
 }

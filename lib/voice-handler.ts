@@ -25,6 +25,7 @@ import { extractStructuredJson } from "@/lib/anthropic-json";
 import { generatePlan, isClearPlanRequest, planDates } from "@/lib/ai/plan";
 import { placeNewTask, spreadPlanDates } from "@/lib/spacing";
 import { buildStudentContext } from "@/lib/ai/student-context";
+import { briefAssumptions, briefNotes, readBrief } from "@/lib/ai/plan-brief";
 import { resolvePlanTitle } from "@/lib/plan-title";
 import { perfCount, perfSpan, withPerfTrace } from "@/lib/perf";
 import type Anthropic from "@anthropic-ai/sdk";
@@ -37,6 +38,8 @@ import { TANGENT_PIPELINE_V2 } from "@/lib/pipeline/flags";
 import { logEvent } from "@/lib/pipeline/events";
 import { respondWithDraft } from "@/lib/pipeline/drafting";
 import { planOps, taskOp } from "@/lib/pipeline/draft";
+import { closestQuestion } from "@/lib/closest-match";
+import { pickCandidates } from "@/lib/ai/pick-candidate";
 import { ASK_WHICH, bulkDeleteMessage, emptiedPlans, isFullClearRequest, parseDeleteScope, planBulkDelete, planRemovalNote, titleList } from "@/lib/delete-scope";
 import { asksForCalendars, makePendingQuestion, pendingQuestionCard, resolvePendingAnswer, taskCandidates, type PendingQuestion } from "@/lib/pending-question";
 import { cleanTitle, hasTimeWords } from "@/lib/quick-add";
@@ -175,8 +178,46 @@ async function askBack(text: string, response: string, pending?: PendingQuestion
 }
 
 /** "Which one?" for a delete: the candidates as buttons, held for ten minutes. */
-function askWhich(text: string, response: string, kind: PendingQuestion["kind"], candidates: { id: string; title: string }[]) {
-  return askBack(text, response, makePendingQuestion(kind, candidates, text, new Date()));
+function askWhich(
+  text: string,
+  response: string,
+  kind: PendingQuestion["kind"],
+  candidates: { id: string; title: string; hint?: string }[],
+  closest?: { mention: string; note?: string }
+) {
+  return askBack(text, response, makePendingQuestion(kind, candidates, text, new Date(), { closest }));
+}
+
+/** Master fix B5: an answer that still doesn't place. The FAST model gets one
+ *  look (its pick is only ever offered, never deleted); then the buttons stay
+ *  up with "Other…" to type. It never gives up on the student. */
+async function askAgain(text: string, q: PendingQuestion): Promise<NextResponse> {
+  const now = new Date();
+  if (q.reasked < 1 && q.candidates.length > 0) {
+    const ids = await pickCandidates(q.closest ? "Delete that?" : "Which one should I delete?", text, q.candidates);
+    const picked = q.candidates.filter((c) => ids?.includes(c.id));
+    if (picked.length === 1) {
+      const others = q.candidates.filter((c) => c.id !== picked[0].id);
+      const mention = text.replace(/\s+/g, " ").trim().slice(0, 40);
+      return askBack(
+        text,
+        closestQuestion(q.kind === "task" ? "task" : "plan", "", picked[0].title),
+        { ...makePendingQuestion(q.kind, [picked[0], ...others], q.request, now, { closest: { mention } }), reasked: 1 }
+      );
+    }
+    if (picked.length > 1) {
+      return askBack(text, `Did you mean these? Pick the ones to delete.`, { ...makePendingQuestion(q.kind, q.candidates, q.request, now), reasked: 1 });
+    }
+  }
+  if (q.candidates.length === 0) {
+    return askBack(text, `I couldn't tell which tasks you meant. Name them, like "my SAT tasks", or say Cancel.`, { ...q, reasked: 1 });
+  }
+  const fresh: PendingQuestion = { ...makePendingQuestion(q.kind, q.candidates, q.request, now), reasked: 1 };
+  return askBack(
+    text,
+    q.reasked >= 1 ? "Pick one below, or tap Other… to type the name." : "I couldn't tell which one you meant. Pick one below, or tap Other… to type it.",
+    fresh
+  );
 }
 
 /**
@@ -198,8 +239,18 @@ export async function handlePendingAnswer(text: string, q: PendingQuestion, opts
       await addVoiceLog({ text, response: "Cancelled, nothing deleted", action: "cancel", ok: true });
       return NextResponse.json({ ok: true, action: "cancelled", response: "Okay, I didn't delete anything." });
     case "unclear":
-      if (q.reasked >= 1) return askBack(text, "I still couldn't tell which one, so I didn't delete anything.");
-      return askBack(text, `Sorry, which one? ${titleList(q.candidates.map((c) => c.title))}${q.candidates.length > 1 ? `, or "all of these"` : ""}.`, { ...q, reasked: 1 });
+      return askAgain(text, q);
+    case "closest": {
+      const others = q.candidates.filter((c) => c.id !== answer.candidate.id);
+      const closest = answer.note ? { mention: answer.mention, note: answer.note } : { mention: answer.mention };
+      return askBack(
+        text,
+        closestQuestion(q.kind === "task" ? "task" : "plan", answer.mention, answer.candidate.title, answer.note),
+        { ...makePendingQuestion(q.kind, [answer.candidate, ...others], q.request, new Date(), { closest }), reasked: q.reasked }
+      );
+    }
+    case "another":
+      return askBack(text, "Which should I delete? Pick one or more.", { ...makePendingQuestion(q.kind, q.candidates, q.request, new Date()), reasked: q.reasked });
     case "scope": {
       const scoped = await handleBulkDelete({ ...meta, text: `delete ${answer.words}` });
       return scoped ?? askBack(text, `I couldn't find tasks matching "${answer.words}", so I didn't delete anything.`);
@@ -233,7 +284,7 @@ async function handleBulkDelete(meta: DeleteMeta): Promise<NextResponse | null> 
   if (!plan) return null;
   if (plan.kind === "ask") {
     return plan.candidates?.length
-      ? askWhich(meta.text, plan.message, "plan", plan.candidates)
+      ? askWhich(meta.text, plan.message, "plan", plan.candidates, plan.closest)
       : askWhich(meta.text, plan.message, "scope", []);
   }
   if (plan.kind === "empty") {
@@ -606,7 +657,9 @@ async function runFastRoute(route: FastRoute, text: string, today: string): Prom
 /** Progress while a plan is generated, for callers that stream it (/api/chat). */
 export type PlanProgress =
   | { type: "plan_outline"; title: string; taskCount: number }
-  | { type: "plan_task"; index: number; task: { title: string; date: string; time: string } };
+  | { type: "plan_task"; index: number; task: { title: string; date: string; time: string } }
+  /** Master fix Phase 4: a talked reply as it's written (the text so far). */
+  | { type: "reply_text"; text: string };
 
 export type VoiceOptions = {
   forcePlan?: boolean;
@@ -687,6 +740,35 @@ async function handleVoiceTextInner(
       const time = extractTime(text) ?? "";
       const calendarId = inferCalendarGroup(activityName);
 
+      // Master fix B1: a recurring task is a preview too.
+      if (drafting) {
+        return await respondWithDraft(
+          {
+            source: opts.source ?? "typed",
+            requestText: text,
+            summary: `Add recurring '${activityName}'`,
+            intent: "add_task",
+            ops: [
+              taskOp({
+                title: activityName,
+                date: local.date,
+                time,
+                kind: "commitment",
+                calendarId,
+                notes: `Recurring commitment: "${text}"`,
+                repeat: { frequency: "weekly", daysOfWeek },
+              }),
+            ],
+            assumptions: [
+              ...(extractedDays.length === 0 ? ["No days given, so weekdays (Mon–Fri)"] : []),
+              ...(!time ? ["No time given, so no set time"] : []),
+              "Starts today and repeats until you remove it",
+            ],
+          },
+          { text, today: local.date, route: "recurring" }
+        );
+      }
+
       const recurringTasks = await addRecurringTask(
         {
           title: activityName,
@@ -740,7 +822,25 @@ async function handleVoiceTextInner(
       routeAs(ROUTES.smart);
       console.log("[api/voice] Detected Gmail/Canvas/Calendar command — running agent tool loop");
       try {
-        const result = await runVoiceAgentToolLoop(withContext(text), text);
+        const result = await runVoiceAgentToolLoop(withContext(text), text, { draft: drafting });
+        // Master fix B1: with a preview, what the loop would have written is a draft.
+        if (result.drafted) {
+          const ops = result.drafted;
+          const sources = result.sourcesChecked?.filter((s) => s !== "your tasks") ?? [];
+          return await respondWithDraft(
+            {
+              source: opts.source ?? "typed",
+              requestText: text,
+              summary: ops.every((o) => o.op === "update_task")
+                ? `Move ${ops.length} task${ops.length === 1 ? "" : "s"} to another calendar`
+                : `Add ${ops.length} task${ops.length === 1 ? "" : "s"}`,
+              intent: ops.some((o) => o.op === "create_plan") ? "new_plan" : ops.every((o) => o.op === "update_task") ? "change_task" : "add_task",
+              ops,
+              assumptions: sources.length ? [`Based on what Tangent read in ${sources.join(" and ")}`] : [],
+            },
+            { text, today: local.date, route: "agent" }
+          );
+        }
         await addVoiceLog({ text, response: result.response, action: result.action, ok: true });
         console.log("[api/voice] Agent tool loop finished — action:", result.action);
         if (result.action === "confirm_required" && result.pending) {
@@ -896,7 +996,13 @@ async function handleVoiceTextInner(
       console.log("[api/voice] Final date range:", startDate, "to", endDate);
 
       // Session dates are fixed here (lib/ai/plan.ts sessionInterval), not by the model.
-      const studentPicture = await buildStudentContext().then((c) => c.text).catch(() => "");
+      const picture = await buildStudentContext().catch(() => null);
+      const studentPicture = picture?.text ?? "";
+      // Master fix Phase 3: the plan brief (answers, chat and context filled in;
+      // defaults for the rest) steers the planner and is kept as project notes.
+      const brief = readBrief(text, { studentContext: studentPicture, capacityKnown: picture?.capacityKnown });
+      const briefText = brief && brief.type !== "single" ? briefNotes(brief) : "";
+      const projectNotes = [opts.projectGoal, briefText].filter(Boolean).join("\n") || undefined;
       const evenDates = planDates(startDate, endDate);
       // The spacing brain moves sessions off days that are already full and
       // gives each one a real open time (lib/spacing.ts).
@@ -911,7 +1017,11 @@ async function handleVoiceTextInner(
 
       const generated = await perfSpan("plan: generate", () =>
         generatePlan({
-          request: studentPicture ? `${withContext(text)}\n\nSTUDENT CONTEXT (fit the plan to this student):\n${studentPicture}` : withContext(text),
+          request: [
+            withContext(text),
+            briefText ? `PLAN BRIEF (follow it; "Assumed" lines are defaults the student can change):\n${briefText}` : "",
+            studentPicture ? `STUDENT CONTEXT (fit the plan to this student):\n${studentPicture}` : "",
+          ].filter(Boolean).join("\n\n"),
           dateContext: promptDateContext(tz),
           dates,
           onOutline: (o) => opts.onProgress?.({ type: "plan_outline", title: resolvePlanTitle(o.title, text), taskCount: o.taskCount }),
@@ -944,6 +1054,10 @@ async function handleVoiceTextInner(
           const assumptions = [`Spread from ${friendlyWhen(startDate, undefined, today)} to ${friendlyWhen(endDate, undefined, today)}`];
           if (!rangeGiven) assumptions.push("Assumed about a week since no timeframe was given");
           if (shifted > 0) assumptions.push(`${shifted} session${shifted > 1 ? "s" : ""} moved off days that were already full`);
+          // Master fix B4: say the spacing happened even when nothing had to move.
+          else if (spaced) assumptions.push("Spaced around your busy days");
+          if (text.includes("\n\nMy answers to your questions:")) assumptions.push("Built from your answers above");
+          if (brief) assumptions.push(...briefAssumptions(brief));
           const draftTasks = planTasks.map((t) => ({ ...t, resources: t.resources ?? [] }));
           return await respondWithDraft(
             {
@@ -953,7 +1067,7 @@ async function handleVoiceTextInner(
               intent: "new_plan",
               ops: opts.projectId
                 ? draftTasks.map((t) => taskOp(t, { plan_id: opts.projectId }))
-                : planOps(planTitle, draftTasks, opts.projectGoal),
+                : planOps(planTitle, draftTasks, projectNotes),
               assumptions,
             },
             { text, today, route: "plan" }
@@ -978,7 +1092,7 @@ async function handleVoiceTextInner(
         }
 
         const { plan, tasks: created, skippedDuplicates } = await perfSpan(`plan: insert ${generated.tasks.length} tasks`, () =>
-          addPlanWithTasks({ title: resolvePlanTitle(generated.title, text), description: opts.projectGoal ?? "" }, planTasks)
+          addPlanWithTasks({ title: resolvePlanTitle(generated.title, text), description: projectNotes ?? "" }, planTasks)
         );
         const taskIds = created.map((t) => t.id);
         const record = await perfSpan("plan: undo record", () => recordAction("create_plan", `Created plan "${plan.title}" with ${taskIds.length} tasks`, {
@@ -1207,6 +1321,32 @@ async function handleVoiceTextInner(
       const daysOfWeek = Array.isArray(rawDow) ? (rawDow as number[]) : undefined;
 
       console.log("[api/voice] add_recurring_task — freq:", freq, "| start:", startDate, "| end:", endDate, "| daysOfWeek:", daysOfWeek);
+
+      // Master fix B1: a recurring task is a preview too.
+      if (drafting) {
+        return await respondWithDraft(
+          {
+            source: opts.source ?? "typed",
+            requestText: text,
+            summary: `Add recurring '${title}'`,
+            intent: "add_task",
+            ops: [
+              taskOp({
+                title,
+                date: /^\d{4}-\d{2}-\d{2}$/.test(startDate) ? startDate : today,
+                time,
+                notes: `Recurring task: "${text}"`,
+                repeat: { frequency: freq, daysOfWeek, endDate },
+              }),
+            ],
+            assumptions: [
+              ...(startDate === today ? ["Starts today"] : []),
+              ...(!endDate ? ["Repeats until you remove it"] : []),
+            ],
+          },
+          { text, today, route: "recurring" }
+        );
+      }
 
       const recurringTasks = await addRecurringTask(
         {

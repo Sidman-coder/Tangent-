@@ -12,6 +12,7 @@ import type { ChatSession } from "@/lib/types";
 import type { AppState } from "@/lib/types";
 import { resolveChatTask, type ChatTask } from "@/components/console/chatTask";
 import TaskColorPopover from "@/components/console/TaskColorPopover";
+import { plainText } from "@/components/console/markdown-parse";
 
 /** Highlight colors — Tangent's palette: iris first, then its companions. */
 export const CHAT_COLORS = [
@@ -44,6 +45,14 @@ type Props = {
 };
 
 type Row = { session: ChatSession; task: ChatTask | null };
+
+/** Master fix Phase 4: the chat's last message, as the second line. */
+function lastLine(session: ChatSession): string {
+  const last = session.messages?.[session.messages.length - 1];
+  if (!last) return "";
+  const text = plainText(last.content.replace(/<!--[\s\S]*?-->/g, "")).replace(/\s+/g, " ").trim();
+  return text.length > 60 ? `${text.slice(0, 59).trimEnd()}…` : text;
+}
 
 function whenLabel(iso: string): string {
   const d = new Date(iso);
@@ -211,8 +220,9 @@ export default function ChatSidebar({
           >
             <span className="tg-chat-title">{session.title}</span>
             <span className="tg-chat-meta">
-              {task ? `${task.name} · ` : ""}
-              {whenLabel(session.updatedAt)}
+              {task
+                ? `${task.name} · ${whenLabel(session.updatedAt)}`
+                : [whenLabel(session.updatedAt), lastLine(session)].filter(Boolean).join(" · ")}
             </span>
           </button>
         )}

@@ -89,7 +89,9 @@ export async function handleRequest(messages: ChatMessage[], opts: IntakeOptions
     logEvent("request_received", { route: "chat", fast: false, source });
     // The Plan prompt plus the one-question-at-a-time rules; its "Switch to
     // Calendar…" line is cut here. Only a complete schedule offers adding it.
-    const reply = stripModeSwitchLine(await planReply(messages, { followUp: true }));
+    const onProgress = opts.onProgress;
+    const onText = onProgress ? (text: string) => onProgress({ type: "reply_text", text: stripModeSwitchLine(text) }) : undefined;
+    const reply = stripModeSwitchLine(await planReply(messages, { followUp: true, onText }));
     return { message: reply, action: isCompleteSchedule(reply) ? "plan_reply" : "chat_reply", ok: true };
   }
   return calendarReply(messages, opts.pipelineText ?? userText, opts.onProgress, { source, project: opts.project });

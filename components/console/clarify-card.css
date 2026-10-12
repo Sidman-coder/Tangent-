@@ -19,6 +19,13 @@
   min-width: 0;
 }
 
+/* Master fix Phase 3: the default behind a skipped question. */
+.tg-clarify-assume {
+  margin: 6px 0 0;
+  color: var(--text-2);
+  font: 400 12px/1.35 var(--font-body);
+}
+
 .tg-clarify-q legend {
   padding: 0;
   margin-bottom: 8px;
@@ -150,4 +157,14 @@
   .tg-clarify-btn:active:not(:disabled) {
     transform: none;
   }
+}
+
+/* Master fix B2: a question that repeats the reply above it, for screen readers only. */
+.tg-clarify-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }

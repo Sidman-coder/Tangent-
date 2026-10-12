@@ -142,7 +142,8 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
                     className={`wk-due-item${t.completed ? " is-done" : ""}`}
                     style={{ "--block": colorFor(t) } as React.CSSProperties}
                     onClick={() => (onOpenTask ? onOpenTask(ymd, t.id) : onOpenDay(ymd))}
-                    title={t.title}
+                    aria-label={t.title}
+                    data-task-tip={t.id}
                   >
                     <span className="wk-due-title">{labelFor ? labelFor(t) : <TaskTitle task={t} chip={false} />}</span>
                   </button>
@@ -206,7 +207,8 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
                       initial={reduced ? false : { opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ duration: 0.16, ease: "easeOut" }}
-                      title={`${time12(task.time)} ${task.title}`}
+                      aria-label={`${time12(task.time)} ${task.title}`}
+                      data-task-tip={task.id}
                     >
                       <span className="wk-block-title">{labelFor ? labelFor(task) : <TaskTitle task={task} chip={false} />}</span>
                       <span className="wk-block-time">{time12(task.time)}</span>

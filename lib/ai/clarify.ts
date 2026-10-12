@@ -10,12 +10,15 @@ import "server-only";
 import { callClaude } from "@/lib/ai/call";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import { isClearPlanRequest } from "@/lib/ai/plan";
+import { briefQuestions, goalType, readBrief } from "@/lib/ai/plan-brief";
 
 export type ClarifyQuestion = {
   id: string;
   question: string;
   /** 2–4 short answers to tap; the student can always type their own. */
   options: string[];
+  /** Shown under the question: what Tangent assumes if it's skipped. */
+  assume?: string;
 };
 
 /** Asked once, the first time it matters; the answer is saved to the profile. */
@@ -65,6 +68,11 @@ When you ask:
 export function shouldConsiderClarifying(text: string): boolean {
   const t = text.trim();
   if (/\b(just do it|don'?t ask|no questions)\b/i.test(t)) return false;
+  // Master fix Phase 3: a known kind of goal is considered (its brief decides
+  // whether anything is missing); a plain capture of an exam or event isn't.
+  const kind = goalType(t);
+  if (kind === "single") return false;
+  if (kind) return true;
   if (isClearPlanRequest(t)) return true;
   if (/\b(plan|prep|prepare|study for|get better|learn|improve|catch up|organi[sz]e|help me|figure out|finals?|midterms?|project)\b/i.test(t)) {
     return true;
@@ -72,13 +80,20 @@ export function shouldConsiderClarifying(text: string): boolean {
   return t.split(/\s+/).length >= 14;
 }
 
-/** Up to three questions for the request, or [] to go straight ahead. Any
- *  failure also means "go straight ahead" — asking is never required. */
+/** Questions for the request, or [] to go straight ahead. Any failure also
+ *  means "go straight ahead" — asking is never required.
+ *
+ *  Master fix Phase 3: a known kind of goal (exam, competition, skill, habit)
+ *  asks only its brief's missing slots, filled first from the request, the chat
+ *  (`opts.chat`) and the student context, with no model call
+ *  (lib/ai/plan-brief.ts). Anything else asks the model, up to three. */
 export async function clarifyQuestions(
   request: string,
   studentContext: string,
-  opts: { askCapacity: boolean }
+  opts: { askCapacity: boolean; chat?: string }
 ): Promise<ClarifyQuestion[]> {
+  const brief = readBrief(request, { chat: opts.chat, studentContext, capacityKnown: !opts.askCapacity });
+  if (brief) return briefQuestions(brief);
   const result = await callClaude(
     "clarify",
     {

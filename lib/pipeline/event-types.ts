@@ -27,7 +27,16 @@ export const EVENT_TYPES = [
   "activity_viewed",
   "activity_row_expanded",
   "activity_cleared",
+  // Master fix Phase 4: chat actions (POST /api/events, client allowlist).
+  "chat_feedback",
+  "chat_retried",
+  "chat_edited",
+  "chat_stopped",
+  "chat_new_topic",
 ] as const;
+
+/** The events a browser may log itself (app/api/events). */
+export const CLIENT_EVENT_TYPES = ["chat_feedback", "chat_retried", "chat_edited", "chat_stopped", "chat_new_topic"] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
 export type EventPropValue = number | boolean | string | null;

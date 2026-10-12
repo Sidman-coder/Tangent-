@@ -23,6 +23,28 @@ Write automated reproductions (unit/integration tests with a mocked model) for e
 - SMART tier: Sonnet 5.5 is listed at the same price as Sonnet 5 ($2 / $10). Switch SMART to Sonnet 5.5 if the official docs confirm it, with the same not-found fallback.
 - Re-estimate cost per request in the eval --check output.
 
+══════════ PHASE 1B: Sign-in page bugs (both flag states) ══════════
+What I saw: I entered my email (a +eval Gmail alias) and sent the sign-in email. It arrived, I clicked the link, and the page took forever to load (a very long spinner / blank wait before getting into the app). I want a faster, more reliable option: a code I can type.
+- Read app/signin/*, app/auth/magic-link, app/auth/callback, app/auth/signout, middleware.ts, lib/auth/access.ts (ALLOWED_EMAILS / OWNER_EMAIL), onboarding/first-run code, and the Supabase auth client setup.
+- Find out WHY the link is slow. Time each step: the link → /auth/callback → session exchange → middleware → redirects → first app page. Look for:
+  - redirect loops or extra hops
+  - slow/serial database calls on first sign-in (profile creation, onboarding, seeding, context building)
+  - middleware doing heavy work on every request
+  - the link opening a different origin than where the code verifier/cookie lives (PKCE), causing retries
+  - Next.js dev-mode first-compile time vs a real bug (measure with `npm run build && npm start` too)
+  Fix the real causes. Show a clear "Signing you in…" state instead of a blank page, with a timeout message and a "Try again / use a code instead" link after ~10 seconds.
+- ADD A 6-DIGIT CODE SIGN-IN: the same email also contains a one-time code. The sign-in page gets an "Enter code" step (6 boxes, paste-friendly, auto-submit, resend after 60 seconds, clear errors for wrong/expired codes). Use Supabase's email OTP (signInWithOtp + verifyOtp with type "email"), so no new auth system is needed. Keep the magic link working too: the email shows both the code and the link.
+  - The email template must include the code ({{ .Token }}). That's a Supabase dashboard setting. Give me the exact template text to paste (subject + HTML body showing the code prominently and the link as a backup) and where to paste it.
+  - The allowlist check (ALLOWED_EMAILS) must happen BEFORE sending a code or link, so uninvited emails get "This email isn't invited yet" immediately.
+- Also check and fix:
+  - The magic-link redirect uses the CURRENT origin (localhost in dev, the Vercel URL in production), never a hard-coded production URL.
+  - Emails with "+" aliases (e.g. name+eval@gmail.com) work everywhere: ALLOWED_EMAILS matching is case-insensitive and trims spaces, and "+" is never stripped or URL-mangled.
+  - Clear messages for: not on the allowed list ("This email isn't invited yet"), link expired/used, too many requests, wrong origin. No raw error text or blank pages.
+  - Loading and disabled states on the buttons (no double submits), and a "Check your email" state with a resend option after ~60 seconds.
+  - Google sign-in and email sign-in both land back on the page the user came from, and sign-out fully clears the session.
+- Some fixes may be Supabase or Vercel SETTINGS rather than code (Site URL, Redirect URLs, email template, rate limits, Google OAuth redirect URIs). Don't guess. List each setting I must change by hand, with the exact value and where to find it.
+- Add tests for the allowlist matching (+aliases, case, spaces) and the redirect origin logic.
+
 ══════════ PHASE 2: Bugs from testing (flag ON unless noted) ══════════
 Transcript 1 (no plan contains "writing"; the SAT plans are "SAT Reading Score Boost" and "SAT Math Geometry Sprint"):
   me: take out all my SAT tasks
@@ -104,6 +126,7 @@ Keep Juann's Liquid Glass tokens. The aim is MINIMAL and CONSISTENT.
 ══════════ PHASE 7: Final summary ══════════
 - What changed per phase, with root causes for the Phase 2 bugs
 - The verified Haiku 5.5 / Sonnet 5.5 facts, plus the new cost per request
+- The sign-in root cause, the code fixes, and the exact Supabase/Vercel settings I must change by hand
 - The list of AI write paths and how each previews now (B1)
 - New migrations (if any)
 - EXACT changed lines in Juann's files (ai/page.tsx, console/*, PreviewCard, ActionReceipt, RecentChanges, UndoToast, CommandPalette, ProjectChat, ProjectAsk, InlinePreview, calendar components, globals.css, chat sidebar)

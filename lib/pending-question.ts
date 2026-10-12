@@ -15,8 +15,16 @@
 // the close plans plus "New plan").
 
 import { matchPlan } from "./pipeline/match";
+import { closestMatch, fixIntentTypos, mentionFor } from "./closest-match";
 
-export type Candidate = { id: string; title: string };
+// Master fix B5/B6: typo'd answers ("deltet"), "the closest is ..." when no
+// candidate has the student's words, never giving up after two unclear
+// answers (the buttons stay), and a multi-select card for deletes ("Delete
+// selected (N)"), whose tapped answer is the titles joined.
+
+/** `hint`: what is in it (a plan's task titles), for the closest match and
+ *  the FAST model's pick (lib/ai/pick-candidate.ts). */
+export type Candidate = { id: string; title: string; hint?: string };
 
 export type PendingQuestion = {
   /** What the answer completes: a delete (A1), or where a request goes
@@ -37,8 +45,12 @@ export type PendingQuestion = {
   request: string;
   /** ISO time; an answer after this is routed as a new request. */
   expiresAt: string;
-  /** Times it has asked again after an unclear answer (at most once). */
+  /** Times it has asked again after an unclear answer. After the first, it
+   *  keeps the buttons up instead of asking in words again. */
   reasked: number;
+  /** "The closest is X. Delete that?": candidates[0] is X, the rest are the
+   *  others ("Pick another"). `mention` is how the student named it. */
+  closest?: { mention: string; note?: string };
 };
 
 export const PENDING_TTL_MS = 10 * 60 * 1000;
@@ -59,27 +71,55 @@ export function makePendingQuestion(
   candidates: readonly Candidate[],
   request: string,
   now: Date,
-  extra: { mention?: string; decisionId?: string | null } = {}
+  extra: { mention?: string; decisionId?: string | null; closest?: { mention: string; note?: string } } = {}
 ): PendingQuestion {
   const q: PendingQuestion = {
     action: ROUTE_KINDS.includes(kind) ? "route" : "delete",
     kind,
-    candidates: candidates.slice(0, 8).map((c) => ({ id: c.id, title: c.title })),
+    candidates: candidates.slice(0, 8).map((c) => (c.hint ? { id: c.id, title: c.title, hint: c.hint.slice(0, 160) } : { id: c.id, title: c.title })),
     request: request.slice(0, 500),
     expiresAt: new Date(now.getTime() + PENDING_TTL_MS).toISOString(),
     reasked: 0,
   };
   if (extra.mention) q.mention = extra.mention.slice(0, 200);
   if (extra.decisionId && UUID_RE.test(extra.decisionId)) q.decisionId = extra.decisionId;
+  if (extra.closest && q.action === "delete" && q.candidates.length > 0) {
+    q.closest = { mention: extra.closest.mention.slice(0, 120) };
+    if (extra.closest.note) q.closest.note = extra.closest.note.slice(0, 80);
+  }
   return q;
 }
 
+export const PICK_ANOTHER = "Pick another";
+
+export type PendingCard = {
+  id: string;
+  question: string;
+  options: string[];
+  /** Toggle chips, "All of these" exclusive, primary "Delete selected (N)". */
+  multi?: boolean;
+  /** A tap answers at once (the closest-match buttons, route questions). */
+  instant?: boolean;
+  /** The primary button with chips selected: "Delete selected" → "Delete selected (2)". */
+  submitLabel?: string;
+};
+
 /** The card for it: one button per candidate, then "All of these" (deletes
- *  only, and only with more than one). The card's skip button is "Cancel". */
-export function pendingQuestionCard(q: PendingQuestion, question: string): { id: string; question: string; options: string[] } {
+ *  only, and only with more than one; those chips toggle, B6). A closest
+ *  question has [Delete X] [Pick another]. The card's skip button is "Cancel". */
+export function pendingQuestionCard(q: PendingQuestion, question: string): PendingCard {
+  if (q.closest && q.candidates[0]) {
+    const options = [`Delete ${q.candidates[0].title}`];
+    if (q.candidates.length > 1) options.push(PICK_ANOTHER);
+    return { id: PENDING_QUESTION_ID, question, options, instant: true };
+  }
   const options = q.candidates.map((c) => c.title);
-  if (q.action === "delete" && q.candidates.length > 1) options.push(ALL_OF_THESE);
-  return { id: PENDING_QUESTION_ID, question, options };
+  if (q.action === "delete" && q.candidates.length > 1) {
+    options.push(ALL_OF_THESE);
+    return { id: PENDING_QUESTION_ID, question, options, multi: true, submitLabel: "Delete selected" };
+  }
+  // One answer each (a single delete candidate, or a route question): a tap answers.
+  return { id: PENDING_QUESTION_ID, question, options, instant: true };
 }
 
 /** A pending question sent back by the client, or null when it is malformed
@@ -95,9 +135,9 @@ export function parsePendingQuestion(raw: unknown, now: Date): PendingQuestion |
   const candidates: Candidate[] = [];
   for (const c of r.candidates) {
     if (!c || typeof c !== "object") return null;
-    const { id, title } = c as Record<string, unknown>;
+    const { id, title, hint } = c as Record<string, unknown>;
     if (typeof id !== "string" || typeof title !== "string" || !id || id.length > 64) return null;
-    candidates.push({ id, title: title.slice(0, 200) });
+    candidates.push(typeof hint === "string" && hint ? { id, title: title.slice(0, 200), hint: hint.slice(0, 160) } : { id, title: title.slice(0, 200) });
   }
   if (typeof r.expiresAt !== "string") return null;
   const expires = Date.parse(r.expiresAt);
@@ -112,6 +152,11 @@ export function parsePendingQuestion(raw: unknown, now: Date): PendingQuestion |
   };
   if (r.action === "route" && typeof r.mention === "string" && r.mention.trim()) q.mention = r.mention.slice(0, 200);
   if (r.action === "route" && typeof r.decisionId === "string" && UUID_RE.test(r.decisionId)) q.decisionId = r.decisionId;
+  const closest = r.closest as Record<string, unknown> | undefined;
+  if (r.action === "delete" && candidates.length > 0 && closest && typeof closest === "object" && typeof closest.mention === "string") {
+    q.closest = { mention: closest.mention.slice(0, 120) };
+    if (typeof closest.note === "string" && closest.note) q.closest.note = closest.note.slice(0, 80);
+  }
   return q;
 }
 
@@ -123,14 +168,26 @@ export type PendingAnswer =
   | { kind: "unrelated" }
   /** "Which tasks?" answered with words: delete what they name. */
   | { kind: "scope"; words: string }
-  /** Can't tell: ask once more, then give up. */
+  /** No candidate has the words, but one is close: ask "Delete that?". */
+  | { kind: "closest"; candidate: Candidate; mention: string; note?: string }
+  /** "Pick another" on a closest question: show the others. */
+  | { kind: "another" }
+  /** Can't tell: the caller tries the FAST model's pick, then shows the
+   *  buttons again. It never gives up. */
   | { kind: "unclear" };
 
 const norm = (s: string) =>
   s.toLowerCase().replace(/[’']/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
 const stem = (w: string) => (w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w);
-const FILLER = new Set(["the", "a", "an", "my", "one", "ones", "that", "this", "those", "these", "i", "mean", "meant", "it", "please", "just", "only", "task", "tasks", "plan", "stuff", "of", "for", "delete", "remove", "yes", "yeah", "ok", "okay"]);
+const FILLER = new Set([
+  "the", "a", "an", "my", "one", "ones", "that", "this", "those", "these", "i", "mean", "meant", "it", "please", "just", "only",
+  "task", "tasks", "plan", "plans", "stuff", "of", "for", "delete", "remove", "cancel", "erase", "clear", "take", "out", "get", "rid",
+  "yes", "yeah", "ok", "okay", "thingie", "thingy", "thingies", "thing", "things", "all", "session", "sessions", "and", "um", "uh", "like",
+]);
 const words = (s: string) => norm(s).split(" ").filter((w) => w && !FILLER.has(w)).map(stem);
+
+const YES_RE = /^(?:(?:yes|yeah|yep|sure|ok|okay)\s+)?(?:yes|yeah|yep|yup|sure|ok|okay|correct|right|go ahead|do it|confirm|that one|thats it|that s it|thats the one|delete (?:it|that|that one|them))(?:\s+(?:please|thanks|one))?$/;
+const ANOTHER_RE = /^(?:no\s+)?(?:(?:pick|choose|show|a|an)\s+)?(?:another|other|different|a different|the other|others)(?:\s+(?:one|ones|plan|plans))?$/;
 
 const ALL_RE = /^(?:(?:yes|yeah|ok|okay)\s+)?(?:all|both|everything|all of (?:them|these|those|it)|all of these|all three|all the above|every one|each of them)(?:\s+(?:of them|please))?$/;
 const CANCEL_RE = /^(?:cancel|never ?mind|nevermind|no|nope|nah|stop|forget it|dont|don t|none|none of them|neither|no thanks|leave (?:it|them)|keep (?:it|them|them all))(?:\s+(?:thanks|thank you|please))?$/;
@@ -150,10 +207,19 @@ const NEW_REQUEST_RE = /^(?:add|create|make|schedule|plan|put|move|reschedule|co
  * (or the answer is its exact title); several fits are all returned only when
  * the answer names them all.
  */
-export function resolvePendingAnswer(text: string, q: PendingQuestion): PendingAnswer {
+export function resolvePendingAnswer(rawText: string, q: PendingQuestion): PendingAnswer {
+  const text = fixIntentTypos(rawText);
   const s = norm(text);
   if (!s) return { kind: "unclear" };
   if (CANCEL_RE.test(s) || s === norm(CANCEL)) return { kind: "cancel" };
+
+  // "The closest is X. Delete that?"
+  if (q.closest && q.candidates[0]) {
+    const x = q.candidates[0];
+    if (YES_RE.test(s) || s === norm(`Delete ${x.title}`)) return { kind: "pick", candidates: [x] };
+    if (ANOTHER_RE.test(s) || s === norm(PICK_ANOTHER)) return { kind: "another" };
+  }
+
   // "All of these" completes a delete only: a route question has one answer.
   if (q.action === "delete" && q.candidates.length > 1 && (ALL_RE.test(s) || s === norm(ALL_OF_THESE))) {
     return { kind: "pick", candidates: [...q.candidates] };
@@ -161,6 +227,23 @@ export function resolvePendingAnswer(text: string, q: PendingQuestion): PendingA
 
   const exact = q.candidates.filter((c) => norm(c.title) === s);
   if (exact.length === 1) return { kind: "pick", candidates: exact };
+
+  // Tapped chips (B6): "SAT Reading Score Boost, SAT Math Geometry Sprint".
+  // Titles are taken out longest first, so one inside another can't steal it.
+  if (q.action === "delete" && q.candidates.length > 1) {
+    let rest = ` ${s} `;
+    const named: Candidate[] = [];
+    for (const c of [...q.candidates].sort((a, b) => b.title.length - a.title.length)) {
+      const t = ` ${norm(c.title)} `;
+      if (norm(c.title) && rest.includes(t)) {
+        rest = rest.replace(t, "  ");
+        named.push(c);
+      }
+    }
+    if (named.length > 1 && !rest.replace(/\b(?:and|plus)\b/g, " ").trim()) {
+      return { kind: "pick", candidates: q.candidates.filter((c) => named.includes(c)) };
+    }
+  }
 
   // "What did you mean?": a typed answer in the student's words.
   if (q.kind === "intent") {
@@ -183,20 +266,26 @@ export function resolvePendingAnswer(text: string, q: PendingQuestion): PendingA
       return want.every((w) => have.has(w));
     });
     if (fits.length === 1) return { kind: "pick", candidates: fits };
-    // "SAT and ICF": each part names exactly one.
-    const parts = s.split(/\s*(?:,|\band\b|\bplus\b|&)\s*/).filter(Boolean);
+    // "SAT and ICF", "writing and math": each part names exactly one, by its
+    // words or (deletes) as the clear closest.
+    const parts = s.split(/\s*(?:\band\b|\bplus\b|&)\s*/).filter(Boolean);
     if (parts.length > 1) {
       const picked = new Map<string, Candidate>();
       for (const part of parts) {
         const pw = words(part);
-        const hit = q.candidates.filter((c) => pw.length && pw.every((w) => new Set(norm(c.title).split(" ").map(stem)).has(w)));
+        if (pw.length === 0) continue;
+        let hit = q.candidates.filter((c) => pw.every((w) => new Set(norm(c.title).split(" ").map(stem)).has(w)));
+        if (hit.length !== 1 && q.action === "delete") {
+          const near = closestMatch(pw, q.candidates);
+          hit = near ? [near.candidate] : [];
+        }
         if (hit.length !== 1) {
           picked.clear();
           break;
         }
         picked.set(hit[0].id, hit[0]);
       }
-      if (picked.size > 0) return { kind: "pick", candidates: Array.from(picked.values()) };
+      if (picked.size > 1) return { kind: "pick", candidates: q.candidates.filter((c) => picked.has(c.id)) };
     }
     if (fits.length > 1) return { kind: "unclear" };
   }
@@ -209,6 +298,17 @@ export function resolvePendingAnswer(text: string, q: PendingQuestion): PendingA
     if (m.decision === "sure") {
       const hit = plans.find((c) => c.id === m.target.id);
       if (hit) return { kind: "pick", candidates: [hit] };
+    }
+  }
+
+  // No title has the words: the clear closest ("the writing thingie" ->
+  // SAT Reading Score Boost, reading & writing), to confirm, never to delete.
+  if (q.action === "delete" && q.kind !== "scope" && want.length > 0 && want.length <= 6) {
+    const near = closestMatch(want, q.candidates);
+    if (near) {
+      if (q.closest && near.candidate.id === q.candidates[0]?.id) return { kind: "pick", candidates: [near.candidate] };
+      const mention = mentionFor([...want, ...words(q.request)], q.candidates, near.missing);
+      return { kind: "closest", candidate: near.candidate, mention, ...(near.note ? { note: near.note } : {}) };
     }
   }
 

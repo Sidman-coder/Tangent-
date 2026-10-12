@@ -5,6 +5,7 @@ import {
   getChatSession,
   addChatSessionMessage,
   attachChatMessageRefs,
+  dropLastExchange,
   replaceLastAssistantMessage,
   renameChatSession,
   deleteChatSession,
@@ -12,6 +13,8 @@ import {
   styleChatSession,
 } from "@/lib/store";
 import { withUser } from "@/lib/request-context";
+import { callClaude, messageText } from "@/lib/ai/call";
+import { cleanTitle, fallbackTitle } from "@/lib/chat-title";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const uuidOrUndefined = (v: unknown): string | undefined => (typeof v === "string" && UUID.test(v) ? v : undefined);
@@ -47,6 +50,9 @@ export const POST = withUser(async (req: Request) => {
       planId?: string | null;
       color?: string | null;
       pinned?: boolean;
+      /** autotitle: the chat's first request, and the project it made (wins). */
+      text?: string;
+      projectTitle?: string;
     };
     const { action } = body;
 
@@ -99,6 +105,28 @@ export const POST = withUser(async (req: Request) => {
       return NextResponse.json({ ok: true });
     }
 
+    // Master fix Phase 4: Retry / Edit drop the last exchange before resending.
+    if (action === "drop_last") {
+      const { sessionId, content } = body;
+      if (!sessionId || !content?.trim()) {
+        return NextResponse.json({ ok: false, error: "Missing sessionId or content" }, { status: 400 });
+      }
+      const dropped = await dropLastExchange(sessionId, content);
+      return NextResponse.json({ ok: true, dropped });
+    }
+
+    // Master fix Phase 4: the project's name, else a short topic from the request.
+    if (action === "autotitle") {
+      const { sessionId } = body;
+      const text = body.text?.trim() ?? "";
+      if (!sessionId || (!text && !body.projectTitle?.trim())) {
+        return NextResponse.json({ ok: false, error: "Missing sessionId or text" }, { status: 400 });
+      }
+      const title = cleanTitle(body.projectTitle ?? "") || (await topicTitle(text));
+      await renameChatSession(sessionId, title);
+      return NextResponse.json({ ok: true, title });
+    }
+
     if (action === "link") {
       const { sessionId, actionId, taskIds, planId } = body;
       if (!sessionId || (!actionId && !taskIds?.length && !planId)) {
@@ -133,3 +161,15 @@ export const POST = withUser(async (req: Request) => {
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 });
+
+const TITLE_SYSTEM = `Name this chat for a student's sidebar. Reply with only the title: 3 to 6 words, plain text, no quotes or end punctuation. Say what the chat is about (the subject, test or goal), e.g. "SAT math prep", "Chemistry lab report", "Training like Mike Tyson".`;
+
+/** A FAST-model topic title; the request's own first words when that fails. */
+async function topicTitle(text: string): Promise<string> {
+  const result = await callClaude("chatTitle", {
+    system: TITLE_SYSTEM,
+    messages: [{ role: "user", content: text.slice(0, 600) }],
+  }).catch(() => null);
+  const title = result?.ok ? cleanTitle(messageText(result.message)) : "";
+  return title || fallbackTitle(text);
+}

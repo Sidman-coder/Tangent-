@@ -5,7 +5,7 @@
 // button on a toolbar row underneath — the Notion / v0 composer layout.
 
 import { useLayoutEffect, type ReactNode, type RefObject } from "react";
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, Square } from "lucide-react";
 import VoiceRecordButton from "@/components/VoiceRecordButton";
 import type { VoiceCaptureStatus } from "@/hooks/useVoiceCapture";
 import type { ChatMode } from "@/components/console/turns";
@@ -27,6 +27,8 @@ type Props = {
   placeholder?: string;
   /** Tints the box: Calendar mode gets the accent ring. */
   mode?: ChatMode;
+  /** Master fix Phase 4: while busy, Send becomes Stop. */
+  onStop?: () => void;
 };
 
 export default function Composer({
@@ -42,6 +44,7 @@ export default function Composer({
   toolbar,
   placeholder,
   mode = "calendar",
+  onStop,
 }: Props) {
   const idlePlaceholder =
     placeholder ??
@@ -113,9 +116,15 @@ export default function Composer({
             onStatusChange={onVoiceStatus}
             disabled={busy}
           />
-          <button type="submit" className="tg-send" aria-label="Send" disabled={!canSend}>
-            <ArrowUp size={16} strokeWidth={2.2} />
-          </button>
+          {busy && onStop ? (
+            <button type="button" className="tg-send tg-stop" aria-label="Stop" title="Stop (Esc)" onClick={onStop}>
+              <Square size={11} strokeWidth={2.4} fill="currentColor" aria-hidden="true" />
+            </button>
+          ) : (
+            <button type="submit" className="tg-send" aria-label="Send" disabled={!canSend}>
+              <ArrowUp size={16} strokeWidth={2.2} />
+            </button>
+          )}
         </div>
       </div>
     </form>

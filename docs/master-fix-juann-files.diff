@@ -1,0 +1,2432 @@
+diff --git a/app/(app)/ai/page.tsx b/app/(app)/ai/page.tsx
+index 360475f..5fdd36a 100644
+--- a/app/(app)/ai/page.tsx
++++ b/app/(app)/ai/page.tsx
+@@ -17,13 +17,16 @@ import {
+   applyPlanProgress,
+   cleanMessage,
+   readChatReply,
++  redoable,
+   toolsForAction,
+   turnsFromMessages,
++  withCard,
+   type ChatMode,
+   type PlanProgressView,
+   type Turn,
+ } from "@/components/console/turns";
+ import { usePipelineV2 } from "@/components/PipelineFlag";
++import { fallbackTitle, isNewTopic } from "@/lib/chat-title";
+ import { chatOnly, draftShownPlan, fetchOpenDrafts, withOpenDrafts } from "@/components/console/pipeline-intake";
+ import { isReadyReply, openPlanTurn, talkingRoute } from "@/components/console/talking";
+ import { isAddShownPlan } from "@/lib/pipeline/plan-text";
+@@ -142,6 +145,33 @@ function writeStored(key: string, value: string | null) {
+   } catch {}
+ }
+ 
++/** Master fix Phase 4: chats renamed by hand keep their name; automatic
++ *  titles skip them (remembered in this browser). */
++const MANUAL_TITLES_KEY = "tangent:ai:manualTitles";
++
++function manualTitles(): string[] {
++  try {
++    const list = JSON.parse(readStored(MANUAL_TITLES_KEY) ?? "[]") as unknown;
++    return Array.isArray(list) ? list.filter((x): x is string => typeof x === "string") : [];
++  } catch {
++    return [];
++  }
++}
++
++function markManualTitle(id: string) {
++  writeStored(MANUAL_TITLES_KEY, JSON.stringify([...manualTitles().filter((x) => x !== id), id].slice(-200)));
++}
++
++/** Master fix Phase 4: thumbs, Retry, Edit, Stop and new-topic choices,
++ *  logged as events (app/api/events). Never blocks the chat. */
++function logChatEvent(type: string, props: Record<string, string | number | boolean> = {}) {
++  void fetch("/api/events", {
++    method: "POST",
++    headers: { "Content-Type": "application/json" },
++    body: JSON.stringify({ type, props }),
++  }).catch(() => {});
++}
++
+ export default function AiPage() {
+   const router = useRouter();
+   const { state, refresh } = useAppState();
+@@ -208,6 +238,20 @@ export default function AiPage() {
+   const [input, setInput] = useState("");
+   const [busy, setBusy] = useState(false);
+   const [planProgress, setPlanProgress] = useState<PlanProgressView | null>(null);
++  /** Master fix Phase 4: the reply so far, while it streams in. */
++  const [streamText, setStreamText] = useState("");
++  const abortRef = useRef<AbortController | null>(null);
++  /** The last turn's id while its message is being edited in the composer. */
++  const [editing, setEditing] = useState<string | null>(null);
++  /** "Keep here" answered the new-topic chips at this many turns. */
++  const [topicSettledAt, setTopicSettledAt] = useState(-1);
++  /** The topic title in flight, so a project name lands after it. */
++  const titling = useRef<Promise<void> | null>(null);
++  /** The draft reads as a different subject: offer a new chat, once. */
++  const newTopic = useMemo(
++    () => !busy && !editing && topicSettledAt !== turns.length && isNewTopic(turns.map((t) => t.request), input),
++    [busy, editing, topicSettledAt, turns, input]
++  );
+   const [err, setErr] = useState<string | null>(null);
+   const [voiceStatus, setVoiceStatus] = useState<VoiceCaptureStatus>("idle");
+   const inputRef = useRef<HTMLTextAreaElement>(null);
+@@ -265,6 +309,29 @@ export default function AiPage() {
+     }
+   }, []);
+ 
++  /** Master fix Phase 4: names a chat after its project, else a short topic
++   *  (app/api/sessions "autotitle"). A name the student chose is kept. */
++  const autoTitle = useCallback(
++    (sessionId: string, from: { text?: string; projectTitle?: string }) => {
++      if (manualTitles().includes(sessionId)) return;
++      const run = async () => {
++        if (from.projectTitle) await titling.current;
++        if (manualTitles().includes(sessionId)) return;
++        try {
++          await fetch("/api/sessions", {
++            method: "POST",
++            headers: { "Content-Type": "application/json" },
++            body: JSON.stringify({ action: "autotitle", sessionId, ...from }),
++          });
++        } catch {}
++        void loadSessions();
++      };
++      const pending = run();
++      if (!from.projectTitle) titling.current = pending;
++    },
++    [loadSessions]
++  );
++
+   /** Pipeline V2: open drafts from the last 24 hours come back as cards. */
+   const restoreDrafts = useCallback(async () => {
+     if (!v2) return;
+@@ -297,6 +364,7 @@ export default function AiPage() {
+         setActiveSessionId(data.session.id);
+         const restored = turnsFromMessages(data.session.messages, confirms);
+         setTurns(restored);
++        setEditing(null);
+         void recheckUndo(restored);
+         void restoreDrafts();
+         setMode("chat");
+@@ -314,6 +382,7 @@ export default function AiPage() {
+     setSaveWarning(null);
+     setTurns([]);
+     setInput("");
++    setEditing(null);
+     setErr(null);
+     setMode("chat");
+     window.localStorage.removeItem(SESSION_STORAGE_KEY);
+@@ -385,14 +454,20 @@ export default function AiPage() {
+     modeOverride?: ChatMode,
+     // Follow-up to Tangent's questions: `request` is the original ask the
+     // pipeline runs; `text` is what the thread shows for this turn.
+-    followUp?: { request: string; answers?: ClarifyAnswer[]; skipClarify?: boolean }
++    followUp?: { request: string; answers?: ClarifyAnswer[]; skipClarify?: boolean },
++    // Master fix Phase 4 (Retry / Edit): the last turn this message replaces.
++    opts?: { replace?: string }
+   ) => {
+     const userText = (text ?? input).trim();
+     if (!userText || busy) return;
++    const replace = opts?.replace ?? (editing && text === undefined && turns[turns.length - 1]?.id === editing ? editing : undefined);
++    const replaced = replace ? turns.find((t) => t.id === replace) : undefined;
++    // The chat without the replaced turn: what the model sees.
++    const prior = replaced ? turns.filter((t) => t.id !== replace) : turns;
+     // A question Tangent is waiting on (last turn only, until it expires):
+     // this message answers it, typed or tapped, unless the server decides
+     // it's a new request (app/api/chat).
+-    const lastTurn = turns[turns.length - 1];
++    const lastTurn = prior[prior.length - 1];
+     const waiting =
+       lastTurn?.pendingQuestion && Date.parse(lastTurn.pendingQuestion.expiresAt) > Date.now() ? lastTurn.pendingQuestion : null;
+     // One input, routed (lib/ask-route.ts): no Plan/Calendar switch to set.
+@@ -400,7 +475,7 @@ export default function AiPage() {
+     // goes to Tangents, a multi-week effort becomes a project.
+     // Pipeline V2 (A4): after "Just talking" the plan is talked through until
+     // the student asks to act (components/console/talking.ts).
+-    const talk = v2 && !followUp && !waiting ? talkingRoute(turns, userText) : undefined;
++    const talk = v2 && !followUp && !waiting ? talkingRoute(prior, userText) : undefined;
+     const route = followUp || waiting || talk ? "do" : routeAsk(userText);
+     if (route === "goal" && !modeOverride) {
+       putNewPathTitle(userText);
+@@ -414,6 +489,8 @@ export default function AiPage() {
+     setBusy(true);
+     setPendingRequest(userText);
+     setInput("");
++    setEditing(null);
++    if (replace) setTurns((prev) => prev.filter((t) => t.id !== replace));
+ 
+     let sessionId = activeSessionId;
+     let isNewSession = false;
+@@ -422,7 +499,7 @@ export default function AiPage() {
+         const res = await fetch("/api/sessions", {
+           method: "POST",
+           headers: { "Content-Type": "application/json" },
+-          body: JSON.stringify({ action: "create", title: userText.slice(0, 40) }),
++          body: JSON.stringify({ action: "create", title: fallbackTitle(userText) }),
+         });
+         const data = (await res.json()) as { ok: boolean; session: ChatSession };
+         if (data.ok) {
+@@ -430,6 +507,7 @@ export default function AiPage() {
+           setActiveSessionId(sessionId);
+           window.localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
+           isNewSession = true;
++          autoTitle(data.session.id, { text: userText });
+           void loadSessions();
+         } else {
+           throw new Error("create failed");
+@@ -439,9 +517,18 @@ export default function AiPage() {
+       }
+     }
+ 
++    // Retry / Edit: the saved chat drops the old exchange too (the server
++    // keeps it when it changed the calendar).
++    if (replaced && sessionId && !isNewSession) {
++      await fetch("/api/sessions", {
++        method: "POST",
++        headers: { "Content-Type": "application/json" },
++        body: JSON.stringify({ action: "drop_last", sessionId, content: replaced.request }),
++      }).catch(() => {});
++    }
+     await saveMessage(sessionId, "user", userText);
+ 
+-    const history = turns.flatMap((t) => [
++    const history = prior.flatMap((t) => [
+       { role: "user", content: t.request },
+       { role: "assistant", content: t.response },
+     ]);
+@@ -453,8 +540,12 @@ export default function AiPage() {
+     // Answered or dropped either way: only the newest reply can carry one.
+     if (waiting) setTurns((prev) => prev.map((t) => (t.pendingQuestion ? { ...t, pendingQuestion: null } : t)));
+ 
++    const controller = new AbortController();
++    abortRef.current = controller;
++    let streamed = "";
+     try {
+       const res = await fetch("/api/chat", {
++        signal: controller.signal,
+         method: "POST",
+         headers: { "Content-Type": "application/json" },
+         body: JSON.stringify({
+@@ -472,7 +563,15 @@ export default function AiPage() {
+         }),
+       });
+       // Calendar mode streams NDJSON: plan progress lines, then {type:"result"}.
+-      const data = (await readChatReply(res, (line) => setPlanProgress((v) => applyPlanProgress(v, line)))) as {
++      const data = (await readChatReply(res, (line) => {
++        // Master fix Phase 4: a talking reply streams in as it is written.
++        if (line.type === "reply_text" && typeof line.text === "string") {
++          streamed = line.text;
++          setStreamText(line.text);
++          return;
++        }
++        setPlanProgress((v) => applyPlanProgress(v, line));
++      })) as {
+         ok?: boolean;
+         message?: string;
+         reply?: string;
+@@ -510,7 +609,8 @@ export default function AiPage() {
+             pendingQuestion: data.pendingQuestion ?? null,
+           },
+         ]);
+-        await saveMessage(sessionId, "assistant", `${ask}\n${data.questions.map((q) => `- ${q.question}`).join("\n")}`);
++        // Master fix B3: saved as the card itself, so a reopened chat shows it again.
++        await saveMessage(sessionId, "assistant", withCard(ask, { questions: data.questions, pendingQuestion: data.pendingQuestion ?? null }));
+         return;
+       }
+ 
+@@ -579,6 +679,8 @@ export default function AiPage() {
+           draft: action === "preview" && data.changeSet && data.preview ? { changeSet: data.changeSet, preview: data.preview } : undefined,
+           suggestion: data.suggestion ?? null,
+           projectId: data.plan?.id ?? null,
++          // Streamed in already: no word-by-word reveal on top.
++          streamed: streamed.length > 0,
+           // "Which tasks should I remove?" with no buttons: typed answers only.
+           pendingQuestion: data.pendingQuestion ?? null,
+         },
+@@ -586,13 +688,8 @@ export default function AiPage() {
+ 
+       await saveMessage(sessionId, "assistant", reply, { actionId: data.actionId, changeSetId: data.changeSet?.id });
+       if (data.actionId) announceUndo({ actionId: data.actionId, label: notif ?? "Change applied", from: "/ai" });
+-      if (sessionId && isNewSession) {
+-        void fetch("/api/sessions", {
+-          method: "POST",
+-          headers: { "Content-Type": "application/json" },
+-          body: JSON.stringify({ action: "rename", sessionId, title: userText.slice(0, 45) }),
+-        });
+-      }
++      // Master fix Phase 4: a new project names the chat.
++      if (sessionId && data.plan?.title) autoTitle(sessionId, { projectTitle: data.plan.title });
+ 
+       await linkAction(sessionId, data.actionId);
+       await refresh();
+@@ -609,6 +706,20 @@ export default function AiPage() {
+         });
+       }
+     } catch (e) {
++      // Stop: keep what had arrived and say it was stopped.
++      if (controller.signal.aborted) {
++        const partial = cleanMessage(streamed);
++        const response = partial || "Stopped.";
++        setTurns((prev) => [
++          ...prev.map((t) => (t.fresh ? { ...t, fresh: false } : t)),
++          { id: crypto.randomUUID(), request: userText, tools: [], sourcesChecked: [], response, streamed: true, stopped: true },
++        ]);
++        logChatEvent("chat_stopped", { partial: partial.length > 0 });
++        await saveMessage(sessionId, "assistant", response);
++        // The server may have finished a change before the stop reached it.
++        void refresh();
++        return;
++      }
+       const message = e instanceof Error ? e.message : "Error";
+       setErr(message);
+       setTurns((prev) => [
+@@ -627,9 +738,22 @@ export default function AiPage() {
+       setBusy(false);
+       setPendingRequest(null);
+       setPlanProgress(null);
++      setStreamText("");
++      abortRef.current = null;
+       void loadSessions();
+     }
+-  }, [input, busy, chatMode, activeSessionId, turns, refresh, linkAction, loadSessions, saveMessage, v2]);
++  }, [input, busy, chatMode, activeSessionId, turns, refresh, linkAction, loadSessions, saveMessage, v2, editing, autoTitle]);
++
++  /** Master fix Phase 4: Stop (the button, or Esc) ends the reply where it is. */
++  const stop = useCallback(() => abortRef.current?.abort(), []);
++  useEffect(() => {
++    if (!busy) return;
++    const onKey = (e: KeyboardEvent) => {
++      if (e.key === "Escape" && !e.defaultPrevented) stop();
++    };
++    window.addEventListener("keydown", onKey);
++    return () => window.removeEventListener("keydown", onKey);
++  }, [busy, stop]);
+ 
+   /** Adds an action / change set id to an already-saved assistant message:
+    *  matched by change set id, or by its text (`from`). Best effort. */
+@@ -648,11 +772,16 @@ export default function AiPage() {
+   /** Pipeline V2: a preview card was confirmed; keep its Undo after a reload
+    *  and offer it app-wide (the card shows its own Undo here). */
+   const cardConfirmed = useCallback(
+-    (_turnId: string, changeSetId: string, actionId: string) => {
++    (turnId: string, changeSetId: string, actionId: string) => {
+       attachRefs({ changeSetId, actionId });
+       announceUndo({ actionId, label: "Change applied", from: "/ai" });
++      // Master fix Phase 4: applied, so no Retry / Edit; a new project names the chat.
++      setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, applied: true } : t)));
++      const turn = turns.find((t) => t.id === turnId);
++      const project = turn?.draft?.changeSet.ops.flatMap((op) => (op.op === "create_plan" ? [op.title] : []))[0];
++      if (project && activeSessionId) autoTitle(activeSessionId, { projectTitle: project });
+     },
+-    [attachRefs]
++    [attachRefs, turns, activeSessionId, autoTitle]
+   );
+ 
+   /** Turns whose "Add to calendar" draft is in flight (one request each). */
+@@ -760,6 +889,7 @@ export default function AiPage() {
+ 
+   const renameChat = useCallback(
+     async (id: string, title: string) => {
++      markManualTitle(id);
+       setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, title } : s)));
+       await postSession({ action: "rename", sessionId: id, title });
+       void loadSessions();
+@@ -786,6 +916,46 @@ export default function AiPage() {
+     [activeSessionId, newChat, postSession, loadSessions]
+   );
+ 
++  /** Master fix Phase 4: hover actions on a reply. Retry and Edit are on the
++   *  last turn only, and never on one that changed the calendar. */
++  const retry = useCallback(
++    (turnId: string) => {
++      const turn = turns[turns.length - 1];
++      if (busy || !turn || turn.id !== turnId || !redoable(turn)) return;
++      logChatEvent("chat_retried");
++      void send(turn.request, undefined, undefined, { replace: turnId });
++    },
++    [busy, turns, send]
++  );
++
++  const editLast = useCallback(
++    (turnId: string) => {
++      const turn = turns[turns.length - 1];
++      if (busy || !turn || turn.id !== turnId || !redoable(turn)) return;
++      logChatEvent("chat_edited");
++      setEditing(turnId);
++      setInput(turn.request);
++      window.setTimeout(() => {
++        const el = inputRef.current;
++        if (!el) return;
++        el.focus();
++        el.setSelectionRange(el.value.length, el.value.length);
++      }, 0);
++    },
++    [busy, turns]
++  );
++
++  const giveFeedback = useCallback(
++    (turnId: string, value: "up" | "down") => {
++      const turn = turns.find((t) => t.id === turnId);
++      if (!turn) return;
++      const next = turn.feedback === value ? undefined : value;
++      setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, feedback: next } : t)));
++      logChatEvent("chat_feedback", { value: next ?? "cleared", acted: !redoable(turn) });
++    },
++    [turns]
++  );
++
+   const resolveConfirm = useCallback(async (turnId: string, pendingId: string, confirm: boolean) => {
+     setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, pendingConfirm: null } : t)));
+     try {
+@@ -841,6 +1011,7 @@ export default function AiPage() {
+       onVoiceError={setErr}
+       mode={chatMode}
+       placeholder={v2 ? "Ask, plan, or add something…" : undefined}
++      onStop={stop}
+     />
+   );
+ 
+@@ -919,6 +1090,7 @@ export default function AiPage() {
+             <h2 className="tg-hero-title">
+               <span className="tg-hero-ask">{v2 ? "What do you need?" : "What can Tangent help with?"}</span>
+             </h2>
++            <p className="tg-hero-sub">Ask, add, or plan anything. You’ll always see what changes.</p>
+             {today && (
+               today.next ? (
+                 <Link href={`/calendar?date=${today.next.date}`} className="tg-next">
+@@ -968,6 +1140,10 @@ export default function AiPage() {
+               busy={busy}
+               pendingRequest={pendingRequest}
+               planProgress={planProgress}
++              streamText={streamText}
++              onRetry={retry}
++              onEdit={editLast}
++              onFeedback={giveFeedback}
+               onConfirm={(turnId, pendingId, confirm) => void resolveConfirm(turnId, pendingId, confirm)}
+               onUndone={() => void refresh()}
+               mode={chatMode}
+@@ -1008,6 +1184,47 @@ export default function AiPage() {
+                   </button>
+                 </div>
+               )}
++              {newTopic && (
++                <div className="tg-topic-chips" role="group" aria-label="This looks like a new topic">
++                  <span>New topic?</span>
++                  <button
++                    type="button"
++                    className="tg-btn tg-btn-accent"
++                    onClick={() => {
++                      const draft = input;
++                      logChatEvent("chat_new_topic", { choice: "new" });
++                      newChat();
++                      setInput(draft);
++                    }}
++                  >
++                    Start new chat
++                  </button>
++                  <button
++                    type="button"
++                    className="tg-btn"
++                    onClick={() => {
++                      setTopicSettledAt(turns.length);
++                      logChatEvent("chat_new_topic", { choice: "keep" });
++                    }}
++                  >
++                    Keep here
++                  </button>
++                </div>
++              )}
++              {editing && (
++                <p className="tg-editing">
++                  Editing your last message. Sending replaces it.
++                  <button
++                    type="button"
++                    onClick={() => {
++                      setEditing(null);
++                      setInput("");
++                    }}
++                  >
++                    Cancel
++                  </button>
++                </p>
++              )}
+               {err && <p className="tg-error" role="alert">{err}</p>}
+               {saveWarning && <p className="tg-error" role="alert">{saveWarning}</p>}
+               <div className="tg-composer-glow">{composer}</div>
+diff --git a/app/(app)/calendar/page.tsx b/app/(app)/calendar/page.tsx
+index 4a979b9..c3af18a 100644
+--- a/app/(app)/calendar/page.tsx
++++ b/app/(app)/calendar/page.tsx
+@@ -8,6 +8,11 @@ import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
+ import { wallClockNow } from "@/lib/time";
+ import AddTaskModal from "@/components/AddTaskModal";
+ import ActionReceipt from "@/components/ActionReceipt";
++import ClarifyCard, { type ClarifyAnswer, type ClarifyQuestion } from "@/components/console/ClarifyCard";
++import PreviewCard from "@/components/PreviewCard";
++import type { ChangeSet } from "@/lib/pipeline/changeset";
++import type { PreviewPayload } from "@/lib/pipeline/draft";
++import { PENDING_QUESTION_ID, type PendingQuestion } from "@/lib/pending-question";
+ import { openTask } from "@/components/TaskDetail";
+ import Button from "@/components/ui/Button";
+ import SidePeek from "@/components/ui/SidePeek";
+@@ -24,6 +29,7 @@ import type { Plan, Task } from "@/lib/types";
+ import { X, Check, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil, Undo2 } from "lucide-react";
+ import WeekView from "@/components/calendar/WeekView";
+ import AgendaView from "@/components/calendar/AgendaView";
++import TaskTip from "@/components/calendar/TaskTip";
+ import TaskTitle from "@/components/ui/TaskTitle";
+ 
+ type CalView = "week" | "month" | "agenda";
+@@ -117,6 +123,19 @@ type RecurDeleteTarget = { taskId: string; parentId: string; title: string };
+ type RecurEditTarget = { taskId: string; parentId: string; task: Task };
+ 
+ 
++/** One day-chat message, with the cards a reply can carry (master fix B3). */
++type DayChatMessage = {
++  role: "user" | "assistant";
++  content: string;
++  questions?: ClarifyQuestion[];
++  pendingQuestion?: PendingQuestion | null;
++  /** The ask a card's answers run (its context included). */
++  request?: string;
++  draft?: { changeSet: ChangeSet; preview: PreviewPayload };
++  actionId?: string;
++  pendingConfirm?: { id: string; message: string };
++};
++
+ export default function CalendarPage() {
+   const { state, refresh } = useAppState();
+   const now = wallClockNow(useUserTimezone());
+@@ -132,7 +151,12 @@ export default function CalendarPage() {
+   const [agendaStart, setAgendaStart] = useState(() => new Date(now.getFullYear(), now.getMonth(), now.getDate()));
+   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+   // Clicking one event opens just that event; clicking the date opens the day.
+-  const [removed, setRemoved] = useState<{ actionId: string; title: string } | null>(null);
++  const [removed, setRemoved] = useState<{ actionId: string; title: string; label?: string } | null>(null);
++  /** Master fix Phase 5: Remove on a busy day picks tasks with the B6 chips;
++   *  this is the task that was clicked (chosen to start with). */
++  const [removePick, setRemovePick] = useState<string | null>(null);
++  /** Month cells show this many tasks before "+N more" (at least 3; 4 on desktop). */
++  const [perCell, setPerCell] = useState(3);
+   const [openNotes, setOpenNotes] = useState<Set<string>>(new Set());
+   const [showAddModal, setShowAddModal] = useState(false);
+   const [addModalDate, setAddModalDate] = useState(todayYmd);
+@@ -142,7 +166,7 @@ export default function CalendarPage() {
+   const [recurDeleteTarget, setRecurDeleteTarget] = useState<RecurDeleteTarget | null>(null);
+   const [recurEditTarget, setRecurEditTarget] = useState<RecurEditTarget | null>(null);
+   const [recurDeleting, setRecurDeleting] = useState(false);
+-  const [dayChatMessages, setDayChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
++  const [dayChatMessages, setDayChatMessages] = useState<DayChatMessage[]>([]);
+   const [dayChatInput, setDayChatInput] = useState("");
+   const [dayChatBusy, setDayChatBusy] = useState(false);
+ 
+@@ -198,13 +222,32 @@ export default function CalendarPage() {
+   useEffect(() => {
+     setDayChatMessages([]);
+     setDayChatInput("");
++    setRemovePick(null);
+   }, [selectedDay]);
+ 
+-  const sendDayChat = useCallback(async () => {
+-    const text = dayChatInput.trim();
++  // Master fix Phase 5: as many tasks per month cell as the viewport's row
++  // height fits, never fewer than 3 (4 on desktop). From the window size, not
++  // the cells, so showing more never makes the cells grow into showing more.
++  useEffect(() => {
++    const fit = () => {
++      const floor = window.matchMedia("(min-width: 1024px)").matches ? 4 : 3;
++      const rowHeight = (window.innerHeight - 190) / 6; // toolbar, weekday row; six week rows
++      const rows = Math.floor((rowHeight - 58) / 22); // date number and "+N more"; one task line
++      setPerCell(Math.min(8, Math.max(floor, rows)));
++    };
++    fit();
++    window.addEventListener("resize", fit);
++    return () => window.removeEventListener("resize", fit);
++  }, []);
++
++  // Master fix B3: the day chat shows Tangent's questions and previews as the
++  // same cards as the AI page, and answers them the same way (app/(app)/ai).
++  // `followUp`: a card's answers; `request` is the ask they answer.
++  const sendDayChat = useCallback(async (followUp?: { shown: string; request?: string; answers?: ClarifyAnswer[]; tapped?: boolean }) => {
++    const text = (followUp?.shown ?? dayChatInput).trim();
+     if (!text || !selectedDay || dayChatBusy) return;
+     setDayChatBusy(true);
+-    setDayChatInput("");
++    if (!followUp) setDayChatInput("");
+ 
+     const dateLabel = new Date(selectedDay + "T12:00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+     const taskSummary = selectedDayTasks.length
+@@ -212,26 +255,94 @@ export default function CalendarPage() {
+       : "No tasks scheduled.";
+     const contextualMessage = `Context: the user is looking at ${dateLabel}. Tasks for that day:\n${taskSummary}\n\nQuestion: ${text}`;
+ 
+-    const nextMessages = [...dayChatMessages, { role: "user" as const, content: text }];
+-    setDayChatMessages(nextMessages);
++    // A question Tangent is waiting on (the last reply's, until it expires).
++    const last = dayChatMessages[dayChatMessages.length - 1];
++    const waiting = last?.pendingQuestion && Date.parse(last.pendingQuestion.expiresAt) > Date.now() ? last.pendingQuestion : null;
++    const asked = waiting ? text : followUp?.request ?? contextualMessage;
++    const history = dayChatMessages.map((m) => ({ role: m.role, content: m.content }));
++    // Answered or dropped either way: only the newest reply's card stays live.
++    setDayChatMessages([...dayChatMessages.map((m) => (m.questions ? { ...m, questions: undefined, pendingQuestion: null } : m)), { role: "user", content: text }]);
+ 
+     try {
+       const res = await fetch("/api/chat", {
+         method: "POST",
+         headers: { "Content-Type": "application/json" },
+         body: JSON.stringify({
+-          messages: [...dayChatMessages, { role: "user", content: contextualMessage }],
++          messages: [...history, { role: "user", content: asked }],
++          mode: "calendar",
++          clarify: !followUp?.request,
++          pendingQuestion: waiting ?? undefined,
++          answers: followUp?.answers ?? (followUp?.tapped && waiting ? [{ id: PENDING_QUESTION_ID, question: "", answer: text }] : undefined),
+         }),
+       });
+-      const data = (await res.json()) as { ok?: boolean; message?: string; error?: string };
+-      const reply = data.ok && data.message ? data.message : (data.error || "Something went wrong.");
+-      setDayChatMessages((m) => [...m, { role: "assistant", content: reply }]);
++      const data = (await res.json()) as {
++        ok?: boolean;
++        message?: string;
++        error?: string;
++        action?: string | null;
++        actionId?: string;
++        questions?: ClarifyQuestion[];
++        pendingQuestion?: PendingQuestion | null;
++        changeSet?: ChangeSet;
++        preview?: PreviewPayload;
++        pending?: { id: string; message: string };
++      };
++      const reply = data.ok ? data.message || data.pending?.message || "Done." : (data.error || "Something went wrong.");
++      const draft = data.action === "preview" && data.changeSet && data.preview ? { changeSet: data.changeSet, preview: data.preview } : undefined;
++      setDayChatMessages((m) => [
++        ...m,
++        {
++          role: "assistant",
++          content: reply,
++          questions: data.questions?.length ? data.questions : undefined,
++          pendingQuestion: data.pendingQuestion ?? null,
++          request: data.questions?.length ? asked : undefined,
++          draft,
++          actionId: data.actionId,
++          pendingConfirm: data.action === "confirm_required" && data.pending ? data.pending : undefined,
++        },
++      ]);
++      if (data.actionId) await refresh();
+     } catch {
+       setDayChatMessages((m) => [...m, { role: "assistant", content: "Something went wrong reaching the assistant." }]);
+     } finally {
+       setDayChatBusy(false);
+     }
+-  }, [dayChatInput, dayChatBusy, selectedDay, dayChatMessages, selectedDayTasks]);
++  }, [dayChatInput, dayChatBusy, selectedDay, dayChatMessages, selectedDayTasks, refresh]);
++
++  /** A card's answers: a "Which one?" tap is the next message; a plan's
++   *  questions run the original ask with them (or "Just do it"). */
++  const answerDayChat = useCallback(
++    (index: number, answers: ClarifyAnswer[] | null) => {
++      const m = dayChatMessages[index];
++      if (!m) return;
++      if (m.pendingQuestion) return void sendDayChat({ shown: answers?.[0]?.answer ?? "Cancel", tapped: true });
++      const shown = answers && answers.length > 0 ? answers.map((a) => a.answer).join(" · ") : "Just do it";
++      void sendDayChat({ shown, request: m.request, answers: answers ?? undefined });
++    },
++    [dayChatMessages, sendDayChat]
++  );
++
++  /** The older Confirm/Cancel (flag off, or a very large delete). */
++  const confirmDayChat = useCallback(
++    async (index: number, id: string, confirm: boolean) => {
++      setDayChatMessages((ms) => ms.map((m, i) => (i === index ? { ...m, pendingConfirm: undefined } : m)));
++      try {
++        const res = await fetch("/api/confirm", {
++          method: "POST",
++          headers: { "Content-Type": "application/json" },
++          body: JSON.stringify({ id, confirm }),
++        });
++        const data = (await res.json()) as { ok?: boolean; response?: string; error?: string; actionId?: string };
++        const reply = !res.ok || !data.ok ? data.error || "Something went wrong." : data.response || (confirm ? "Done." : "Cancelled.");
++        setDayChatMessages((ms) => [...ms, { role: "assistant", content: reply, actionId: data.actionId }]);
++        if (data.actionId) await refresh();
++      } catch {
++        setDayChatMessages((ms) => [...ms, { role: "assistant", content: "Something went wrong reaching the assistant." }]);
++      }
++    },
++    [refresh]
++  );
+ 
+   const cells = getMonthGrid(year, month);
+ 
+@@ -263,7 +374,46 @@ export default function CalendarPage() {
+     await refresh();
+   };
+ 
++  // Master fix Phase 5: on a day with other tasks, Remove asks which ones with
++  // the same multi-select chips as the chat (B6), the clicked one chosen.
+   const handleDeleteTask = (t: Task) => {
++    if (selectedDay && selectedDayTasks.length > 1) setRemovePick(t.id);
++    else removeTask(t);
++  };
++
++  /** The tasks the Remove chips name, by label ("All of these" is every one). */
++  const removeLabels = (tasks: Task[]) => {
++    const seen = new Map<string, number>();
++    return tasks.map((t) => {
++      const base = t.time && t.time !== "23:59" ? `${t.title} · ${formatTime12(t.time)}` : t.title;
++      const n = (seen.get(base) ?? 0) + 1;
++      seen.set(base, n);
++      return { task: t, label: n > 1 ? `${base} (${n})` : base };
++    });
++  };
++
++  const removePicked = async (answers: ClarifyAnswer[] | null) => {
++    setRemovePick(null);
++    const answer = answers?.[0]?.answer ?? "";
++    if (!answer) return;
++    const labelled = removeLabels(selectedDayTasks);
++    const picked = answer === "All of these"
++      ? labelled.map((l) => l.task)
++      : labelled.filter((l) => `, ${answer}, `.includes(`, ${l.label}, `)).map((l) => l.task);
++    if (picked.length === 0) return;
++    if (picked.length === 1) return removeTask(picked[0]);
++    // One change, one Undo: a recurring task loses just this day's occurrence.
++    const res = await fetch("/api/tasks", {
++      method: "POST",
++      headers: { "Content-Type": "application/json" },
++      body: JSON.stringify({ action: "delete_tasks", ids: picked.map((t) => t.id) }),
++    });
++    const data = (await res.json().catch(() => ({}))) as { actionId?: string };
++    if (data.actionId) setRemoved({ actionId: data.actionId, title: picked[0].title, label: `Removed ${picked.length} tasks` });
++    await refresh();
++  };
++
++  const removeTask = (t: Task) => {
+     if (t.recurring?.enabled && t.recurring.parentId) {
+       setRecurDeleteTarget({ taskId: t.id, parentId: t.recurring.parentId, title: t.title });
+     } else {
+@@ -409,6 +559,7 @@ export default function CalendarPage() {
+   return (
+     <>
+       {mounted && createPortal(island, document.body)}
++      <TaskTip tasks={state?.tasks ?? []} plans={plans} colorFor={getTaskCategoryColor} />
+       <div className="calendar-page">
+         <section className="calendar-toolbar" aria-label="Calendar controls">
+           <div className="calendar-toolbar-primary">
+@@ -489,8 +640,9 @@ export default function CalendarPage() {
+               // The day's own tasks, in time order, shown as chips: the grid
+               // answers "what's on" without opening every day.
+               const ordered = [...dayTasks].sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+-              // Two per day keeps the month readable; the rest is "N more".
+-              const shown = ordered.slice(0, 2);
++              // As many as the cell fits (at least 3, 4 on desktop); the rest
++              // is "+N more", which opens the day.
++              const shown = ordered.slice(0, ordered.length > perCell ? perCell - 1 : perCell);
+               const more = ordered.length - shown.length;
+               let className = "cal-cell";
+               if (!inMonth) className += " is-outside";
+@@ -520,6 +672,7 @@ export default function CalendarPage() {
+                               key={t.id}
+                               className={`cal-event${t.completed ? " is-done" : ""}${deadline ? " is-deadline" : ""}`}
+                               style={{ "--chip": getTaskCategoryColor(t) } as React.CSSProperties}
++                              data-task-tip={t.id}
+                               onClick={(e) => {
+                                 // The event opens in the middle, like Google
+                                 // Calendar; the date opens the day.
+@@ -528,11 +681,21 @@ export default function CalendarPage() {
+                               }}
+                             >
+                               <span className="cal-event-dot" aria-hidden="true" />
+-                              <span className="cal-event-title" title={t.title}>{labelFor(t)}</span>
++                              <span className="cal-event-title">{labelFor(t)}</span>
+                             </span>
+                           );
+                         })}
+-                        {more > 0 && <span className="cal-event-more">{more} more</span>}
++                        {more > 0 && (
++                          <span
++                            className="cal-event-more"
++                            onClick={(e) => {
++                              e.stopPropagation();
++                              setSelectedDay(ymd);
++                            }}
++                          >
++                            +{more} more
++                          </span>
++                        )}
+                       </span>
+                     )}
+                   </button>
+@@ -579,7 +742,7 @@ export default function CalendarPage() {
+                 <div className="calendar-removed">
+                   <ActionReceipt
+                     actionId={removed.actionId}
+-                    label={`Removed “${removed.title}”`}
++                    label={removed.label ?? `Removed “${removed.title}”`}
+                     onUndone={() => {
+                       setRemoved(null);
+                       void refresh();
+@@ -616,7 +779,7 @@ export default function CalendarPage() {
+                           >
+                             {t.completed && <Check size={12} strokeWidth={2.8} aria-hidden="true" />}
+                           </button>
+-                          <span className={`calendar-modal-task-title${t.completed ? " done" : ""}`}><TaskTitle task={t} /></span>
++                          <span className={`calendar-modal-task-title${t.completed ? " done" : ""}`} data-task-tip={t.id}><TaskTitle task={t} /></span>
+                           {t.recurring?.enabled && (
+                             <span className="recurring-badge" title={freq || "Recurring"}><Repeat size={12} strokeWidth={1.75} /></span>
+                           )}
+@@ -689,10 +852,31 @@ export default function CalendarPage() {
+                           className="calendar-task-remove"
+                           onClick={() => handleDeleteTask(t)}
+                           aria-label={`Remove ${t.title}`}
++                          aria-expanded={removePick === t.id}
+                         >
+                           Remove
+                         </button>
+                       </div>
++                      {removePick === t.id && (
++                        <div className="calendar-remove-pick">
++                          <ClarifyCard
++                            key={t.id}
++                            questions={[
++                              {
++                                id: "remove",
++                                question: "Remove which tasks?",
++                                options: [...removeLabels(selectedDayTasks).map((l) => l.label), "All of these"],
++                                multi: true,
++                                submitLabel: "Delete selected",
++                              },
++                            ]}
++                            initial={{ remove: removeLabels(selectedDayTasks).filter((l) => l.task.id === t.id).map((l) => l.label) }}
++                            other={false}
++                            skipLabel="Cancel"
++                            onSubmit={(answers) => void removePicked(answers)}
++                          />
++                        </div>
++                      )}
+                     </div>
+                   );
+                   })}
+@@ -720,7 +904,30 @@ export default function CalendarPage() {
+                 <div className="calendar-modal-chat-log">
+                   {dayChatMessages.map((m, i) => (
+                     <div key={i} className={`chat-row ${m.role === "user" ? "user-row" : "assistant-row"}`}>
+-                      <div className={`bubble ${m.role}`}>{m.content}</div>
++                      {!(m.draft && m.content.trim() === m.draft.changeSet.summary.trim()) && (
++                        <div className={`bubble ${m.role}`}>{m.content}</div>
++                      )}
++                      {m.questions && m.questions.length > 0 && (
++                        <ClarifyCard
++                          questions={m.questions}
++                          disabled={dayChatBusy}
++                          skipLabel={m.pendingQuestion ? "Cancel" : undefined}
++                          echo={m.content}
++                          onSubmit={(answers) => answerDayChat(i, answers)}
++                        />
++                      )}
++                      {m.draft && <PreviewCard changeSet={m.draft.changeSet} preview={m.draft.preview} onChanged={() => void refresh()} />}
++                      {m.pendingConfirm && (
++                        <div className="tg-confirm">
++                          <Button size="sm" variant="primary" onClick={() => void confirmDayChat(i, m.pendingConfirm!.id, true)}>
++                            Confirm
++                          </Button>
++                          <Button size="sm" onClick={() => void confirmDayChat(i, m.pendingConfirm!.id, false)}>
++                            Cancel
++                          </Button>
++                        </div>
++                      )}
++                      {m.actionId && !m.draft && <ActionReceipt actionId={m.actionId} label="Change applied" onUndone={() => void refresh()} />}
+                     </div>
+                   ))}
+                   {dayChatBusy && (
+diff --git a/components/PreviewCard.tsx b/components/PreviewCard.tsx
+index d40caf1..9db0bf1 100644
+--- a/components/PreviewCard.tsx
++++ b/components/PreviewCard.tsx
+@@ -12,6 +12,7 @@ import Link from "next/link";
+ import { useCallback, useEffect, useRef, useState } from "react";
+ import type { ChangeSet } from "@/lib/pipeline/changeset";
+ import type { DraftEdit, PreviewPayload } from "@/lib/pipeline/draft";
++import { receiptView } from "@/lib/pipeline/receipt";
+ import { useAppState } from "@/components/AppStateProvider";
+ 
+ type Phase = "draft" | "confirmed" | "discarded" | "undone";
+@@ -22,7 +23,7 @@ type Props = {
+   /** The calendar changed (confirm or undo): reload app state. */
+   onChanged?: () => void;
+   /** Confirmed: the undo entry's id, so the chat can keep Undo after a reload. */
+-  onConfirmed?: (actionId: string) => void;
++  onConfirmed?: (actionId: string, info?: { planId: string | null }) => void;
+   /** Focus the card when it appears so Enter/Esc work straight away. */
+   autoFocus?: boolean;
+   className?: string;
+@@ -54,7 +55,9 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
+   const [busy, setBusy] = useState(false);
+   const [editing, setEditing] = useState(false);
+   const [error, setError] = useState<string | null>(null);
+-  const [result, setResult] = useState<{ created: number; skipped: string[] } | null>(null);
++  const [result, setResult] = useState<{ created: number; skipped: string[]; planId: string | null } | null>(null);
++  /** Master fix Phase 4: "See all N sessions", grouped by week. */
++  const [allOpen, setAllOpen] = useState(false);
+   const [chatting, setChatting] = useState(false);
+   const [expired, setExpired] = useState(false);
+   const cardRef = useRef<HTMLDivElement>(null);
+@@ -105,11 +108,12 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
+       if (!data.ok) return settle(status, data);
+       const skipped = (data.skipped_duplicates as { titles?: string[] } | undefined)?.titles ?? [];
+       const created = typeof data.createdTaskCount === "number" ? data.createdTaskCount : -1;
+-      setResult({ created, skipped });
++      const planId = typeof data.planId === "string" ? data.planId : null;
++      setResult({ created, skipped, planId });
+       setPhase("confirmed");
+       setEditing(false);
+       onChanged?.();
+-      if (typeof data.actionId === "string") onConfirmed?.(data.actionId);
++      if (typeof data.actionId === "string") onConfirmed?.(data.actionId, { planId });
+     });
+ 
+   const discard = () =>
+@@ -164,12 +168,42 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
+ 
+   if (phase === "confirmed" || phase === "undone") {
+     const nothing = result?.created === 0;
++    // Master fix Phase 4: a headline, a few of the changes, the rest by week,
++    // then one quiet row: Undo · Open project · Details.
++    const summary = receiptView(cs, view.lines, result && result.created >= 0 ? result.created : undefined);
++    const planTitle = cs.ops.flatMap((o) => (o.op === "create_plan" ? [o.title] : []))[0];
++    const projectId =
++      result?.planId ?? cs.target_plan_id ?? (planTitle ? state?.plans?.find((p) => p.title === planTitle)?.id : undefined) ?? null;
++    const lineList = (lines: string[]) => (
++      <ul className="preview-card-receipt-lines">
++        {lines.map((line, i) => (
++          <li key={`${i}-${line}`}>{line}</li>
++        ))}
++      </ul>
++    );
+     return (
+       <div className={`${cls} is-done`} role="status">
+-        <div className="action-receipt">
+-          <span className="action-receipt-label">
+-            {phase === "undone" ? "Removed from your calendar" : nothing ? "Already on your calendar · nothing new added" : "Added to your calendar"}
+-          </span>
++        <p className="preview-card-receipt-head">
++          {phase === "undone" ? "Removed from your calendar" : nothing ? "Already on your calendar · nothing new added" : summary.headline}
++        </p>
++        {phase === "confirmed" && !nothing && (
++          <>
++            {allOpen
++              ? summary.weeks.map((w) => (
++                  <div key={w.label} className="preview-card-receipt-week">
++                    <p className="preview-card-receipt-week-label">{w.label}</p>
++                    {lineList(w.lines)}
++                  </div>
++                ))
++              : summary.lines.length > 0 && lineList(summary.lines)}
++            {summary.total > summary.lines.length && (
++              <button type="button" className="preview-card-receipt-more" aria-expanded={allOpen} onClick={() => setAllOpen((v) => !v)}>
++                {allOpen ? "Show less" : `See all ${summary.total} ${planTitle ? "sessions" : "changes"}`}
++              </button>
++            )}
++          </>
++        )}
++        <div className="action-receipt is-quiet">
+           {phase === "confirmed" && !nothing ? (
+             <button type="button" className="action-receipt-undo" onClick={() => void undo()} disabled={busy}>
+               {busy ? "Undoing…" : "Undo"}
+@@ -177,6 +211,11 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
+           ) : phase === "undone" ? (
+             <span className="action-receipt-status">Undone</span>
+           ) : null}
++          {phase === "confirmed" && !nothing && projectId && (
++            <Link className="action-receipt-details" href={`/projects/${projectId}`}>
++              Open project
++            </Link>
++          )}
+           <Link className="action-receipt-details" href={`/settings?activity=cs:${cs.id}#ai-activity`}>
+             Details
+           </Link>
+@@ -259,6 +298,8 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
+         })}
+       </ul>
+ 
++      {/* Master fix B6: several selected plans read as one group. */}
++      {view.planRemovals && view.planRemovals.length > 1 && <p className="preview-card-muted">Also remove these plans</p>}
+       {view.planRemovals?.map((r) => (
+         <label key={r.planId} className="preview-card-check">
+           <input
+@@ -267,7 +308,7 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
+             disabled={busy}
+             onChange={(e) => void edit({ type: "plan_removal", plan_id: r.planId, remove: e.target.checked })}
+           />
+-          Also remove the plan &ldquo;{r.title}&rdquo;
++          {view.planRemovals!.length > 1 ? <>&ldquo;{r.title}&rdquo;</> : <>Also remove the plan &ldquo;{r.title}&rdquo;</>}
+         </label>
+       ))}
+ 
+diff --git a/components/calendar/WeekView.tsx b/components/calendar/WeekView.tsx
+index afae976..419d162 100644
+--- a/components/calendar/WeekView.tsx
++++ b/components/calendar/WeekView.tsx
+@@ -142,7 +142,8 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
+                     className={`wk-due-item${t.completed ? " is-done" : ""}`}
+                     style={{ "--block": colorFor(t) } as React.CSSProperties}
+                     onClick={() => (onOpenTask ? onOpenTask(ymd, t.id) : onOpenDay(ymd))}
+-                    title={t.title}
++                    aria-label={t.title}
++                    data-task-tip={t.id}
+                   >
+                     <span className="wk-due-title">{labelFor ? labelFor(t) : <TaskTitle task={t} chip={false} />}</span>
+                   </button>
+@@ -206,7 +207,8 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
+                       initial={reduced ? false : { opacity: 0 }}
+                       animate={{ opacity: 1 }}
+                       transition={{ duration: 0.16, ease: "easeOut" }}
+-                      title={`${time12(task.time)} ${task.title}`}
++                      aria-label={`${time12(task.time)} ${task.title}`}
++                      data-task-tip={task.id}
+                     >
+                       <span className="wk-block-title">{labelFor ? labelFor(task) : <TaskTitle task={task} chip={false} />}</span>
+                       <span className="wk-block-time">{time12(task.time)}</span>
+diff --git a/components/console/ChatSidebar.tsx b/components/console/ChatSidebar.tsx
+index 3856349..6affa25 100644
+--- a/components/console/ChatSidebar.tsx
++++ b/components/console/ChatSidebar.tsx
+@@ -12,6 +12,7 @@ import type { ChatSession } from "@/lib/types";
+ import type { AppState } from "@/lib/types";
+ import { resolveChatTask, type ChatTask } from "@/components/console/chatTask";
+ import TaskColorPopover from "@/components/console/TaskColorPopover";
++import { plainText } from "@/components/console/markdown-parse";
+ 
+ /** Highlight colors — Tangent's palette: iris first, then its companions. */
+ export const CHAT_COLORS = [
+@@ -45,6 +46,14 @@ type Props = {
+ 
+ type Row = { session: ChatSession; task: ChatTask | null };
+ 
++/** Master fix Phase 4: the chat's last message, as the second line. */
++function lastLine(session: ChatSession): string {
++  const last = session.messages?.[session.messages.length - 1];
++  if (!last) return "";
++  const text = plainText(last.content.replace(/<!--[\s\S]*?-->/g, "")).replace(/\s+/g, " ").trim();
++  return text.length > 60 ? `${text.slice(0, 59).trimEnd()}…` : text;
++}
++
+ function whenLabel(iso: string): string {
+   const d = new Date(iso);
+   const today = new Date();
+@@ -211,8 +220,9 @@ export default function ChatSidebar({
+           >
+             <span className="tg-chat-title">{session.title}</span>
+             <span className="tg-chat-meta">
+-              {task ? `${task.name} · ` : ""}
+-              {whenLabel(session.updatedAt)}
++              {task
++                ? `${task.name} · ${whenLabel(session.updatedAt)}`
++                : [whenLabel(session.updatedAt), lastLine(session)].filter(Boolean).join(" · ")}
+             </span>
+           </button>
+         )}
+diff --git a/components/console/ChatThread.tsx b/components/console/ChatThread.tsx
+index 7338c9d..0dd4f9c 100644
+--- a/components/console/ChatThread.tsx
++++ b/components/console/ChatThread.tsx
+@@ -5,18 +5,23 @@
+ // exchange is on screen. Older turns fold behind an "N earlier messages"
+ // divider. When the latest reply is taller than the viewport, it's pinned
+ // by its top edge and a plain "continues below" notice says so, rather than
+-// clipping text.
++// clipping text. Master fix Phase 4: replies render as Markdown, stream in,
++// and carry hover actions; the thread follows new text only while the
++// student is at the bottom ("Jump to latest" otherwise).
+ 
+ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+-import { ArrowDown, CalendarPlus } from "lucide-react";
++import { ArrowDown, CalendarPlus, Check, Copy, Pencil, RotateCcw, ThumbsDown, ThumbsUp } from "lucide-react";
+ import ActionReceipt from "@/components/ActionReceipt";
+ import PreviewCard from "@/components/PreviewCard";
+ import PenMark from "@/components/console/PenMark";
+ import { usePipelineV2 } from "@/components/PipelineFlag";
+ import ClarifyCard, { type ClarifyAnswer } from "@/components/console/ClarifyCard";
+ import SuggestionCard from "@/components/console/SuggestionCard";
+-import type { ChatMode, PlanProgressView, Turn } from "@/components/console/turns";
++import Markdown from "@/components/console/Markdown";
++import { plainText } from "@/components/console/markdown-parse";
++import { redoable, type ChatMode, type PlanProgressView, type Turn } from "@/components/console/turns";
+ import { formatTime12 } from "@/lib/dates";
++import "./chat-ux.css";
+ 
+ /** Turns kept open by default; anything older folds behind the divider. */
+ const VISIBLE_TURNS = 3;
+@@ -25,23 +30,23 @@ const LIVE_STEPS: Record<ChatMode, readonly string[]> = {
+   calendar: ["Reading your request", "Checking your calendar", "Updating your calendar"],
+ };
+ 
+-/** A fresh reply fades in word by word; the stagger is capped so long replies
+- *  finish within about a second. Older replies render as plain text. */
+-function RevealText({ text }: { text: string }) {
+-  const parts = text.split(/(\s+)/);
+-  let word = 0;
++/** Scrolled within this of the bottom counts as following the chat. */
++const STICK_GAP = 80;
++
++/** Copies the reply as plain text (no Markdown marks). */
++function CopyButton({ text }: { text: string }) {
++  const [copied, setCopied] = useState(false);
++  const copy = async () => {
++    try {
++      await navigator.clipboard.writeText(plainText(text));
++      setCopied(true);
++      window.setTimeout(() => setCopied(false), 1500);
++    } catch {}
++  };
+   return (
+-    <>
+-      {parts.map((part, i) => {
+-        if (!part.trim()) return part;
+-        const delay = Math.min(word++ * 22, 1100);
+-        return (
+-          <span key={i} className="tg-word" style={{ animationDelay: `${delay}ms` }}>
+-            {part}
+-          </span>
+-        );
+-      })}
+-    </>
++    <button type="button" className="tg-msg-action" aria-label={copied ? "Copied" : "Copy reply"} title={copied ? "Copied" : "Copy"} onClick={() => void copy()}>
++      {copied ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.8} aria-hidden="true" />}
++    </button>
+   );
+ }
+ 
+@@ -68,6 +73,13 @@ type Props = {
+   onScheduleChanged: () => void;
+   /** Answers to questions about a task the turn already saved; null = Later. */
+   onAnswerLater: (turnId: string, setId: string, answers: ClarifyAnswer[] | null) => void;
++  /** Master fix Phase 4: the pending reply so far, while it streams. */
++  streamText?: string;
++  /** Resend the last message (last turn only, nothing applied). */
++  onRetry?: (turnId: string) => void;
++  /** Put the last message back in the composer to edit and resend. */
++  onEdit?: (turnId: string) => void;
++  onFeedback?: (turnId: string, value: "up" | "down") => void;
+ };
+ 
+ function shortDate(ymd: string): string {
+@@ -75,7 +87,7 @@ function shortDate(ymd: string): string {
+   return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+ }
+ 
+-export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onUndone, mode, onAddPlan, planProgress, onJustChatting, onCardConfirmed, onKeepTalking, onAnswer, onScheduleChanged, onAnswerLater }: Props) {
++export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onUndone, mode, onAddPlan, planProgress, onJustChatting, onCardConfirmed, onKeepTalking, onAnswer, onScheduleChanged, onAnswerLater, streamText = "", onRetry, onEdit, onFeedback }: Props) {
+   const v2 = usePipelineV2();
+   const planDone = planProgress ? planProgress.tasks.filter(Boolean).length : 0;
+   const scrollerRef = useRef<HTMLDivElement>(null);
+@@ -83,6 +95,9 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
+   const [expanded, setExpanded] = useState(false);
+   /** null = everything visible; otherwise why content sits below the fold. */
+   const [below, setBelow] = useState<null | "reply" | "newer">(null);
++  /** Following the bottom of the chat: new text scrolls into view. */
++  const stick = useRef(true);
++  const wasBusy = useRef(false);
+ 
+   const hidden = expanded ? 0 : Math.max(0, turns.length - VISIBLE_TURNS);
+   const shown = turns.slice(hidden);
+@@ -92,25 +107,31 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
+     const sc = scrollerRef.current;
+     if (!sc) return;
+     const gap = sc.scrollHeight - sc.scrollTop - sc.clientHeight;
++    stick.current = gap <= STICK_GAP;
+     if (gap <= 8) return setBelow(null);
+     const latest = latestRef.current;
+     const readingLatest = latest ? sc.scrollTop + 1 >= latest.offsetTop - 24 : false;
+     setBelow(readingLatest ? "reply" : "newer");
+   }, []);
+ 
+-  // Bring the newest exchange into view whenever it changes.
++  // Bring the newest exchange into view whenever it changes, unless the
++  // student has scrolled up to read (Master fix Phase 4: smart scroll).
+   useLayoutEffect(() => {
+     const sc = scrollerRef.current;
+     const latest = latestRef.current;
+     if (!sc) return;
+-    if (latest && latest.offsetHeight > sc.clientHeight - 32) {
+-      // Too tall to fit: start at the question, let the notice point down.
+-      sc.scrollTop = latest.offsetTop - 16;
+-    } else {
+-      sc.scrollTop = sc.scrollHeight;
++    if (busy && !wasBusy.current) stick.current = true; // just sent: follow it
++    wasBusy.current = busy;
++    if (stick.current) {
++      if (!busy && !last?.streamed && latest && latest.offsetHeight > sc.clientHeight - 32) {
++        // Too tall to fit: start at the question, let the notice point down.
++        sc.scrollTop = latest.offsetTop - 16;
++      } else {
++        sc.scrollTop = sc.scrollHeight;
++      }
+     }
+     measure();
+-  }, [turns.length, busy, last?.response, last?.pendingConfirm, planProgress?.title, planDone, measure]);
++  }, [turns.length, busy, last?.response, last?.pendingConfirm, last?.streamed, planProgress?.title, planDone, streamText, measure]);
+ 
+   useEffect(() => {
+     const sc = scrollerRef.current;
+@@ -123,12 +144,13 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
+   const scrollDown = () => {
+     const sc = scrollerRef.current;
+     if (!sc) return;
++    stick.current = true;
+     sc.scrollTo({ top: sc.scrollHeight, behavior: "smooth" });
+   };
+ 
+   return (
+     <div className="tg-thread-wrap">
+-      <div className="tg-thread" ref={scrollerRef} onScroll={measure} aria-live="polite">
++      <div className="tg-thread" ref={scrollerRef} onScroll={measure} aria-live="polite" aria-busy={busy}>
+         <div className="tg-thread-inner">
+           {hidden > 0 && (
+             <button type="button" className="tg-earlier" onClick={() => setExpanded(true)}>
+@@ -142,6 +164,7 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
+ 
+           {shown.map((t, i) => {
+             const isLatest = !busy && i === shown.length - 1;
++            const canRedo = isLatest && redoable(t);
+             return (
+               <article key={t.id} className={`tg-turn${t.fresh ? " is-fresh" : ""}`} ref={isLatest ? latestRef : undefined}>
+                 <div className="tg-msg-user">{t.request}</div>
+@@ -158,7 +181,13 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
+                         ))}
+                       </div>
+                     )}
+-                    <div className="tg-msg-text">{t.fresh ? <RevealText text={t.response} /> : t.response}</div>
++                    {/* Master fix B2: a preview's reply is its own summary; the card says it once. */}
++                    {!(t.draft && t.response.trim() === t.draft.changeSet.summary.trim()) && (
++                      <div className="tg-msg-text">
++                        <Markdown text={t.response} reveal={!!t.fresh && !t.streamed} />
++                      </div>
++                    )}
++                    {t.stopped && t.response !== "Stopped." && <p className="tg-msg-stopped">Stopped</p>}
+                     {t.pendingConfirm && (
+                       <div className="tg-confirm">
+                         <button
+@@ -212,6 +241,7 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
+                         questions={t.questions}
+                         disabled={busy}
+                         skipLabel={t.pendingQuestion ? "Cancel" : undefined}
++                        echo={t.response}
+                         onSubmit={(answers) => onAnswer(t.id, answers)}
+                       />
+                     )}
+@@ -240,6 +270,45 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
+                       />
+                     )}
+                     {t.laterSummary && <p className="tg-later-summary">{t.laterSummary}</p>}
++                    {t.response.trim() && (
++                      <div className="tg-msg-actions" role="toolbar" aria-label="Reply actions">
++                        <CopyButton text={t.response} />
++                        {canRedo && onRetry && (
++                          <button type="button" className="tg-msg-action" aria-label="Retry" title="Retry" onClick={() => onRetry(t.id)}>
++                            <RotateCcw size={14} strokeWidth={1.8} aria-hidden="true" />
++                          </button>
++                        )}
++                        {canRedo && onEdit && (
++                          <button type="button" className="tg-msg-action" aria-label="Edit your message" title="Edit your message" onClick={() => onEdit(t.id)}>
++                            <Pencil size={14} strokeWidth={1.8} aria-hidden="true" />
++                          </button>
++                        )}
++                        {onFeedback && (
++                          <>
++                            <button
++                              type="button"
++                              className="tg-msg-action"
++                              aria-label="Good reply"
++                              title="Good reply"
++                              aria-pressed={t.feedback === "up"}
++                              onClick={() => onFeedback(t.id, "up")}
++                            >
++                              <ThumbsUp size={14} strokeWidth={1.8} aria-hidden="true" />
++                            </button>
++                            <button
++                              type="button"
++                              className="tg-msg-action"
++                              aria-label="Bad reply"
++                              title="Bad reply"
++                              aria-pressed={t.feedback === "down"}
++                              onClick={() => onFeedback(t.id, "down")}
++                            >
++                              <ThumbsDown size={14} strokeWidth={1.8} aria-hidden="true" />
++                            </button>
++                          </>
++                        )}
++                      </div>
++                    )}
+                   </div>
+                 </div>
+               </article>
+@@ -251,7 +320,13 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
+               <div className="tg-msg-user">{pendingRequest}</div>
+               <div className="tg-msg-assistant">
+                 <PenMark className="tg-msg-mark is-working" />
+-                {planProgress?.title ? (
++                {streamText ? (
++                  <div className="tg-msg-body">
++                    <div className="tg-msg-text is-streaming">
++                      <Markdown text={streamText} />
++                    </div>
++                  </div>
++                ) : planProgress?.title ? (
+                   <div className="tg-plan-live">
+                     <p className="tg-plan-live-head">
+                       <span className="tg-plan-live-status">Building your plan…</span>
+@@ -273,6 +348,12 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
+                       )}
+                     </ol>
+                   </div>
++                ) : mode === "plan" ? (
++                  <span className="tg-typing" role="status" aria-label="Tangent is typing">
++                    <span />
++                    <span />
++                    <span />
++                  </span>
+                 ) : (
+                   <ol className="tg-steps">
+                     {LIVE_STEPS[mode].map((step, i) => (
+@@ -289,7 +370,7 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
+       {below && (
+         <button type="button" className="tg-below" onClick={scrollDown}>
+           <ArrowDown size={14} strokeWidth={2} aria-hidden="true" />
+-          {below === "reply" ? "This reply continues below — scroll to read the rest" : "Newer messages below"}
++          {below === "reply" ? "This reply continues below" : "Jump to latest"}
+         </button>
+       )}
+     </div>
+diff --git a/components/console/ClarifyCard.tsx b/components/console/ClarifyCard.tsx
+index 7f4d6e7..6039dae 100644
+--- a/components/console/ClarifyCard.tsx
++++ b/components/console/ClarifyCard.tsx
+@@ -3,11 +3,25 @@
+ // Tangent's questions before it acts on a big or vague request (lib/ai/clarify.ts).
+ // Tap an answer, or type your own. Continue sends whatever is answered —
+ // skipping a question is fine. "Just do it" goes ahead with no answers.
++// Master fix B6: a `multi` question's chips toggle ("All of these" stands
++// alone) and the primary button counts them; an `instant` tap answers at once.
+ 
+ import { useState } from "react";
+ import "./clarify-card.css";
+ 
+-export type ClarifyQuestion = { id: string; question: string; options: string[] };
++export type ClarifyQuestion = {
++  id: string;
++  question: string;
++  options: string[];
++  multi?: boolean;
++  instant?: boolean;
++  submitLabel?: string;
++  /** What Tangent goes with if this is skipped (Master fix Phase 3). */
++  assume?: string;
++};
++
++/** lib/pending-question.ts ALL_OF_THESE: selects every other chip's plan. */
++const ALL = "All of these";
+ export type ClarifyAnswer = { id: string; question: string; answer: string };
+ 
+ type Props = {
+@@ -18,30 +32,54 @@ type Props = {
+   /** "Just do it" when Tangent is waiting to act; "Later" when the task is
+    *  already saved and the questions can wait. */
+   skipLabel?: string;
++  /** The reply text right above the card: a question repeating it is kept
++   *  for screen readers only, so it isn't shown twice (master fix B2). */
++  echo?: string;
++  /** Master fix Phase 5: chips a multi question starts with (the calendar's
++   *  Remove picks the clicked task). */
++  initial?: Record<string, string[]>;
++  /** false: no "Other…" typed answer (a pick from a fixed list). */
++  other?: boolean;
+ };
+ 
+-export default function ClarifyCard({ questions, disabled, onSubmit, skipLabel = "Just do it" }: Props) {
++export default function ClarifyCard({ questions, disabled, onSubmit, skipLabel = "Just do it", echo, initial, other = true }: Props) {
+   const [picked, setPicked] = useState<Record<string, string>>({});
+   const [typing, setTyping] = useState<Record<string, boolean>>({});
++  const [chosen, setChosen] = useState<Record<string, string[]>>(() => initial ?? {});
+ 
+   const set = (id: string, value: string) => setPicked((p) => ({ ...p, [id]: value }));
+-  const answered = questions.filter((q) => picked[q.id]?.trim()).length;
++  // A multi question's answer: typed text, else its chips ("A, B" or "All of these").
++  const answerOf = (q: ClarifyQuestion) =>
++    q.multi && !typing[q.id] ? (chosen[q.id]?.includes(ALL) ? ALL : (chosen[q.id] ?? []).join(", ")) : picked[q.id]?.trim() ?? "";
++  const answered = questions.filter((q) => answerOf(q)).length;
++  const multi = questions.find((q) => q.multi && !typing[q.id]);
++  const count = multi ? (chosen[multi.id]?.includes(ALL) ? multi.options.filter((o) => o !== ALL).length : chosen[multi.id]?.length ?? 0) : 0;
++  const label = multi?.submitLabel ? (count ? `${multi.submitLabel} (${count})` : multi.submitLabel) : "Continue";
++  // An instant card's chips are its buttons; Continue only for a typed answer.
++  const showContinue = !questions.every((q) => q.instant) || questions.some((q) => typing[q.id]);
+ 
+   const submit = () =>
+     onSubmit(
+       questions
+-        .filter((q) => picked[q.id]?.trim())
+-        .map((q) => ({ id: q.id, question: q.question, answer: picked[q.id].trim() }))
++        .filter((q) => answerOf(q))
++        .map((q) => ({ id: q.id, question: q.question, answer: answerOf(q) }))
+     );
+ 
++  const toggle = (q: ClarifyQuestion, opt: string) =>
++    setChosen((c) => {
++      const now = c[q.id] ?? [];
++      if (now.includes(opt)) return { ...c, [q.id]: now.filter((o) => o !== opt) };
++      return { ...c, [q.id]: opt === ALL ? [ALL] : [...now.filter((o) => o !== ALL), opt] };
++    });
++
+   return (
+     <div className="tg-clarify" role="group" aria-label="Tangent's questions">
+       {questions.map((q) => (
+         <fieldset key={q.id} className="tg-clarify-q" disabled={disabled}>
+-          <legend>{q.question}</legend>
++          <legend className={echo && q.question.trim() === echo.trim() ? "tg-clarify-sr" : undefined}>{q.question}</legend>
+           <div className="tg-clarify-options">
+             {q.options.map((opt) => {
+-              const on = picked[q.id] === opt && !typing[q.id];
++              const on = (q.multi ? chosen[q.id]?.includes(opt) ?? false : picked[q.id] === opt) && !typing[q.id];
+               return (
+                 <button
+                   key={opt}
+@@ -50,6 +88,8 @@ export default function ClarifyCard({ questions, disabled, onSubmit, skipLabel =
+                   aria-pressed={on}
+                   onClick={() => {
+                     setTyping((t) => ({ ...t, [q.id]: false }));
++                    if (q.instant) return onSubmit([{ id: q.id, question: q.question, answer: opt }]);
++                    if (q.multi) return toggle(q, opt);
+                     set(q.id, on ? "" : opt);
+                   }}
+                 >
+@@ -72,7 +112,7 @@ export default function ClarifyCard({ questions, disabled, onSubmit, skipLabel =
+                   }
+                 }}
+               />
+-            ) : (
++            ) : other && (
+               <button
+                 type="button"
+                 className="tg-chip is-ghost"
+@@ -85,13 +125,26 @@ export default function ClarifyCard({ questions, disabled, onSubmit, skipLabel =
+               </button>
+             )}
+           </div>
++          {q.assume && <p className="tg-clarify-assume">If you skip: {q.assume}</p>}
+         </fieldset>
+       ))}
+       <div className="tg-clarify-actions">
+-        <button type="button" className="tg-clarify-btn is-primary" onClick={submit} disabled={disabled || answered === 0}>
+-          Continue
+-        </button>
+-        <button type="button" className="tg-clarify-btn" onClick={() => onSubmit(null)} disabled={disabled}>
++        {showContinue && (
++          <button type="button" className="tg-clarify-btn is-primary" onClick={submit} disabled={disabled || answered === 0}>
++            {label}
++          </button>
++        )}
++        <button
++          type="button"
++          className="tg-clarify-btn"
++          onClick={() => {
++            setChosen({});
++            setPicked({});
++            setTyping({});
++            onSubmit(null);
++          }}
++          disabled={disabled}
++        >
+           {skipLabel}
+         </button>
+       </div>
+diff --git a/components/console/Composer.tsx b/components/console/Composer.tsx
+index e500ba3..e08e46c 100644
+--- a/components/console/Composer.tsx
++++ b/components/console/Composer.tsx
+@@ -5,7 +5,7 @@
+ // button on a toolbar row underneath — the Notion / v0 composer layout.
+ 
+ import { useLayoutEffect, type ReactNode, type RefObject } from "react";
+-import { ArrowUp } from "lucide-react";
++import { ArrowUp, Square } from "lucide-react";
+ import VoiceRecordButton from "@/components/VoiceRecordButton";
+ import type { VoiceCaptureStatus } from "@/hooks/useVoiceCapture";
+ import type { ChatMode } from "@/components/console/turns";
+@@ -27,6 +27,8 @@ type Props = {
+   placeholder?: string;
+   /** Tints the box: Calendar mode gets the accent ring. */
+   mode?: ChatMode;
++  /** Master fix Phase 4: while busy, Send becomes Stop. */
++  onStop?: () => void;
+ };
+ 
+ export default function Composer({
+@@ -42,6 +44,7 @@ export default function Composer({
+   toolbar,
+   placeholder,
+   mode = "calendar",
++  onStop,
+ }: Props) {
+   const idlePlaceholder =
+     placeholder ??
+@@ -113,9 +116,15 @@ export default function Composer({
+             onStatusChange={onVoiceStatus}
+             disabled={busy}
+           />
+-          <button type="submit" className="tg-send" aria-label="Send" disabled={!canSend}>
+-            <ArrowUp size={16} strokeWidth={2.2} />
+-          </button>
++          {busy && onStop ? (
++            <button type="button" className="tg-send tg-stop" aria-label="Stop" title="Stop (Esc)" onClick={onStop}>
++              <Square size={11} strokeWidth={2.4} fill="currentColor" aria-hidden="true" />
++            </button>
++          ) : (
++            <button type="submit" className="tg-send" aria-label="Send" disabled={!canSend}>
++              <ArrowUp size={16} strokeWidth={2.2} />
++            </button>
++          )}
+         </div>
+       </div>
+     </form>
+diff --git a/components/console/clarify-card.css b/components/console/clarify-card.css
+index 5d4788d..ca319ff 100644
+--- a/components/console/clarify-card.css
++++ b/components/console/clarify-card.css
+@@ -19,6 +19,13 @@
+   min-width: 0;
+ }
+ 
++/* Master fix Phase 3: the default behind a skipped question. */
++.tg-clarify-assume {
++  margin: 6px 0 0;
++  color: var(--text-2);
++  font: 400 12px/1.35 var(--font-body);
++}
++
+ .tg-clarify-q legend {
+   padding: 0;
+   margin-bottom: 8px;
+@@ -151,3 +158,13 @@
+     transform: none;
+   }
+ }
++
++/* Master fix B2: a question that repeats the reply above it, for screen readers only. */
++.tg-clarify-sr {
++  position: absolute;
++  width: 1px;
++  height: 1px;
++  overflow: hidden;
++  clip: rect(0 0 0 0);
++  white-space: nowrap;
++}
+diff --git a/components/console/turns.test.ts b/components/console/turns.test.ts
+index 5b1fbc6..03e7e50 100644
+--- a/components/console/turns.test.ts
++++ b/components/console/turns.test.ts
+@@ -26,7 +26,7 @@ type Resolve = (
+ 
+ type Mod = typeof import("./turns");
+ 
+-void (import("./turns") as Promise<Mod>).then(({ turnsFromMessages }) => {
++void (import("./turns") as Promise<Mod>).then(({ turnsFromMessages, withCard, splitCard, redoable }) => {
+   type Msg = { role: "user" | "assistant"; content: string };
+   const u = (content: string): Msg => ({ role: "user", content });
+   const a = (content: string): Msg => ({ role: "assistant", content });
+@@ -76,4 +76,44 @@ void (import("./turns") as Promise<Mod>).then(({ turnsFromMessages }) => {
+   test("a request with no saved reply yet gets an empty response", () => {
+     assert.deepEqual(pairs([u("hello")]), [["hello", ""]]);
+   });
++
++  // Master fix B3: a question card is saved with its message and comes back as a card.
++  const card = {
++    questions: [{ id: "pending", question: "Which one?", options: ["SAT Reading", "SAT Math", "All of these"], multi: true }],
++    pendingQuestion: { expiresAt: "2026-10-11T12:10:00Z" } as never,
++  };
++  const NOW = new Date("2026-10-11T12:00:00Z");
++
++  test("B3: a saved card is hidden from the text and live again on the last turn", () => {
++    const saved = withCard("Which SAT plan should I delete?", card);
++    assert.equal(splitCard(saved).text, "Which SAT plan should I delete?");
++    const turns = turnsFromMessages([u("take out all my SAT tasks"), a(saved)], [], NOW);
++    assert.equal(turns[0].response, "Which SAT plan should I delete?");
++    assert.deepEqual(turns[0].questions?.[0].options, ["SAT Reading", "SAT Math", "All of these"]);
++    assert.equal(turns[0].questions?.[0].multi, true);
++    assert.ok(turns[0].pendingQuestion);
++  });
++
++  test("B3: an answered or expired card comes back as text only", () => {
++    const saved = withCard("Which one?", card);
++    const answered = turnsFromMessages([u("delete sat"), a(saved), u("SAT Math"), a("Here's what I'd remove.")], [], NOW);
++    assert.equal(answered[0].response, "Which one?");
++    assert.equal(answered[0].questions, undefined);
++    const late = turnsFromMessages([u("delete sat"), a(saved)], [], new Date("2026-10-11T13:00:00Z"));
++    assert.equal(late[0].questions, undefined);
++    // A clarify card without a pending question (ISEF's questions) stays live.
++    const isef = turnsFromMessages([u("help me prepare for ISEF"), a(withCard("A few quick questions.", { questions: card.questions }))], [], NOW);
++    assert.equal(isef[0].questions?.length, 1);
++    assert.equal(splitCard("plain text").card, null);
++    assert.equal(splitCard("x\n\n<!-- tangent:card %7Bbad -->").card, null);
++  });
++
++  test("Retry / Edit only offered on a turn that changed nothing", () => {
++    const base = { id: "t", request: "hi", tools: [], sourcesChecked: [], response: "Hello" };
++    assert.equal(redoable(base), true);
++    assert.equal(redoable({ ...base, actionId: "a" }), false, "applied straight away");
++    assert.equal(redoable({ ...base, applied: true }), false, "confirmed via its card");
++    assert.equal(redoable({ ...base, changeSetId: "cs" }), false, "has a preview");
++    assert.equal(redoable({ ...base, projectId: "p" }), false);
++  });
+ });
+diff --git a/components/console/turns.ts b/components/console/turns.ts
+index 1336cd1..6994293 100644
+--- a/components/console/turns.ts
++++ b/components/console/turns.ts
+@@ -4,6 +4,7 @@ import type { ChangeSet } from "@/lib/pipeline/changeset";
+ import type { PreviewPayload } from "@/lib/pipeline/draft";
+ import type { UndoStatus } from "@/lib/undo-events";
+ import type { PendingQuestion } from "@/lib/pending-question";
++import type { ClarifyQuestion } from "./ClarifyCard";
+ 
+ export type Turn = {
+   id: string;
+@@ -31,7 +32,7 @@ export type Turn = {
+   /** Pipeline V2: a drafted change waiting for Confirm (components/PreviewCard). */
+   draft?: { changeSet: ChangeSet; preview: PreviewPayload };
+   /** Tangent's questions before acting (lib/ai/clarify.ts); cleared once answered. */
+-  questions?: { id: string; question: string; options: string[] }[] | null;
++  questions?: ClarifyQuestion[] | null;
+   /** A question Tangent is waiting on ("Which one should I delete?"): sent
+    *  back with the next message until it expires (lib/pending-question.ts). */
+   pendingQuestion?: PendingQuestion | null;
+@@ -43,8 +44,22 @@ export type Turn = {
+   projectId?: string | null;
+   /** One move the spacing brain suggests for an overloaded day. */
+   suggestion?: { taskId: string; title: string; toDate: string; toTime: string; message: string } | null;
++  /** Master fix Phase 4: its preview card was confirmed this session. */
++  applied?: boolean;
++  /** The reply streamed in as it was written (no word-by-word reveal after). */
++  streamed?: boolean;
++  /** Thumbs on this reply (logged as chat_feedback). */
++  feedback?: "up" | "down";
++  /** The student pressed Stop: the reply is what had arrived. */
++  stopped?: boolean;
+ };
+ 
++/** Master fix Phase 4: Retry / Edit may replace this turn. Never one that
++ *  changed (or may change) the calendar: it keeps its own Undo instead. */
++export function redoable(t: Turn): boolean {
++  return !t.actionId && !t.applied && !t.changeSetId && !t.pendingConfirm && !t.projectId && !t.draft && !t.later;
++}
++
+ /** A plan being generated: its title as soon as the outline is back, then
+  *  each session as it's written (slots fill in any order). Not saved yet. */
+ export type PlanProgressView = {
+@@ -68,16 +83,47 @@ export function applyPlanProgress(view: PlanProgressView | null, line: Record<st
+   return view;
+ }
+ 
++/** Master fix B3: a question card saved with its message, so a reopened chat
++ *  shows the card again instead of bullet text. A hidden HTML comment at the
++ *  end (URI-encoded, so it can't close early); the text before it is what the
++ *  thread and the model see. */
++export type SavedCard = { questions: ClarifyQuestion[]; pendingQuestion?: PendingQuestion | null };
++
++const CARD_RE = /\n*<!-- tangent:card (\S*) -->\s*$/;
++
++export function withCard(text: string, card: SavedCard): string {
++  return `${text}\n\n<!-- tangent:card ${encodeURIComponent(JSON.stringify(card))} -->`;
++}
++
++/** The message's text and its saved card, if any (a bad marker is dropped). */
++export function splitCard(content: string): { text: string; card: SavedCard | null } {
++  const m = CARD_RE.exec(content);
++  if (!m) return { text: content, card: null };
++  const text = content.slice(0, m.index);
++  try {
++    const card = JSON.parse(decodeURIComponent(m[1])) as SavedCard;
++    const ok =
++      Array.isArray(card?.questions) &&
++      card.questions.every((q) => q && typeof q.id === "string" && typeof q.question === "string" && Array.isArray(q.options));
++    return { text, card: ok ? card : null };
++  } catch {
++    return { text, card: null };
++  }
++}
++
+ /** "calendar" acts on the calendar; "plan" only talks a plan through. */
+ export type ChatMode = "plan" | "calendar";
+ 
+ /** Rebuilds chronological turns from a session's [user, assistant, …] messages.
+  *  A confirm prompt followed by its outcome saves two assistant messages in a
+  *  row; the later one wins, matching what the live console showed. A turn whose
+- *  reply is still an open confirmation's prompt gets its Confirm/Cancel back. */
++ *  reply is still an open confirmation's prompt gets its Confirm/Cancel back.
++ *  The last turn's saved question card comes back live (its pending question
++ *  only until it expires); older cards were answered, so only their text shows. */
+ export function turnsFromMessages(
+   messages: { role: "user" | "assistant"; content: string; actionId?: string; changeSetId?: string }[],
+-  openConfirms: { id: string; message: string }[] = []
++  openConfirms: { id: string; message: string }[] = [],
++  now: Date = new Date()
+ ): Turn[] {
+   const result: Turn[] = [];
+   for (let i = 0; i < messages.length; i++) {
+@@ -87,9 +133,10 @@ export function turnsFromMessages(
+     // The saved change ids come back with the reply, so Undo survives a reload.
+     let actionId: string | undefined;
+     let changeSetId: string | undefined;
++    let card: SavedCard | null = null;
+     while (messages[i + 1]?.role === "assistant") {
+       const m = messages[++i];
+-      response = m.content;
++      ({ text: response, card } = splitCard(m.content));
+       actionId = m.actionId ?? actionId;
+       changeSetId = m.changeSetId ?? changeSetId;
+     }
+@@ -101,6 +148,7 @@ export function turnsFromMessages(
+       response,
+       ...(actionId ? { actionId } : {}),
+       ...(changeSetId ? { changeSetId } : {}),
++      ...(card && i === messages.length - 1 ? liveCard(card, now) : {}),
+     });
+   }
+   // Newest turns claim the newest matching confirmation; each is used once.
+@@ -114,6 +162,14 @@ export function turnsFromMessages(
+   return result;
+ }
+ 
++function liveCard(card: SavedCard, now: Date): Pick<Turn, "questions" | "pendingQuestion"> {
++  const pending = card.pendingQuestion;
++  if (!pending) return { questions: card.questions };
++  // An expired "Which one?" can't be answered any more: show the text only.
++  if (!(Date.parse(pending.expiresAt) > now.getTime())) return {};
++  return { questions: card.questions, pendingQuestion: pending };
++}
++
+ export function cleanMessage(text: string): string {
+   if (!text) return "Done! Your request has been processed.";
+   let cleaned = text.replace(/```json[\s\S]*?```/gi, "").trim();
+diff --git a/components/calendar/TaskTip.tsx b/components/calendar/TaskTip.tsx
+new file mode 100644
+index 0000000..34022c4
+--- /dev/null
++++ b/components/calendar/TaskTip.tsx
+@@ -0,0 +1,100 @@
++"use client";
++
++// Master fix Phase 5: one hover tooltip for every task on the calendar (week
++// blocks, month chips, the day panel). Anything marked data-task-tip={task.id}
++// gets it: the full title, when, the project with its color dot, and the
++// calendar (School / No school). Mouse hover or keyboard focus; never touch.
++
++import { useEffect, useState } from "react";
++import { createPortal } from "react-dom";
++import { calendarGroupOf, CAL_SCHOOL } from "@/lib/calendars";
++import { formatTime12 } from "@/lib/dates";
++import type { Plan, Task } from "@/lib/types";
++import "./task-tip.css";
++
++type Props = {
++  tasks: Task[];
++  plans: Plan[];
++  colorFor: (t: Task) => string;
++};
++
++type Tip = { id: string; x: number; y: number; below: boolean };
++
++const DELAY_MS = 280;
++
++function whenOf(t: Task): string {
++  const day = new Date(`${t.date}T12:00:00`).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
++  // Canvas items and 11:59 PM are due dates, not times anything happens.
++  if (t.source === "canvas" || t.time === "23:59") return `Due ${day}`;
++  return t.time ? `${day} · ${formatTime12(t.time)}` : day;
++}
++
++export default function TaskTip({ tasks, plans, colorFor }: Props) {
++  const [tip, setTip] = useState<Tip | null>(null);
++
++  useEffect(() => {
++    let timer: number | undefined;
++    const hide = () => {
++      window.clearTimeout(timer);
++      setTip(null);
++    };
++    const show = (target: EventTarget | null) => {
++      const el = target instanceof Element ? target.closest<HTMLElement>("[data-task-tip]") : null;
++      window.clearTimeout(timer);
++      if (!el) return setTip(null);
++      const id = el.dataset.taskTip ?? "";
++      timer = window.setTimeout(() => {
++        const r = el.getBoundingClientRect();
++        const below = r.top < 110;
++        setTip({ id, x: Math.min(Math.max(r.left + r.width / 2, 130), window.innerWidth - 130), y: below ? r.bottom + 6 : r.top - 6, below });
++      }, DELAY_MS);
++    };
++    const over = (e: PointerEvent) => {
++      if (e.pointerType === "mouse") show(e.target);
++    };
++    const focus = (e: FocusEvent) => {
++      if (e.target instanceof Element && e.target.matches(":focus-visible")) show(e.target);
++      else hide();
++    };
++    const key = (e: KeyboardEvent) => {
++      if (e.key === "Escape") hide();
++    };
++    document.addEventListener("pointerover", over);
++    document.addEventListener("focusin", focus);
++    document.addEventListener("pointerdown", hide);
++    document.addEventListener("keydown", key);
++    window.addEventListener("scroll", hide, true);
++    return () => {
++      window.clearTimeout(timer);
++      document.removeEventListener("pointerover", over);
++      document.removeEventListener("focusin", focus);
++      document.removeEventListener("pointerdown", hide);
++      document.removeEventListener("keydown", key);
++      window.removeEventListener("scroll", hide, true);
++    };
++  }, []);
++
++  const task = tip ? tasks.find((t) => t.id === tip.id) : undefined;
++  if (!tip || !task || typeof document === "undefined") return null;
++  const plan = task.planId ? plans.find((p) => p.id === task.planId) : undefined;
++  const school = calendarGroupOf(task) === CAL_SCHOOL;
++
++  return createPortal(
++    <div
++      className={`task-tip${tip.below ? " is-below" : ""}`}
++      role="tooltip"
++      style={{ left: tip.x, top: tip.y }}
++    >
++      <p className="task-tip-title">{task.title}</p>
++      <p className="task-tip-when">{whenOf(task)}</p>
++      <p className="task-tip-meta">
++        <span className="task-tip-project">
++          <span className="task-tip-dot" style={{ background: plan?.color || colorFor(task) }} aria-hidden="true" />
++          {plan ? plan.title : "No project"}
++        </span>
++        <span className="task-tip-cal">{school ? "School" : "No school"}</span>
++      </p>
++    </div>,
++    document.body
++  );
++}
+diff --git a/components/calendar/task-tip.css b/components/calendar/task-tip.css
+new file mode 100644
+index 0000000..5714c82
+--- /dev/null
++++ b/components/calendar/task-tip.css
+@@ -0,0 +1,95 @@
++/* Master fix Phase 5: the calendar's task tooltip (components/calendar/TaskTip). */
++.task-tip {
++  position: fixed;
++  z-index: 1000;
++  max-width: 260px;
++  padding: 8px 10px;
++  border: 1px solid var(--line);
++  border-radius: var(--r-sm);
++  background: var(--surface);
++  box-shadow: 0 8px 24px rgb(0 0 0 / 0.14);
++  color: var(--text);
++  font: 400 12px/1.4 var(--font-body);
++  pointer-events: none;
++  transform: translate(-50%, -100%);
++  animation: task-tip-in 0.12s ease-out;
++}
++
++.task-tip.is-below {
++  transform: translate(-50%, 0);
++}
++
++.task-tip p {
++  margin: 0;
++}
++
++.task-tip-title {
++  font-weight: 600;
++  font-size: 13px;
++  overflow-wrap: anywhere;
++}
++
++.task-tip-when {
++  margin-top: 2px;
++  color: var(--text-2);
++}
++
++.task-tip-meta {
++  display: flex;
++  flex-wrap: wrap;
++  align-items: center;
++  gap: 4px 10px;
++  margin-top: 6px;
++  color: var(--text-2);
++}
++
++.task-tip-project {
++  display: inline-flex;
++  align-items: center;
++  gap: 6px;
++  min-width: 0;
++}
++
++.task-tip-dot {
++  width: 8px;
++  height: 8px;
++  flex: none;
++  border-radius: 999px;
++}
++
++.task-tip-cal {
++  padding: 0 6px;
++  border: 1px solid var(--line);
++  border-radius: 999px;
++  font-size: 11px;
++  color: var(--text-3);
++}
++
++@keyframes task-tip-in {
++  from {
++    opacity: 0;
++  }
++}
++
++@media (prefers-reduced-motion: reduce) {
++  .task-tip {
++    animation: none;
++  }
++}
++
++/* Master fix Phase 5: "+N more" opens the day; the day panel's Remove chips. */
++.cal-event-more {
++  cursor: pointer;
++  border-radius: 4px;
++}
++
++@media (hover: hover) and (pointer: fine) {
++  .cal-event-more:hover {
++    color: var(--accent);
++    text-decoration: underline;
++  }
++}
++
++.calendar-remove-pick {
++  margin: 6px 0 10px;
++}
+diff --git a/components/console/Markdown.tsx b/components/console/Markdown.tsx
+new file mode 100644
+index 0000000..9a77567
+--- /dev/null
++++ b/components/console/Markdown.tsx
+@@ -0,0 +1,72 @@
++"use client";
++
++// Master fix Phase 4: renders a reply's Markdown (components/console/markdown-parse.ts)
++// as React elements, never raw HTML. `reveal` fades a fresh reply in word by
++// word, as RevealText did; the stagger is capped so long replies finish in
++// about a second.
++
++import { Fragment, type ReactNode } from "react";
++import { parseMarkdown, type Inline } from "@/components/console/markdown-parse";
++
++export default function Markdown({ text, reveal = false }: { text: string; reveal?: boolean }) {
++  let word = 0;
++  const words = (s: string): ReactNode => {
++    if (!reveal) return s;
++    return s.split(/(\s+)/).map((part, i) => {
++      if (!part.trim()) return part;
++      const delay = Math.min(word++ * 22, 1100);
++      return (
++        <span key={i} className="tg-word" style={{ animationDelay: `${delay}ms` }}>
++          {part}
++        </span>
++      );
++    });
++  };
++  const inline = (parts: Inline[]) =>
++    parts.map((p, i) => {
++      if (p.type === "bold") return <strong key={i}>{words(p.text)}</strong>;
++      if (p.type === "italic") return <em key={i}>{words(p.text)}</em>;
++      if (p.type === "code") return <code key={i} className="tg-md-code">{p.text}</code>;
++      if (p.type === "link")
++        return (
++          <a key={i} href={p.href} target="_blank" rel="noopener noreferrer">
++            {words(p.text)}
++          </a>
++        );
++      return <Fragment key={i}>{words(p.text)}</Fragment>;
++    });
++
++  return (
++    <div className="tg-md">
++      {parseMarkdown(text).map((b, i) => {
++        if (b.type === "p")
++          return (
++            <p key={i}>
++              {b.lines.map((line, n) => (
++                <Fragment key={n}>
++                  {n > 0 && <br />}
++                  {inline(line)}
++                </Fragment>
++              ))}
++            </p>
++          );
++        if (b.type === "h") {
++          const Tag = b.level === 1 ? "h3" : b.level === 2 ? "h4" : "h5";
++          return <Tag key={i}>{inline(b.inline)}</Tag>;
++        }
++        if (b.type === "ul") return <ul key={i}>{b.items.map((it, n) => <li key={n}>{inline(it)}</li>)}</ul>;
++        if (b.type === "ol")
++          return (
++            <ol key={i} start={b.start}>
++              {b.items.map((it, n) => <li key={n}>{inline(it)}</li>)}
++            </ol>
++          );
++        return (
++          <pre key={i} className="tg-md-pre">
++            <code>{b.text}</code>
++          </pre>
++        );
++      })}
++    </div>
++  );
++}
+diff --git a/components/console/chat-ux.css b/components/console/chat-ux.css
+new file mode 100644
+index 0000000..e1d69ea
+--- /dev/null
++++ b/components/console/chat-ux.css
+@@ -0,0 +1,312 @@
++/* Master fix Phase 4: chat UX. Markdown replies, hover actions, Stop,
++   typing dots, new-topic chips, and the quiet receipt row. Builds on the
++   tokens in app/globals.css and the console styles in app/(app)/ai/console.css. */
++
++/* ── Markdown ─────────────────────────────────────────────────────────── */
++.tg-msg-text:has(> .tg-md) {
++  white-space: normal;
++}
++
++.tg-md > * + * {
++  margin-top: 0.6em;
++}
++
++.tg-md p {
++  margin: 0;
++}
++
++.tg-md ul,
++.tg-md ol {
++  margin: 0;
++  padding-left: 1.3em;
++}
++
++.tg-md li + li {
++  margin-top: 0.2em;
++}
++
++.tg-md h3,
++.tg-md h4,
++.tg-md h5 {
++  margin: 0;
++  font-size: 1em;
++  font-weight: 650;
++  color: var(--text);
++}
++
++.tg-md h3 {
++  font-size: 1.08em;
++}
++
++.tg-md-code {
++  padding: 0.08em 0.35em;
++  border-radius: 5px;
++  background: var(--surface-2);
++  font-family: var(--font-mono);
++  font-size: 0.88em;
++}
++
++.tg-md-pre {
++  margin: 0;
++  padding: 10px 12px;
++  border: 1px solid var(--line);
++  border-radius: var(--r-sm);
++  background: var(--surface-2);
++  font-family: var(--font-mono);
++  font-size: 0.85em;
++  white-space: pre;
++  overflow-x: auto;
++}
++
++.tg-md-pre .tg-md-code {
++  padding: 0;
++  background: none;
++  font-size: inherit;
++}
++
++/* While it streams: a soft caret after the text so far. */
++.tg-msg-text.is-streaming .tg-md > :last-child::after {
++  content: "";
++  display: inline-block;
++  width: 0.45em;
++  height: 1em;
++  margin-left: 2px;
++  vertical-align: -0.12em;
++  border-radius: 2px;
++  background: var(--accent);
++  opacity: 0.55;
++  animation: tg-caret 1s steps(2, start) infinite;
++}
++
++@keyframes tg-caret {
++  to {
++    visibility: hidden;
++  }
++}
++
++.tg-msg-stopped {
++  margin: 6px 0 0;
++  font-size: 12px;
++  color: var(--text-3);
++}
++
++/* ── Hover actions: Copy / Retry / Edit / thumbs ──────────────────────── */
++.tg-msg-actions {
++  display: flex;
++  gap: 2px;
++  margin-top: 6px;
++  opacity: 0;
++  transition: opacity 0.15s ease;
++}
++
++.tg-turn:hover .tg-msg-actions,
++.tg-msg-actions:focus-within {
++  opacity: 1;
++}
++
++@media (hover: none) {
++  .tg-msg-actions {
++    opacity: 1;
++  }
++}
++
++.tg-msg-action {
++  display: grid;
++  place-items: center;
++  width: 28px;
++  height: 28px;
++  border: 0;
++  border-radius: 7px;
++  background: transparent;
++  color: var(--text-3);
++  cursor: pointer;
++  transition: background 0.15s ease, color 0.15s ease;
++}
++
++.tg-msg-action:hover {
++  background: var(--surface-2);
++  color: var(--text);
++}
++
++.tg-msg-action:focus-visible {
++  outline: 2px solid var(--accent);
++  outline-offset: 1px;
++}
++
++.tg-msg-action[aria-pressed="true"] {
++  background: var(--accent-soft);
++  color: var(--accent);
++}
++
++/* ── Stop (the Send button while a reply is coming) ───────────────────── */
++.tg-composer .tg-send.tg-stop,
++.tg-composer:not(.has-text) .tg-send.tg-stop {
++  width: 32px;
++  opacity: 1;
++  transform: none;
++  pointer-events: auto;
++  background: var(--text);
++  color: var(--bg);
++  box-shadow: none;
++}
++
++.tg-composer .tg-send.tg-stop:hover {
++  opacity: 0.85;
++}
++
++/* ── Typing dots ──────────────────────────────────────────────────────── */
++.tg-typing {
++  display: inline-flex;
++  align-items: center;
++  gap: 4px;
++  height: 22px;
++  padding: 0 2px;
++}
++
++.tg-typing > span {
++  width: 6px;
++  height: 6px;
++  border-radius: 50%;
++  background: var(--text-3);
++  animation: tg-typing 1.1s ease-in-out infinite;
++}
++
++.tg-typing > span:nth-child(2) {
++  animation-delay: 0.15s;
++}
++
++.tg-typing > span:nth-child(3) {
++  animation-delay: 0.3s;
++}
++
++@keyframes tg-typing {
++  0%,
++  60%,
++  100% {
++    opacity: 0.35;
++    transform: translateY(0);
++  }
++  30% {
++    opacity: 1;
++    transform: translateY(-3px);
++  }
++}
++
++/* ── Empty state, new-topic chips, editing note ───────────────────────── */
++.tg-hero-sub {
++  margin: 8px 0 0;
++  font-size: 14px;
++  color: var(--text-2);
++}
++
++.tg-topic-chips {
++  display: flex;
++  flex-wrap: wrap;
++  align-items: center;
++  gap: 8px;
++  margin: 0 0 8px;
++  font-size: 13px;
++  color: var(--text-2);
++}
++
++.tg-editing {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++  margin: 0 0 8px;
++  font-size: 13px;
++  color: var(--text-2);
++}
++
++.tg-editing button {
++  border: 0;
++  background: none;
++  padding: 0;
++  color: var(--accent);
++  font: inherit;
++  cursor: pointer;
++}
++
++.tg-editing button:hover {
++  text-decoration: underline;
++}
++
++/* ── Confirmed card: summary, weeks, quiet receipt row ────────────────── */
++.preview-card-receipt-head {
++  margin: 0;
++  font-weight: 600;
++  color: var(--text);
++}
++
++.preview-card-receipt-lines {
++  margin: 6px 0 0;
++  padding-left: 1.2em;
++  font-size: 13px;
++  color: var(--text-2);
++}
++
++.preview-card-receipt-lines li + li {
++  margin-top: 2px;
++}
++
++.preview-card-receipt-week {
++  margin-top: 8px;
++}
++
++.preview-card-receipt-week-label {
++  margin: 0;
++  font-size: 12px;
++  font-weight: 600;
++  color: var(--text-3);
++}
++
++.preview-card-receipt-more {
++  margin-top: 6px;
++  padding: 0;
++  border: 0;
++  background: none;
++  font: inherit;
++  font-size: 13px;
++  color: var(--accent);
++  cursor: pointer;
++}
++
++.preview-card-receipt-more:hover {
++  text-decoration: underline;
++}
++
++/* The receipt is a quiet inline row: Undo · Open project · Details. */
++.preview-card .action-receipt.is-quiet,
++.tg-msg-body .action-receipt {
++  margin-top: 8px;
++  padding: 0;
++  border: 0;
++  background: none;
++  box-shadow: none;
++  gap: 12px;
++  font-size: 13px;
++}
++
++.preview-card .action-receipt.is-quiet .action-receipt-undo,
++.tg-msg-body .action-receipt .action-receipt-undo {
++  height: auto;
++  padding: 0;
++  border: 0;
++  background: none;
++  color: var(--accent);
++  font-weight: 500;
++}
++
++.preview-card .action-receipt.is-quiet .action-receipt-undo:hover:not(:disabled),
++.tg-msg-body .action-receipt .action-receipt-undo:hover:not(:disabled) {
++  background: none;
++  color: var(--accent);
++  text-decoration: underline;
++}
++
++@media (prefers-reduced-motion: reduce) {
++  .tg-typing > span,
++  .tg-msg-text.is-streaming .tg-md > :last-child::after {
++    animation: none;
++  }
++}
+diff --git a/components/console/markdown-parse.ts b/components/console/markdown-parse.ts
+new file mode 100644
+index 0000000..b17bd86
+--- /dev/null
++++ b/components/console/markdown-parse.ts
+@@ -0,0 +1,110 @@
++// Master fix Phase 4: the small Markdown subset Tangent's replies use, parsed
++// to plain data so ChatThread can render it without a dependency or raw HTML.
++// Paragraphs, "- " / "1. " lists, "#" headings, ``` code blocks, and inline
++// **bold**, *italic*, `code` and [links](https://…). Anything else is text.
++
++export type Inline =
++  | { type: "text"; text: string }
++  | { type: "bold"; text: string }
++  | { type: "italic"; text: string }
++  | { type: "code"; text: string }
++  | { type: "link"; text: string; href: string };
++
++export type Block =
++  | { type: "p"; lines: Inline[][] }
++  | { type: "h"; level: 1 | 2 | 3; inline: Inline[] }
++  | { type: "ul"; items: Inline[][] }
++  | { type: "ol"; start: number; items: Inline[][] }
++  | { type: "code"; text: string };
++
++const BULLET = /^\s*(?:[-*•])\s+(.*)$/;
++const NUMBERED = /^\s*(\d{1,3})[.)]\s+(.*)$/;
++const HEADING = /^(#{1,3})\s+(.*)$/;
++const FENCE = /^\s*```/;
++
++/** Inline marks inside one line. Unclosed marks stay as literal text. */
++export function parseInline(line: string): Inline[] {
++  const out: Inline[] = [];
++  const re = /\*\*([^*]+?)\*\*|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(?<![\w*])\*(?!\s)([^*]+?)(?<!\s)\*(?![\w*])|(?<![\w_])_(?!\s)([^_]+?)(?<!\s)_(?![\w_])/g;
++  let at = 0;
++  for (let m = re.exec(line); m; m = re.exec(line)) {
++    if (m.index > at) out.push({ type: "text", text: line.slice(at, m.index) });
++    if (m[1] !== undefined) out.push({ type: "bold", text: m[1] });
++    else if (m[2] !== undefined) out.push({ type: "code", text: m[2] });
++    else if (m[3] !== undefined) out.push({ type: "link", text: m[3], href: m[4] });
++    else out.push({ type: "italic", text: m[5] ?? m[6] });
++    at = m.index + m[0].length;
++  }
++  if (at < line.length) out.push({ type: "text", text: line.slice(at) });
++  return out;
++}
++
++export function parseMarkdown(source: string): Block[] {
++  const blocks: Block[] = [];
++  const lines = source.replace(/\r\n?/g, "\n").split("\n");
++  let para: Inline[][] = [];
++  let list: { type: "ul" | "ol"; start: number; items: Inline[][] } | null = null;
++
++  const flush = () => {
++    if (para.length) blocks.push({ type: "p", lines: para });
++    para = [];
++    if (list) blocks.push(list.type === "ul" ? { type: "ul", items: list.items } : { type: "ol", start: list.start, items: list.items });
++    list = null;
++  };
++
++  for (let i = 0; i < lines.length; i++) {
++    const line = lines[i];
++    if (FENCE.test(line)) {
++      flush();
++      const code: string[] = [];
++      for (i++; i < lines.length && !FENCE.test(lines[i]); i++) code.push(lines[i]);
++      blocks.push({ type: "code", text: code.join("\n") });
++      continue;
++    }
++    if (!line.trim()) {
++      flush();
++      continue;
++    }
++    const heading = HEADING.exec(line);
++    if (heading) {
++      flush();
++      blocks.push({ type: "h", level: heading[1].length as 1 | 2 | 3, inline: parseInline(heading[2].trim()) });
++      continue;
++    }
++    const bullet = BULLET.exec(line);
++    const numbered = bullet ? null : NUMBERED.exec(line);
++    if (bullet || numbered) {
++      const type = bullet ? "ul" : "ol";
++      if (para.length || (list && list.type !== type)) flush();
++      if (!list) list = { type, start: numbered ? Number(numbered[1]) : 1, items: [] };
++      list.items.push(parseInline((bullet ? bullet[1] : numbered![2]).trim()));
++      continue;
++    }
++    if (list) {
++      // An indented line continues the last item; anything else ends the list.
++      if (/^\s{2,}\S/.test(line)) {
++        const last = list.items[list.items.length - 1];
++        last.push({ type: "text", text: " " }, ...parseInline(line.trim()));
++        continue;
++      }
++      flush();
++    }
++    para.push(parseInline(line.trim()));
++  }
++  flush();
++  return blocks;
++}
++
++/** The text a "Copy" puts on the clipboard: Markdown marks removed. */
++export function plainText(source: string): string {
++  return parseMarkdown(source)
++    .map((b) => {
++      const text = (inline: Inline[]) => inline.map((s) => s.text).join("");
++      if (b.type === "p") return b.lines.map(text).join("\n");
++      if (b.type === "h") return text(b.inline);
++      if (b.type === "ul") return b.items.map((it) => `- ${text(it)}`).join("\n");
++      if (b.type === "ol") return b.items.map((it, n) => `${b.start + n}. ${text(it)}`).join("\n");
++      return b.text;
++    })
++    .join("\n\n");
++}

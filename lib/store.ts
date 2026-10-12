@@ -1690,6 +1690,47 @@ export async function replaceLastAssistantMessage(sessionId: string, from: strin
 }
 
 /**
+ * Master fix Phase 4 (Retry / Edit): removes the session's last exchange, the
+ * newest user message (which must be `request`) and any replies after it, so
+ * the resent message doesn't leave the old one behind. Refuses (false) when a
+ * reply after it made a calendar change: that turn stays, with its Undo.
+ */
+export async function dropLastExchange(sessionId: string, request: string): Promise<boolean> {
+  if (!(await getSessionRow(sessionId))) return false;
+  const { db, userId } = ctx();
+  type Row = { id: number; role: string; content: string; action_id?: string | null };
+  const recent = (columns: string) =>
+    db
+      .from("chat_messages")
+      .select(columns)
+      .eq("user_id", userId)
+      .eq("session_id", sessionId)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(6);
+  let res = (await recent("id, role, content, action_id")) as unknown as { data: Row[] | null; error: { code?: string; message: string } | null };
+  if (res.error && messageRefsMissing(res.error)) {
+    res = (await recent("id, role, content")) as unknown as typeof res;
+  }
+  if (res.error) fail("dropLastExchange", res.error);
+  const rows = res.data ?? [];
+  const userAt = rows.findIndex((r) => r.role === "user");
+  if (userAt < 0 || rows[userAt].content.trim() !== request.trim()) return false;
+  const drop = rows.slice(0, userAt + 1);
+  if (drop.some((r) => r.action_id)) return false;
+  const { error } = await db
+    .from("chat_messages")
+    .delete()
+    .eq("user_id", userId)
+    .in(
+      "id",
+      drop.map((r) => r.id)
+    );
+  if (error) fail("dropLastExchange", error);
+  return true;
+}
+
+/**
  * Attaches the change an earlier assistant message led to: the newest one in
  * this session previewing `changeSetId` (a card confirmed later), or else the
  * newest with exactly `content` (a plan drafted from the chat). Returns false

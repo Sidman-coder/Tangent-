@@ -203,3 +203,59 @@ Fixes 1 to 3 apply with the flag **on and off**, so do them twice (restart `npm 
 4. **Just talking → ready.** Ask "help me plan for the SAT", get a preview, click **"Just talking, don't add"**. Tangent keeps asking one short question at a time. Answer until a reply lists a full schedule: **"Ready to add this to your calendar?"** shows with **Yes, show preview** and **Keep talking**. A small **Add plan to calendar** chip stays on the newest full schedule until it is added or discarded.
 5. **Undo is careful.** Rename a plan with a preview and confirm. Rename it again by hand, then Undo the first change: your hand rename stays. Undo only reverts fields that still hold the value it set.
 6. **Projects preview.** In a Project's chat or **Ask** box, ask for new steps. A card (or a compact Confirm / Discard row) shows first, and nothing is saved until Confirm. Undo removes only the new steps.
+
+## K. Master fix
+
+Flag-on items are marked **(on)**; everything else applies with the flag on and off. No new migrations, so section A is unchanged. `npm test`, `npm run build` and `npm run eval:pipeline -- --check` cover the automated parts (59 fixtures).
+
+**Models (Phase 1)**
+
+1. **Model line.** `npm run eval:pipeline -- --check` prints `Models: FAST claude-haiku-5-5, SMART claude-sonnet-5-5` and a per-request line of about $0.0008 a command and $0.0138 a new plan.
+2. **Fallback.** Set `AI_MODEL_FAST=claude-haiku-9-9` in `.env.local`, restart, add a task by voice or text: it still works (one 404, then `claude-haiku-4-5`). Remove the line afterwards.
+
+**Sign-in (Phase 1B)**
+
+3. **Code sign-in.** Enter an invited email: "Check your email" shows six boxes. Type the 6-digit code from the email: it signs in without pressing a button.
+4. **Resend.** The button reads "Resend code in Ns" and unlocks at 60s. After a resend, "New code sent. Older codes no longer work." and the first code is refused.
+5. **Not invited.** An email outside `ALLOWED_EMAILS` gets the "isn't invited" message and no email is sent.
+6. **Slow link.** Open the email link with the network throttled to offline after the page loads: "Signing you in…" turns into "Tangent didn't hear back in time…" after 10 seconds, with **Try again** and **Use a code instead**.
+7. **Alias email.** A `name+test@…` address that is on the invite list signs in (by code and by link).
+8. **Right site.** On a Vercel preview URL, the email link returns to that same preview, not localhost or production.
+9. **Google.** From `/calendar` while signed out, **Continue with Google** returns you to `/calendar`. Sign out from Settings lands on `/signin` with no stale chat in the console.
+
+**Every AI write previews (B1, on)**
+
+10. **All of these.** Two SAT plans, "take out all my SAT tasks", tap **All of these**: a delete preview opens. Nothing is gone until Confirm.
+11. **Answered plan.** "Help me prepare for ISEF", answer the card: a full plan preview, never a straight save.
+12. **Other doors.** Each of these opens a preview first, and Undo works after Confirm: a project typed in the main box, a voice request that makes a task, a capture from the dock and the command palette, "gym every Monday and Wednesday at 6".
+
+**Questions and deletes (B2 to B7, on)**
+
+13. **One message.** Send any request once: one user bubble and one reply, even after a slow reply or a page refocus.
+14. **Question card everywhere.** A question asked from the dock, the palette or voice shows the same card (buttons, **Other…**, **Cancel**) on the AI page, never bullet text.
+15. **After answers.** Answering a card's questions opens the full preview (count, titles, weeks), not a short summary.
+16. **Typos and the closest plan.** Plans "SAT Reading Score Boost" and "SAT Math Geometry Sprint". Type "deltet my writing stuff for sat": it reads it as delete and offers **Delete SAT Reading Score Boost**, **Pick another**, **Cancel**. **Pick another** shows the full list. It never says "couldn't tell" twice in a row.
+17. **Multi-select.** Three plans, a delete that matches them all: tick two chips, the button reads **Delete selected (2)**, the preview lists only those two plans' tasks. **All of these** takes all three.
+
+**Plan briefs (Phase 3, on)**
+
+18. **Competition.** "Help me prepare for ISEF": a card with at most 5 questions (deadline, where you are, category…), each with buttons.
+19. **Silly goal.** "fight Mike Tyson in 2 weeks": one light question. **Just do it** gives a safe fundamentals plan whose assumptions include the safety line.
+20. **Enough context.** "Plan my AP Bio exam on May 12, I'm at a 3, 45 minutes a day": no questions, straight to the preview.
+
+**Chat (Phase 4)**
+
+21. **Streaming and Stop.** A long reply streams in under "Tangent is typing". Send turns into Stop; Esc stops it and the bubble shows "Stopped".
+22. **Markdown.** Ask for a study tip list: bold, lists and links render; no raw `**` or `-`.
+23. **Reply actions.** On a reply: **Copy** copies it, **Retry** re-asks, **Edit your message** puts your text back in the box, **Good reply** / **Bad reply** highlight.
+24. **Jump to latest.** Scroll up during a long reply: a **Jump to latest** pill appears and takes you down.
+25. **Receipt row (on).** After Confirm, the receipt shows **Undo · Open project · Details**. A preview with many sessions shows **See all N sessions** / **Show less**.
+26. **Titles.** A new chat starting "Could you make me a plan for the AP Bio exam?" is titled "AP Bio exam" in the sidebar, not the first words.
+27. **New topic.** After two ISEF messages, send "make me a plan to learn guitar chords": **Start new chat** / **Keep here** chips show. A follow-up about ISEF shows none.
+28. **Empty state and keys.** A new chat shows "Ask, add, or plan anything. You'll always see what changes." Enter sends, Shift+Enter adds a line, Esc stops a reply.
+
+**Calendar (Phase 5)**
+
+29. **Tooltip.** Hover or focus a task in week, month and the day panel: title, time, the project's color dot, and **School** or **No school**. Nothing on touch.
+30. **Busy days.** A month day with 6 tasks shows 3 (4 on a wide screen) plus **+N more**, which opens that day.
+31. **Remove on a busy day.** In the day panel of a day with 2+ tasks, **Remove** asks "Remove which tasks?" with chips and **Delete selected**. A day with one task removes it straight away as before.

@@ -8,6 +8,11 @@ import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { wallClockNow } from "@/lib/time";
 import AddTaskModal from "@/components/AddTaskModal";
 import ActionReceipt from "@/components/ActionReceipt";
+import ClarifyCard, { type ClarifyAnswer, type ClarifyQuestion } from "@/components/console/ClarifyCard";
+import PreviewCard from "@/components/PreviewCard";
+import type { ChangeSet } from "@/lib/pipeline/changeset";
+import type { PreviewPayload } from "@/lib/pipeline/draft";
+import { PENDING_QUESTION_ID, type PendingQuestion } from "@/lib/pending-question";
 import { openTask } from "@/components/TaskDetail";
 import Button from "@/components/ui/Button";
 import SidePeek from "@/components/ui/SidePeek";
@@ -24,6 +29,7 @@ import type { Plan, Task } from "@/lib/types";
 import { X, Check, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil, Undo2 } from "lucide-react";
 import WeekView from "@/components/calendar/WeekView";
 import AgendaView from "@/components/calendar/AgendaView";
+import TaskTip from "@/components/calendar/TaskTip";
 import TaskTitle from "@/components/ui/TaskTitle";
 
 type CalView = "week" | "month" | "agenda";
@@ -117,6 +123,19 @@ type RecurDeleteTarget = { taskId: string; parentId: string; title: string };
 type RecurEditTarget = { taskId: string; parentId: string; task: Task };
 
 
+/** One day-chat message, with the cards a reply can carry (master fix B3). */
+type DayChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+  questions?: ClarifyQuestion[];
+  pendingQuestion?: PendingQuestion | null;
+  /** The ask a card's answers run (its context included). */
+  request?: string;
+  draft?: { changeSet: ChangeSet; preview: PreviewPayload };
+  actionId?: string;
+  pendingConfirm?: { id: string; message: string };
+};
+
 export default function CalendarPage() {
   const { state, refresh } = useAppState();
   const now = wallClockNow(useUserTimezone());
@@ -132,7 +151,12 @@ export default function CalendarPage() {
   const [agendaStart, setAgendaStart] = useState(() => new Date(now.getFullYear(), now.getMonth(), now.getDate()));
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   // Clicking one event opens just that event; clicking the date opens the day.
-  const [removed, setRemoved] = useState<{ actionId: string; title: string } | null>(null);
+  const [removed, setRemoved] = useState<{ actionId: string; title: string; label?: string } | null>(null);
+  /** Master fix Phase 5: Remove on a busy day picks tasks with the B6 chips;
+   *  this is the task that was clicked (chosen to start with). */
+  const [removePick, setRemovePick] = useState<string | null>(null);
+  /** Month cells show this many tasks before "+N more" (at least 3; 4 on desktop). */
+  const [perCell, setPerCell] = useState(3);
   const [openNotes, setOpenNotes] = useState<Set<string>>(new Set());
   const [showAddModal, setShowAddModal] = useState(false);
   const [addModalDate, setAddModalDate] = useState(todayYmd);
@@ -142,7 +166,7 @@ export default function CalendarPage() {
   const [recurDeleteTarget, setRecurDeleteTarget] = useState<RecurDeleteTarget | null>(null);
   const [recurEditTarget, setRecurEditTarget] = useState<RecurEditTarget | null>(null);
   const [recurDeleting, setRecurDeleting] = useState(false);
-  const [dayChatMessages, setDayChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const [dayChatMessages, setDayChatMessages] = useState<DayChatMessage[]>([]);
   const [dayChatInput, setDayChatInput] = useState("");
   const [dayChatBusy, setDayChatBusy] = useState(false);
 
@@ -198,13 +222,32 @@ export default function CalendarPage() {
   useEffect(() => {
     setDayChatMessages([]);
     setDayChatInput("");
+    setRemovePick(null);
   }, [selectedDay]);
 
-  const sendDayChat = useCallback(async () => {
-    const text = dayChatInput.trim();
+  // Master fix Phase 5: as many tasks per month cell as the viewport's row
+  // height fits, never fewer than 3 (4 on desktop). From the window size, not
+  // the cells, so showing more never makes the cells grow into showing more.
+  useEffect(() => {
+    const fit = () => {
+      const floor = window.matchMedia("(min-width: 1024px)").matches ? 4 : 3;
+      const rowHeight = (window.innerHeight - 190) / 6; // toolbar, weekday row; six week rows
+      const rows = Math.floor((rowHeight - 58) / 22); // date number and "+N more"; one task line
+      setPerCell(Math.min(8, Math.max(floor, rows)));
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, []);
+
+  // Master fix B3: the day chat shows Tangent's questions and previews as the
+  // same cards as the AI page, and answers them the same way (app/(app)/ai).
+  // `followUp`: a card's answers; `request` is the ask they answer.
+  const sendDayChat = useCallback(async (followUp?: { shown: string; request?: string; answers?: ClarifyAnswer[]; tapped?: boolean }) => {
+    const text = (followUp?.shown ?? dayChatInput).trim();
     if (!text || !selectedDay || dayChatBusy) return;
     setDayChatBusy(true);
-    setDayChatInput("");
+    if (!followUp) setDayChatInput("");
 
     const dateLabel = new Date(selectedDay + "T12:00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
     const taskSummary = selectedDayTasks.length
@@ -212,26 +255,94 @@ export default function CalendarPage() {
       : "No tasks scheduled.";
     const contextualMessage = `Context: the user is looking at ${dateLabel}. Tasks for that day:\n${taskSummary}\n\nQuestion: ${text}`;
 
-    const nextMessages = [...dayChatMessages, { role: "user" as const, content: text }];
-    setDayChatMessages(nextMessages);
+    // A question Tangent is waiting on (the last reply's, until it expires).
+    const last = dayChatMessages[dayChatMessages.length - 1];
+    const waiting = last?.pendingQuestion && Date.parse(last.pendingQuestion.expiresAt) > Date.now() ? last.pendingQuestion : null;
+    const asked = waiting ? text : followUp?.request ?? contextualMessage;
+    const history = dayChatMessages.map((m) => ({ role: m.role, content: m.content }));
+    // Answered or dropped either way: only the newest reply's card stays live.
+    setDayChatMessages([...dayChatMessages.map((m) => (m.questions ? { ...m, questions: undefined, pendingQuestion: null } : m)), { role: "user", content: text }]);
 
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: [...dayChatMessages, { role: "user", content: contextualMessage }],
+          messages: [...history, { role: "user", content: asked }],
+          mode: "calendar",
+          clarify: !followUp?.request,
+          pendingQuestion: waiting ?? undefined,
+          answers: followUp?.answers ?? (followUp?.tapped && waiting ? [{ id: PENDING_QUESTION_ID, question: "", answer: text }] : undefined),
         }),
       });
-      const data = (await res.json()) as { ok?: boolean; message?: string; error?: string };
-      const reply = data.ok && data.message ? data.message : (data.error || "Something went wrong.");
-      setDayChatMessages((m) => [...m, { role: "assistant", content: reply }]);
+      const data = (await res.json()) as {
+        ok?: boolean;
+        message?: string;
+        error?: string;
+        action?: string | null;
+        actionId?: string;
+        questions?: ClarifyQuestion[];
+        pendingQuestion?: PendingQuestion | null;
+        changeSet?: ChangeSet;
+        preview?: PreviewPayload;
+        pending?: { id: string; message: string };
+      };
+      const reply = data.ok ? data.message || data.pending?.message || "Done." : (data.error || "Something went wrong.");
+      const draft = data.action === "preview" && data.changeSet && data.preview ? { changeSet: data.changeSet, preview: data.preview } : undefined;
+      setDayChatMessages((m) => [
+        ...m,
+        {
+          role: "assistant",
+          content: reply,
+          questions: data.questions?.length ? data.questions : undefined,
+          pendingQuestion: data.pendingQuestion ?? null,
+          request: data.questions?.length ? asked : undefined,
+          draft,
+          actionId: data.actionId,
+          pendingConfirm: data.action === "confirm_required" && data.pending ? data.pending : undefined,
+        },
+      ]);
+      if (data.actionId) await refresh();
     } catch {
       setDayChatMessages((m) => [...m, { role: "assistant", content: "Something went wrong reaching the assistant." }]);
     } finally {
       setDayChatBusy(false);
     }
-  }, [dayChatInput, dayChatBusy, selectedDay, dayChatMessages, selectedDayTasks]);
+  }, [dayChatInput, dayChatBusy, selectedDay, dayChatMessages, selectedDayTasks, refresh]);
+
+  /** A card's answers: a "Which one?" tap is the next message; a plan's
+   *  questions run the original ask with them (or "Just do it"). */
+  const answerDayChat = useCallback(
+    (index: number, answers: ClarifyAnswer[] | null) => {
+      const m = dayChatMessages[index];
+      if (!m) return;
+      if (m.pendingQuestion) return void sendDayChat({ shown: answers?.[0]?.answer ?? "Cancel", tapped: true });
+      const shown = answers && answers.length > 0 ? answers.map((a) => a.answer).join(" · ") : "Just do it";
+      void sendDayChat({ shown, request: m.request, answers: answers ?? undefined });
+    },
+    [dayChatMessages, sendDayChat]
+  );
+
+  /** The older Confirm/Cancel (flag off, or a very large delete). */
+  const confirmDayChat = useCallback(
+    async (index: number, id: string, confirm: boolean) => {
+      setDayChatMessages((ms) => ms.map((m, i) => (i === index ? { ...m, pendingConfirm: undefined } : m)));
+      try {
+        const res = await fetch("/api/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, confirm }),
+        });
+        const data = (await res.json()) as { ok?: boolean; response?: string; error?: string; actionId?: string };
+        const reply = !res.ok || !data.ok ? data.error || "Something went wrong." : data.response || (confirm ? "Done." : "Cancelled.");
+        setDayChatMessages((ms) => [...ms, { role: "assistant", content: reply, actionId: data.actionId }]);
+        if (data.actionId) await refresh();
+      } catch {
+        setDayChatMessages((ms) => [...ms, { role: "assistant", content: "Something went wrong reaching the assistant." }]);
+      }
+    },
+    [refresh]
+  );
 
   const cells = getMonthGrid(year, month);
 
@@ -263,7 +374,46 @@ export default function CalendarPage() {
     await refresh();
   };
 
+  // Master fix Phase 5: on a day with other tasks, Remove asks which ones with
+  // the same multi-select chips as the chat (B6), the clicked one chosen.
   const handleDeleteTask = (t: Task) => {
+    if (selectedDay && selectedDayTasks.length > 1) setRemovePick(t.id);
+    else removeTask(t);
+  };
+
+  /** The tasks the Remove chips name, by label ("All of these" is every one). */
+  const removeLabels = (tasks: Task[]) => {
+    const seen = new Map<string, number>();
+    return tasks.map((t) => {
+      const base = t.time && t.time !== "23:59" ? `${t.title} · ${formatTime12(t.time)}` : t.title;
+      const n = (seen.get(base) ?? 0) + 1;
+      seen.set(base, n);
+      return { task: t, label: n > 1 ? `${base} (${n})` : base };
+    });
+  };
+
+  const removePicked = async (answers: ClarifyAnswer[] | null) => {
+    setRemovePick(null);
+    const answer = answers?.[0]?.answer ?? "";
+    if (!answer) return;
+    const labelled = removeLabels(selectedDayTasks);
+    const picked = answer === "All of these"
+      ? labelled.map((l) => l.task)
+      : labelled.filter((l) => `, ${answer}, `.includes(`, ${l.label}, `)).map((l) => l.task);
+    if (picked.length === 0) return;
+    if (picked.length === 1) return removeTask(picked[0]);
+    // One change, one Undo: a recurring task loses just this day's occurrence.
+    const res = await fetch("/api/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete_tasks", ids: picked.map((t) => t.id) }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { actionId?: string };
+    if (data.actionId) setRemoved({ actionId: data.actionId, title: picked[0].title, label: `Removed ${picked.length} tasks` });
+    await refresh();
+  };
+
+  const removeTask = (t: Task) => {
     if (t.recurring?.enabled && t.recurring.parentId) {
       setRecurDeleteTarget({ taskId: t.id, parentId: t.recurring.parentId, title: t.title });
     } else {
@@ -409,6 +559,7 @@ export default function CalendarPage() {
   return (
     <>
       {mounted && createPortal(island, document.body)}
+      <TaskTip tasks={state?.tasks ?? []} plans={plans} colorFor={getTaskCategoryColor} />
       <div className="calendar-page">
         <section className="calendar-toolbar" aria-label="Calendar controls">
           <div className="calendar-toolbar-primary">
@@ -489,8 +640,9 @@ export default function CalendarPage() {
               // The day's own tasks, in time order, shown as chips: the grid
               // answers "what's on" without opening every day.
               const ordered = [...dayTasks].sort((a, b) => (a.time || "").localeCompare(b.time || ""));
-              // Two per day keeps the month readable; the rest is "N more".
-              const shown = ordered.slice(0, 2);
+              // As many as the cell fits (at least 3, 4 on desktop); the rest
+              // is "+N more", which opens the day.
+              const shown = ordered.slice(0, ordered.length > perCell ? perCell - 1 : perCell);
               const more = ordered.length - shown.length;
               let className = "cal-cell";
               if (!inMonth) className += " is-outside";
@@ -520,6 +672,7 @@ export default function CalendarPage() {
                               key={t.id}
                               className={`cal-event${t.completed ? " is-done" : ""}${deadline ? " is-deadline" : ""}`}
                               style={{ "--chip": getTaskCategoryColor(t) } as React.CSSProperties}
+                              data-task-tip={t.id}
                               onClick={(e) => {
                                 // The event opens in the middle, like Google
                                 // Calendar; the date opens the day.
@@ -528,11 +681,21 @@ export default function CalendarPage() {
                               }}
                             >
                               <span className="cal-event-dot" aria-hidden="true" />
-                              <span className="cal-event-title" title={t.title}>{labelFor(t)}</span>
+                              <span className="cal-event-title">{labelFor(t)}</span>
                             </span>
                           );
                         })}
-                        {more > 0 && <span className="cal-event-more">{more} more</span>}
+                        {more > 0 && (
+                          <span
+                            className="cal-event-more"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedDay(ymd);
+                            }}
+                          >
+                            +{more} more
+                          </span>
+                        )}
                       </span>
                     )}
                   </button>
@@ -579,7 +742,7 @@ export default function CalendarPage() {
                 <div className="calendar-removed">
                   <ActionReceipt
                     actionId={removed.actionId}
-                    label={`Removed “${removed.title}”`}
+                    label={removed.label ?? `Removed “${removed.title}”`}
                     onUndone={() => {
                       setRemoved(null);
                       void refresh();
@@ -616,7 +779,7 @@ export default function CalendarPage() {
                           >
                             {t.completed && <Check size={12} strokeWidth={2.8} aria-hidden="true" />}
                           </button>
-                          <span className={`calendar-modal-task-title${t.completed ? " done" : ""}`}><TaskTitle task={t} /></span>
+                          <span className={`calendar-modal-task-title${t.completed ? " done" : ""}`} data-task-tip={t.id}><TaskTitle task={t} /></span>
                           {t.recurring?.enabled && (
                             <span className="recurring-badge" title={freq || "Recurring"}><Repeat size={12} strokeWidth={1.75} /></span>
                           )}
@@ -689,10 +852,31 @@ export default function CalendarPage() {
                           className="calendar-task-remove"
                           onClick={() => handleDeleteTask(t)}
                           aria-label={`Remove ${t.title}`}
+                          aria-expanded={removePick === t.id}
                         >
                           Remove
                         </button>
                       </div>
+                      {removePick === t.id && (
+                        <div className="calendar-remove-pick">
+                          <ClarifyCard
+                            key={t.id}
+                            questions={[
+                              {
+                                id: "remove",
+                                question: "Remove which tasks?",
+                                options: [...removeLabels(selectedDayTasks).map((l) => l.label), "All of these"],
+                                multi: true,
+                                submitLabel: "Delete selected",
+                              },
+                            ]}
+                            initial={{ remove: removeLabels(selectedDayTasks).filter((l) => l.task.id === t.id).map((l) => l.label) }}
+                            other={false}
+                            skipLabel="Cancel"
+                            onSubmit={(answers) => void removePicked(answers)}
+                          />
+                        </div>
+                      )}
                     </div>
                   );
                   })}
@@ -720,7 +904,30 @@ export default function CalendarPage() {
                 <div className="calendar-modal-chat-log">
                   {dayChatMessages.map((m, i) => (
                     <div key={i} className={`chat-row ${m.role === "user" ? "user-row" : "assistant-row"}`}>
-                      <div className={`bubble ${m.role}`}>{m.content}</div>
+                      {!(m.draft && m.content.trim() === m.draft.changeSet.summary.trim()) && (
+                        <div className={`bubble ${m.role}`}>{m.content}</div>
+                      )}
+                      {m.questions && m.questions.length > 0 && (
+                        <ClarifyCard
+                          questions={m.questions}
+                          disabled={dayChatBusy}
+                          skipLabel={m.pendingQuestion ? "Cancel" : undefined}
+                          echo={m.content}
+                          onSubmit={(answers) => answerDayChat(i, answers)}
+                        />
+                      )}
+                      {m.draft && <PreviewCard changeSet={m.draft.changeSet} preview={m.draft.preview} onChanged={() => void refresh()} />}
+                      {m.pendingConfirm && (
+                        <div className="tg-confirm">
+                          <Button size="sm" variant="primary" onClick={() => void confirmDayChat(i, m.pendingConfirm!.id, true)}>
+                            Confirm
+                          </Button>
+                          <Button size="sm" onClick={() => void confirmDayChat(i, m.pendingConfirm!.id, false)}>
+                            Cancel
+                          </Button>
+                        </div>
+                      )}
+                      {m.actionId && !m.draft && <ActionReceipt actionId={m.actionId} label="Change applied" onUndone={() => void refresh()} />}
                     </div>
                   ))}
                   {dayChatBusy && (

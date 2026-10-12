@@ -10,7 +10,7 @@ import { getUserTimezone } from "@/lib/store";
 import { promptDateContext } from "@/lib/time";
 import { buildStudentContext } from "@/lib/ai/student-context";
 import { reliefSuggestion } from "@/lib/spacing";
-import { callClaude, messageText } from "@/lib/ai/call";
+import { callClaude, messageText, streamClaude } from "@/lib/ai/call";
 import { cacheHistory, withDateLast } from "@/lib/ai/cache";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
@@ -40,7 +40,7 @@ export function conversationContext(messages: { role: string; content: string }[
 
 export async function planReply(
   messages: { role: "user" | "assistant"; content: string }[],
-  opts: { followUp?: boolean; projectNote?: string } = {}
+  opts: { followUp?: boolean; projectNote?: string; onText?: (textSoFar: string) => void } = {}
 ): Promise<string> {
   // Static system, settled history cached, date last (lib/ai/cache.ts). The
   // history breakpoint only takes effect once a long talk passes the minimum.
@@ -50,7 +50,8 @@ export async function planReply(
   const picture = await buildStudentContext().then((c) => c.text).catch(() => "");
   const base = opts.followUp ? PLAN_SYSTEM + PLAN_FOLLOWUP : PLAN_SYSTEM;
   const projectNote = opts.projectNote ?? "";
-  const res = await callClaude("chatPlan", {
+  // Master fix Phase 4: streamed to the chat as it's written when asked.
+  const request = {
     system: picture
       ? [
           { type: "text" as const, text: base },
@@ -58,10 +59,20 @@ export async function planReply(
         ]
       : base,
     messages: withDateLast(cacheHistory(messages.slice(-12)), promptDateContext(await getUserTimezone())),
-  });
+  };
+  const onText = opts.onText;
+  const res = onText
+    ? await streamClaude("chatPlan", request, { onText: (t) => onText(cleanPlanText(t)) })
+    : await callClaude("chatPlan", request);
   if (!res.ok) throw new Error(res.budgetExceeded ? res.error : `Anthropic error ${res.status}`);
   const text = messageText(res.message);
   if (!text) throw new Error("Empty plan reply");
+  return cleanPlanText(text);
+}
+
+/** Code fences and bold are dropped: schedule lines must stay parseable
+ *  (lib/pipeline/plan-text.ts). The chat renders the rest as Markdown. */
+function cleanPlanText(text: string): string {
   return text.replace(/```[\s\S]*?```/g, "").replace(/\*\*(.+?)\*\*/g, "$1").trim();
 }
 

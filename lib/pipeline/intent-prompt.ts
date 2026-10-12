@@ -3,9 +3,9 @@
 //
 // Stable on purpose: no dates, no plan titles, no student data, so the prefix
 // is identical on every call. The date, the student's plans and the request go
-// in the user message (lib/pipeline/intent.ts routerUserMessage). Note: Haiku
-// 4.5 caches only prompts of 4,096+ tokens, and this one is far shorter, so no
-// cache_control is set; it is kept stable so caching works if it ever grows.
+// in the user message (lib/pipeline/intent.ts routerUserMessage). It is about
+// 900 tokens, over Haiku 5.5's 512-token cache minimum, so callIntentRouter
+// caches it for an hour (Haiku 4.5, the fallback, needs 4,096 and skips it).
 
 export const INTENT_SYSTEM = `You route one message a high-school student typed or said to their planning app, Tangent. You do not answer it. Reply with JSON only, matching the schema.
 

@@ -35,6 +35,10 @@ type Mods = [
   typeof import("../pending-question"),
   typeof import("../quick-add"),
   typeof import("../ai/router"),
+  typeof import("../delete-scope"),
+  typeof import("../closest-match"),
+  typeof import("../ai/plan-brief"),
+  typeof import("../chat-title"),
 ];
 
 void (Promise.all([
@@ -44,6 +48,10 @@ void (Promise.all([
   import("../pending-question"),
   import("../quick-add"),
   import("../ai/router"),
+  import("../delete-scope"),
+  import("../closest-match"),
+  import("../ai/plan-brief"),
+  import("../chat-title"),
 ]) as unknown as Promise<Mods>).then(
   ([
     { FixtureFileSchema },
@@ -52,6 +60,10 @@ void (Promise.all([
     { makePendingQuestion, resolvePendingAnswer, asksForCalendars, NEW_PLAN_ID },
     { cleanTitle },
     { quickCapture },
+    { planBulkDelete, planHint },
+    { fixIntentTypos },
+    { readBrief, briefQuestions, briefAssumptions, splitAnswers, SAFETY_ASSUMPTION },
+    { fallbackTitle, isNewTopic },
   ]) => {
     const file = FixtureFileSchema.parse(JSON.parse(readFileSync(path.join(import.meta.dirname, "fixtures", "requests.json"), "utf8")));
     const TZ = file.timezone;
@@ -73,6 +85,19 @@ void (Promise.all([
         "tangent-mit",
         "low-confidence-prep",
         "title-soccer-coaching",
+        // Master fix (Phase 6)
+        "transcript1-take-out-sat",
+        "transcript1-closest-question",
+        "typo-delte-sat-math",
+        "typo-remvoe-grammar",
+        "multi-delete-two-of-three",
+        "transcript2-isef-questions",
+        "transcript2-isef-answers",
+        "grill-mike-tyson",
+        "new-topic-guitar",
+        "new-topic-follow-up",
+        "chat-title-ap-bio",
+        "chat-title-bio-homework",
       ]) {
         assert.ok(ids.has(id), id);
       }
@@ -125,18 +150,64 @@ void (Promise.all([
 
     test("A1: replies to the question resolve on their own, never as a calendar list or a new plan", () => {
       for (const c of file.cases.filter((c) => c.pending)) {
-        const { kind, answers } = c.pending!;
+        const { kind, answers, closest } = c.pending!;
         const byTitle = new Map(c.seed.plans.map((p) => [p.title, p.id]));
         const titles = c.router?.match_titles ?? c.seed.plans.map((p) => p.title);
-        const candidates = titles.map((t) => ({ id: byTitle.get(t)!, title: t }));
+        // Plan candidates carry their task titles, as the delete path sends them (B5).
+        let candidates: { id: string; title: string; hint?: string }[] = titles.map((t) => {
+          const id = byTitle.get(t)!;
+          const hint = kind === "plan" ? planHint(id, c.seed.tasks) : "";
+          return hint ? { id, title: t, hint } : { id, title: t };
+        });
         if (kind === "match") candidates.push({ id: NEW_PLAN_ID, title: "New plan" });
-        const q = makePendingQuestion(kind, candidates, c.text, AT, { mention: c.router?.plan_mention ?? undefined });
+        if (closest) {
+          // The closest question is what the delete path itself raises for this text.
+          const plan = planBulkDelete(c.text, c.seed.tasks, c.seed.plans);
+          assert.equal(plan?.kind, "ask", `${c.id}: asks`);
+          if (plan?.kind !== "ask") continue;
+          assert.deepEqual(plan.closest, closest, `${c.id}: the closest question`);
+          candidates = plan.candidates ?? [];
+        }
+        const q = makePendingQuestion(kind, candidates, c.text, AT, { mention: c.router?.plan_mention ?? undefined, closest });
         for (const a of answers) {
           const got = resolvePendingAnswer(a.text, q);
           assert.equal(got.kind, a.resolves, `${c.id}: "${a.text}"`);
+          if (got.kind === "closest") assert.equal(got.candidate.title, a.closest, `${c.id}: "${a.text}"`);
           if (got.kind === "pick") assert.deepEqual(got.candidates.map((x) => x.title).sort(), [...(a.picks ?? [])].sort(), `${c.id}: "${a.text}"`);
           assert.equal(asksForCalendars(a.text), false, `${c.id}: "${a.text}" is not a calendar question`);
         }
+      }
+    });
+
+    test("B5: typo'd intent words are read as the word meant", () => {
+      for (const c of file.cases.filter((c) => c.typo_fixed)) assert.equal(fixIntentTypos(c.text), c.typo_fixed, c.id);
+    });
+
+    test("Phase 3: the plan brief asks the right number of questions, with the safety line when physical", () => {
+      for (const c of file.cases.filter((c) => c.brief)) {
+        const want = c.brief!;
+        const b = readBrief(c.text);
+        assert.equal(b?.type ?? null, want.type, c.id);
+        const n = b ? briefQuestions(b).length : 0;
+        assert.ok(n >= (want.min_questions ?? 0) && n <= want.max_questions, `${c.id}: ${n} questions`);
+        if (want.safety !== undefined) assert.equal(b ? briefAssumptions(b).includes(SAFETY_ASSUMPTION) : false, want.safety, `${c.id}: safety line`);
+      }
+    });
+
+    test("Transcript 2: every answer line the chat appends is read", () => {
+      for (const c of file.cases.filter((c) => c.text.includes("My answers to your questions:"))) {
+        const lines = c.text.split("\n").filter((l) => l.startsWith("- "));
+        const { request, answers } = splitAnswers(c.text);
+        assert.equal(answers.size, lines.length, c.id);
+        assert.ok(!request.includes("My answers"), `${c.id}: the request is just the request`);
+      }
+    });
+
+    test("Phase 4: chat titles and the new-topic suggestion", () => {
+      for (const c of file.cases.filter((c) => c.chat)) {
+        const chat = c.chat!;
+        assert.equal(isNewTopic(chat.previous, c.text), chat.new_topic, `${c.id}: new topic`);
+        if (chat.title) assert.equal(fallbackTitle(c.text), chat.title, `${c.id}: title`);
       }
     });
 

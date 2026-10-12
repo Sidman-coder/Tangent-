@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeSet } from "@/lib/pipeline/changeset";
 import type { DraftEdit, PreviewPayload } from "@/lib/pipeline/draft";
+import { receiptView } from "@/lib/pipeline/receipt";
 import { useAppState } from "@/components/AppStateProvider";
 
 type Phase = "draft" | "confirmed" | "discarded" | "undone";
@@ -22,7 +23,7 @@ type Props = {
   /** The calendar changed (confirm or undo): reload app state. */
   onChanged?: () => void;
   /** Confirmed: the undo entry's id, so the chat can keep Undo after a reload. */
-  onConfirmed?: (actionId: string) => void;
+  onConfirmed?: (actionId: string, info?: { planId: string | null }) => void;
   /** Focus the card when it appears so Enter/Esc work straight away. */
   autoFocus?: boolean;
   className?: string;
@@ -54,7 +55,9 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ created: number; skipped: string[] } | null>(null);
+  const [result, setResult] = useState<{ created: number; skipped: string[]; planId: string | null } | null>(null);
+  /** Master fix Phase 4: "See all N sessions", grouped by week. */
+  const [allOpen, setAllOpen] = useState(false);
   const [chatting, setChatting] = useState(false);
   const [expired, setExpired] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -105,11 +108,12 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
       if (!data.ok) return settle(status, data);
       const skipped = (data.skipped_duplicates as { titles?: string[] } | undefined)?.titles ?? [];
       const created = typeof data.createdTaskCount === "number" ? data.createdTaskCount : -1;
-      setResult({ created, skipped });
+      const planId = typeof data.planId === "string" ? data.planId : null;
+      setResult({ created, skipped, planId });
       setPhase("confirmed");
       setEditing(false);
       onChanged?.();
-      if (typeof data.actionId === "string") onConfirmed?.(data.actionId);
+      if (typeof data.actionId === "string") onConfirmed?.(data.actionId, { planId });
     });
 
   const discard = () =>
@@ -164,12 +168,42 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
 
   if (phase === "confirmed" || phase === "undone") {
     const nothing = result?.created === 0;
+    // Master fix Phase 4: a headline, a few of the changes, the rest by week,
+    // then one quiet row: Undo · Open project · Details.
+    const summary = receiptView(cs, view.lines, result && result.created >= 0 ? result.created : undefined);
+    const planTitle = cs.ops.flatMap((o) => (o.op === "create_plan" ? [o.title] : []))[0];
+    const projectId =
+      result?.planId ?? cs.target_plan_id ?? (planTitle ? state?.plans?.find((p) => p.title === planTitle)?.id : undefined) ?? null;
+    const lineList = (lines: string[]) => (
+      <ul className="preview-card-receipt-lines">
+        {lines.map((line, i) => (
+          <li key={`${i}-${line}`}>{line}</li>
+        ))}
+      </ul>
+    );
     return (
       <div className={`${cls} is-done`} role="status">
-        <div className="action-receipt">
-          <span className="action-receipt-label">
-            {phase === "undone" ? "Removed from your calendar" : nothing ? "Already on your calendar · nothing new added" : "Added to your calendar"}
-          </span>
+        <p className="preview-card-receipt-head">
+          {phase === "undone" ? "Removed from your calendar" : nothing ? "Already on your calendar · nothing new added" : summary.headline}
+        </p>
+        {phase === "confirmed" && !nothing && (
+          <>
+            {allOpen
+              ? summary.weeks.map((w) => (
+                  <div key={w.label} className="preview-card-receipt-week">
+                    <p className="preview-card-receipt-week-label">{w.label}</p>
+                    {lineList(w.lines)}
+                  </div>
+                ))
+              : summary.lines.length > 0 && lineList(summary.lines)}
+            {summary.total > summary.lines.length && (
+              <button type="button" className="preview-card-receipt-more" aria-expanded={allOpen} onClick={() => setAllOpen((v) => !v)}>
+                {allOpen ? "Show less" : `See all ${summary.total} ${planTitle ? "sessions" : "changes"}`}
+              </button>
+            )}
+          </>
+        )}
+        <div className="action-receipt is-quiet">
           {phase === "confirmed" && !nothing ? (
             <button type="button" className="action-receipt-undo" onClick={() => void undo()} disabled={busy}>
               {busy ? "Undoing…" : "Undo"}
@@ -177,6 +211,11 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
           ) : phase === "undone" ? (
             <span className="action-receipt-status">Undone</span>
           ) : null}
+          {phase === "confirmed" && !nothing && projectId && (
+            <Link className="action-receipt-details" href={`/projects/${projectId}`}>
+              Open project
+            </Link>
+          )}
           <Link className="action-receipt-details" href={`/settings?activity=cs:${cs.id}#ai-activity`}>
             Details
           </Link>
@@ -259,6 +298,8 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
         })}
       </ul>
 
+      {/* Master fix B6: several selected plans read as one group. */}
+      {view.planRemovals && view.planRemovals.length > 1 && <p className="preview-card-muted">Also remove these plans</p>}
       {view.planRemovals?.map((r) => (
         <label key={r.planId} className="preview-card-check">
           <input
@@ -267,7 +308,7 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
             disabled={busy}
             onChange={(e) => void edit({ type: "plan_removal", plan_id: r.planId, remove: e.target.checked })}
           />
-          Also remove the plan &ldquo;{r.title}&rdquo;
+          {view.planRemovals!.length > 1 ? <>&ldquo;{r.title}&rdquo;</> : <>Also remove the plan &ldquo;{r.title}&rdquo;</>}
         </label>
       ))}
 

@@ -94,6 +94,13 @@ export default function CaptureDock() {
           router.push(data.action === "route_tangent" ? "/tangents?new=1" : "/ai?ask=1");
           return;
         }
+        // Master fix B1: a drafted change waits for Confirm on the AI page,
+        // which brings open drafts back as preview cards.
+        if (data.action === "preview") {
+          setPhase({ kind: "idle" });
+          router.push("/ai");
+          return;
+        }
         if (data.action === "confirm_required" && data.pending) {
           setPhase({ kind: "confirm", id: data.pending.id, message: data.pending.message });
           return;

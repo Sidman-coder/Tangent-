@@ -21,6 +21,7 @@ type Graded = Pick<ChangeSet, "intent" | "target_plan_id" | "ops">;
 type Row = { id: string; pass: boolean; intent: string; target: string; ops: string; reason: string };
 
 // Rough per-call token budgets for the estimate (input / output).
+const ROUTER_CALL = { input_tokens: 1200, output_tokens: 120 };
 const VOICE_CALL = { input_tokens: 4000, output_tokens: 400 };
 const PLAN_OUTLINE = { input_tokens: 3000, output_tokens: 300 };
 const PLAN_DETAIL = { input_tokens: 3000, output_tokens: 2048 };
@@ -33,7 +34,7 @@ async function main() {
   process.env.TANGENT_PIPELINE_V2 = "true";
 
   const { FixtureFileSchema, gradeCase } = await import("@/lib/pipeline/grade");
-  const { estimateCostUsd, modelFor } = await import("@/lib/ai/models");
+  const { estimateCostUsd, modelFor, FALLBACK_MODELS } = await import("@/lib/ai/models");
   const { routeCommand } = await import("@/lib/ai/router");
   const raw = (await import("@/lib/pipeline/fixtures/requests.json")).default as unknown;
 
@@ -47,14 +48,23 @@ async function main() {
   const ai = cases.filter((c) => !c.no_ai);
   const plans = ai.filter((c) => c.expected.intent === "new_plan");
 
+  // Per request: a quick command is the router + one voice call; a new plan
+  // adds the SMART outline and the parallel FAST detail calls.
+  const perRequest = (fast: string, smart: string) => {
+    const command = estimateCostUsd(fast, ROUTER_CALL) + estimateCostUsd(fast, VOICE_CALL);
+    const plan = command + estimateCostUsd(smart, PLAN_OUTLINE) + PLAN_DETAIL_CALLS * estimateCostUsd(fast, PLAN_DETAIL);
+    return { command, plan };
+  };
   const fast = modelFor("FAST");
   const smart = modelFor("SMART");
-  const voice = estimateCostUsd(fast, VOICE_CALL);
-  const plan = voice + estimateCostUsd(smart, PLAN_OUTLINE) + PLAN_DETAIL_CALLS * estimateCostUsd(fast, PLAN_DETAIL);
+  const { command: voice, plan } = perRequest(fast, smart);
   const cost = MARGIN * ((ai.length - plans.length) * voice + plans.length * plan);
+  const before = perRequest(FALLBACK_MODELS.FAST, FALLBACK_MODELS.SMART);
+  const usd = (n: number) => `$${n.toFixed(4)}`;
 
   console.log(`Fixtures: ${cases.length} cases (${ai.length} call the AI, ${plans.length} plan, ${cases.length - ai.length} fast path)`);
   console.log(`Models: FAST ${fast}, SMART ${smart}`);
+  console.log(`Per request: command ${usd(voice)}, new plan ${usd(plan)} (on ${FALLBACK_MODELS.FAST} / ${FALLBACK_MODELS.SMART}: ${usd(before.command)}, ${usd(before.plan)})`);
   console.log(`Estimated cost: about $${cost.toFixed(2)} (×${MARGIN} margin)`);
 
   // Load the pipeline itself so --check also proves the modules resolve.
@@ -142,7 +152,8 @@ async function main() {
       else reason = `wrote directly (action=${action || "none"}), not drafted`;
     }
 
-    const grade = graded ? gradeCase(c.expected, graded, { plans: seedPlans }) : { pass: false, failures: [reason] };
+    const seedTasks = c.expected.delete_from ? (await store.getAllTasks()).map((t) => ({ id: t.id, planId: t.planId })) : undefined;
+    const grade = graded ? gradeCase(c.expected, graded, { plans: seedPlans, tasks: seedTasks }) : { pass: false, failures: [reason] };
     const target = graded?.target_plan_id ? seedPlans.find((p) => p.id === graded!.target_plan_id)?.title ?? "other plan" : graded?.ops.some((o) => o.op === "create_plan") ? "NEW" : "none";
     return {
       id: c.id,

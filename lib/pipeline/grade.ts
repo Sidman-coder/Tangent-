@@ -46,6 +46,12 @@ export const ExpectedSchema = z
     max_ops: z.number().int().min(0),
     /** Ops that must not appear, e.g. create_plan when the plan already exists. */
     must_not: z.array(z.enum(OP_NAMES)).optional(),
+    /** Master fix: ops that must appear, e.g. delete_plan for "Also remove these plans". */
+    must_have: z.array(z.enum(OP_NAMES)).optional(),
+    /** Master fix (B6): the deletes (delete_task, delete_plan) touch exactly
+     *  these seeded plans, each of them and no other, so a pick of two never
+     *  takes the third. */
+    delete_from: z.array(z.string().min(1)).optional(),
   })
   .refine((e) => e.min_ops <= e.max_ops, "min_ops must be ≤ max_ops");
 export type Expected = z.infer<typeof ExpectedSchema>;
@@ -73,9 +79,32 @@ export type RouterExpect = z.infer<typeof RouterExpectSchema>;
 /** A typed or tapped reply to the question the case raises (A1). */
 export const AnswerExpectSchema = z.strictObject({
   text: z.string().min(1),
-  resolves: z.enum(["pick", "cancel", "unrelated", "unclear", "scope"]),
+  resolves: z.enum(["pick", "cancel", "unrelated", "unclear", "scope", "closest", "another"]),
   /** For "pick": the titles chosen. */
   picks: z.array(z.string().min(1)).optional(),
+  /** For "closest" (B5): the near title offered ("Delete that?"). */
+  closest: z.string().min(1).optional(),
+});
+
+/** Master fix Phase 3: the plan brief the request reads as, checked with no AI. */
+export const BriefExpectSchema = z.strictObject({
+  /** lib/ai/plan-brief.ts GoalType, or null for "the model decides". */
+  type: z.enum(["exam", "competition", "skill", "habit", "single"]).nullable(),
+  /** How many questions the card may ask (inclusive). */
+  min_questions: z.number().int().min(0).optional(),
+  max_questions: z.number().int().min(0),
+  /** The safety line is among the Just-do-it assumptions. */
+  safety: z.boolean().optional(),
+});
+
+/** Master fix Phase 4: the chat around the request, checked with no AI. */
+export const ChatExpectSchema = z.strictObject({
+  /** The chat's earlier requests, oldest first. */
+  previous: z.array(z.string().min(1)),
+  /** The "new topic, start a new chat?" suggestion shows for this message. */
+  new_topic: z.boolean(),
+  /** The title the chat gets with no model (lib/chat-title.ts fallbackTitle). */
+  title: z.string().min(1).optional(),
 });
 
 export const FixtureCaseSchema = z.strictObject({
@@ -94,8 +123,16 @@ export const FixtureCaseSchema = z.strictObject({
     .strictObject({
       kind: z.enum(["task", "plan", "match"]),
       answers: z.array(AnswerExpectSchema).min(1),
+      /** Master fix (B5): the question is the closest-match one ("You don't
+       *  have an SAT writing plan. The closest is …"), offering the first
+       *  candidate with [Delete …] [Pick another] [Cancel]. */
+      closest: z.strictObject({ mention: z.string().min(1), note: z.string().optional() }).optional(),
     })
     .optional(),
+  /** Master fix (B5): the text with typo'd intent words fixed ("deltet" → "delete"). */
+  typo_fixed: z.string().min(1).optional(),
+  brief: BriefExpectSchema.optional(),
+  chat: ChatExpectSchema.optional(),
   /** The clean task title (A3) every capture path must produce. */
   title: z.string().min(1).optional(),
 });
@@ -121,7 +158,11 @@ type Graded = Pick<ChangeSet, "intent" | "target_plan_id" | "ops">;
  * seeded plan's id; without it a titled target only checks that some plan was
  * targeted. A missing ChangeSet (the pipeline produced nothing) fails.
  */
-export function gradeCase(expected: Expected, changeSet: Graded | null | undefined, seed?: Pick<Seed, "plans">): Grade {
+export function gradeCase(
+  expected: Expected,
+  changeSet: Graded | null | undefined,
+  seed?: Pick<Seed, "plans"> & { tasks?: readonly { id: string; planId?: string | null }[] }
+): Grade {
   const failures: string[] = [];
   if (!changeSet) return { pass: false, failures: ["no ChangeSet was produced"] };
 
@@ -138,6 +179,21 @@ export function gradeCase(expected: Expected, changeSet: Graded | null | undefin
   for (const name of expected.must_not ?? []) {
     const count = changeSet.ops.filter((o) => o.op === name).length;
     if (count > 0) failures.push(`must_not: has ${count} ${name} op${count === 1 ? "" : "s"}`);
+  }
+
+  for (const name of expected.must_have ?? []) {
+    if (!changeSet.ops.some((o) => o.op === name)) failures.push(`must_have: no ${name} op`);
+  }
+
+  if (expected.delete_from) {
+    const planOf = (taskId: string) => seed?.tasks?.find((t) => t.id === taskId)?.planId ?? "no plan";
+    const touched = changeSet.ops.flatMap((o) => (o.op === "delete_plan" ? [o.plan_id] : o.op === "delete_task" ? [planOf(o.task_id)] : []));
+    const title = (id: string) => seed?.plans.find((p) => p.id === id)?.title ?? id;
+    const got = Array.from(new Set(touched.map(title))).sort();
+    const want = [...expected.delete_from].sort();
+    if (got.join("|") !== want.join("|")) {
+      failures.push(`delete_from: expected ${want.map((t) => `'${t}'`).join(", ") || "none"}, got ${got.map((t) => `'${t}'`).join(", ") || "none"}`);
+    }
   }
 
   const creates = changeSet.ops.some((o) => o.op === "create_plan");

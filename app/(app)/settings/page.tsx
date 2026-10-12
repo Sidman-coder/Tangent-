@@ -8,6 +8,7 @@ import CanvasConnectGuide from "@/components/CanvasConnectGuide";
 import WhatTangentKnows from "@/components/settings/WhatTangentKnows";
 import AiActivity from "@/components/settings/AiActivity";
 import { usePipelineV2 } from "@/components/PipelineFlag";
+import { clearLocalAppData } from "@/lib/auth/clear-local";
 import { CalendarSync } from "lucide-react";
 import type { AppState, CanvasFeedStatus } from "@/lib/types";
 import {
@@ -389,7 +390,7 @@ export default function SettingsPage() {
           <section id="account" className="settings-panel">
             <div className="settings-option-row">
               <div><strong>Sign out</strong><span>Sign out of Tangent on this device.</span></div>
-              <form action="/auth/signout" method="post">
+              <form action="/auth/signout" method="post" onSubmit={clearLocalAppData}>
                 <Button type="submit" variant="secondary">Sign out</Button>
               </form>
             </div>

@@ -13,6 +13,7 @@ import { fieldValues } from "./undo-core";
 export type ApplyStore = Pick<
   typeof Store,
   | "addPlanWithTasks"
+  | "addRecurringTask"
   | "addTask"
   | "deletePlan"
   | "deleteTask"
@@ -164,6 +165,25 @@ export async function applyChangeSetWith(store: ApplyStore, input: ChangeSet): P
         case "add_task": {
           if (op.plan_ref) break; // added with its new plan above
           const entry = op.plan_id ? touchPlan(op.plan_id) : null;
+          if (op.repeat) {
+            // A series: one undo step removes every instance this created.
+            const series = (await store.addRecurringTask({ ...newTask(op), planId: op.plan_id ?? null }, op.repeat)) as (Task & {
+              wasDuplicate?: boolean;
+            })[];
+            const fresh = series.filter((t) => !t.wasDuplicate).map((t) => t.id);
+            if (fresh.length === 0) {
+              skippedTitles.push(op.title);
+              break;
+            }
+            steps.push({ type: "delete_tasks", taskIds: fresh });
+            createdTaskIds.push(...fresh);
+            if (entry) {
+              entry.current.taskIds.push(...fresh);
+              entry.current.taskCount += fresh.length;
+              entry.step.addedTaskIds!.push(...fresh);
+            }
+            break;
+          }
           const created = await store.addTask({ ...newTask(op), planId: op.plan_id ?? null });
           if (created.wasDuplicate) {
             skippedTitles.push(op.title);

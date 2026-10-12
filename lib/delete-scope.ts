@@ -12,12 +12,16 @@
 //  - Pipeline V2 (B2): when no title has every word, the plan matcher
 //    (lib/pipeline/match.ts) may still name ONE plan it is sure of ("my eye
 //    see eff prep tasks" → ICF Prep). Never a second guess, never wider.
+//  - Master fix B5: typo'd verbs ("deltet") read as the verb, and when nothing
+//    matches, the clear closest plan is offered as a question ("You don't
+//    have an SAT writing plan. The closest is …. Delete that?"), never deleted.
 
 import { matchPlan } from "./pipeline/match";
+import { closestMatch, closestQuestion, fixIntentTypos, mentionFor } from "./closest-match";
 
 /** Lowercase, apostrophes dropped, other punctuation to spaces, leading filler removed. */
 function normalize(text: string): string {
-  let s = text.toLowerCase().replace(/[’']/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  let s = fixIntentTypos(text).toLowerCase().replace(/[’']/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
   const FILLER = /^(?:ok|okay|so|um|uh|hey|hi|actually|tangent|please|can you|could you|would you|will you|i want to|i want you to|id like to|lets|go ahead and|just)\s+/;
   for (let prev = ""; prev !== s; ) {
     prev = s;
@@ -49,8 +53,10 @@ const STOP = new Set(["the", "my", "of", "all", "every", "each", "those", "these
 const TRAILING_WHERE = new RegExp(`\\s+(?:on|from|in|off|out of)\\s+(?:my|the)\\s+${SCHEDULE}.*$`);
 
 export type DeleteScope =
-  /** A group named by these words, e.g. ["sat"]. */
-  | { kind: "scoped"; words: string[]; phrase: string }
+  /** A group named by these words, e.g. ["sat"]. `extra`: words after it
+   *  ("my writing stuff for SAT" → ["sat"]), only used when `words` alone
+   *  match nothing. */
+  | { kind: "scoped"; words: string[]; phrase: string; extra?: string[] }
   /** "Delete all the tasks" and the like: everything-ish, but not an explicit full-clear phrase. */
   | { kind: "unclear" };
 
@@ -64,9 +70,13 @@ export function parseDeleteScope(text: string): DeleteScope | null {
   const allNoNoun = new RegExp(`\\b${VERB}\\s+(all\\s+(?:of\\s+)?|every\\s+)((?:[a-z0-9]+\\s*){1,6})$`).exec(s);
   const m = withNoun ?? allNoNoun;
   if (!m) return null;
-  const words = m[2].split(/\s+/).filter((w) => w && !STOP.has(w));
+  const after = withNoun ? s.slice(m.index + m[0].length) : "";
+  const tail = /^\s+(?:for|from|in|of|about|on|related to)\s+((?:[a-z0-9]+\s*){1,4})$/.exec(after);
+  const extra = tail ? tail[1].split(/\s+/).filter((w) => w && !STOP.has(w)) : [];
+  let words = m[2].split(/\s+/).filter((w) => w && !STOP.has(w));
+  if (words.length === 0 && extra.length > 0) words = extra.splice(0);
   if (words.length === 0) return { kind: "unclear" };
-  return { kind: "scoped", words, phrase: words.join(" ") };
+  return extra.length ? { kind: "scoped", words, phrase: words.join(" "), extra } : { kind: "scoped", words, phrase: words.join(" ") };
 }
 
 /** "dentists" → "dentist", "sat's" (apostrophe already dropped) → "sat". */
@@ -160,8 +170,10 @@ export type BulkDeletePlan<T extends ScopeTask> =
   /** Ask for confirmation of exactly these tasks. */
   | { kind: "propose"; tasks: T[]; all: boolean; label?: string }
   /** Delete nothing; send this question back. `candidates` are the plans it
-   *  could mean (the pending question's buttons, lib/pending-question.ts). */
-  | { kind: "ask"; message: string; candidates?: ScopePlan[] }
+   *  could mean (the pending question's buttons, lib/pending-question.ts).
+   *  With `closest`, candidates[0] is the close miss to confirm and the rest
+   *  are "Pick another"; `hint` is a few of each plan's task titles. */
+  | { kind: "ask"; message: string; candidates?: (ScopePlan & { hint?: string })[]; closest?: { mention: string; note?: string } }
   /** Nothing deleted yet, nothing to clear. */
   | { kind: "empty" };
 
@@ -176,18 +188,49 @@ export function planBulkDelete<T extends ScopeTask>(text: string, tasks: readonl
   const scope = parseDeleteScope(text);
   if (!scope) return null;
   if (scope.kind === "unclear") return { kind: "ask", message: ASK_WHICH };
-  const match = matchScope(scope.words, tasks, plans);
+  let match = matchScope(scope.words, tasks, plans);
+  if (match.kind === "none" && scope.extra?.length) match = matchScope([...scope.words, ...scope.extra], tasks, plans);
   if (match.kind === "none") {
+    const near = closestPlan([...scope.words, ...(scope.extra ?? [])], tasks, plans);
+    if (near) return near;
     return { kind: "ask", message: `I couldn't find any tasks or plans matching "${scope.phrase}", so I didn't delete anything. Which tasks did you mean?` };
   }
   if (match.kind === "ambiguous") {
     return {
       kind: "ask",
-      message: `"${scope.phrase}" matches more than one plan: ${titleList(match.options.map((p) => p.title))}. Which one should I delete?`,
-      candidates: match.options,
+      message: `"${scope.phrase}" matches more than one plan: ${titleList(match.options.map((p) => p.title))}. Which should I delete? Pick one or more.`,
+      candidates: match.options.map((p) => ({ ...p, hint: planHint(p.id, tasks) })),
     };
   }
   return { kind: "propose", tasks: match.tasks, all: false, label: match.label };
+}
+
+/** A few task titles, so a plan named "SAT Reading Score Boost" is known to
+ *  hold grammar drills. */
+export function planHint(planId: string, tasks: readonly ScopeTask[]): string {
+  const titles = Array.from(new Set(tasks.filter((t) => t.planId === planId).map((t) => t.title)));
+  return titles.slice(0, 6).join(", ").slice(0, 160);
+}
+
+/** The one plan (with tasks) closest to words that match nothing, as a
+ *  "Delete that?" question with the other plans behind "Pick another". */
+function closestPlan<T extends ScopeTask>(words: string[], tasks: readonly T[], plans: readonly ScopePlan[]): BulkDeletePlan<T> | null {
+  const withTasks = plans.filter((p) => tasks.some((t) => t.planId === p.id)).map((p) => ({ id: p.id, title: p.title, hint: planHint(p.id, tasks) }));
+  const near = closestMatch(words, withTasks);
+  if (!near) return null;
+  // The others: plans sharing a word with the request first ("SAT …"), then the rest.
+  const want = new Set(words.map(stem));
+  const others = withTasks
+    .filter((p) => p.id !== near.candidate.id)
+    .sort((a, b) => Number(!Array.from(tokens(a.title)).some((w) => want.has(w))) - Number(!Array.from(tokens(b.title)).some((w) => want.has(w))))
+    .slice(0, 7);
+  const mention = mentionFor(words, [near.candidate, ...others.filter((p) => Array.from(tokens(p.title)).some((w) => want.has(w)))], near.missing);
+  return {
+    kind: "ask",
+    message: closestQuestion("plan", mention, near.candidate.title, near.note),
+    candidates: [near.candidate, ...others],
+    closest: near.note ? { mention, note: near.note } : { mention },
+  };
 }
 
 /** The reply when it isn't clear which tasks to delete. */

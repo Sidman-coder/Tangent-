@@ -17,13 +17,16 @@ import {
   applyPlanProgress,
   cleanMessage,
   readChatReply,
+  redoable,
   toolsForAction,
   turnsFromMessages,
+  withCard,
   type ChatMode,
   type PlanProgressView,
   type Turn,
 } from "@/components/console/turns";
 import { usePipelineV2 } from "@/components/PipelineFlag";
+import { fallbackTitle, isNewTopic } from "@/lib/chat-title";
 import { chatOnly, draftShownPlan, fetchOpenDrafts, withOpenDrafts } from "@/components/console/pipeline-intake";
 import { isReadyReply, openPlanTurn, talkingRoute } from "@/components/console/talking";
 import { isAddShownPlan } from "@/lib/pipeline/plan-text";
@@ -142,6 +145,33 @@ function writeStored(key: string, value: string | null) {
   } catch {}
 }
 
+/** Master fix Phase 4: chats renamed by hand keep their name; automatic
+ *  titles skip them (remembered in this browser). */
+const MANUAL_TITLES_KEY = "tangent:ai:manualTitles";
+
+function manualTitles(): string[] {
+  try {
+    const list = JSON.parse(readStored(MANUAL_TITLES_KEY) ?? "[]") as unknown;
+    return Array.isArray(list) ? list.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function markManualTitle(id: string) {
+  writeStored(MANUAL_TITLES_KEY, JSON.stringify([...manualTitles().filter((x) => x !== id), id].slice(-200)));
+}
+
+/** Master fix Phase 4: thumbs, Retry, Edit, Stop and new-topic choices,
+ *  logged as events (app/api/events). Never blocks the chat. */
+function logChatEvent(type: string, props: Record<string, string | number | boolean> = {}) {
+  void fetch("/api/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type, props }),
+  }).catch(() => {});
+}
+
 export default function AiPage() {
   const router = useRouter();
   const { state, refresh } = useAppState();
@@ -208,6 +238,20 @@ export default function AiPage() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [planProgress, setPlanProgress] = useState<PlanProgressView | null>(null);
+  /** Master fix Phase 4: the reply so far, while it streams in. */
+  const [streamText, setStreamText] = useState("");
+  const abortRef = useRef<AbortController | null>(null);
+  /** The last turn's id while its message is being edited in the composer. */
+  const [editing, setEditing] = useState<string | null>(null);
+  /** "Keep here" answered the new-topic chips at this many turns. */
+  const [topicSettledAt, setTopicSettledAt] = useState(-1);
+  /** The topic title in flight, so a project name lands after it. */
+  const titling = useRef<Promise<void> | null>(null);
+  /** The draft reads as a different subject: offer a new chat, once. */
+  const newTopic = useMemo(
+    () => !busy && !editing && topicSettledAt !== turns.length && isNewTopic(turns.map((t) => t.request), input),
+    [busy, editing, topicSettledAt, turns, input]
+  );
   const [err, setErr] = useState<string | null>(null);
   const [voiceStatus, setVoiceStatus] = useState<VoiceCaptureStatus>("idle");
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -265,6 +309,29 @@ export default function AiPage() {
     }
   }, []);
 
+  /** Master fix Phase 4: names a chat after its project, else a short topic
+   *  (app/api/sessions "autotitle"). A name the student chose is kept. */
+  const autoTitle = useCallback(
+    (sessionId: string, from: { text?: string; projectTitle?: string }) => {
+      if (manualTitles().includes(sessionId)) return;
+      const run = async () => {
+        if (from.projectTitle) await titling.current;
+        if (manualTitles().includes(sessionId)) return;
+        try {
+          await fetch("/api/sessions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "autotitle", sessionId, ...from }),
+          });
+        } catch {}
+        void loadSessions();
+      };
+      const pending = run();
+      if (!from.projectTitle) titling.current = pending;
+    },
+    [loadSessions]
+  );
+
   /** Pipeline V2: open drafts from the last 24 hours come back as cards. */
   const restoreDrafts = useCallback(async () => {
     if (!v2) return;
@@ -297,6 +364,7 @@ export default function AiPage() {
         setActiveSessionId(data.session.id);
         const restored = turnsFromMessages(data.session.messages, confirms);
         setTurns(restored);
+        setEditing(null);
         void recheckUndo(restored);
         void restoreDrafts();
         setMode("chat");
@@ -314,6 +382,7 @@ export default function AiPage() {
     setSaveWarning(null);
     setTurns([]);
     setInput("");
+    setEditing(null);
     setErr(null);
     setMode("chat");
     window.localStorage.removeItem(SESSION_STORAGE_KEY);
@@ -385,14 +454,20 @@ export default function AiPage() {
     modeOverride?: ChatMode,
     // Follow-up to Tangent's questions: `request` is the original ask the
     // pipeline runs; `text` is what the thread shows for this turn.
-    followUp?: { request: string; answers?: ClarifyAnswer[]; skipClarify?: boolean }
+    followUp?: { request: string; answers?: ClarifyAnswer[]; skipClarify?: boolean },
+    // Master fix Phase 4 (Retry / Edit): the last turn this message replaces.
+    opts?: { replace?: string }
   ) => {
     const userText = (text ?? input).trim();
     if (!userText || busy) return;
+    const replace = opts?.replace ?? (editing && text === undefined && turns[turns.length - 1]?.id === editing ? editing : undefined);
+    const replaced = replace ? turns.find((t) => t.id === replace) : undefined;
+    // The chat without the replaced turn: what the model sees.
+    const prior = replaced ? turns.filter((t) => t.id !== replace) : turns;
     // A question Tangent is waiting on (last turn only, until it expires):
     // this message answers it, typed or tapped, unless the server decides
     // it's a new request (app/api/chat).
-    const lastTurn = turns[turns.length - 1];
+    const lastTurn = prior[prior.length - 1];
     const waiting =
       lastTurn?.pendingQuestion && Date.parse(lastTurn.pendingQuestion.expiresAt) > Date.now() ? lastTurn.pendingQuestion : null;
     // One input, routed (lib/ask-route.ts): no Plan/Calendar switch to set.
@@ -400,7 +475,7 @@ export default function AiPage() {
     // goes to Tangents, a multi-week effort becomes a project.
     // Pipeline V2 (A4): after "Just talking" the plan is talked through until
     // the student asks to act (components/console/talking.ts).
-    const talk = v2 && !followUp && !waiting ? talkingRoute(turns, userText) : undefined;
+    const talk = v2 && !followUp && !waiting ? talkingRoute(prior, userText) : undefined;
     const route = followUp || waiting || talk ? "do" : routeAsk(userText);
     if (route === "goal" && !modeOverride) {
       putNewPathTitle(userText);
@@ -414,6 +489,8 @@ export default function AiPage() {
     setBusy(true);
     setPendingRequest(userText);
     setInput("");
+    setEditing(null);
+    if (replace) setTurns((prev) => prev.filter((t) => t.id !== replace));
 
     let sessionId = activeSessionId;
     let isNewSession = false;
@@ -422,7 +499,7 @@ export default function AiPage() {
         const res = await fetch("/api/sessions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "create", title: userText.slice(0, 40) }),
+          body: JSON.stringify({ action: "create", title: fallbackTitle(userText) }),
         });
         const data = (await res.json()) as { ok: boolean; session: ChatSession };
         if (data.ok) {
@@ -430,6 +507,7 @@ export default function AiPage() {
           setActiveSessionId(sessionId);
           window.localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
           isNewSession = true;
+          autoTitle(data.session.id, { text: userText });
           void loadSessions();
         } else {
           throw new Error("create failed");
@@ -439,9 +517,18 @@ export default function AiPage() {
       }
     }
 
+    // Retry / Edit: the saved chat drops the old exchange too (the server
+    // keeps it when it changed the calendar).
+    if (replaced && sessionId && !isNewSession) {
+      await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "drop_last", sessionId, content: replaced.request }),
+      }).catch(() => {});
+    }
     await saveMessage(sessionId, "user", userText);
 
-    const history = turns.flatMap((t) => [
+    const history = prior.flatMap((t) => [
       { role: "user", content: t.request },
       { role: "assistant", content: t.response },
     ]);
@@ -453,8 +540,12 @@ export default function AiPage() {
     // Answered or dropped either way: only the newest reply can carry one.
     if (waiting) setTurns((prev) => prev.map((t) => (t.pendingQuestion ? { ...t, pendingQuestion: null } : t)));
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let streamed = "";
     try {
       const res = await fetch("/api/chat", {
+        signal: controller.signal,
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -472,7 +563,15 @@ export default function AiPage() {
         }),
       });
       // Calendar mode streams NDJSON: plan progress lines, then {type:"result"}.
-      const data = (await readChatReply(res, (line) => setPlanProgress((v) => applyPlanProgress(v, line)))) as {
+      const data = (await readChatReply(res, (line) => {
+        // Master fix Phase 4: a talking reply streams in as it is written.
+        if (line.type === "reply_text" && typeof line.text === "string") {
+          streamed = line.text;
+          setStreamText(line.text);
+          return;
+        }
+        setPlanProgress((v) => applyPlanProgress(v, line));
+      })) as {
         ok?: boolean;
         message?: string;
         reply?: string;
@@ -510,7 +609,8 @@ export default function AiPage() {
             pendingQuestion: data.pendingQuestion ?? null,
           },
         ]);
-        await saveMessage(sessionId, "assistant", `${ask}\n${data.questions.map((q) => `- ${q.question}`).join("\n")}`);
+        // Master fix B3: saved as the card itself, so a reopened chat shows it again.
+        await saveMessage(sessionId, "assistant", withCard(ask, { questions: data.questions, pendingQuestion: data.pendingQuestion ?? null }));
         return;
       }
 
@@ -579,6 +679,8 @@ export default function AiPage() {
           draft: action === "preview" && data.changeSet && data.preview ? { changeSet: data.changeSet, preview: data.preview } : undefined,
           suggestion: data.suggestion ?? null,
           projectId: data.plan?.id ?? null,
+          // Streamed in already: no word-by-word reveal on top.
+          streamed: streamed.length > 0,
           // "Which tasks should I remove?" with no buttons: typed answers only.
           pendingQuestion: data.pendingQuestion ?? null,
         },
@@ -586,13 +688,8 @@ export default function AiPage() {
 
       await saveMessage(sessionId, "assistant", reply, { actionId: data.actionId, changeSetId: data.changeSet?.id });
       if (data.actionId) announceUndo({ actionId: data.actionId, label: notif ?? "Change applied", from: "/ai" });
-      if (sessionId && isNewSession) {
-        void fetch("/api/sessions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "rename", sessionId, title: userText.slice(0, 45) }),
-        });
-      }
+      // Master fix Phase 4: a new project names the chat.
+      if (sessionId && data.plan?.title) autoTitle(sessionId, { projectTitle: data.plan.title });
 
       await linkAction(sessionId, data.actionId);
       await refresh();
@@ -609,6 +706,20 @@ export default function AiPage() {
         });
       }
     } catch (e) {
+      // Stop: keep what had arrived and say it was stopped.
+      if (controller.signal.aborted) {
+        const partial = cleanMessage(streamed);
+        const response = partial || "Stopped.";
+        setTurns((prev) => [
+          ...prev.map((t) => (t.fresh ? { ...t, fresh: false } : t)),
+          { id: crypto.randomUUID(), request: userText, tools: [], sourcesChecked: [], response, streamed: true, stopped: true },
+        ]);
+        logChatEvent("chat_stopped", { partial: partial.length > 0 });
+        await saveMessage(sessionId, "assistant", response);
+        // The server may have finished a change before the stop reached it.
+        void refresh();
+        return;
+      }
       const message = e instanceof Error ? e.message : "Error";
       setErr(message);
       setTurns((prev) => [
@@ -627,9 +738,22 @@ export default function AiPage() {
       setBusy(false);
       setPendingRequest(null);
       setPlanProgress(null);
+      setStreamText("");
+      abortRef.current = null;
       void loadSessions();
     }
-  }, [input, busy, chatMode, activeSessionId, turns, refresh, linkAction, loadSessions, saveMessage, v2]);
+  }, [input, busy, chatMode, activeSessionId, turns, refresh, linkAction, loadSessions, saveMessage, v2, editing, autoTitle]);
+
+  /** Master fix Phase 4: Stop (the button, or Esc) ends the reply where it is. */
+  const stop = useCallback(() => abortRef.current?.abort(), []);
+  useEffect(() => {
+    if (!busy) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !e.defaultPrevented) stop();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [busy, stop]);
 
   /** Adds an action / change set id to an already-saved assistant message:
    *  matched by change set id, or by its text (`from`). Best effort. */
@@ -648,11 +772,16 @@ export default function AiPage() {
   /** Pipeline V2: a preview card was confirmed; keep its Undo after a reload
    *  and offer it app-wide (the card shows its own Undo here). */
   const cardConfirmed = useCallback(
-    (_turnId: string, changeSetId: string, actionId: string) => {
+    (turnId: string, changeSetId: string, actionId: string) => {
       attachRefs({ changeSetId, actionId });
       announceUndo({ actionId, label: "Change applied", from: "/ai" });
+      // Master fix Phase 4: applied, so no Retry / Edit; a new project names the chat.
+      setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, applied: true } : t)));
+      const turn = turns.find((t) => t.id === turnId);
+      const project = turn?.draft?.changeSet.ops.flatMap((op) => (op.op === "create_plan" ? [op.title] : []))[0];
+      if (project && activeSessionId) autoTitle(activeSessionId, { projectTitle: project });
     },
-    [attachRefs]
+    [attachRefs, turns, activeSessionId, autoTitle]
   );
 
   /** Turns whose "Add to calendar" draft is in flight (one request each). */
@@ -760,6 +889,7 @@ export default function AiPage() {
 
   const renameChat = useCallback(
     async (id: string, title: string) => {
+      markManualTitle(id);
       setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, title } : s)));
       await postSession({ action: "rename", sessionId: id, title });
       void loadSessions();
@@ -784,6 +914,46 @@ export default function AiPage() {
       void loadSessions();
     },
     [activeSessionId, newChat, postSession, loadSessions]
+  );
+
+  /** Master fix Phase 4: hover actions on a reply. Retry and Edit are on the
+   *  last turn only, and never on one that changed the calendar. */
+  const retry = useCallback(
+    (turnId: string) => {
+      const turn = turns[turns.length - 1];
+      if (busy || !turn || turn.id !== turnId || !redoable(turn)) return;
+      logChatEvent("chat_retried");
+      void send(turn.request, undefined, undefined, { replace: turnId });
+    },
+    [busy, turns, send]
+  );
+
+  const editLast = useCallback(
+    (turnId: string) => {
+      const turn = turns[turns.length - 1];
+      if (busy || !turn || turn.id !== turnId || !redoable(turn)) return;
+      logChatEvent("chat_edited");
+      setEditing(turnId);
+      setInput(turn.request);
+      window.setTimeout(() => {
+        const el = inputRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+      }, 0);
+    },
+    [busy, turns]
+  );
+
+  const giveFeedback = useCallback(
+    (turnId: string, value: "up" | "down") => {
+      const turn = turns.find((t) => t.id === turnId);
+      if (!turn) return;
+      const next = turn.feedback === value ? undefined : value;
+      setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, feedback: next } : t)));
+      logChatEvent("chat_feedback", { value: next ?? "cleared", acted: !redoable(turn) });
+    },
+    [turns]
   );
 
   const resolveConfirm = useCallback(async (turnId: string, pendingId: string, confirm: boolean) => {
@@ -841,6 +1011,7 @@ export default function AiPage() {
       onVoiceError={setErr}
       mode={chatMode}
       placeholder={v2 ? "Ask, plan, or add something…" : undefined}
+      onStop={stop}
     />
   );
 
@@ -919,6 +1090,7 @@ export default function AiPage() {
             <h2 className="tg-hero-title">
               <span className="tg-hero-ask">{v2 ? "What do you need?" : "What can Tangent help with?"}</span>
             </h2>
+            <p className="tg-hero-sub">Ask, add, or plan anything. You’ll always see what changes.</p>
             {today && (
               today.next ? (
                 <Link href={`/calendar?date=${today.next.date}`} className="tg-next">
@@ -968,6 +1140,10 @@ export default function AiPage() {
               busy={busy}
               pendingRequest={pendingRequest}
               planProgress={planProgress}
+              streamText={streamText}
+              onRetry={retry}
+              onEdit={editLast}
+              onFeedback={giveFeedback}
               onConfirm={(turnId, pendingId, confirm) => void resolveConfirm(turnId, pendingId, confirm)}
               onUndone={() => void refresh()}
               mode={chatMode}
@@ -1007,6 +1183,47 @@ export default function AiPage() {
                     Not now
                   </button>
                 </div>
+              )}
+              {newTopic && (
+                <div className="tg-topic-chips" role="group" aria-label="This looks like a new topic">
+                  <span>New topic?</span>
+                  <button
+                    type="button"
+                    className="tg-btn tg-btn-accent"
+                    onClick={() => {
+                      const draft = input;
+                      logChatEvent("chat_new_topic", { choice: "new" });
+                      newChat();
+                      setInput(draft);
+                    }}
+                  >
+                    Start new chat
+                  </button>
+                  <button
+                    type="button"
+                    className="tg-btn"
+                    onClick={() => {
+                      setTopicSettledAt(turns.length);
+                      logChatEvent("chat_new_topic", { choice: "keep" });
+                    }}
+                  >
+                    Keep here
+                  </button>
+                </div>
+              )}
+              {editing && (
+                <p className="tg-editing">
+                  Editing your last message. Sending replaces it.
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditing(null);
+                      setInput("");
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </p>
               )}
               {err && <p className="tg-error" role="alert">{err}</p>}
               {saveWarning && <p className="tg-error" role="alert">{saveWarning}</p>}

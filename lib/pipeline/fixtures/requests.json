@@ -840,12 +840,15 @@
       },
       "expected": {
         "intent": "delete_task",
-        "target_plan": "ICF Prep",
+        "target_plan": null,
         "min_ops": 1,
         "max_ops": 1,
         "must_not": [
           "create_plan",
           "add_task"
+        ],
+        "delete_from": [
+          "ICF Prep"
         ]
       }
     },
@@ -1188,12 +1191,15 @@
       },
       "expected": {
         "intent": "delete_task",
-        "target_plan": "SAT Writing Skills Sprint",
+        "target_plan": null,
         "min_ops": 2,
         "max_ops": 3,
         "must_not": [
           "create_plan",
           "add_task"
+        ],
+        "delete_from": [
+          "SAT Writing Skills Sprint"
         ]
       },
       "router": {
@@ -1654,6 +1660,647 @@
         ]
       },
       "title": "Add math notes to binder"
+    },
+    {
+      "id": "transcript1-take-out-sat",
+      "text": "take out all my SAT tasks",
+      "source": "typed",
+      "note": "Transcript 1, turn 1 (master fix). The plans are SAT Reading Score Boost and SAT Math Geometry Sprint; none says 'writing'. Turns 2-4 are the answers: each offers the closest plan (reading & writing) to confirm, never re-asks or gives up, never deletes unconfirmed.",
+      "seed": {
+        "plans": [
+          {
+            "id": "11111111-1111-4111-8111-000000000008",
+            "title": "SAT Reading Score Boost"
+          },
+          {
+            "id": "11111111-1111-4111-8111-000000000009",
+            "title": "SAT Math Geometry Sprint"
+          }
+        ],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000032",
+            "title": "Reading passage practice",
+            "date": "2026-10-06",
+            "time": "16:00",
+            "planId": "11111111-1111-4111-8111-000000000008"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000033",
+            "title": "Grammar drill: commas",
+            "date": "2026-10-08",
+            "time": "16:00",
+            "planId": "11111111-1111-4111-8111-000000000008"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000034",
+            "title": "Geometry practice set",
+            "date": "2026-10-06",
+            "time": "17:00",
+            "planId": "11111111-1111-4111-8111-000000000009"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000035",
+            "title": "Algebra review",
+            "date": "2026-10-09",
+            "time": "17:00",
+            "planId": "11111111-1111-4111-8111-000000000009"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "clarify",
+        "target_plan": null,
+        "min_ops": 0,
+        "max_ops": 0
+      },
+      "router": {
+        "intent": "delete_plan_tasks",
+        "plan_mention": "SAT",
+        "route": "draft",
+        "match": "unsure",
+        "match_titles": [
+          "SAT Reading Score Boost",
+          "SAT Math Geometry Sprint"
+        ]
+      },
+      "pending": {
+        "kind": "plan",
+        "answers": [
+          {
+            "text": "The writing thingie",
+            "resolves": "closest",
+            "closest": "SAT Reading Score Boost"
+          },
+          {
+            "text": "the writing stuff",
+            "resolves": "closest",
+            "closest": "SAT Reading Score Boost"
+          },
+          {
+            "text": "deltet my writing stuff for sat",
+            "resolves": "closest",
+            "closest": "SAT Reading Score Boost"
+          },
+          {
+            "text": "writing and math",
+            "resolves": "pick",
+            "picks": [
+              "SAT Reading Score Boost",
+              "SAT Math Geometry Sprint"
+            ]
+          },
+          {
+            "text": "All of these",
+            "resolves": "pick",
+            "picks": [
+              "SAT Reading Score Boost",
+              "SAT Math Geometry Sprint"
+            ]
+          },
+          {
+            "text": "SAT Reading Score Boost, SAT Math Geometry Sprint",
+            "resolves": "pick",
+            "picks": [
+              "SAT Reading Score Boost",
+              "SAT Math Geometry Sprint"
+            ]
+          },
+          {
+            "text": "Cancel",
+            "resolves": "cancel"
+          }
+        ]
+      }
+    },
+    {
+      "id": "transcript1-closest-question",
+      "text": "deltet my writing stuff for sat",
+      "source": "typed",
+      "note": "Transcript 1, turn 4 on its own: the typo is read as delete, and with no SAT writing plan the closest is offered: [Delete SAT Reading Score Boost] [Pick another] [Cancel].",
+      "seed": {
+        "plans": [
+          {
+            "id": "11111111-1111-4111-8111-000000000008",
+            "title": "SAT Reading Score Boost"
+          },
+          {
+            "id": "11111111-1111-4111-8111-000000000009",
+            "title": "SAT Math Geometry Sprint"
+          }
+        ],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000032",
+            "title": "Reading passage practice",
+            "date": "2026-10-06",
+            "time": "16:00",
+            "planId": "11111111-1111-4111-8111-000000000008"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000033",
+            "title": "Grammar drill: commas",
+            "date": "2026-10-08",
+            "time": "16:00",
+            "planId": "11111111-1111-4111-8111-000000000008"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000034",
+            "title": "Geometry practice set",
+            "date": "2026-10-06",
+            "time": "17:00",
+            "planId": "11111111-1111-4111-8111-000000000009"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000035",
+            "title": "Algebra review",
+            "date": "2026-10-09",
+            "time": "17:00",
+            "planId": "11111111-1111-4111-8111-000000000009"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "clarify",
+        "target_plan": null,
+        "min_ops": 0,
+        "max_ops": 0
+      },
+      "pending": {
+        "kind": "plan",
+        "closest": {
+          "mention": "SAT writing",
+          "note": "reading & writing"
+        },
+        "answers": [
+          {
+            "text": "Delete SAT Reading Score Boost",
+            "resolves": "pick",
+            "picks": [
+              "SAT Reading Score Boost"
+            ]
+          },
+          {
+            "text": "yes",
+            "resolves": "pick",
+            "picks": [
+              "SAT Reading Score Boost"
+            ]
+          },
+          {
+            "text": "Pick another",
+            "resolves": "another"
+          },
+          {
+            "text": "a different one",
+            "resolves": "another"
+          },
+          {
+            "text": "Cancel",
+            "resolves": "cancel"
+          }
+        ]
+      },
+      "typo_fixed": "delete my writing stuff for sat"
+    },
+    {
+      "id": "typo-delte-sat-math",
+      "text": "delte my sat math tasks",
+      "source": "typed",
+      "note": "Typo'd intent word (B5): still a delete of that plan's tasks only.",
+      "seed": {
+        "plans": [
+          {
+            "id": "11111111-1111-4111-8111-000000000008",
+            "title": "SAT Reading Score Boost"
+          },
+          {
+            "id": "11111111-1111-4111-8111-000000000009",
+            "title": "SAT Math Geometry Sprint"
+          }
+        ],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000032",
+            "title": "Reading passage practice",
+            "date": "2026-10-06",
+            "time": "16:00",
+            "planId": "11111111-1111-4111-8111-000000000008"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000033",
+            "title": "Grammar drill: commas",
+            "date": "2026-10-08",
+            "time": "16:00",
+            "planId": "11111111-1111-4111-8111-000000000008"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000034",
+            "title": "Geometry practice set",
+            "date": "2026-10-06",
+            "time": "17:00",
+            "planId": "11111111-1111-4111-8111-000000000009"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000035",
+            "title": "Algebra review",
+            "date": "2026-10-09",
+            "time": "17:00",
+            "planId": "11111111-1111-4111-8111-000000000009"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "delete_task",
+        "target_plan": null,
+        "min_ops": 2,
+        "max_ops": 3,
+        "must_not": [
+          "create_plan",
+          "add_task"
+        ],
+        "must_have": [
+          "delete_task"
+        ],
+        "delete_from": [
+          "SAT Math Geometry Sprint"
+        ]
+      },
+      "typo_fixed": "delete my sat math tasks"
+    },
+    {
+      "id": "typo-remvoe-grammar",
+      "text": "remvoe the grammar drill",
+      "source": "voice",
+      "note": "Typo'd intent word (B5) on one task.",
+      "seed": {
+        "plans": [
+          {
+            "id": "11111111-1111-4111-8111-000000000008",
+            "title": "SAT Reading Score Boost"
+          },
+          {
+            "id": "11111111-1111-4111-8111-000000000009",
+            "title": "SAT Math Geometry Sprint"
+          }
+        ],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000032",
+            "title": "Reading passage practice",
+            "date": "2026-10-06",
+            "time": "16:00",
+            "planId": "11111111-1111-4111-8111-000000000008"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000033",
+            "title": "Grammar drill: commas",
+            "date": "2026-10-08",
+            "time": "16:00",
+            "planId": "11111111-1111-4111-8111-000000000008"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000034",
+            "title": "Geometry practice set",
+            "date": "2026-10-06",
+            "time": "17:00",
+            "planId": "11111111-1111-4111-8111-000000000009"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000035",
+            "title": "Algebra review",
+            "date": "2026-10-09",
+            "time": "17:00",
+            "planId": "11111111-1111-4111-8111-000000000009"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "delete_task",
+        "target_plan": null,
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan",
+          "add_task"
+        ],
+        "delete_from": [
+          "SAT Reading Score Boost"
+        ]
+      },
+      "typo_fixed": "remove the grammar drill"
+    },
+    {
+      "id": "multi-delete-two-of-three",
+      "text": "delete my SAT Reading Score Boost and SAT Math Geometry Sprint tasks",
+      "source": "typed",
+      "note": "Multi-select (B6): two chips picked of three plans. Only those two lose tasks, the third is untouched, and it opens a preview (Transcript 2 saved 'All of these' without one).",
+      "seed": {
+        "plans": [
+          {
+            "id": "11111111-1111-4111-8111-000000000008",
+            "title": "SAT Reading Score Boost"
+          },
+          {
+            "id": "11111111-1111-4111-8111-000000000009",
+            "title": "SAT Math Geometry Sprint"
+          },
+          {
+            "id": "11111111-1111-4111-8111-000000000010",
+            "title": "Desmos Calculator Drills"
+          }
+        ],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000032",
+            "title": "Reading passage practice",
+            "date": "2026-10-06",
+            "time": "16:00",
+            "planId": "11111111-1111-4111-8111-000000000008"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000033",
+            "title": "Grammar drill: commas",
+            "date": "2026-10-08",
+            "time": "16:00",
+            "planId": "11111111-1111-4111-8111-000000000008"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000034",
+            "title": "Geometry practice set",
+            "date": "2026-10-06",
+            "time": "17:00",
+            "planId": "11111111-1111-4111-8111-000000000009"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000035",
+            "title": "Algebra review",
+            "date": "2026-10-09",
+            "time": "17:00",
+            "planId": "11111111-1111-4111-8111-000000000009"
+          },
+          {
+            "id": "22222222-2222-4222-8222-000000000036",
+            "title": "Desmos regression drill",
+            "date": "2026-10-07",
+            "time": "18:00",
+            "planId": "11111111-1111-4111-8111-000000000010"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "delete_task",
+        "target_plan": null,
+        "min_ops": 4,
+        "max_ops": 6,
+        "must_not": [
+          "create_plan",
+          "add_task"
+        ],
+        "must_have": [
+          "delete_task"
+        ],
+        "delete_from": [
+          "SAT Reading Score Boost",
+          "SAT Math Geometry Sprint"
+        ]
+      },
+      "pending": {
+        "kind": "plan",
+        "answers": [
+          {
+            "text": "SAT Reading Score Boost, SAT Math Geometry Sprint",
+            "resolves": "pick",
+            "picks": [
+              "SAT Reading Score Boost",
+              "SAT Math Geometry Sprint"
+            ]
+          },
+          {
+            "text": "reading and math",
+            "resolves": "pick",
+            "picks": [
+              "SAT Reading Score Boost",
+              "SAT Math Geometry Sprint"
+            ]
+          },
+          {
+            "text": "All of these",
+            "resolves": "pick",
+            "picks": [
+              "SAT Reading Score Boost",
+              "SAT Math Geometry Sprint",
+              "Desmos Calculator Drills"
+            ]
+          },
+          {
+            "text": "Desmos Calculator Drills",
+            "resolves": "pick",
+            "picks": [
+              "Desmos Calculator Drills"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "transcript2-isef-questions",
+      "text": "Help me prepare for ISEF",
+      "source": "typed",
+      "note": "Transcript 2: the questions are a card with buttons (competition brief, at most 5), never bullet text. The eval runs without the card, so it drafts the plan as a preview.",
+      "seed": {
+        "plans": [],
+        "tasks": []
+      },
+      "expected": {
+        "intent": "new_plan",
+        "target_plan": "NEW",
+        "min_ops": 5,
+        "max_ops": 40
+      },
+      "brief": {
+        "type": "competition",
+        "min_questions": 3,
+        "max_questions": 5
+      },
+      "chat": {
+        "previous": [],
+        "new_topic": false,
+        "title": "Prepare for ISEF"
+      }
+    },
+    {
+      "id": "transcript2-isef-answers",
+      "text": "Help me prepare for ISEF\n\nMy answers to your questions:\n- When is the deadline or event? 2-3 months\n- Where are you with it right now? Just starting\n- What category or field is it in? STEM research",
+      "source": "typed",
+      "note": "Transcript 2: the answers 'STEM research · 2-3 months · Just starting'. Answered, so no more questions: the plan opens as a preview, never saved without one.",
+      "seed": {
+        "plans": [],
+        "tasks": []
+      },
+      "expected": {
+        "intent": "new_plan",
+        "target_plan": "NEW",
+        "min_ops": 5,
+        "max_ops": 40
+      }
+    },
+    {
+      "id": "grill-mike-tyson",
+      "text": "fight Mike Tyson in 2 weeks",
+      "source": "voice",
+      "note": "A silly physical aspiration: one light question, then a safe fundamentals plan with the safety line among the assumptions.",
+      "seed": {
+        "plans": [],
+        "tasks": []
+      },
+      "expected": {
+        "intent": "new_plan",
+        "target_plan": "NEW",
+        "min_ops": 3,
+        "max_ops": 30
+      },
+      "brief": {
+        "type": "skill",
+        "min_questions": 1,
+        "max_questions": 1,
+        "safety": true
+      },
+      "chat": {
+        "previous": [],
+        "new_topic": false,
+        "title": "Fight Mike Tyson in 2 weeks"
+      }
+    },
+    {
+      "id": "new-topic-guitar",
+      "text": "make me a plan to learn guitar chords",
+      "source": "typed",
+      "note": "Two ISEF requests, then guitar: suggest a new chat. The plan is new, never added to ISEF Prep.",
+      "seed": {
+        "plans": [
+          {
+            "id": "11111111-1111-4111-8111-000000000011",
+            "title": "ISEF Prep"
+          }
+        ],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000037",
+            "title": "Draft research question",
+            "date": "2026-10-07",
+            "time": "18:00",
+            "planId": "11111111-1111-4111-8111-000000000011"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "new_plan",
+        "target_plan": "NEW",
+        "min_ops": 3,
+        "max_ops": 30
+      },
+      "chat": {
+        "previous": [
+          "Help me prepare for ISEF",
+          "make the ISEF research sessions shorter"
+        ],
+        "new_topic": true,
+        "title": "Learn guitar chords"
+      }
+    },
+    {
+      "id": "new-topic-follow-up",
+      "text": "add a poster draft checkpoint to my ISEF prep before friday",
+      "source": "typed",
+      "note": "Same subject: no new-chat suggestion.",
+      "seed": {
+        "plans": [
+          {
+            "id": "11111111-1111-4111-8111-000000000011",
+            "title": "ISEF Prep"
+          }
+        ],
+        "tasks": [
+          {
+            "id": "22222222-2222-4222-8222-000000000037",
+            "title": "Draft research question",
+            "date": "2026-10-07",
+            "time": "18:00",
+            "planId": "11111111-1111-4111-8111-000000000011"
+          }
+        ]
+      },
+      "expected": {
+        "intent": "add_to_plan",
+        "target_plan": "ISEF Prep",
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan"
+        ]
+      },
+      "router": {
+        "intent": "add_to_plan",
+        "plan_mention": "my ISEF prep",
+        "route": "draft",
+        "match": "sure",
+        "match_titles": [
+          "ISEF Prep"
+        ]
+      },
+      "chat": {
+        "previous": [
+          "Help me prepare for ISEF",
+          "make the ISEF research sessions shorter"
+        ],
+        "new_topic": false
+      }
+    },
+    {
+      "id": "chat-title-ap-bio",
+      "text": "Could you make me a plan for the AP Bio exam?",
+      "source": "typed",
+      "note": "Chat title with no model: the subject, not 'Make me a plan for the'.",
+      "seed": {
+        "plans": [],
+        "tasks": []
+      },
+      "expected": {
+        "intent": "new_plan",
+        "target_plan": "NEW",
+        "min_ops": 5,
+        "max_ops": 40
+      },
+      "chat": {
+        "previous": [],
+        "new_topic": false,
+        "title": "AP Bio exam"
+      }
+    },
+    {
+      "id": "chat-title-bio-homework",
+      "text": "hey can you add bio homework tomorrow at 5",
+      "source": "typed",
+      "note": "Chat title with no model: greeting and 'can you' dropped.",
+      "seed": {
+        "plans": [],
+        "tasks": []
+      },
+      "expected": {
+        "intent": "add_task",
+        "target_plan": null,
+        "min_ops": 1,
+        "max_ops": 1,
+        "must_not": [
+          "create_plan"
+        ]
+      },
+      "chat": {
+        "previous": [],
+        "new_topic": false,
+        "title": "Add bio homework tomorrow at 5"
+      }
     }
   ]
 }

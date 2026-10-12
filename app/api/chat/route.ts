@@ -172,8 +172,15 @@ export const POST = withUser(async (req: Request) => {
     if (mode === "plan" && (!TANGENT_PIPELINE_V2 || projectId)) {
       // Asked from inside a project: the talk is about that project.
       const note = projectId ? (await projectBrief(projectId)) ?? "" : "";
-      const reply = await planReply(messages, { projectNote: note });
-      return NextResponse.json({ message: reply, action: "plan_reply", mode, ok: true });
+      if (body.stream !== true) {
+        const reply = await planReply(messages, { projectNote: note });
+        return NextResponse.json({ message: reply, action: "plan_reply", mode, ok: true });
+      }
+      // Master fix Phase 4: the reply streams as {type:"reply_text"} lines.
+      return ndjson(async (send) => {
+        const reply = await planReply(messages, { projectNote: note, onText: (text) => send({ type: "reply_text", text }) });
+        return { message: reply, action: "plan_reply", mode, ok: true };
+      });
     }
 
     // Instant capture: a plain to-do is saved straight away — no model in the
@@ -199,7 +206,7 @@ export const POST = withUser(async (req: Request) => {
       // A new project is always grilled first: it's the biggest ask there is.
       const picture = await buildStudentContext().catch(() => null);
       const questions = picture
-        ? await clarifyQuestions(userText, picture.text, { askCapacity: !picture.capacityKnown }).catch(() => [])
+        ? await clarifyQuestions(userText, picture.text, { askCapacity: !picture.capacityKnown, chat: messages.slice(0, -1).filter((m) => m.role === "user").map((m) => m.content).join("\n").slice(-2000) }).catch(() => [])
         : [];
       if (questions.length > 0) {
         const reply = { ok: true, action: "clarify", message: "A few quick questions so this fits you.", questions };
@@ -246,29 +253,44 @@ export const POST = withUser(async (req: Request) => {
     if (body.stream !== true) return NextResponse.json(await reply());
 
     // Streamed: one JSON object per line. Plan progress ({type:"plan_outline"},
-    // {type:"plan_task"}) as it's generated, then {type:"result", ...} with the
-    // same fields as the non-streamed reply. Tasks are only saved at the end.
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream<Uint8Array>({
-      async start(controller) {
-        const send = (line: unknown) => controller.enqueue(encoder.encode(JSON.stringify(line) + "\n"));
-        try {
-          const result = await reply(send);
-          send({ type: "result", ...result });
-        } catch (e) {
-          const message = e instanceof Error ? e.message : "Unknown error";
-          console.error("[api/chat] Unhandled error:", message);
-          send({ type: "result", ok: false, error: message });
-        }
-        controller.close();
-      },
-    });
-    return new Response(stream, {
-      headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" },
-    });
+    // {type:"plan_task"}) and talked reply text ({type:"reply_text"}) as it's
+    // generated, then {type:"result", ...} with the same fields as the
+    // non-streamed reply. Tasks are only saved at the end.
+    return ndjson((send) => reply(send));
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     console.error("[api/chat] Unhandled error:", message);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 });
+
+/** One JSON object per line: whatever `run` sends, then {type:"result", ...}. */
+function ndjson(run: (send: (line: object) => void) => Promise<Record<string, unknown>>): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let open = true;
+      const send = (line: unknown) => {
+        if (!open) return;
+        try {
+          controller.enqueue(encoder.encode(JSON.stringify(line) + "\n"));
+        } catch {
+          // The student pressed Stop: the reader is gone, the work finishes quietly.
+          open = false;
+        }
+      };
+      try {
+        const result = await run(send);
+        send({ type: "result", ...result });
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Unknown error";
+        console.error("[api/chat] Unhandled error:", message);
+        send({ type: "result", ok: false, error: message });
+      }
+      if (open) controller.close();
+    },
+  });
+  return new Response(stream, {
+    headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" },
+  });
+}

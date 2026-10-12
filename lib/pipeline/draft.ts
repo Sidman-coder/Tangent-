@@ -17,6 +17,8 @@ export type DraftTask = {
   kind?: string;
   startAction?: string;
   resources?: ReadonlyArray<{ label: string; url: string }>;
+  /** A recurring task: `date` is the first one (master fix B1). */
+  repeat?: { frequency: "daily" | "weekly" | "monthly" | "yearly"; daysOfWeek?: number[]; endDate?: string };
 };
 
 type AddTask = Extract<ChangeOp, { op: "add_task" }>;
@@ -44,6 +46,12 @@ export function taskOp(t: DraftTask, link: { plan_ref?: string; plan_id?: string
     .filter((r) => r.label && AddTaskOp.safeParse({ op: "add_task", title: "x", date: "2000-01-01", resources: [r] }).success)
     .slice(0, 10);
   if (resources.length) op.resources = resources;
+  if (t.repeat) {
+    const days = (t.repeat.daysOfWeek ?? []).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+    op.repeat = { frequency: t.repeat.frequency };
+    if (t.repeat.frequency === "weekly" && days.length) op.repeat.daysOfWeek = Array.from(new Set(days)).sort((a, b) => a - b);
+    if (t.repeat.endDate && /^\d{4}-\d{2}-\d{2}$/.test(t.repeat.endDate)) op.repeat.endDate = t.repeat.endDate;
+  }
   if (link.plan_ref) op.plan_ref = link.plan_ref;
   else if (link.plan_id) op.plan_id = link.plan_id;
   return op;
