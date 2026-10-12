@@ -209,11 +209,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <header className="topbar">
           <div className="topbar-right">
             <StorageStatus />
-            {/* One control up here: the mic. Say anything, from any page;
-                it opens Add already listening. (⌘K opens it to type.) */}
-            <button type="button" className="topbar-mic lg lg-interactive" onClick={openListening} aria-label="Say it to Tangent" title="Say it  ·  ⌘K to type">
-              <Mic size={19} strokeWidth={2} aria-hidden="true" />
-            </button>
             {!desktop && <NotificationBell open={notifOpen} onOpenChange={setNotifOpen} />}
           </div>
         </header>
@@ -241,6 +236,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           );
         })}
       </nav>
+
+      {/* The mic floats bottom-right on every page: say anything, from
+          anywhere; it opens Add already listening. (⌘K opens it to type.) */}
+      <button type="button" className="float-mic lg lg-interactive" onClick={openListening} aria-label="Say it to Tangent" title="Say it  ·  ⌘K to type">
+        <Mic size={22} strokeWidth={2} aria-hidden="true" />
+      </button>
 
       <CommandPalette />
       <GetToKnowYou />

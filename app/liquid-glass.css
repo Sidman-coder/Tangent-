@@ -772,3 +772,58 @@ body :is(button, a):is(.tg-example, .tg-send:disabled) {
   backdrop-filter: var(--glass-blur);
   box-shadow: inset 0 1px 0 var(--lg-rim-top), 0 6px 16px -10px var(--lg-shade);
 }
+
+
+/* ═════════════════════════════════════════════════════════════════════════
+   The mic floats in the bottom-right corner (2026-10-11): within thumb
+   reach on a phone, out of the page's way on a laptop. One Liquid Glass
+   circle; it opens Add listening.
+   ═════════════════════════════════════════════════════════════════════════ */
+.float-mic.lg {
+  position: fixed;
+  z-index: 70;
+  right: 26px;
+  bottom: calc(26px + env(safe-area-inset-bottom, 0px));
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  padding: 0;
+  border: 1px solid var(--lg-edge);
+  border-radius: 999px;
+  background: var(--glass-catch), var(--lg-fill-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  color: var(--accent);
+  cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim-top),
+    inset 0 -1px 0 var(--lg-rim-bottom),
+    0 14px 34px -14px rgb(from var(--accent) r g b / 0.45),
+    0 4px 12px -6px var(--lg-shade);
+  transition: transform 0.18s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.float-mic.lg:hover {
+  transform: translateY(-1px);
+}
+.float-mic.lg:active {
+  transform: scale(0.94);
+}
+/* Where the calendar's bar could reach the corner, the mic sits above it. */
+@media (max-width: 1240px) {
+  body:has(.cal-island) .float-mic.lg {
+    bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+  }
+}
+@media (max-width: 720px) {
+  /* Above the floating tab bar, in thumb reach. */
+  .float-mic.lg {
+    right: 16px;
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    width: 54px;
+    height: 54px;
+  }
+  body:has(.cal-island) .float-mic.lg {
+    bottom: calc(196px + env(safe-area-inset-bottom, 0px));
+  }
+}

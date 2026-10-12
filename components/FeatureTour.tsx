@@ -53,9 +53,9 @@ const STEPS: Step[] = [
   },
   {
     route: "/",
-    target: [".topbar-mic"],
+    target: [".float-mic"],
     title: "Say it from anywhere",
-    body: "The mic up here is on every page: tap it and talk, and it goes through the same Add flow. Press ⌘K to type instead. Questions go to Tangent AI and long-range goals become Tangents, from the same box.",
+    body: "The mic in the bottom corner is on every page: tap it and talk, and it goes through the same Add flow. Press ⌘K to type instead. Questions go to Tangent AI and long-range goals become Tangents, from the same box.",
   },
   {
     route: "/",
