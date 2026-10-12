@@ -27,5 +27,6 @@ export function getGreeting(name: string, hour: number = new Date().getHours(), 
   }
   const openers = OPENERS[bucket];
   const opener = openers[seed % openers.length];
-  return bucket === "late" ? `${opener}, ${name}?` : `${opener}, ${name}.`;
+  // "Still up" asks; everything else states.
+  return opener === "Still up" ? `${opener}, ${name}?` : `${opener}, ${name}.`;
 }

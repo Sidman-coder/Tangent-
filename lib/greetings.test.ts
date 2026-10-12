@@ -31,6 +31,13 @@ test("praises a finished day", () => {
   assert.match(getGreeting("Juann", 19, { left: 0, urgent: 0, done: 2 }, 0), /Nice work today, Juann\./);
 });
 
+test("only \"Still up\" ends in a question mark", () => {
+  for (let seed = 0; seed < 4; seed++) {
+    const g = getGreeting("Juann", 23, { left: 1, urgent: 0, done: 0 }, seed);
+    assert.ok(g.startsWith("Still up") ? g.endsWith("?") : g.endsWith("."), g);
+  }
+});
+
 test("same greeting all day for the same seed", () => {
   assert.equal(getGreeting("Juann", 9, { left: 2, urgent: 0, done: 0 }, 11), getGreeting("Juann", 10, { left: 2, urgent: 0, done: 0 }, 11));
 });
