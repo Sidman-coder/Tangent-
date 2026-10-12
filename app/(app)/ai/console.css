@@ -2139,3 +2139,8 @@ a.tg-next:hover .tg-next-go { color: var(--accent); transform: translate(2px, -2
 .tg-hero {
   overflow-x: clip;
 }
+
+/* The page's own background shows through, as on every other page. */
+.tg-console {
+  background: transparent;
+}

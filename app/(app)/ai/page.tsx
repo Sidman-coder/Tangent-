@@ -924,7 +924,7 @@ export default function AiPage() {
               <p className="tg-dock-hint">
                 {v2
                   ? "Ask a question, add something, or start a project. You’ll see a preview before anything is added."
-                  : <>Ask a question, add something, or start a project. Tangent works out which, and you&apos;ll always see what changed.</>}
+                  : <>Think things through with Tangent here. Whatever you decide, it can add for you, and you&apos;ll always see what changed.</>}
               </p>
             </div>
           </>

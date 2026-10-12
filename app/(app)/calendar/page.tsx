@@ -490,8 +490,13 @@ export default function CalendarPage() {
               if (!inMonth) className += " is-outside";
               if (isToday) className += " is-today";
               if (isSelected) className += " is-selected";
+              if (ymd < todayYmd) className += " is-past";
+              // How full the day is (open work, about five things is a full
+              // day): the same iris shade as the week on Today. Past days aren't shaded.
+              const openCount = dayTasks.filter((t) => !t.completed).length;
+              const load = inMonth && ymd >= todayYmd && openCount > 0 ? Math.min(1, Math.max(0.2, openCount / 5)) : 0;
               return (
-                <div key={`${ymd}-${idx}`} className={className}>
+                <div key={`${ymd}-${idx}`} className={className} style={{ "--load": load.toFixed(2) } as React.CSSProperties}>
                   <button
                     type="button"
                     className="cal-day"

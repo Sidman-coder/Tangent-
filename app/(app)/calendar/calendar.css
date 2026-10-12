@@ -680,3 +680,36 @@
     overflow: hidden;
   }
 }
+
+/* One background across the app: the calendar is a rounded card on the
+   page, like every other card, not a full-bleed white slab under a band. */
+.content-inner:has(.calendar-page) {
+  padding: 0 var(--page-gutter, 28px) 16px;
+}
+.calendar-page {
+  height: calc(100dvh - var(--topbar-h) - 16px);
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  border-radius: 22px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(26 23 32 / 0.04), 0 16px 40px -24px rgb(26 23 32 / 0.18);
+}
+@media (max-width: 720px) {
+  .content-inner:has(.calendar-page) {
+    padding: 0 10px 10px;
+  }
+  .calendar-page {
+    height: auto;
+    min-height: calc(100dvh - var(--topbar-h) - 10px);
+    border-radius: 18px;
+  }
+}
+
+/* Day load: a soft iris wash, deeper as the day fills up (as on Today). */
+.calendar-page .calendar-grid-shell .cal-cell {
+  background: color-mix(in oklab, var(--accent) calc(var(--load, 0) * 16%), transparent);
+}
+/* Past days step back so the eye lands on what's ahead. */
+.calendar-page .calendar-grid-shell .cal-cell.is-past .cal-day .d {
+  color: var(--text-3);
+}
