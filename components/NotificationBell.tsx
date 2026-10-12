@@ -299,7 +299,7 @@ export default function NotificationBell({ open: openProp, onOpenChange, placeme
             <div className="notif-list">
               {notifications.length === 0 && (
                 <div className="notif-empty">
-                  No notifications. TANGENT is watching your schedule.
+                  Nothing new. Tangent is keeping an eye on your week.
                 </div>
               )}
               {pinnedBrief && renderNotif(pinnedBrief, true)}

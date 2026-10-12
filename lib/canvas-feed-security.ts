@@ -161,7 +161,7 @@ export async function resolvePublicAddress(hostname: string, resolve: Resolver =
   }
   if (found.length === 0) throw new CanvasFeedError("Couldn't find that Canvas server. Check the link and try again.");
   if (found.some((a) => isBlockedAddress(a.address))) {
-    throw new CanvasFeedError("That link points at a private or internal address, so TANGENT won't fetch it.");
+    throw new CanvasFeedError("That link points at a private or internal address, so Tangent won't fetch it.");
   }
   return found[0];
 }

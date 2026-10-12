@@ -118,7 +118,7 @@ export function withUser(
       return NextResponse.json({ ok: false, error: "Not signed in" }, { status: 401 });
     }
     if (!isEmailAllowed(user.email)) {
-      return NextResponse.json({ ok: false, error: "TANGENT is invite-only right now" }, { status: 403 });
+      return NextResponse.json({ ok: false, error: "Tangent is invite-only right now" }, { status: 403 });
     }
     return runIn({ userId: user.id, email: user.email ?? "", db }, () => handler(req));
   };
