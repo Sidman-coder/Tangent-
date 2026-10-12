@@ -296,3 +296,43 @@
   color: var(--red);
   font-size: 13px;
 }
+
+/* Your data */
+.data-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgb(from var(--text) r g b / 0.04);
+}
+.data-detail ul {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.data-detail li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13.5px;
+}
+.data-detail li strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.data-detail li span,
+.data-processors {
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.data-processors {
+  margin: 0;
+}
+.data-processors strong {
+  color: var(--text);
+  font-weight: 600;
+}

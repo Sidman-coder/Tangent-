@@ -26,12 +26,21 @@ function shortDay(ymd: string, today: string): string {
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
 
+const PROJECT_EXAMPLES = [
+  "Prep for my AP Chem final",
+  "Start a robotics club at school",
+  "Write my college essay drafts",
+  "Get ready for the SAT in March",
+];
+
 export default function ProjectsPage() {
   const router = useRouter();
   const { state, loading, refresh } = useAppState();
   const tz = useUserTimezone();
   const today = getUserToday(tz);
   const [composing, setComposing] = useState(false);
+  // An example tapped from the empty state, dropped into the Add box.
+  const [example, setExample] = useState<string | null>(null);
   // "Tell Tangent" (Cmd-K) routed a multi-week effort here: start it.
   const [handed, setHanded] = useState<string | null>(null);
   useEffect(() => {
@@ -77,7 +86,24 @@ export default function ProjectsPage() {
         <section className="projects-new" aria-label="Start a project">
           <h2>What are you working toward?</h2>
           <p>Say it or type it. Tangent asks a few questions, then lays the steps out around your week.</p>
-          <AddFlow variant="hero" defaultDest="project" placeholder="Prep for my chem final on Dec 12, start a robotics club…" autoFocus={composing && !handed} initialText={handed ?? ""} />
+          <AddFlow
+            key={example ?? "blank"}
+            variant="hero"
+            defaultDest="project"
+            placeholder="Prep for my chem final on Dec 12, start a robotics club…"
+            autoFocus={Boolean(example) || (composing && !handed)}
+            initialText={example ?? handed ?? ""}
+          />
+          {projects.length === 0 && (
+            <div className="projects-examples" aria-label="Examples">
+              <span>Try one</span>
+              {PROJECT_EXAMPLES.map((ex) => (
+                <button key={ex} type="button" className="tg-chip" onClick={() => setExample(ex)}>
+                  {ex}
+                </button>
+              ))}
+            </div>
+          )}
           {composing && projects.length > 0 && (
             <button type="button" className="projects-new-cancel" onClick={() => setComposing(false)}>
               Cancel

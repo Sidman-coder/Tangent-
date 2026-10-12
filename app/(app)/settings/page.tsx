@@ -8,6 +8,7 @@ import CanvasConnectGuide from "@/components/CanvasConnectGuide";
 import WhatTangentKnows from "@/components/settings/WhatTangentKnows";
 import OnboardingSection from "@/components/settings/OnboardingSection";
 import ConnectionsSection from "@/components/settings/ConnectionsSection";
+import YourDataSection from "@/components/settings/YourDataSection";
 import "./settings.css";
 import type { AppState, CanvasFeedStatus } from "@/lib/types";
 import {
@@ -214,6 +215,7 @@ export default function SettingsPage() {
           <a href="#what-tangent-knows">What Tangent knows</a>
           <a href="#notifications">Notifications</a>
           <a href="#appearance">Appearance</a>
+          <a href="#your-data">Your data</a>
           <a href="#account">Account</a>
         </nav>
 
@@ -382,6 +384,8 @@ export default function SettingsPage() {
               </div>
             </div>
           </section>
+
+          <YourDataSection />
 
           <section id="account" className="settings-group" aria-labelledby="account-title">
             <h2 id="account-title" className="settings-group-title">Account</h2>
