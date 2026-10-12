@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getGreeting } from "@/lib/greetings";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { localNow } from "@/lib/time";
 import ChatSidebar from "@/components/console/ChatSidebar";
@@ -94,7 +95,7 @@ function partOfDay(hour: number): string {
   if (hour >= 5 && hour < 12) return "Good morning";
   if (hour >= 12 && hour < 17) return "Good afternoon";
   if (hour >= 17 && hour < 21) return "Good evening";
-  return "Still going";
+  return "Still up";
 }
 
 /** Turns a fetch/route failure into something true and actionable. */
@@ -193,7 +194,9 @@ export default function AiPage() {
   const firstName = state?.user.displayName?.trim().split(/\s+/)[0] ?? "";
   const [greeting, setGreeting] = useState("");
   useEffect(() => {
-    setGreeting(`${partOfDay(localNow(tz).hour)}${firstName ? `, ${firstName}` : ""}`);
+    // The same greeting as Today (lib/greetings.ts), so the two never disagree.
+    const hour = localNow(tz).hour;
+    setGreeting(firstName ? getGreeting(firstName, hour) : `${partOfDay(hour)}.`);
   }, [firstName, tz]);
 
   const [turns, setTurns] = useState<Turn[]>([]);

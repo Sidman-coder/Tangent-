@@ -331,3 +331,13 @@ body :is(button).today-next-start {
 body :is(button).today-next-start:active {
   transform: scale(0.97);
 }
+
+/* On a phone the Next up title gets two lines instead of an ellipsis. */
+@media (max-width: 720px) {
+  .today-next-title {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    white-space: normal;
+  }
+}

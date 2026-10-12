@@ -215,10 +215,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </nav>
 
       {/* The mic floats bottom-right on every page: say anything, from
-          anywhere; it opens Add already listening. (⌘K opens it to type.) */}
-      <button type="button" className="float-mic lg lg-interactive" onClick={openListening} aria-label="Say it to Tangent" title="Say it  ·  ⌘K to type">
-        <Mic size={22} strokeWidth={2} aria-hidden="true" />
-      </button>
+          anywhere; it opens Add already listening. (⌘K opens it to type.)
+          Not on Tangent AI, whose own composer mic talks to the chat. */}
+      {!pathname.startsWith("/ai") && (
+        <button type="button" className="float-mic lg lg-interactive" onClick={openListening} aria-label="Say it to Tangent" title="Say it  ·  ⌘K to type">
+          <Mic size={22} strokeWidth={2} aria-hidden="true" />
+        </button>
+      )}
 
       <CommandPalette />
       <GetToKnowYou />
