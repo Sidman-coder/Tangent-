@@ -27,6 +27,7 @@ import "@/components/console/clarify-card.css";
 import ClarifyCard, { type ClarifyAnswer, type ClarifyQuestion } from "@/components/console/ClarifyCard";
 import { useVoiceCapture } from "@/hooks/useVoiceCapture";
 import { routeAsk } from "@/lib/ask-route";
+import { heardSomethingToAdd } from "@/lib/voice-intent";
 import { putAsk } from "@/lib/ask-handoff";
 import { putNewPathTitle } from "@/lib/path-handoff";
 import { generateQuestions } from "@/lib/questions-client";
@@ -61,7 +62,8 @@ type Phase =
   | { kind: "confirm"; id: string; message: string }
   | { kind: "preview"; changeSet: ChangeSet; preview: PreviewPayload }
   | { kind: "done"; summary: string; actionId: string | null; where: { href: string; label: string } | null }
-  | { kind: "error"; message: string };
+  | { kind: "error"; message: string }
+  | { kind: "heard"; text: string };
 
 function clean(text: string | undefined, fallback: string): string {
   const t = (text ?? "").replace(/```[\s\S]*?```/g, "").replace(/\*\*(.+?)\*\*/g, "$1").trim();
@@ -257,7 +259,14 @@ export default function AddFlow({
     onPartial: (t) => setText(t),
     onTranscript: (t) => {
       setText(t);
-      if (t.trim()) window.setTimeout(() => void send(t), 0);
+      if (!t.trim()) return;
+      // A stray sound ("wow", "um") waits in the box instead of becoming a task.
+      if (!heardSomethingToAdd(t)) {
+        setPhase({ kind: "heard", text: t.trim() });
+        window.setTimeout(() => inputRef.current?.focus(), 0);
+        return;
+      }
+      window.setTimeout(() => void send(t), 0);
     },
     onError: (msg) => setPhase({ kind: "error", message: msg }),
   });
@@ -301,7 +310,7 @@ export default function AddFlow({
           aria-label="What do you want to add?"
           onChange={(e) => {
             setText(e.target.value);
-            if (phase.kind === "done" || phase.kind === "error") setPhase({ kind: "compose" });
+            if (phase.kind === "done" || phase.kind === "error" || phase.kind === "heard") setPhase({ kind: "compose" });
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -423,6 +432,11 @@ export default function AddFlow({
               </Link>
             )}
           </m.div>
+        )}
+        {phase.kind === "heard" && (
+          <m.p key="heard" className="add-status" role="status" {...fade}>
+            Only heard “{phase.text.replace(/[.!?]+$/, "")}”. Say a bit more, or press Enter to add it anyway.
+          </m.p>
         )}
         {phase.kind === "error" && (
           <m.p key="error" className="add-status is-error" role="alert" {...fade}>

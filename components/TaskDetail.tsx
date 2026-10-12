@@ -161,7 +161,11 @@ export default function TaskDetail() {
               <div className="td-toolbar">
                 {task && (
                   <>
-                    <button type="button" className="td-icon lg lg-interactive" onClick={() => setChat(task)} aria-label="Get help with this" title="Help">
+                    <button type="button" className="td-icon lg lg-interactive" onClick={() => {
+                        // One window at a time: the card steps aside for the chat.
+                        setChat(task);
+                        setTaskId(null);
+                      }} aria-label="Get help with this" title="Help">
                       <MessageSquareText size={17} aria-hidden="true" />
                     </button>
                     <button type="button" className="td-icon lg lg-interactive" onClick={() => void remove()} disabled={busy} aria-label="Remove task" title="Remove">
