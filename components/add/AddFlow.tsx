@@ -126,9 +126,14 @@ export default function AddFlow({
   useEffect(() => {
     const el = inputRef.current;
     if (!el) return;
+    // Empty: one line, whatever the placeholder would wrap to.
+    if (!text) {
+      el.style.height = "";
+      return;
+    }
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 132)}px`;
-  }, [text]);
+  }, [text, narrow]);
 
   useEffect(() => () => {
     if (doneTimer.current !== null) window.clearTimeout(doneTimer.current);
