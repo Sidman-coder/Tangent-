@@ -7,7 +7,7 @@
 
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
-import { ArrowRight, MessageSquareText, Redo2 } from "lucide-react";
+import { ArrowRight, MessageSquareText, Play, Redo2 } from "lucide-react";
 import TaskRow from "@/components/ui/TaskRow";
 import type { Task } from "@/lib/types";
 import { formatTime12, isDueOnly } from "@/lib/dates";
@@ -23,6 +23,12 @@ export type AttentionReceipt = {
   label: string;
   onUndo: () => void;
 };
+
+/** "30 mins" from Tangent's "GOAL: … TIME: 30 mins." notes, if it wrote one. */
+function estimate(task: Task): string | null {
+  const m = /TIME:\s*([^\n.]+)/i.exec(task.notes ?? "");
+  return m ? m[1].trim().replace(/\s+total$/i, "") : null;
+}
 
 function shortDay(ymd: string, today: string): string {
   if (ymd === today) return "today";
@@ -66,6 +72,18 @@ export default function TodayCard({
   const hidden = urgency.items.length - urgent.length;
   const left = todays.filter((t) => !t.completed && tracksCompletion(t)).length + urgency.items.length;
   const empty = urgent.length === 0 && todays.length === 0;
+  // The one thing to do now: the most pressing attention item, else the next
+  // open thing today, else what's next on the calendar.
+  const next =
+    urgent[0]?.task ??
+    todays.find((t) => !t.completed && tracksCompletion(t)) ??
+    nextTask ??
+    null;
+  const nextEstimate = next ? estimate(next) : null;
+  const nextReason = next ? urgency.items.find((i) => i.task.id === next.id)?.reason ?? null : null;
+  // It's shown above, so the list below doesn't repeat it.
+  const listUrgent = next ? urgent.filter((i) => i.task.id !== next.id) : urgent;
+  const listToday = next ? todays.filter((t) => t.id !== next.id) : todays;
 
   const help = (task: Task) =>
     canAskForHelp(task) ? (
@@ -89,21 +107,33 @@ export default function TodayCard({
         </span>
       </header>
 
+      {next && (
+        <div className="today-next">
+          <div className="today-next-copy">
+            <span className="today-next-label">Next up</span>
+            <button type="button" className="today-next-title" onClick={() => onOpen(next)}>
+              {next.title.replace(/\s*\[[^\]]*\]?\s*$/, "")}
+            </button>
+            <span className="today-next-meta">
+              {isDueOnly(next) ? `Due ${shortDay(next.date, today)}` : `${shortDay(next.date, today)} at ${formatTime12(next.time)}`}
+              {nextEstimate && ` · about ${nextEstimate}`}
+              {nextReason && <span className={`attention-chip attention-chip--${nextReason.type}`}>{describeReason(nextReason)}</span>}
+            </span>
+          </div>
+          <button type="button" className="today-next-start" onClick={() => onOpen(next)}>
+            <Play size={14} strokeWidth={2.4} aria-hidden="true" /> Start
+          </button>
+        </div>
+      )}
+
       {empty ? (
         <p className="today-card-empty">
-          {nextTask ? (
-            <>
-              Nothing left today. Next up: <strong>{nextTask.title}</strong>,{" "}
-              {isDueOnly(nextTask) ? `due ${shortDay(nextTask.date, today)}` : `${shortDay(nextTask.date, today)} at ${formatTime12(nextTask.time)}`}.
-            </>
-          ) : (
-            "Nothing on today. Add something above whenever it comes to you."
-          )}
+          {next ? "Nothing else on today." : "Nothing on today. Add something above whenever it comes to you."}
         </p>
-      ) : (
+      ) : listUrgent.length + listToday.length === 0 ? null : (
         <div className="today-card-list">
           <AnimatePresence initial={false}>
-            {urgent.map(({ task, reason }) => (
+            {listUrgent.map(({ task, reason }) => (
               <m.div key={task.id} layout="position" transition={spring.layout} {...rowPresence} className="today-card-row is-urgent">
                 <TaskRow
                   task={task}
@@ -131,7 +161,7 @@ export default function TodayCard({
                 />
               </m.div>
             ))}
-            {todays.map((task) => (
+            {listToday.map((task) => (
               <m.div key={task.id} layout="position" transition={spring.layout} {...rowPresence} className="today-card-row">
                 <TaskRow
                   task={task}

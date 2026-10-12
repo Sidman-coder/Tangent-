@@ -36,11 +36,11 @@ export default function SetupNudge() {
   }, []);
 
   if (!show) return null;
+  // Compact, beside the page title: it shouldn't push the day down.
   return (
     <div className="setup-nudge" role="note">
-      <span>Finish setting up Tangent: a two-minute tour and a few questions so it fits you.</span>
-      <Link href="/settings#onboarding" className="setup-nudge-go">
-        Set up <ArrowRight size={13} aria-hidden="true" />
+      <Link href="/settings#onboarding" className="setup-nudge-go" title="A two-minute tour and a few questions so Tangent fits you">
+        Finish setting up <ArrowRight size={13} aria-hidden="true" />
       </Link>
       <button
         type="button"

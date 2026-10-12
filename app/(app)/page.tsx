@@ -87,9 +87,7 @@ export default function DashboardPage() {
   }, [tz]);
 
   const displayName = state?.user.displayName?.trim() ?? "";
-  useEffect(() => {
-    setGreeting(displayName ? getGreeting(displayName, localNow(tz).hour) : greetingFor(localNow(tz).hour));
-  }, [displayName, tz]);
+
 
   useEffect(() => {
     if (!receipt) return;
@@ -158,6 +156,18 @@ export default function DashboardPage() {
         .sort((a, b) => Number(a.completed) - Number(b.completed) || a.time.localeCompare(b.time)),
     [attentionIds, todaysTasks]
   );
+
+  // The greeting reads the day, so it never praises a day that still needs you.
+  const leftToday = dayline.filter((t) => !t.completed && tracksCompletion(t)).length + urgency.items.length;
+  const doneToday = todaysTasks.filter((t) => t.completed && tracksCompletion(t)).length;
+  useEffect(() => {
+    const hour = localNow(tz).hour;
+    setGreeting(
+      displayName
+        ? getGreeting(displayName, hour, { left: leftToday, urgent: urgency.items.length, done: doneToday })
+        : greetingFor(hour)
+    );
+  }, [displayName, tz, leftToday, doneToday, urgency.items.length]);
 
   const nextTask = useMemo(() => {
     const nowTime = hhmm(now);
@@ -269,6 +279,7 @@ export default function DashboardPage() {
         <PageHeader
           title={greeting || "Today"}
           description={<span className="today-date-line">{dateLabel}</span>}
+          actions={<SetupNudge />}
         />
       </m.div>
 
@@ -276,8 +287,6 @@ export default function DashboardPage() {
       <m.div variants={riseIn} className="today-add">
         <AddFlow key={listenOnOpen ? "listen" : "type"} variant="hero" listenOnOpen={listenOnOpen} />
       </m.div>
-
-      <SetupNudge />
 
       <QuestionsInbox sets={questionSets} onChanged={() => { void reloadQuestions(); void refresh(); }} />
 
