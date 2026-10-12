@@ -763,3 +763,12 @@ body .notif-item-action {
     padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* Tangent AI's example chips and its send button while empty: clear glass. */
+body :is(button, a):is(.tg-example, .tg-send:disabled) {
+  border: 1px solid var(--lg-edge);
+  background: var(--glass-catch), var(--lg-fill-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 var(--lg-rim-top), 0 6px 16px -10px var(--lg-shade);
+}
