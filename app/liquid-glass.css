@@ -827,3 +827,14 @@ body :is(button, a):is(.tg-example, .tg-send:disabled) {
     bottom: calc(196px + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* Icons inside a button's label sit on the centre line, not the baseline. */
+.ui-button > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ui-button svg {
+  display: block;
+  flex: none;
+}

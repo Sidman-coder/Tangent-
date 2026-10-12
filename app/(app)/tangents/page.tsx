@@ -102,8 +102,8 @@ export default function TangentsPage() {
         description="Where you want to be in a year or more. Tangent maps the moves from what you already do."
         actions={
           paths && paths.length > 0 ? (
-            <Button variant="primary" onClick={() => setCreating(true)}>
-              <Plus size={16} aria-hidden="true" /> New path
+            <Button variant="primary" icon={<Plus size={16} aria-hidden="true" />} onClick={() => setCreating(true)}>
+              New path
             </Button>
           ) : undefined
         }
@@ -143,8 +143,10 @@ export default function TangentsPage() {
         <div className="tg-paths">
           {paths.map((p) => {
             const when = formatDeadline(p.deadline);
-            const moves = p.counts.kept + p.counts.done;
-            const progress = p.counts.ideas ? Math.min(1, (p.counts.kept + p.counts.done * 2) / (p.counts.ideas * 2)) : 0;
+            // The API's "kept" also counts the activities themselves (stored as
+            // accepted), so moves kept = kept minus the work on the circle.
+            const moves = Math.max(0, p.counts.kept - p.counts.work);
+            const progress = p.counts.ideas ? Math.min(1, (moves + p.counts.done) / (p.counts.ideas + p.counts.done)) : 0;
             return (
               <Link
                 key={p.id}
@@ -164,7 +166,6 @@ export default function TangentsPage() {
                 <div className="tg-path-foot">
                   <span>
                     {p.counts.work} you already do · {moves} move{moves === 1 ? "" : "s"} kept
-                    {p.counts.done ? ` · ${p.counts.done} done` : ""}
                   </span>
                   <ArrowRight size={16} aria-hidden="true" />
                 </div>
