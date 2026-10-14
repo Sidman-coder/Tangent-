@@ -1,8 +1,9 @@
 // What a full sign-out clears in the browser: this tab's session data and every
 // Tangent key in localStorage (chat ids, cached titles, nudges), except the
-// theme, which belongs to the device rather than the student.
+// theme and sign-in method, which belong to the device rather than the student.
 
-const KEEP = new Set(["tangent-theme"]);
+// The sign-in method (password or email code) is remembered per device too.
+const KEEP = new Set(["tangent-theme", "tangent-signin-method"]);
 
 export function isTangentKey(key: string): boolean {
   return /^tangent[:-]/.test(key) && !KEEP.has(key);

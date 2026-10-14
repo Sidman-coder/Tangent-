@@ -3,6 +3,7 @@ import type { EmailOtpType } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { NOT_INVITED, isEmailAllowed, normalizeEmail } from "@/lib/auth/access";
 import { safeNext } from "@/lib/auth/safe-next";
+import { hasPasswordFlag } from "@/lib/auth/password";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,5 +63,8 @@ export async function POST(request: Request) {
     await supabase.auth.signOut();
     return NextResponse.json({ ok: false, notInvited: true, next: "/invite-only", error: NOT_INVITED }, { status: 403 });
   }
-  return NextResponse.json({ ok: true, next });
+  // The sign-in page offers "Create a password" to a new account that has none.
+  const created = Date.parse(data.user.created_at ?? "");
+  const newAccount = Number.isFinite(created) && Date.now() - created < 60 * 60 * 1000;
+  return NextResponse.json({ ok: true, next, passwordSet: hasPasswordFlag(data.user.app_metadata), newAccount });
 }

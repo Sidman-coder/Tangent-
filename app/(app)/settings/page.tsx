@@ -7,6 +7,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import CanvasConnectGuide from "@/components/CanvasConnectGuide";
 import WhatTangentKnows from "@/components/settings/WhatTangentKnows";
 import AiActivity from "@/components/settings/AiActivity";
+import SecuritySettings from "@/components/settings/SecuritySettings";
 import { usePipelineV2 } from "@/components/PipelineFlag";
 import { clearLocalAppData } from "@/lib/auth/clear-local";
 import { CalendarSync } from "lucide-react";
@@ -214,6 +215,7 @@ export default function SettingsPage() {
           <a href="#your-tangent">Your Tangent</a>
           <a href="#what-tangent-knows">What Tangent knows</a>
           {v2 && <a href="#ai-activity">AI Activity</a>}
+          <a href="#security">Security</a>
           <a href="#account">Account</a>
         </nav>
 
@@ -386,6 +388,8 @@ export default function SettingsPage() {
           <WhatTangentKnows />
 
           {v2 && <AiActivity />}
+
+          <SecuritySettings email={accountEmail} />
 
           <section id="account" className="settings-panel">
             <div className="settings-option-row">

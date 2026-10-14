@@ -68,3 +68,13 @@
 @keyframes auth-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .auth-spinner { animation-duration: 2.4s; } }
 .auth-card a.ui-button { text-decoration: none; }
+.auth-tabs {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-sm);
+}
+.auth-tab {
+  padding: 8px 10px; border: 0; border-radius: calc(var(--r-sm) - 2px);
+  background: none; color: var(--muted); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer;
+}
+.auth-tab[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: 0 0 0 1px var(--line-strong); }
+.auth-tab:focus-visible, .auth-link--button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

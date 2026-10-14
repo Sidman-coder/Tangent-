@@ -259,3 +259,59 @@ Flag-on items are marked **(on)**; everything else applies with the flag on and 
 29. **Tooltip.** Hover or focus a task in week, month and the day panel: title, time, the project's color dot, and **School** or **No school**. Nothing on touch.
 30. **Busy days.** A month day with 6 tasks shows 3 (4 on a wide screen) plus **+N more**, which opens that day.
 31. **Remove on a busy day.** In the day panel of a day with 2+ tasks, **Remove** asks "Remove which tasks?" with chips and **Delete selected**. A day with one task removes it straight away as before.
+
+## L. Sign-in
+
+Optional password next to the email code. No new migrations, so section A is unchanged. The "has a password" flag lives in Supabase `app_metadata.password_set`, written by the server with the service-role key. `npm test` covers the rules in `lib/auth-password.test.ts`: the invite list on every path, the wrong-password reply, skip, forgot, the limiter and the password rules.
+
+**Supabase settings to change by hand (Dashboard → your project)**
+
+- **Authentication → Sign In / Providers → Email**
+  - **Enable Email provider:** on.
+  - **Confirm email:** on.
+  - **Secure password change:** on. This works with Tangent because every password save comes straight after a fresh sign-in: the current password, a new code, or the code that just signed you in.
+  - **Secure email change:** leave on.
+  - **Minimum password length:** `8`.
+  - **Password requirements:** "No required characters". Tangent applies its own rules: 8+ characters, not one of the 20 most common passwords, not your email. A stricter setting here would reject passwords the strength hint called fine.
+  - **Prevent use of leaked passwords:** on, if your plan shows the toggle (Pro and up). On the Free plan it is greyed out; skip it.
+  - **Email OTP length:** keep `6`. The code boxes expect 6 digits.
+- **Authentication → Sign In / Providers → User Signups → Allow new users to sign up:** keep on. Email codes create the account for invited emails; the invite list still blocks everyone else.
+- **Authentication → Attack Protection → CAPTCHA protection:** keep off. With it on, password sign-in fails without a captcha token.
+- **Authentication → Rate Limits:** leave the defaults. Tangent adds its own limit of 5 failed passwords per email and per IP every 15 minutes, in memory on each server instance; Supabase's per-IP sign-in limit sits behind it.
+- **Authentication → Emails → Magic Link template:** must still contain `{{ .Token }}`. Forgot-password uses this same code email; the "Reset password" template isn't used.
+- **Vercel → Settings → Environment Variables:** `SUPABASE_SERVICE_ROLE_KEY` must be set for Production and Preview. Without it:
+  - Sign-in still works.
+  - The "doesn't have a password yet" message falls back to "Wrong email or password".
+  - Settings always asks for an email code.
+
+**Checks**
+
+1. **Tabs.** `/signin` shows **Continue with Google**, then the **Password** and **Email code** tabs. Pick Password and reload: Password is still selected. A full sign-out keeps the choice. Left and right arrow keys switch tabs.
+2. **Not invited.** On either tab, an email outside `ALLOWED_EMAILS` gets "This email isn't invited yet…". No email is sent, and the Supabase Auth logs show no sign-in attempt.
+3. **New account.** Use an invited email that has never signed in, on the **Email code** tab, and enter the code.
+   - **Create a password** shows password + confirm, **Show/Hide**, a strength hint, and **Skip, I'll use email codes**.
+   - Save: you land on the page you came from.
+   - Sign out, then sign in on the **Password** tab with that password.
+4. **Skip.** Do step 3 with another new invited email and tap **Skip**: you're signed in. Sign out, then try the **Password** tab with any password: "This account doesn't have a password yet. Use an email code, then set one in Settings." with **Use an email code instead**.
+5. **Wrong password.** For an account with a password, a wrong one says "Wrong email or password." An invited email with no account gives the same reply as an account without a password (check 4), so nothing tells you whether the account exists.
+6. **Too many tries.** Five wrong passwords for one email.
+   - The sixth try, even with the right password, says "Too many tries. Use an email code, or wait 15 minutes and try again." with **Use an email code instead**.
+   - The email code still signs in.
+7. **Forgot password.** **Password** tab: type the email, then **Forgot password?**.
+   - The code goes to the email. Enter it.
+   - **Set a new password**, then **Save and continue**: you're signed in.
+   - Sign out: the new password works and the old one says "Wrong email or password."
+8. **Rules.** In any new-password form:
+   - `short`, `password1` and your own email (or the part before @) are refused, each with a reason.
+   - Different confirm text shows "The two passwords don't match."
+   - The hint moves from Weak to Okay to Strong as the password gets longer and mixes characters.
+9. **Settings → Security, no password yet.** **Set a password**, then **Email me a code**. Enter the code plus a new password, then **Save password**: "Password set." The Password tab now works.
+10. **Settings → Security, change.** **Change password**: a wrong current password says "Your current password isn't right."; the right one says "Password changed." **Forgot it? Use an email code instead** switches the form to the code path.
+11. **Sign out everywhere.** Sign in from two browsers. In one, **Settings → Security → Sign out everywhere** and confirm: it lands on `/signin`. The other browser is sent to `/signin` on its next page load. At worst this takes up to the access-token lifetime (1 hour by default).
+12. **Keyboard and screen reader.**
+    - Tab moves through every field with a visible focus ring.
+    - Enter submits each form.
+    - Labels are read out, and the toggle reads "Show password" / "Hide password".
+    - The browser offers to save the password after **Create a password**, and fills it on the **Password** tab.
+13. **Google.** **Continue with Google** works exactly as before (section K, check 9).
+14. **No passwords in logs.** After checks 3 to 10, Vercel's function logs show lines like `[auth/password] sign-in failed: invalid_credentials`, never a password.
