@@ -5,6 +5,7 @@
 // and a Tomorrow button; the rest of today follows. One row style throughout
 // (TaskRow), so the two never read as different things.
 
+import { useState } from "react";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { ArrowRight, MessageSquareText, Play, Redo2 } from "lucide-react";
@@ -16,6 +17,7 @@ import { canAskForHelp } from "@/lib/task-help";
 import { describeReason, tracksCompletion, type UrgencySummary } from "@/lib/urgency";
 
 const ATTENTION_LIMIT = 5;
+const COLLAPSED_ROWS = 3;
 
 /** The short "Completed … · Undo" line after acting on a row. */
 export type AttentionReceipt = {
@@ -82,8 +84,15 @@ export default function TodayCard({
   const nextEstimate = next ? estimate(next) : null;
   const nextReason = next ? urgency.items.find((i) => i.task.id === next.id)?.reason ?? null : null;
   // It's shown above, so the list below doesn't repeat it.
-  const listUrgent = next ? urgent.filter((i) => i.task.id !== next.id) : urgent;
-  const listToday = next ? todays.filter((t) => t.id !== next.id) : todays;
+  const allUrgent = next ? urgent.filter((i) => i.task.id !== next.id) : urgent;
+  const allToday = next ? todays.filter((t) => t.id !== next.id) : todays;
+  // Hick's Law: Next up is the one decision; the list under it starts short.
+  // Three rows are enough to see what's coming; the rest are one tap away.
+  const [expanded, setExpanded] = useState(false);
+  const total = allUrgent.length + allToday.length;
+  const listUrgent = expanded ? allUrgent : allUrgent.slice(0, COLLAPSED_ROWS);
+  const listToday = expanded ? allToday : allToday.slice(0, Math.max(0, COLLAPSED_ROWS - listUrgent.length));
+  const collapsedCount = total - listUrgent.length - listToday.length;
 
   const help = (task: Task) =>
     canAskForHelp(task) ? (
@@ -174,6 +183,11 @@ export default function TodayCard({
               </m.div>
             ))}
           </AnimatePresence>
+          {(collapsedCount > 0 || (expanded && total > COLLAPSED_ROWS)) && (
+            <button type="button" className="today-card-more" aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
+              {expanded ? "Show less" : `Show ${collapsedCount} more`}
+            </button>
+          )}
         </div>
       )}
 

@@ -283,8 +283,10 @@ export default function DashboardPage() {
         />
       </m.div>
 
-      {/* Adding is the heart of Tangent, so it leads the page. */}
-      <m.div variants={riseIn} className="today-add">
+      {/* Adding is the heart of Tangent, so it leads the page. Hick's Law:
+          this is the one primary action here; AppShell hides the floating mic
+          while it's on screen so there's never two mics at once. */}
+      <m.div variants={riseIn} className="today-add" data-primary-composer>
         <AddFlow key={listenOnOpen ? "listen" : "type"} variant="hero" listenOnOpen={listenOnOpen} />
       </m.div>
 

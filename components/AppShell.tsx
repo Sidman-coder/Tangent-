@@ -64,6 +64,27 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     mq.addEventListener("change", update);
     return () => mq.removeEventListener("change", update);
   }, []);
+  // Hick's Law: one mic in view at a time. A page that leads with its own
+  // composer (Today) marks it [data-primary-composer]; while that's on screen
+  // the floating mic would be a second, identical choice, so it steps back.
+  const [composerInView, setComposerInView] = useState(false);
+  useEffect(() => {
+    setComposerInView(false);
+    let observer: IntersectionObserver | null = null;
+    const attach = () => {
+      const el = document.querySelector("[data-primary-composer]");
+      if (!el) return false;
+      observer = new IntersectionObserver(([entry]) => setComposerInView(entry.isIntersecting), { threshold: 0.2 });
+      observer.observe(el);
+      return true;
+    };
+    // The page renders after the shell; retry briefly until it mounts.
+    let tries = 0;
+    const timer = window.setInterval(() => {
+      if (attach() || ++tries > 20) window.clearInterval(timer);
+    }, 100);
+    return () => { window.clearInterval(timer); observer?.disconnect(); };
+  }, [pathname]);
   const { state, refresh } = useAppState();
   const refreshState = refresh;
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -217,7 +238,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       {/* The mic floats bottom-right on every page: say anything, from
           anywhere; it opens Add already listening. (⌘K opens it to type.)
           Not on Tangent AI, whose own composer mic talks to the chat. */}
-      {!pathname.startsWith("/ai") && (
+      {!pathname.startsWith("/ai") && !composerInView && (
         <button type="button" className="float-mic lg lg-interactive" onClick={openListening} aria-label="Say it to Tangent" title="Say it  ·  ⌘K to type">
           <Mic size={22} strokeWidth={2} aria-hidden="true" />
         </button>
