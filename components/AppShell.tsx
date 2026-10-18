@@ -69,21 +69,23 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // the floating mic would be a second, identical choice, so it steps back.
   const [composerInView, setComposerInView] = useState(false);
   useEffect(() => {
-    setComposerInView(false);
-    let observer: IntersectionObserver | null = null;
-    const attach = () => {
+    // Re-find the element on every check: Today re-mounts when its data
+    // arrives, so an IntersectionObserver on the first node goes stale.
+    const check = () => {
       const el = document.querySelector("[data-primary-composer]");
-      if (!el) return false;
-      observer = new IntersectionObserver(([entry]) => setComposerInView(entry.isIntersecting), { threshold: 0.2 });
-      observer.observe(el);
-      return true;
+      if (!el) { setComposerInView(false); return; }
+      const r = el.getBoundingClientRect();
+      setComposerInView(r.bottom > 40 && r.top < window.innerHeight - 40);
     };
-    // The page renders after the shell; retry briefly until it mounts.
-    let tries = 0;
-    const timer = window.setInterval(() => {
-      if (attach() || ++tries > 20) window.clearInterval(timer);
-    }, 100);
-    return () => { window.clearInterval(timer); observer?.disconnect(); };
+    check();
+    const timer = window.setInterval(check, 400);
+    window.addEventListener("scroll", check, { capture: true, passive: true });
+    window.addEventListener("resize", check);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("scroll", check, { capture: true });
+      window.removeEventListener("resize", check);
+    };
   }, [pathname]);
   const { state, refresh } = useAppState();
   const refreshState = refresh;
