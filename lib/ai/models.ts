@@ -90,7 +90,9 @@ export const AI_TASKS = {
   /** Short calendar labels for long task titles (app/api/short-titles). */
   shortTitles: { feature: "classify", tier: "FAST", maxTokens: 3000, temperature: 0 },
   /** Applies the student's answers to a saved task (lib/ai/refine.ts). */
-  refineTask: { feature: "chat", tier: "FAST", maxTokens: 600, temperature: 0 },
+  /** The detail every captured task carries (notes, first step, category). It runs
+   *  in the background after the save, so it buys quality, not speed: SMART. */
+  refineTask: { feature: "chat", tier: "SMART", maxTokens: 1200, thinking: "disabled" },
   /** Durable-fact extraction from a chat turn. */
   contextExtract: { feature: "context", tier: "FAST", maxTokens: 300 },
   /** Compress the context file once it grows past 40 entries. */
