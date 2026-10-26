@@ -613,7 +613,7 @@ body :is(button, a, [role="button"]):is(
   .attention-defer, .ui-task-help, .action-receipt-undo, .calendar-task-remove, .import-ctx-prompt button,
   .td-icon, .td-secondary, .notif-summary-btn, .side-peek-close, .resource-link, .preview-card-btn:not(.is-primary),
   .add-mic:not(.is-on), .topbar-mic,
-  .capture-open-app, .capture-chip:not(.is-primary)
+  .capture-open-app, .capture-chip:not(.is-primary), .capture-start
 ) {
   border: 1px solid var(--lg-edge);
   background: var(--glass-catch), var(--lg-fill-strong);

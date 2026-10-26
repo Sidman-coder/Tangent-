@@ -454,3 +454,87 @@
     animation: none;
   }
 }
+
+/* ── Do it now ─────────────────────────────────────────────────────── */
+.capture-start {
+  flex: none;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font: 650 12.5px var(--font-body);
+  color: var(--accent);
+  cursor: pointer;
+}
+.focus-view {
+  z-index: 95;
+  pointer-events: auto;
+}
+.focus-body {
+  position: relative;
+  display: flex;
+  max-width: 480px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: calc(72px + env(safe-area-inset-top, 0px)) 28px calc(40px + env(safe-area-inset-bottom, 0px));
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  color: var(--wash-ink);
+}
+.focus-title {
+  margin: 0 0 10px;
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+.focus-step {
+  margin: 0;
+  font-size: 16px;
+  color: var(--wash-hint);
+}
+.focus-ring {
+  position: relative;
+  display: grid;
+  margin: 36px 0 26px;
+  place-items: center;
+}
+.focus-ring svg {
+  display: block;
+}
+.focus-ring-track {
+  fill: none;
+  stroke: rgb(from var(--accent) r g b / 0.14);
+  stroke-width: 10;
+}
+.focus-ring-fill {
+  fill: none;
+  stroke: var(--accent);
+  stroke-linecap: round;
+  stroke-width: 10;
+  transition: stroke-dashoffset 1s linear;
+}
+.focus-ring.is-over {
+  animation: focus-pulse 1.6s ease-in-out infinite;
+}
+@keyframes focus-pulse { 50% { transform: scale(1.04); } }
+.focus-clock {
+  position: absolute;
+  font-family: var(--font-mono);
+  font-size: 34px;
+  font-weight: 500;
+}
+.focus-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 22px;
+}
+.focus-btn {
+  min-width: 108px;
+  padding: 12px 20px;
+  font-size: 15px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .focus-ring.is-over { animation: none; }
+  .focus-ring-fill { transition: none; }
+}

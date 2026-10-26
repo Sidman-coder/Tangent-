@@ -25,7 +25,9 @@ import { toYMD } from "@/lib/dates";
 import { wallClockNow } from "@/lib/time";
 import { outcomeFromError, type CaptureOutcome } from "@/lib/capture-outcome";
 import type { Task } from "@/lib/types";
+import { FOCUS_KEY, parseFocus, startFocus, type FocusSession } from "@/lib/focus-timer";
 import CaptureIsland from "./CaptureIsland";
+import FocusView, { saveFocus } from "./FocusView";
 import SortedCard from "./SortedCard";
 import { useCapture } from "./useCapture";
 import "./capture.css";
@@ -60,6 +62,7 @@ export default function CaptureHome() {
   const islandRef = useRef<HTMLButtonElement>(null);
   const [origin, setOrigin] = useState({ x: "50%", y: "92%" });
   const sendTimer = useRef<number | null>(null);
+  const [focus, setFocus] = useState<{ session: FocusSession; origin: { x: string; y: string } } | null>(null);
 
   const listening = hold.state === "listening";
 
@@ -209,6 +212,34 @@ export default function CaptureHome() {
     [refresh]
   );
 
+  // A focus session from before a reload picks back up, if its task is still open.
+  const resumed = useRef(false);
+  useEffect(() => {
+    if (resumed.current || !state) return;
+    resumed.current = true;
+    let saved: FocusSession | null = null;
+    try {
+      saved = parseFocus(localStorage.getItem(FOCUS_KEY));
+    } catch {
+      saved = null;
+    }
+    const task = saved && state.tasks.find((t) => t.id === saved!.taskId && !t.completed);
+    if (saved && task) setFocus({ session: saved, origin: { x: "50%", y: "50%" } });
+    else if (saved) saveFocus(null);
+  }, [state]);
+
+  const startFocusOn = useCallback((task: Task, from: HTMLElement) => {
+    const r = from.getBoundingClientRect();
+    const session = startFocus(task.id, Date.now());
+    saveFocus(session);
+    setFocus({ session, origin: { x: `${r.left + r.width / 2}px`, y: `${r.top + r.height / 2}px` } });
+  }, []);
+  const endFocus = useCallback(() => {
+    saveFocus(null);
+    setFocus(null);
+  }, []);
+  const focusTask = focus ? state?.tasks.find((t) => t.id === focus.session.taskId) ?? null : null;
+
   const savedLine = useMemo(() => {
     if (outcome?.kind !== "saved") return null;
     const task = outcome.taskId ? state?.tasks.find((t) => t.id === outcome.taskId) : undefined;
@@ -252,7 +283,7 @@ export default function CaptureHome() {
         ) : (
           <ul className="capture-list">
             <AnimatePresence initial={false}>
-              {rows.map(({ task, sub, overdue }) => (
+              {rows.map(({ task, sub, overdue }, i) => (
                 <m.li
                   key={task.id}
                   layout={!reduced}
@@ -269,6 +300,11 @@ export default function CaptureHome() {
                     <span className="capture-row-title">{task.title}</span>
                     {sub && <span className="capture-row-sub">{sub}</span>}
                   </button>
+                  {i === 0 && (
+                    <button type="button" className="capture-start" onClick={(e) => startFocusOn(task, e.currentTarget)}>
+                      Start
+                    </button>
+                  )}
                   <i className="capture-dot" style={{ background: taskColor(task) }} aria-hidden="true" />
                 </m.li>
               ))}
@@ -342,6 +378,26 @@ export default function CaptureHome() {
               router.push("/ai?ask=1");
             }}
             onChanged={() => void refresh()}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {focus && focusTask && (
+          <FocusView
+            key="focus"
+            task={focusTask}
+            session={focus.session}
+            origin={focus.origin}
+            onSession={(session) => {
+              saveFocus(session);
+              setFocus((f) => (f ? { ...f, session } : f));
+            }}
+            onDone={() => {
+              void complete(focusTask);
+              endFocus();
+            }}
+            onStop={endFocus}
           />
         )}
       </AnimatePresence>
