@@ -127,8 +127,7 @@ export default function DashboardPage() {
   );
 
   const today = toYMD(now);
-  const plans = state?.plans;
-  const colorForTask = useCallback((task: Task) => taskColor(task, plans ?? []), [plans]);
+  const colorForTask = useCallback((task: Task) => taskColor(task), []);
 
   // The onboarding School block holds the student's school hours for the
   // scheduler and the week insights below; it is not a to-do, so it never

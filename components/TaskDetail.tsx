@@ -132,7 +132,7 @@ export default function TaskDetail() {
   const open = Boolean(taskId && (task || removed));
   const { title, course } = task ? splitCourse(task) : { title: removed?.title ?? "", course: null };
   const due = task ? task.source === "canvas" || task.time === "23:59" : false;
-  const color = task ? taskColor(task, state?.plans ?? []) : "var(--accent)";
+  const color = task ? taskColor(task) : "var(--accent)";
 
   return createPortal(
     <>

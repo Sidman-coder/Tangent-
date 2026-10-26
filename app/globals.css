@@ -9074,3 +9074,27 @@ body .task-chat-modal {
     backdrop-filter: none;
   }
 }
+
+/* Task category colors (lib/task-colors.ts): Canvas, Academic, ECs, Other.
+   Last in the file so they hold across every theme block above. */
+:root,
+[data-theme="light"] {
+  --cat-canvas: #e4572e;
+  --cat-academic: #5b4bc4;
+  --cat-ec: #2f9e6e;
+  --cat-other: #c3bdd9;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --cat-canvas: #ff7a52;
+    --cat-academic: #9a8cff;
+    --cat-ec: #4cc38f;
+    --cat-other: #6e6890;
+  }
+}
+[data-theme="dark"] {
+  --cat-canvas: #ff7a52;
+  --cat-academic: #9a8cff;
+  --cat-ec: #4cc38f;
+  --cat-other: #6e6890;
+}

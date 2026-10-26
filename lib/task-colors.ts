@@ -1,16 +1,46 @@
-// One rule for "what color is this task", shared by the calendar and the AI
-// console's chat list so a chat about a task carries the task's calendar color.
-// Order: the task's plan color → its TaskKind token.
+// One rule for "what color is this task", shared by every list, the calendar
+// and the AI console's chat list. Four colors, by what the work is:
+//   Canvas   — anything from the Canvas feed
+//   Academic — school work the student adds (a "school" kind, or a title that
+//              reads as schoolwork: study, quiz, essay, homework…)
+//   ECs      — both extracurricular kinds (academic-ec is research, robotics,
+//              competitions; side-ec is sports and hobbies)
+//   Other    — commitments, personal, and anything without a signal: grey
+// A project's own color no longer drives the dot.
 
-import type { Plan, Task, TaskKind } from "@/lib/types";
+import type { Task, TaskKind } from "./types";
 
-export const KIND_COLOR: Record<TaskKind, string> = {
-  school: "var(--kind-school)",
-  "academic-ec": "var(--kind-academic-ec)",
-  "side-ec": "var(--kind-side-ec)",
-  commitment: "var(--kind-commitment)",
-  personal: "var(--kind-personal)",
+export type TaskCategory = "canvas" | "academic" | "ec" | "other";
+
+export const CATEGORY_COLOR: Record<TaskCategory, string> = {
+  canvas: "var(--cat-canvas)",
+  academic: "var(--cat-academic)",
+  ec: "var(--cat-ec)",
+  other: "var(--cat-other)",
 };
+
+export const CATEGORY_LABEL: Record<TaskCategory, string> = {
+  canvas: "Canvas",
+  academic: "Academic",
+  ec: "ECs",
+  other: "Other",
+};
+
+const SCHOOLWORK = /\b(stud(y|ying)|tests?|quiz(zes)?|exams?|midterms?|finals?|homework|hw|essays?|assignments?|chapters?|ch\.?\s?\d|problem sets?|psets?|worksheets?|labs?|reading|lectures?|apush|ap\s\w+|calc(ulus)?|algebra|geometry|precalc|chem(istry)?|physics|bio(logy)?|history|english|spanish|french|latin|sat|act|psat)\b/i;
+
+type Colorable = Pick<Task, "source" | "kind"> & { title?: string };
+
+export function taskCategory(task: Colorable): TaskCategory {
+  if (task.source === "canvas") return "canvas";
+  if (task.kind === "academic-ec" || task.kind === "side-ec") return "ec";
+  if (task.kind === "school") return "academic";
+  if (task.kind === "commitment") return "other";
+  return task.title && SCHOOLWORK.test(task.title) ? "academic" : "other";
+}
+
+export function taskColor(task: Colorable): string {
+  return CATEGORY_COLOR[taskCategory(task)];
+}
 
 /** The one set of names for task kinds, used everywhere they're shown. */
 export const KIND_LABEL: Record<TaskKind, string> = {
@@ -21,12 +51,6 @@ export const KIND_LABEL: Record<TaskKind, string> = {
   personal: "Personal",
 };
 
-export function taskColor(task: Pick<Task, "planId" | "kind">, plans: Plan[]): string {
-  const plan = task.planId ? plans.find((p) => p.id === task.planId) : null;
-  if (plan) return plan.color;
-  // School / No school is a filter, not a color: the kind says more.
-  return KIND_COLOR[task.kind ?? "personal"];
-}
 
 /** How the calendar groups work: school (classes and Canvas), projects
  *  (steps of a project), and short-term (everything else you added). */

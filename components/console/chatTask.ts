@@ -40,7 +40,7 @@ export function resolveChatTask(session: ChatSession, state: AppState | null): C
   const titles = new Set(linked.map((t) => t.title));
   const kind = KIND_LABEL[primary.kind ?? "personal"];
   return {
-    color: taskColor(primary, state.plans),
+    color: taskColor(primary),
     name: titles.size > 1 ? `${primary.title} +${titles.size - 1} more` : primary.title,
     detail: `${kind} · ${sessions.length} session${sessions.length === 1 ? "" : "s"}`,
     sessions,

@@ -46,11 +46,10 @@ function addDays(d: Date, n: number): Date {
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-// The theme's kind tokens (globals.css), so both themes and the brand
-// palette apply here too — these used to be hard-coded Tailwind hues.
+// The day panel groups by kind; its pills use the same four category colors
+// as the dots (lib/task-colors.ts).
 function getKindColor(kind?: string): string {
-  const known = ["school", "commitment", "academic-ec", "side-ec", "personal"];
-  return known.includes(kind ?? "") ? `var(--kind-${kind})` : "var(--kind-default)";
+  return taskColor({ kind: kind as Task["kind"] });
 }
 
 const KIND_SORT_ORDER = ["school", "academic-ec", "commitment", "side-ec", "personal"];
@@ -155,8 +154,8 @@ export default function CalendarPage() {
 
   const getTaskCategoryColor = useCallback(
     // Handled Canvas work (lib/canvas-clear) stays to look back on, in grey.
-    (t: Task): string => (isCanvasCleared(t, todayYmd) ? "var(--kind-default)" : taskColor(t, plans)),
-    [plans, todayYmd]
+    (t: Task): string => (isCanvasCleared(t, todayYmd) ? "var(--cat-other)" : taskColor(t)),
+    [todayYmd]
   );
 
   const tasksForDay = useCallback((ymd: string): Task[] => {
