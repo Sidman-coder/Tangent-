@@ -31,7 +31,7 @@ export type CaptureOutcome =
   | { kind: "confirm"; id: string; message: string }
   | { kind: "preview"; changeSet: ChangeSet; preview: PreviewPayload }
   | { kind: "question"; said: string }
-  /** It didn't sound like a task ("listen to me"): nothing saved until they say so. */
+  /** It didn't sound like a task ("listen to me", "la la la"): nothing is saved. */
   | { kind: "unsure"; said: string }
   /** `said` empty: nothing was heard, so `message` says why and there is nothing to resend. */
   | { kind: "error"; said: string; message?: string };

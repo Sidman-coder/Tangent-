@@ -44,4 +44,16 @@ test("real tasks still sound like tasks, including ones that use the same verbs"
   }
 });
 
+test("small talk, swearing, repeats and gibberish are never tasks", () => {
+  for (const t of ["how are you", "what's up", "good morning", "la la la la", "blah blah blah", "asdfgh jkl", "shut up", "this is so stupid", "damn it", "bruh", "I'm bored", "nothing", "random words", "banana banana banana"]) {
+    assert.equal(soundsLikeATask(t), false, t);
+  }
+});
+
+test("short real tasks still pass", () => {
+  for (const t of ["buy bananas", "call grandma", "finish the essay", "practice piano for 20 minutes", "pick up my jersey"]) {
+    assert.equal(soundsLikeATask(t), true, t);
+  }
+});
+
 });

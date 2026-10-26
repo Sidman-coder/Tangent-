@@ -47,7 +47,7 @@ export default function SortedCard({ outcome, freshSet, questionsPending, parked
   const settles = outcome.kind === "saved" && !set && !questionsPending;
   useEffect(() => {
     const nothingToResend = outcome.kind === "error" && !outcome.said;
-    if (!settles && !thanks && outcome.kind !== "duplicate" && !nothingToResend) return;
+    if (!settles && !thanks && outcome.kind !== "duplicate" && outcome.kind !== "unsure" && !nothingToResend) return;
     const t = window.setTimeout(onDismiss, thanks ? 1400 : AUTO_DISMISS_MS);
     return () => window.clearTimeout(t);
   }, [settles, thanks, outcome, onDismiss]);
@@ -103,12 +103,12 @@ export default function SortedCard({ outcome, freshSet, questionsPending, parked
           </>
         );
       case "unsure":
+        // Not added, and it goes away on its own; "Add anyway" for a wrong guess.
         return (
           <>
-            <p className="sorted-text">“{outcome.said.replace(/[.!?]+$/, "")}” didn&apos;t sound like something to do.</p>
+            <p className="sorted-text">“{outcome.said.replace(/[.!?]+$/, "")}” didn&apos;t sound like a task, so nothing was added.</p>
             <div className="sorted-chips">
-              <button type="button" className="capture-chip is-primary" onClick={() => onRetry(outcome.said)}>Add it anyway</button>
-              <button type="button" className="capture-chip is-quiet" onClick={onDismiss}>No, never mind</button>
+              <button type="button" className="capture-chip is-quiet" onClick={() => onRetry(outcome.said)}>Add anyway</button>
             </div>
           </>
         );
@@ -140,7 +140,7 @@ export default function SortedCard({ outcome, freshSet, questionsPending, parked
           if (info.offset.y > 60 || info.velocity.y > 500) onDismiss();
         }}
       >
-        <p className="sorted-label">{outcome.kind === "error" ? "Not added" : outcome.kind === "unsure" ? "Did I hear that right?" : "Sorted"}</p>
+        <p className="sorted-label">{outcome.kind === "error" || outcome.kind === "unsure" ? "Not added" : "Sorted"}</p>
         {outcome.kind === "saved" && (
           <m.div className="sorted-line" {...lineIn(0)}>
             <i style={{ background: line?.color ?? "var(--cat-other)" }} aria-hidden="true" />

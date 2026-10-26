@@ -33,13 +33,33 @@ const GLUE = new Set([
   "im", "youre", "dont", "not", "please", "just", "be", "on", "now", "again", "something", "anything", "nothing",
   "mind", "never", "tangent", "us", "we", "your", "its", "was", "were",
 ]);
+// Words that carry no task on their own: small talk, venting, swearing, the
+// sounds people make when they're testing a mic.
+const NOISE = new Set([
+  "up", "so", "yo", "lol", "lmao", "bruh", "bro", "dude", "blah", "la", "da", "na", "meh", "ugh",
+  "shut", "stupid", "dumb", "damn", "hell", "crap", "wtf", "omg", "bored", "tired", "random", "words", "word", "whatever",
+  "how", "whats", "good", "morning", "night", "afternoon", "evening", "fine", "great",
+]);
+const SMALL_TALK = /^(?:how are you|how's it going|what'?s up|whats up|good (?:morning|night|afternoon|evening)|i'?m (?:bored|tired|hungry|done)|nothing|never ?mind)\b/;
+const VOWEL = /[aeiouy]/;
+
+/** "asdfgh", "jkl": no vowel, or five consonants in a row. */
+function gibberish(w: string): boolean {
+  if (/^\d+$/.test(w)) return false;
+  return !VOWEL.test(w) || /[^aeiouy\d\s-]{5}/.test(w);
+}
+
 const AT_THE_APP = /^(?:(?:hey|hi|hello|ok|okay)\s+)?tangent\b|\bnever ?mind\b|\bare you (?:there|listening|working)\b|\bcan you hear\b|\bis (?:this|it) (?:on|working)\b|\bwhat can you do\b/;
 
-/** False when what was said is aimed at the app ("listen to me", "is this
- *  working") rather than a thing to do: nothing is left once the filler and
- *  the words about talking are gone. The capture home asks before saving it. */
+/** False when what was said isn't a thing to do: talk aimed at the app
+ *  ("listen to me", "is this working"), small talk, venting, gibberish, or one
+ *  word on repeat. The capture home doesn't add it. */
 export function soundsLikeATask(text: string): boolean {
   const plain = text.toLowerCase().replace(/[’']/g, "").replace(/[^a-z0-9\s-]/g, " ").replace(/\s+/g, " ").trim();
-  if (!plain || AT_THE_APP.test(plain)) return false;
-  return plain.split(" ").some((w) => !FILLER.has(w) && !GLUE.has(w) && !ABOUT_TALKING.has(w));
+  if (!plain || AT_THE_APP.test(plain) || SMALL_TALK.test(plain)) return false;
+  const content = plain
+    .split(" ")
+    .filter((w) => !FILLER.has(w) && !GLUE.has(w) && !ABOUT_TALKING.has(w) && !NOISE.has(w) && !gibberish(w));
+  // "banana banana banana": one word on repeat isn't a task.
+  return content.length > 0 && new Set(content).size > (content.length > 1 ? 1 : 0);
 }

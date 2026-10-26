@@ -16,6 +16,8 @@ import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { openTask } from "@/components/TaskDetail";
 import { OPEN_PALETTE_EVENT, useVoiceCapture } from "@/hooks/useVoiceCapture";
 import { useQuestionSets } from "@/hooks/useQuestionSets";
+import { useBrowserCaption } from "@/hooks/useBrowserCaption";
+import { liveCaption } from "@/lib/live-caption";
 import { buildCaptureList } from "@/lib/capture-list";
 import { holdReducer, initialHold, listeningWithoutPress, spaceStartsHold, type Hold, type HoldEvent } from "@/lib/hold-gesture";
 import { heardSomethingToAdd, soundsLikeATask } from "@/lib/voice-intent";
@@ -67,6 +69,14 @@ export default function CaptureHome() {
   const [focus, setFocus] = useState<{ session: FocusSession; origin: Point } | null>(null);
 
   const listening = hold.state === "listening";
+
+  // What you're saying, as you say it: the streamed transcript when it's
+  // coming, otherwise the browser's own recognition (display only).
+  const browserText = useBrowserCaption(listening);
+  const [lastCaption, setLastCaption] = useState("");
+  useEffect(() => {
+    if (browserText) setLastCaption(browserText);
+  }, [browserText]);
 
   // "Open app": Today is fetched ahead, and the home steps back before the
   // route changes, so the hop into the app is one continuous motion.
@@ -151,6 +161,7 @@ export default function CaptureHome() {
       case "start-listening": {
         setOrigin(islandCentre());
         setWords("");
+        setLastCaption("");
         setOutcome(null);
         navigator.vibrate?.(8);
         void v.startRecording();
@@ -397,7 +408,7 @@ export default function CaptureHome() {
                 Listening…
               </m.p>
               <p className="capture-words">
-                {words.split(/\s+/).filter(Boolean).map((w, i) => (
+                {liveCaption(words, browserText).split(/\s+/).filter(Boolean).map((w, i) => (
                   <m.span
                     key={i}
                     initial={reduced ? { opacity: 0 } : { opacity: 0, filter: "blur(6px)", y: 10 }}
@@ -470,7 +481,7 @@ export default function CaptureHome() {
           ref={islandRef}
           state={hold.state}
           level={voice.getLevel}
-          transcriptTail={words}
+          transcriptTail={liveCaption(words, lastCaption)}
           tapToStop={tapToStop}
           onEvent={dispatch}
         />
