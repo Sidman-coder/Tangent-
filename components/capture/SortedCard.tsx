@@ -102,6 +102,16 @@ export default function SortedCard({ outcome, freshSet, questionsPending, parked
             </div>
           </>
         );
+      case "unsure":
+        return (
+          <>
+            <p className="sorted-text">“{outcome.said.replace(/[.!?]+$/, "")}” didn&apos;t sound like something to do.</p>
+            <div className="sorted-chips">
+              <button type="button" className="capture-chip is-primary" onClick={() => onRetry(outcome.said)}>Add it anyway</button>
+              <button type="button" className="capture-chip is-quiet" onClick={onDismiss}>No, never mind</button>
+            </div>
+          </>
+        );
       case "error":
         if (!outcome.said) return <p className="sorted-text">{outcome.message}</p>;
         return (
@@ -130,7 +140,7 @@ export default function SortedCard({ outcome, freshSet, questionsPending, parked
           if (info.offset.y > 60 || info.velocity.y > 500) onDismiss();
         }}
       >
-        <p className="sorted-label">{outcome.kind === "error" ? "Not added" : "Sorted"}</p>
+        <p className="sorted-label">{outcome.kind === "error" ? "Not added" : outcome.kind === "unsure" ? "Did I hear that right?" : "Sorted"}</p>
         {outcome.kind === "saved" && (
           <m.div className="sorted-line" {...lineIn(0)}>
             <i style={{ background: line?.color ?? "var(--cat-other)" }} aria-hidden="true" />

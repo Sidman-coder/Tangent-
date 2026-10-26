@@ -18,7 +18,7 @@ import { OPEN_PALETTE_EVENT, useVoiceCapture } from "@/hooks/useVoiceCapture";
 import { useQuestionSets } from "@/hooks/useQuestionSets";
 import { buildCaptureList } from "@/lib/capture-list";
 import { holdReducer, initialHold, listeningWithoutPress, spaceStartsHold, type Hold, type HoldEvent } from "@/lib/hold-gesture";
-import { heardSomethingToAdd } from "@/lib/voice-intent";
+import { heardSomethingToAdd, soundsLikeATask } from "@/lib/voice-intent";
 import { putAsk } from "@/lib/ask-handoff";
 import { taskColor } from "@/lib/task-colors";
 import { toYMD } from "@/lib/dates";
@@ -101,6 +101,12 @@ export default function CaptureHome() {
       const seq = holdRef.current.seq;
       // A stray sound ("um") becomes nothing, not a task.
       if (!t.trim() || !heardSomethingToAdd(t)) {
+        finishSort(seq);
+        return;
+      }
+      // Talk aimed at the app ("listen to me") asks before anything is saved.
+      if (!soundsLikeATask(t)) {
+        setOutcome({ kind: "unsure", said: t.trim() });
         finishSort(seq);
         return;
       }

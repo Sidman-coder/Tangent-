@@ -21,3 +21,25 @@ export function meaningfulWords(text: string): string[] {
 export function heardSomethingToAdd(text: string): boolean {
   return meaningfulWords(text).length >= 2;
 }
+
+// Words that only ever talk about the conversation itself, never what the
+// task is about. "listen to me" is three real words and no task at all.
+const ABOUT_TALKING = new Set([
+  "listen", "listening", "hear", "hearing", "say", "said", "saying", "talk", "talking", "speak", "speaking",
+  "stop", "wait", "working", "know", "mean", "understand", "help", "tell",
+]);
+const GLUE = new Set([
+  "to", "me", "i", "it", "this", "that", "is", "are", "am", "can", "do", "does", "there", "here", "my", "an",
+  "im", "youre", "dont", "not", "please", "just", "be", "on", "now", "again", "something", "anything", "nothing",
+  "mind", "never", "tangent", "us", "we", "your", "its", "was", "were",
+]);
+const AT_THE_APP = /^(?:(?:hey|hi|hello|ok|okay)\s+)?tangent\b|\bnever ?mind\b|\bare you (?:there|listening|working)\b|\bcan you hear\b|\bis (?:this|it) (?:on|working)\b|\bwhat can you do\b/;
+
+/** False when what was said is aimed at the app ("listen to me", "is this
+ *  working") rather than a thing to do: nothing is left once the filler and
+ *  the words about talking are gone. The capture home asks before saving it. */
+export function soundsLikeATask(text: string): boolean {
+  const plain = text.toLowerCase().replace(/[’']/g, "").replace(/[^a-z0-9\s-]/g, " ").replace(/\s+/g, " ").trim();
+  if (!plain || AT_THE_APP.test(plain)) return false;
+  return plain.split(" ").some((w) => !FILLER.has(w) && !GLUE.has(w) && !ABOUT_TALKING.has(w));
+}
