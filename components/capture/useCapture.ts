@@ -6,7 +6,7 @@
 // come back through /api/questions so the Sorted card, Today and the bell all
 // read the same set. Same /api/chat, /api/confirm and /api/questions routes.
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useAppState } from "@/components/AppStateProvider";
 import { routeAsk } from "@/lib/ask-route";
 import { generateQuestions, type QuestionSet } from "@/lib/questions-client";
@@ -43,10 +43,13 @@ export function useCapture() {
   // True while this capture's own questions are still being written, so the
   // card waits before offering an older parked question instead.
   const [questionsPending, setQuestionsPending] = useState(false);
+  // Questions written for an earlier capture must not land on a newer card.
+  const latest = useRef(0);
 
   const capture = useCallback(
     async (said: string): Promise<CaptureOutcome> => {
       const words = said.trim();
+      const id = ++latest.current;
       setFreshSet(null);
       setQuestionsPending(false);
       const route = routeAsk(words);
@@ -62,9 +65,10 @@ export function useCapture() {
         if (reply.taskId) {
           setQuestionsPending(true);
           void generateQuestions(reply.taskId, words, reply.quick === true).then((set) => {
+            void refresh();
+            if (id !== latest.current) return;
             if (set?.questions.length) setFreshSet(set);
             setQuestionsPending(false);
-            void refresh();
           });
         }
         return outcomeFromReply(reply, words, dayLabel);

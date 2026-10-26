@@ -135,7 +135,9 @@ export default function DashboardPage() {
   const doable = useMemo(() => withoutClearedCanvas(tasks.filter((t) => !isOnboardingSchoolTask(t)), today), [tasks, today]);
   const urgency = useMemo(() => getUrgency(doable, now), [now, doable]);
   const attentionIds = useMemo(() => new Set(urgency.items.map((i) => i.task.id)), [urgency]);
-  const insight = useMemo(() => getSchedulePulse(tasks, now), [now, tasks]);
+  // Handled Canvas work stays out of the week strip and its pulse too.
+  const weekTasks = useMemo(() => withoutClearedCanvas(tasks, today), [tasks, today]);
+  const insight = useMemo(() => getSchedulePulse(weekTasks, now), [now, weekTasks]);
 
   const todaysTasks = useMemo(
     () => doable.filter((t) => t.date === today).sort((a, b) => a.time.localeCompare(b.time)),
@@ -304,7 +306,7 @@ export default function DashboardPage() {
         onSeeAll={() => router.push(`/calendar?date=${today}`)}
       />
 
-      <WeekStrip tasks={tasks} now={now} insight={insight} />
+      <WeekStrip tasks={weekTasks} now={now} insight={insight} />
 
       {startingIntent ? (
         <StartingIntentCard intent={startingIntent} onCleared={() => void refresh()} />

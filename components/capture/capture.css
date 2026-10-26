@@ -36,6 +36,12 @@
   }
 }
 
+/* AppShell's bare mode on "/": no rail beside it, so <main> spans the page and
+   the column centres over the island. */
+.shell.is-bare {
+  display: block;
+}
+
 .capture-page {
   max-width: 560px;
   margin: 0 auto;

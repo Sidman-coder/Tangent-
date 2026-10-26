@@ -46,10 +46,11 @@ export default function SortedCard({ outcome, freshSet, questionsPending, parked
 
   const settles = outcome.kind === "saved" && !set && !questionsPending;
   useEffect(() => {
-    if (!settles && !thanks && outcome.kind !== "duplicate") return;
+    const nothingToResend = outcome.kind === "error" && !outcome.said;
+    if (!settles && !thanks && outcome.kind !== "duplicate" && !nothingToResend) return;
     const t = window.setTimeout(onDismiss, thanks ? 1400 : AUTO_DISMISS_MS);
     return () => window.clearTimeout(t);
-  }, [settles, thanks, outcome.kind, onDismiss]);
+  }, [settles, thanks, outcome, onDismiss]);
 
   const question = set?.questions[step];
   const answer = (choice: string) => {
@@ -102,6 +103,7 @@ export default function SortedCard({ outcome, freshSet, questionsPending, parked
           </>
         );
       case "error":
+        if (!outcome.said) return <p className="sorted-text">{outcome.message}</p>;
         return (
           <button type="button" className="sorted-retry" onClick={() => outcome.said && onRetry(outcome.said)}>
             Couldn&apos;t add that, try again

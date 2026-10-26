@@ -52,4 +52,9 @@ void (import("./capture-outcome") as Promise<Mod>).then(({ outcomeFromReply, out
   test("a failure keeps what was said so one tap can resend it", () => {
     assert.deepEqual(outcomeFromError("finish the deck"), { kind: "error", said: "finish the deck" });
   });
+
+  test("with nothing heard, the error carries why instead of a dead retry", () => {
+    assert.deepEqual(outcomeFromError("", "Microphone access denied"), { kind: "error", said: "", message: "Microphone access denied" });
+    assert.deepEqual(outcomeFromError(""), { kind: "error", said: "", message: "Couldn't hear that. Hold again to talk." });
+  });
 });

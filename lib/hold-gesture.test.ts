@@ -19,7 +19,7 @@ type Resolve = (specifier: string, context: unknown, next: (s: string, c: unknow
 
 
 type Mod = typeof import("./hold-gesture");
-void (import("./hold-gesture") as Promise<Mod>).then(({ holdReducer, initialHold, HOLD_MS }) => {
+void (import("./hold-gesture") as Promise<Mod>).then(({ holdReducer, initialHold, HOLD_MS, spaceStartsHold }) => {
   // Feed events in order; return every effect and the final state.
   const run = (events: Parameters<typeof holdReducer>[1][], start = initialHold) => {
     let s = start;
@@ -60,13 +60,43 @@ void (import("./hold-gesture") as Promise<Mod>).then(({ holdReducer, initialHold
   });
 
   test("nothing starts while a capture is still sorting", () => {
-    const sorting = { state: "sorting" as const, downT: 0, downY: 0 };
+    const sorting = { state: "sorting" as const, downT: 0, downY: 0, seq: 0 };
     assert.deepEqual(run([{ type: "down", t: 0, y: 500 }, { type: "tick", t: 999 }, { type: "up", t: 1000, y: 500 }], sorting), { state: "sorting", effects: [] });
-    assert.deepEqual(run([{ type: "sorted" }], sorting), { state: "idle", effects: [] });
+    assert.deepEqual(run([{ type: "sorted", seq: 0 }], sorting), { state: "idle", effects: [] });
   });
 
   test("tap-to-stop: a listen started without a press sends on the next tap", () => {
-    const listening = { state: "listening" as const, downT: -1, downY: 0 };
+    const listening = { state: "listening" as const, downT: -1, downY: 0, seq: 0 };
     assert.deepEqual(run([{ type: "down", t: 0, y: 500 }, { type: "up", t: 80, y: 500 }], listening), { state: "sorting", effects: ["send"] });
+  });
+
+  test("each send starts a new capture, and a late sorted from an earlier one is ignored", () => {
+    let s = initialHold;
+    const step = (e: Parameters<typeof holdReducer>[1]) => (s = holdReducer(s, e).next);
+    step({ type: "down", t: 0, y: 500 });
+    step({ type: "tick", t: 300 });
+    step({ type: "up", t: 900, y: 500 });
+    const first = s.seq;
+    step({ type: "sorted", seq: first });
+    step({ type: "down", t: 1000, y: 500 });
+    step({ type: "tick", t: 1300 });
+    step({ type: "up", t: 1900, y: 500 });
+    assert.notEqual(s.seq, first);
+    // The first capture's result arriving late must not end the second one.
+    step({ type: "sorted", seq: first });
+    assert.equal(s.state, "sorting");
+    step({ type: "sorted", seq: s.seq });
+    assert.equal(s.state, "idle");
+  });
+
+  test("Space only starts a hold when nothing interactive has focus", () => {
+    assert.equal(spaceStartsHold(null), true);
+    assert.equal(spaceStartsHold({ tagName: "BODY" }), true);
+    assert.equal(spaceStartsHold({ tagName: "BUTTON", isIsland: true }), true);
+    assert.equal(spaceStartsHold({ tagName: "BUTTON" }), false);
+    assert.equal(spaceStartsHold({ tagName: "A" }), false);
+    assert.equal(spaceStartsHold({ tagName: "DIV", role: "button" }), false);
+    assert.equal(spaceStartsHold({ tagName: "TEXTAREA" }), false);
+    assert.equal(spaceStartsHold({ tagName: "DIV", isContentEditable: true }), false);
   });
 });

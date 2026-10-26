@@ -17,7 +17,7 @@ import { openTask } from "@/components/TaskDetail";
 import { OPEN_PALETTE_EVENT, useVoiceCapture } from "@/hooks/useVoiceCapture";
 import { useQuestionSets } from "@/hooks/useQuestionSets";
 import { buildCaptureList } from "@/lib/capture-list";
-import { holdReducer, initialHold, listeningWithoutPress, type Hold, type HoldEvent } from "@/lib/hold-gesture";
+import { holdReducer, initialHold, listeningWithoutPress, spaceStartsHold, type Hold, type HoldEvent } from "@/lib/hold-gesture";
 import { heardSomethingToAdd } from "@/lib/voice-intent";
 import { putAsk } from "@/lib/ask-handoff";
 import { taskColor } from "@/lib/task-colors";
@@ -33,16 +33,12 @@ import { useCapture } from "./useCapture";
 import "./capture.css";
 
 const TICK_MS = 50;
-/** If a send never produces a transcript (silence), stop waiting after this. */
+/** If a send never produces a transcript or an error (silence), stop waiting.
+ *  Covers only the wait for the transcript; the save itself has no cap. */
 const SEND_TIMEOUT_MS = 9000;
 
 const EASE_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
 const EASE_IN: [number, number, number, number] = [0.5, 0, 0.75, 0];
-
-function isFormField(el: EventTarget | null): boolean {
-  if (!(el instanceof HTMLElement)) return false;
-  return el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName);
-}
 
 export default function CaptureHome() {
   const router = useRouter();
@@ -66,19 +62,26 @@ export default function CaptureHome() {
 
   const listening = hold.state === "listening";
 
-  const finishSort = useCallback(() => {
+  const clearSendTimer = useCallback(() => {
     if (sendTimer.current !== null) window.clearTimeout(sendTimer.current);
     sendTimer.current = null;
-    dispatchRef.current({ type: "sorted" });
   }, []);
 
+  // `seq` is the send this belongs to (lib/hold-gesture.ts): a late result
+  // from an earlier capture can't end, or fill the card of, the current one.
+  const finishSort = useCallback((seq: number) => {
+    clearSendTimer();
+    dispatchRef.current({ type: "sorted", seq });
+  }, [clearSendTimer]);
+
   const runCapture = useCallback(
-    async (said: string) => {
+    async (said: string, seq: number) => {
       setOutcome(null);
       clearFreshSet();
       const result = await capture(said);
+      if (seq !== holdRef.current.seq) return;
       setOutcome(result);
-      finishSort();
+      finishSort(seq);
     },
     [capture, clearFreshSet, finishSort]
   );
@@ -87,18 +90,21 @@ export default function CaptureHome() {
     live: true,
     onPartial: (t) => setWords(t),
     onTranscript: (t) => {
+      clearSendTimer();
       setWords(t);
+      const seq = holdRef.current.seq;
       // A stray sound ("um") becomes nothing, not a task.
       if (!t.trim() || !heardSomethingToAdd(t)) {
-        finishSort();
+        finishSort(seq);
         return;
       }
-      void runCapture(t);
+      void runCapture(t, seq);
     },
-    onError: () => {
+    onError: (message) => {
+      clearSendTimer();
       dispatchRef.current({ type: "cancel" });
-      setOutcome(outcomeFromError(""));
-      finishSort();
+      setOutcome(outcomeFromError("", message));
+      finishSort(holdRef.current.seq);
     },
   });
 
@@ -120,11 +126,21 @@ export default function CaptureHome() {
         void v.startRecording();
         break;
       }
-      case "send":
+      case "send": {
         setTapToStop(false);
+        const seq = next.seq;
+        // Let go before the mic was live (the permission prompt, or a very
+        // short hold): there's no recording, so no transcript is coming.
+        const wasRecording = v.status === "recording";
         v.stopRecording();
-        sendTimer.current = window.setTimeout(() => dispatchRef.current({ type: "sorted" }), SEND_TIMEOUT_MS);
+        if (!wasRecording) {
+          setOutcome(outcomeFromError("", "Mic's ready. Hold again to talk."));
+          queueMicrotask(() => dispatchRef.current({ type: "sorted", seq }));
+          break;
+        }
+        sendTimer.current = window.setTimeout(() => dispatchRef.current({ type: "sorted", seq }), SEND_TIMEOUT_MS);
         break;
+      }
       case "abort":
         setTapToStop(false);
         setWords("");
@@ -147,13 +163,17 @@ export default function CaptureHome() {
 
   // Space works like the island on a keyboard; losing the window cancels.
   useEffect(() => {
+    const owns = (e: KeyboardEvent) => {
+      const el = e.target instanceof HTMLElement && e.target !== document.body ? e.target : null;
+      return spaceStartsHold(el && { tagName: el.tagName, role: el.getAttribute("role"), isContentEditable: el.isContentEditable, isIsland: el === islandRef.current });
+    };
     const down = (e: KeyboardEvent) => {
-      if (e.code !== "Space" || e.repeat || isFormField(e.target) || document.querySelector('[role="dialog"]')) return;
+      if (e.code !== "Space" || e.repeat || !owns(e) || document.querySelector('[role="dialog"]')) return;
       e.preventDefault();
       dispatch({ type: "down", t: performance.now(), y: 0 });
     };
     const up = (e: KeyboardEvent) => {
-      if (e.code !== "Space" || isFormField(e.target)) return;
+      if (e.code !== "Space" || !owns(e)) return;
       if (holdRef.current.state === "idle" || holdRef.current.state === "sorting") return;
       e.preventDefault();
       dispatch({ type: "up", t: performance.now(), y: 0 });
@@ -173,8 +193,8 @@ export default function CaptureHome() {
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("capture") !== "1") return;
     window.history.replaceState(null, "", "/");
-    holdRef.current = listeningWithoutPress;
-    setHold(listeningWithoutPress);
+    holdRef.current = { ...listeningWithoutPress, seq: holdRef.current.seq };
+    setHold(holdRef.current);
     setTapToStop(true);
     void voiceRef.current.startRecording();
   }, []);
@@ -364,10 +384,11 @@ export default function CaptureHome() {
             onDismiss={dismiss}
             onRetry={(said) => {
               setOutcome(null);
-              holdRef.current = { ...initialHold, state: "sorting" };
+              const seq = holdRef.current.seq + 1;
+              holdRef.current = { ...initialHold, state: "sorting", seq };
               setHold(holdRef.current);
               setWords(said);
-              void runCapture(said);
+              void runCapture(said, seq);
             }}
             onConfirm={(id, yes) => {
               setOutcome(null);

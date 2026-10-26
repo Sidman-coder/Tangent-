@@ -31,7 +31,8 @@ export type CaptureOutcome =
   | { kind: "confirm"; id: string; message: string }
   | { kind: "preview"; changeSet: ChangeSet; preview: PreviewPayload }
   | { kind: "question"; said: string }
-  | { kind: "error"; said: string };
+  /** `said` empty: nothing was heard, so `message` says why and there is nothing to resend. */
+  | { kind: "error"; said: string; message?: string };
 
 const DUPLICATE = /^Skipped \d+ duplicate/;
 
@@ -56,6 +57,9 @@ export function outcomeFromReply(reply: ChatReply, said: string, dayLabel: (ymd:
   };
 }
 
-export function outcomeFromError(said: string): CaptureOutcome {
-  return { kind: "error", said };
+export const NOTHING_HEARD = "Couldn't hear that. Hold again to talk.";
+
+export function outcomeFromError(said: string, message?: string): CaptureOutcome {
+  if (said) return { kind: "error", said };
+  return { kind: "error", said: "", message: message || NOTHING_HEARD };
 }
