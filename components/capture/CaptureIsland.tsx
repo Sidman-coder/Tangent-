@@ -72,7 +72,12 @@ const CaptureIsland = forwardRef<HTMLButtonElement, Props>(function CaptureIslan
         whileTap={reduced || sorting || listening ? undefined : { scale: 0.965 }}
         transition={{ type: "spring", visualDuration: 0.45, bounce: 0.3 }}
         onPointerDown={(e) => {
-          e.currentTarget.setPointerCapture(e.pointerId);
+          // Capture can be refused (a pointer the browser no longer tracks); the press still counts.
+          try {
+            e.currentTarget.setPointerCapture(e.pointerId);
+          } catch {
+            /* released or synthetic pointer */
+          }
           onEvent({ type: "down", t: performance.now(), y: e.clientY });
         }}
         onPointerUp={(e) => onEvent({ type: "up", t: performance.now(), y: e.clientY })}
