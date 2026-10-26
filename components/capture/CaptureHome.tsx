@@ -26,6 +26,7 @@ import { wallClockNow } from "@/lib/time";
 import { outcomeFromError, type CaptureOutcome } from "@/lib/capture-outcome";
 import type { Task } from "@/lib/types";
 import { FOCUS_KEY, parseFocus, startFocus, type FocusSession } from "@/lib/focus-timer";
+import { revealCircle, type Point } from "@/lib/reveal-circle";
 import CaptureIsland from "./CaptureIsland";
 import FocusView, { saveFocus } from "./FocusView";
 import SortedCard from "./SortedCard";
@@ -56,9 +57,14 @@ export default function CaptureHome() {
   const [outcome, setOutcome] = useState<CaptureOutcome | null>(null);
   const [done, setDone] = useState<Record<string, boolean>>({});
   const islandRef = useRef<HTMLButtonElement>(null);
-  const [origin, setOrigin] = useState({ x: "50%", y: "92%" });
+  const [origin, setOrigin] = useState<Point>({ x: 0, y: 0 });
+  // Where the wash grows from: the island's centre, in viewport pixels.
+  const islandCentre = useCallback((): Point => {
+    const r = islandRef.current?.getBoundingClientRect();
+    return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : { x: window.innerWidth / 2, y: window.innerHeight - 90 };
+  }, []);
   const sendTimer = useRef<number | null>(null);
-  const [focus, setFocus] = useState<{ session: FocusSession; origin: { x: string; y: string } } | null>(null);
+  const [focus, setFocus] = useState<{ session: FocusSession; origin: Point } | null>(null);
 
   const listening = hold.state === "listening";
 
@@ -118,8 +124,7 @@ export default function CaptureHome() {
     const v = voiceRef.current;
     switch (effect) {
       case "start-listening": {
-        const r = islandRef.current?.getBoundingClientRect();
-        if (r) setOrigin({ x: `${r.left + r.width / 2}px`, y: `${r.top + r.height / 2}px` });
+        setOrigin(islandCentre());
         setWords("");
         setOutcome(null);
         navigator.vibrate?.(8);
@@ -193,6 +198,7 @@ export default function CaptureHome() {
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("capture") !== "1") return;
     window.history.replaceState(null, "", "/");
+    setOrigin(islandCentre());
     holdRef.current = { ...listeningWithoutPress, seq: holdRef.current.seq };
     setHold(holdRef.current);
     setTapToStop(true);
@@ -244,7 +250,7 @@ export default function CaptureHome() {
       saved = null;
     }
     const task = saved && state.tasks.find((t) => t.id === saved!.taskId && !t.completed);
-    if (saved && task) setFocus({ session: saved, origin: { x: "50%", y: "50%" } });
+    if (saved && task) setFocus({ session: saved, origin: { x: window.innerWidth / 2, y: window.innerHeight / 2 } });
     else if (saved) saveFocus(null);
   }, [state]);
 
@@ -252,7 +258,7 @@ export default function CaptureHome() {
     const r = from.getBoundingClientRect();
     const session = startFocus(task.id, Date.now());
     saveFocus(session);
-    setFocus({ session, origin: { x: `${r.left + r.width / 2}px`, y: `${r.top + r.height / 2}px` } });
+    setFocus({ session, origin: { x: r.left + r.width / 2, y: r.top + r.height / 2 } });
   }, []);
   const endFocus = useCallback(() => {
     saveFocus(null);
@@ -280,6 +286,7 @@ export default function CaptureHome() {
   }, [clearFreshSet]);
 
   const washOn = listening;
+  const wash = revealCircle(origin, typeof window === "undefined" ? { width: 0, height: 0 } : { width: window.innerWidth, height: window.innerHeight });
   const count = rows.length;
 
   return (
@@ -339,10 +346,9 @@ export default function CaptureHome() {
           <m.div
             key="wash"
             className="capture-wash"
-            style={{ ["--wx" as string]: origin.x, ["--wy" as string]: origin.y }}
-            initial={reduced ? { opacity: 0 } : { clipPath: `circle(0px at ${origin.x} ${origin.y})` }}
-            animate={reduced ? { opacity: 1 } : { clipPath: `circle(150vmax at ${origin.x} ${origin.y})`, transition: { duration: 0.75, ease: EASE_OUT } }}
-            exit={reduced ? { opacity: 0 } : { clipPath: `circle(0px at ${origin.x} ${origin.y})`, transition: { duration: 0.55, ease: EASE_IN } }}
+            initial={reduced ? { opacity: 0 } : { clipPath: wash.from }}
+            animate={reduced ? { opacity: 1 } : { clipPath: wash.to, transition: { duration: 0.75, ease: EASE_OUT } }}
+            exit={reduced ? { opacity: 0 } : { clipPath: wash.from, transition: { duration: 0.55, ease: EASE_IN } }}
             aria-hidden="true"
           >
             {!reduced && (

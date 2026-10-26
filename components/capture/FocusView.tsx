@@ -9,6 +9,7 @@ import { useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
 import { canFireDesktopNotifications } from "@/lib/desktop-notifications";
 import { FOCUS_KEY, FOCUS_MINUTES, extendFocus, firstStep, remainingMs, type FocusSession } from "@/lib/focus-timer";
+import { revealCircle, type Point } from "@/lib/reveal-circle";
 import type { Task } from "@/lib/types";
 
 const R = 88;
@@ -31,7 +32,7 @@ function clock(ms: number): string {
 type Props = {
   task: Task;
   session: FocusSession;
-  origin: { x: string; y: string };
+  origin: Point;
   onSession: (s: FocusSession) => void;
   onDone: () => void;
   onStop: () => void;
@@ -61,6 +62,7 @@ export default function FocusView({ task, session, origin, onSession, onDone, on
   }, [over, task.id, task.title]);
 
   const progress = Math.min(1, left / total);
+  const wash = revealCircle(origin, { width: window.innerWidth, height: window.innerHeight });
 
   return (
     <m.div
@@ -68,9 +70,9 @@ export default function FocusView({ task, session, origin, onSession, onDone, on
       role="dialog"
       aria-modal="true"
       aria-label={`Focus: ${task.title}`}
-      initial={reduced ? { opacity: 0 } : { clipPath: `circle(0px at ${origin.x} ${origin.y})` }}
-      animate={reduced ? { opacity: 1 } : { clipPath: `circle(150vmax at ${origin.x} ${origin.y})`, transition: { duration: 0.75, ease: [0.16, 1, 0.3, 1] } }}
-      exit={reduced ? { opacity: 0 } : { clipPath: `circle(0px at ${origin.x} ${origin.y})`, transition: { duration: 0.55, ease: [0.5, 0, 0.75, 0] } }}
+      initial={reduced ? { opacity: 0 } : { clipPath: wash.from }}
+      animate={reduced ? { opacity: 1 } : { clipPath: wash.to, transition: { duration: 0.75, ease: [0.16, 1, 0.3, 1] } }}
+      exit={reduced ? { opacity: 0 } : { clipPath: wash.from, transition: { duration: 0.55, ease: [0.5, 0, 0.75, 0] } }}
     >
       {!reduced && (
         <>
