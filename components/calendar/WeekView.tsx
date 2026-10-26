@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { m, useReducedMotion } from "motion/react";
 import type { Task } from "@/lib/types";
 import TaskTitle from "@/components/ui/TaskTitle";
+import { isCanvasCleared } from "@/lib/canvas-clear";
 
 // The week as a time grid: seven day columns, hours down the side, each task a
 // block at its time. This is the view people now expect from a calendar - you
@@ -139,7 +140,7 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
                   <button
                     key={t.id}
                     type="button"
-                    className={`wk-due-item${t.completed ? " is-done" : ""}`}
+                    className={`wk-due-item${t.completed ? " is-done" : ""}${isCanvasCleared(t, todayYmd) ? " is-cleared" : ""}`}
                     style={{ "--block": colorFor(t) } as React.CSSProperties}
                     onClick={() => (onOpenTask ? onOpenTask(ymd, t.id) : onOpenDay(ymd))}
                     title={t.title}
@@ -190,7 +191,7 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
                     <m.button
                       key={task.id}
                       type="button"
-                      className={`wk-block${task.completed ? " is-done" : ""}`}
+                      className={`wk-block${task.completed ? " is-done" : ""}${isCanvasCleared(task, todayYmd) ? " is-cleared" : ""}`}
                       style={
                         {
                           top: top + 1,

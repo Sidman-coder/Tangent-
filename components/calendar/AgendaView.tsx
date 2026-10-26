@@ -4,6 +4,7 @@ import { m, useReducedMotion } from "motion/react";
 import { CalendarPlus, Check } from "lucide-react";
 import type { Task } from "@/lib/types";
 import TaskTitle from "@/components/ui/TaskTitle";
+import { isCanvasCleared } from "@/lib/canvas-clear";
 
 // What's coming, as a list: every day in the range that has anything on it,
 // with its tasks in time order. The fastest way to answer "what do I have this
@@ -72,7 +73,7 @@ export default function AgendaView({ days, todayYmd, tasksForDay, colorFor, onOp
             <ul className="ag-list">
               {tasks.length === 0 && <li className="ag-none">Nothing scheduled.</li>}
               {tasks.map((t) => (
-                <li key={t.id} className={`ag-item${t.completed ? " is-done" : ""}`} style={{ "--item": colorFor(t) } as React.CSSProperties}>
+                <li key={t.id} className={`ag-item${t.completed ? " is-done" : ""}${isCanvasCleared(t, todayYmd) ? " is-cleared" : ""}`} style={{ "--item": colorFor(t) } as React.CSSProperties}>
                   <button
                     type="button"
                     className="ag-check"

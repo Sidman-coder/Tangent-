@@ -192,6 +192,14 @@
   opacity: 0.4;
 }
 
+/* Canvas work past due by CANVAS_CLEAR_DAYS: handled, kept to look back on. */
+.cal-event.is-cleared,
+.calendar-page .wk-block.is-cleared,
+.wk-due-item.is-cleared,
+.calendar-page .ag-item.is-cleared {
+  opacity: 0.45;
+}
+
 .cal-event-more {
   padding-left: 15px;
   color: var(--text-3);

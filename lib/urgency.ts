@@ -4,6 +4,7 @@
 
 import type { Task } from "./types";
 import { toYMD } from "./dates";
+import { isCanvasCleared } from "./canvas-clear";
 
 /** Scheduled tasks starting within this window count as "soon". */
 export const SOON_WINDOW_MINUTES = 180;
@@ -100,7 +101,7 @@ export function getUrgency(tasks: Task[], now: Date = new Date()): UrgencySummar
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
 
   const items = tasks
-    .filter((task) => !task.completed && tracksCompletion(task))
+    .filter((task) => !task.completed && tracksCompletion(task) && !isCanvasCleared(task, today))
     .map((task) => classify(task, now, today, nowMinutes))
     .filter((item): item is AttentionItem => item !== null)
     .sort((a, b) => {

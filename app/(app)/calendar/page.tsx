@@ -13,6 +13,7 @@ import Button from "@/components/ui/Button";
 import SidePeek from "@/components/ui/SidePeek";
 import { handleResourceClick } from "@/lib/task-utils";
 import { toYMD, formatTime12 } from "@/lib/dates";
+import { isCanvasCleared } from "@/lib/canvas-clear";
 import { KIND_LABEL, TASK_GROUPS, taskColor, taskGroup, type TaskGroup } from "@/lib/task-colors";
 import { isOnboardingSchoolTask } from "@/lib/school-block";
 import { baseTitle, useShortTitles } from "@/lib/short-titles";
@@ -153,8 +154,9 @@ export default function CalendarPage() {
   }, [plans]);
 
   const getTaskCategoryColor = useCallback(
-    (t: Task): string => taskColor(t, plans),
-    [plans]
+    // Handled Canvas work (lib/canvas-clear) stays to look back on, in grey.
+    (t: Task): string => (isCanvasCleared(t, todayYmd) ? "var(--kind-default)" : taskColor(t, plans)),
+    [plans, todayYmd]
   );
 
   const tasksForDay = useCallback((ymd: string): Task[] => {
@@ -517,7 +519,7 @@ export default function CalendarPage() {
                           return (
                             <span
                               key={t.id}
-                              className={`cal-event${t.completed ? " is-done" : ""}${deadline ? " is-deadline" : ""}`}
+                              className={`cal-event${t.completed ? " is-done" : ""}${isCanvasCleared(t, todayYmd) ? " is-cleared" : ""}${deadline ? " is-deadline" : ""}`}
                               style={{ "--chip": getTaskCategoryColor(t) } as React.CSSProperties}
                               onClick={(e) => {
                                 // The event opens in the middle, like Google

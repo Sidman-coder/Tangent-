@@ -26,6 +26,7 @@ import QuestionsInbox from "@/components/dashboard/QuestionsInbox";
 import { useQuestionSets } from "@/hooks/useQuestionSets";
 import { taskColor } from "@/lib/task-colors";
 import { getUrgency, tracksCompletion } from "@/lib/urgency";
+import { withoutClearedCanvas } from "@/lib/canvas-clear";
 
 type Override = Partial<Pick<Task, "completed" | "date" | "time">>;
 
@@ -131,8 +132,8 @@ export default function DashboardPage() {
 
   // The onboarding School block holds the student's school hours for the
   // scheduler and the week insights below; it is not a to-do, so it never
-  // shows as a row.
-  const doable = useMemo(() => tasks.filter((t) => !isOnboardingSchoolTask(t)), [tasks]);
+  // shows as a row. Canvas work long past due counts as handled (lib/canvas-clear).
+  const doable = useMemo(() => withoutClearedCanvas(tasks.filter((t) => !isOnboardingSchoolTask(t)), today), [tasks, today]);
   const urgency = useMemo(() => getUrgency(doable, now), [now, doable]);
   const attentionIds = useMemo(() => new Set(urgency.items.map((i) => i.task.id)), [urgency]);
   const insight = useMemo(() => getSchedulePulse(tasks, now), [now, tasks]);

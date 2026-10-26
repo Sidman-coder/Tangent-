@@ -9,6 +9,7 @@
 
 import { getAllTasks, getContextAsString, addNotification, getUserTimezone } from "@/lib/store";
 import { isSchoolBlock } from "@/lib/schedule-slots";
+import { isCanvasCleared } from "@/lib/canvas-clear";
 import { formatTime12 } from "@/lib/dates";
 import { addDaysYMD, currentInstant, getUserToday } from "@/lib/time";
 import type { Notification } from "@/lib/types";
@@ -85,7 +86,8 @@ export async function runProactiveCheck(trigger: string): Promise<ProactiveCheck
     const today = getUserToday(timeZone, now);
     const inThreeDays = addDaysYMD(getUserToday(timeZone, now), 3);
     const todayTasks = tasks.filter((t) => t.date === today);
-    const overdueTasks = tasks.filter((t) => !t.completed && t.date < today);
+    // Canvas work past CANVAS_CLEAR_DAYS counts as handled (the feed has no submissions).
+    const overdueTasks = tasks.filter((t) => !t.completed && t.date < today && !isCanvasCleared(t, today));
     const upcomingTasks = tasks.filter(
       (t) =>
         !t.completed &&
