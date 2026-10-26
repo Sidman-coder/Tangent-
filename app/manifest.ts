@@ -1,8 +1,8 @@
 import type { MetadataRoute } from "next";
 
 // Lets Tangent be added to a phone's home screen as an app, with a "Capture"
-// shortcut (long-press the icon on Android) that opens Today already listening
-// — Today opens its Add box listening on ?capture=1 (app/(app)/page.tsx). iOS ignores manifest shortcuts; on an
+// shortcut (long-press the icon on Android) that opens the capture home already
+// listening on ?capture=1 (components/capture/CaptureHome.tsx). iOS ignores manifest shortcuts; on an
 // iPhone the same URL can be bound to the Action button or Back Tap through
 // the Shortcuts app.
 export default function manifest(): MetadataRoute.Manifest {

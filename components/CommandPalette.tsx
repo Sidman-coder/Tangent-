@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAppState } from "@/components/AppStateProvider";
 import Link from "next/link";
 import { contextActions, type ContextAction } from "@/lib/context-actions";
@@ -281,6 +281,10 @@ export default function CommandPalette() {
   const stopVoiceRef = useRef(stopVoiceRecording);
   startVoiceRef.current = startVoiceRecording;
   stopVoiceRef.current = stopVoiceRecording;
+  // The capture home's mic island owns Space there (hold to talk).
+  const pathname = usePathname();
+  const pathRef = useRef(pathname);
+  pathRef.current = pathname;
 
   useEffect(() => {
     let holdTimer: number | null = null;
@@ -288,7 +292,7 @@ export default function CommandPalette() {
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code !== "Space" || e.repeat) return;
-      if (isFormField(e.target) || openRef.current) return;
+      if (isFormField(e.target) || openRef.current || pathRef.current === "/") return;
       if (holdTimer !== null || holding) return;
       holdTimer = window.setTimeout(() => {
         holdTimer = null;

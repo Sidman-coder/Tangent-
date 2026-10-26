@@ -40,37 +40,37 @@ type Step = {
 
 const STEPS: Step[] = [
   {
-    route: "/",
+    route: "/today",
     title: "Tangent in two minutes",
     body: "A quick walk through everything Tangent does. Use the arrow keys or the buttons; Esc ends it any time.",
   },
   {
-    route: "/",
+    route: "/today",
     target: [".add-flow.is-hero"],
     title: "Add anything, typed or spoken",
     body: "This is the heart of Tangent. Type it, or tap the mic and say it. Tangent works out whether it's a task or a project, asks a question or two when that helps (skip them any time), then puts it on your calendar or in the project, with Undo.",
     demo: { label: "Try it now", run: () => window.dispatchEvent(new CustomEvent("tangent:open-palette", { detail: { prefill: "prep for my chem final" } })) },
   },
   {
-    route: "/",
+    route: "/today",
     target: [".float-mic"],
     title: "Say it from anywhere",
     body: "The mic in the bottom corner is on every page: tap it and talk, and it goes through the same Add flow. Press ⌘K to type instead. Questions go to Tangent AI and long-range goals become Tangents, from the same box.",
   },
   {
-    route: "/",
+    route: "/today",
     target: [".today-card"],
     title: "Today, in one list",
     body: "What needs attention sits at the top with why (overdue, starting soon, a Canvas deadline) and a Tomorrow button. The rest of your day follows. Click any task to open it in the middle.",
   },
   {
-    route: "/",
+    route: "/today",
     target: ["#questions"],
     title: "Questions you skipped wait here",
     body: "If you skip Tangent's questions, or capture something quickly, they wait here. Answer whenever you like; every answer sharpens the task and teaches Tangent about you.",
   },
   {
-    route: "/",
+    route: "/today",
     target: [".week-strip"],
     title: "It spaces your week",
     body: "Tangent knows how much you can handle in a day. New work lands on lighter days, and if one gets overloaded it suggests a move. Nothing moves without your tap.",
@@ -118,7 +118,7 @@ const STEPS: Step[] = [
     body: "Everything Tangent has learned about you, in one place. Forget anything wrong, or tell it something new.",
   },
   {
-    route: "/",
+    route: "/today",
     title: "That's Tangent",
     body: "Add it, answer a question or two, and let Tangent place it. You can take this tour again from Settings → Onboarding.",
   },

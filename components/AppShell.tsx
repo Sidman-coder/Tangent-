@@ -43,7 +43,7 @@ function OrbitIcon({ size = 19 }: { size?: number; strokeWidth?: number; "aria-h
 }
 
 const NAV_LINKS = [
-  { href: "/", label: "Today", icon: Home },
+  { href: "/today", label: "Today", icon: Home },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/tangents", label: "Tangents", icon: OrbitIcon },
@@ -124,6 +124,30 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const openListening = () => window.dispatchEvent(new CustomEvent("tangent:open-palette", { detail: { listen: true } }));
 
+  const firstRun = showOnboarding && (
+    <FirstRun
+      onComplete={async () => {
+        await refresh();
+        setShowOnboarding(false);
+        // Setup as a conversation: right after the form, Tangent asks.
+        window.dispatchEvent(new Event(GET_TO_KNOW_EVENT));
+      }}
+    />
+  );
+
+  // The capture home (/) is the whole screen: just the list and the mic
+  // island. No rail, top bar, mobile nav or floating mic; "Open app" leads in.
+  if (pathname === "/") {
+    return (
+      <div className="shell is-bare">
+        {children}
+        <CommandPalette />
+        <GetToKnowYou />
+        {firstRun}
+      </div>
+    );
+  }
+
   return (
     <div className="shell">
       <a href="#main-content" className="skip-link">Skip to main content</a>
@@ -135,7 +159,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         <nav className="rail-nav" aria-label="Primary">
           {NAV_LINKS.filter((l) => l.href !== "/tangents" && l.href !== "/settings").map(({ href, label, icon: Icon }) => {
-            const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+            const active = pathname.startsWith(href);
             return (
               <Link
                 key={href}
@@ -222,7 +246,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       <nav className="mobile-nav lg" aria-label="Primary mobile navigation">
         {NAV_LINKS.map(({ href, label, icon: Icon }) => {
-          const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+          const active = pathname.startsWith(href);
           return (
             <Link
               key={href}
@@ -250,14 +274,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <GetToKnowYou />
       {!showOnboarding && <DesktopNotifPrompt />}
 
-      {showOnboarding && <FirstRun
-          onComplete={async () => {
-            await refresh();
-            setShowOnboarding(false);
-            // Setup as a conversation: right after the form, Tangent asks.
-            window.dispatchEvent(new Event(GET_TO_KNOW_EVENT));
-          }}
-        />}
+      {firstRun}
     </div>
   );
 }
