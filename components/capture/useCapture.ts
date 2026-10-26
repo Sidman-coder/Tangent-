@@ -40,11 +40,15 @@ async function chat(said: string, toProject: boolean, firstPass: boolean): Promi
 export function useCapture() {
   const { refresh } = useAppState();
   const [freshSet, setFreshSet] = useState<QuestionSet | null>(null);
+  // True while this capture's own questions are still being written, so the
+  // card waits before offering an older parked question instead.
+  const [questionsPending, setQuestionsPending] = useState(false);
 
   const capture = useCallback(
     async (said: string): Promise<CaptureOutcome> => {
       const words = said.trim();
       setFreshSet(null);
+      setQuestionsPending(false);
       const route = routeAsk(words);
       // A question goes to Tangent AI by choice (a chip), never by surprise.
       if (route === "question") return { kind: "question", said: words };
@@ -56,8 +60,10 @@ export function useCapture() {
         void refresh();
         // Questions arrive after the card is up; it shows them when they land.
         if (reply.taskId) {
+          setQuestionsPending(true);
           void generateQuestions(reply.taskId, words, reply.quick === true).then((set) => {
             if (set?.questions.length) setFreshSet(set);
+            setQuestionsPending(false);
             void refresh();
           });
         }
@@ -89,5 +95,5 @@ export function useCapture() {
     [refresh]
   );
 
-  return { capture, confirm, freshSet, clearFreshSet: useCallback(() => setFreshSet(null), []) };
+  return { capture, confirm, freshSet, questionsPending, clearFreshSet: useCallback(() => setFreshSet(null), []) };
 }

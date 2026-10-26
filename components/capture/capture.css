@@ -1,0 +1,456 @@
+/* The capture home (components/capture/CaptureHome.tsx). Matches the
+   approved mockup, capture-home-v3.html: a to-do list, one frosted glass
+   island that is the mic, and a lavender takeover while you talk. */
+
+.capture-home {
+  --lav: #e4dcfb;
+  --lav-2: #cfc2f7;
+  --lav-3: #f1ecff;
+  --blob-1: #b7a4f5;
+  --blob-2: #f0c9f2;
+  --wash-ink: #2b2160;
+  --wash-hint: #6b5fae;
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+}
+[data-theme="dark"] .capture-home {
+  --lav: #2a2150;
+  --lav-2: #3a2d70;
+  --lav-3: #1f1840;
+  --blob-1: #5b47c4;
+  --blob-2: #8a3f8f;
+  --wash-ink: #f1ecff;
+  --wash-hint: #c4b8f5;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .capture-home {
+    --lav: #2a2150;
+    --lav-2: #3a2d70;
+    --lav-3: #1f1840;
+    --blob-1: #5b47c4;
+    --blob-2: #8a3f8f;
+    --wash-ink: #f1ecff;
+    --wash-hint: #c4b8f5;
+  }
+}
+
+.capture-page {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: calc(18px + env(safe-area-inset-top, 0px)) 16px calc(220px + env(safe-area-inset-bottom, 0px));
+  transform-origin: 50% 85%;
+}
+
+.capture-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 6px 6px;
+}
+.capture-wordmark {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 22px;
+  letter-spacing: -0.03em;
+}
+.capture-open-app {
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.capture-title {
+  margin: 14px 6px 2px;
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+.capture-count {
+  margin: 0 6px 14px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.capture-empty {
+  margin: 40px 6px;
+  font-size: 15px;
+  color: var(--text-2);
+}
+
+.capture-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.capture-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 14px 6px 12px;
+  border-radius: var(--r-lg, 18px);
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(28 24 48 / 0.05);
+  transform-origin: 50% 0;
+}
+.capture-check {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1.8px solid var(--line-strong, #c3bdd9);
+  border-radius: 50%;
+  background: transparent;
+  color: transparent;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.capture-check:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.capture-row-body {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.capture-row-title {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.capture-row-sub {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.capture-row.is-overdue .capture-row-sub {
+  color: var(--cat-canvas);
+}
+.capture-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+/* ── The lavender takeover ─────────────────────────────────────────── */
+.capture-wash {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  overflow: hidden;
+  pointer-events: none;
+  background: radial-gradient(120% 80% at 50% 100%, var(--lav-2), var(--lav) 55%, var(--lav-3));
+}
+.capture-blob {
+  position: absolute;
+  width: 340px;
+  height: 340px;
+  border-radius: 50%;
+  filter: blur(50px);
+  opacity: 0.75;
+}
+.capture-blob.is-one {
+  left: -90px;
+  top: 25%;
+  background: var(--blob-1);
+  animation: capture-drift-1 7s ease-in-out infinite;
+}
+.capture-blob.is-two {
+  right: -110px;
+  top: 48%;
+  background: var(--blob-2);
+  animation: capture-drift-2 9s ease-in-out infinite;
+}
+@keyframes capture-drift-1 { 50% { transform: translate(60px, -40px) scale(1.15); } }
+@keyframes capture-drift-2 { 50% { transform: translate(-50px, 30px) scale(0.9); } }
+
+.capture-live {
+  position: relative;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: calc(120px + env(safe-area-inset-top, 0px)) 28px 0;
+}
+.capture-listening {
+  margin: 0 0 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--wash-hint);
+}
+.capture-words {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.18;
+  letter-spacing: -0.025em;
+  color: var(--wash-ink);
+}
+.capture-words > span {
+  display: inline-block;
+  margin-right: 0.24em;
+}
+
+/* ── The island ────────────────────────────────────────────────────── */
+.capture-dock {
+  position: fixed;
+  z-index: 90;
+  left: 50%;
+  bottom: calc(30px + env(safe-area-inset-bottom, 0px));
+  width: min(528px, calc(100vw - 32px));
+  transform: translateX(-50%);
+}
+.capture-tail {
+  margin: 0 12px 10px;
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--text-2);
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.capture-island {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  width: 100%;
+  height: 120px;
+  padding: 0 24px;
+  overflow: hidden;
+  border: 1px solid var(--lg-edge);
+  border-radius: 60px;
+  background: var(--glass-catch), var(--lg-fill-strong);
+  -webkit-backdrop-filter: blur(22px) saturate(1.8);
+  backdrop-filter: blur(22px) saturate(1.8);
+  color: var(--wash-ink);
+  font: 700 20px var(--font-body);
+  cursor: pointer;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim-top),
+    inset 0 -1px 0 var(--lg-rim-bottom),
+    0 0 0 1px rgb(from var(--accent) r g b / 0.14),
+    0 18px 40px -10px rgb(from var(--accent) r g b / 0.45);
+  transition: box-shadow 0.5s;
+}
+.capture-island:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+.capture-island.is-listening {
+  animation: capture-halo 1.8s ease-in-out 0.6s infinite;
+}
+@keyframes capture-halo {
+  0%, 100% { box-shadow: inset 0 1px 0 var(--lg-rim-top), 0 0 0 1px rgb(from var(--accent) r g b / 0.3), 0 0 0 0 rgb(155 130 240 / 0), 0 24px 60px -10px rgb(from var(--accent) r g b / 0.6); }
+  50% { box-shadow: inset 0 1px 0 var(--lg-rim-top), 0 0 0 1px rgb(from var(--accent) r g b / 0.35), 0 0 0 10px rgb(155 130 240 / 0.14), 0 24px 60px -10px rgb(from var(--accent) r g b / 0.6); }
+}
+.capture-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(70% 140% at 50% 120%, rgb(155 130 240 / 0.55), transparent 70%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.5s;
+}
+.capture-island.is-listening .capture-glow {
+  opacity: 1;
+  animation: capture-breathe 1.8s ease-in-out infinite;
+}
+@keyframes capture-breathe { 50% { opacity: 0.55; } }
+.capture-shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgb(207 194 247 / 0.65) 50%, transparent 70%);
+  transform: translateX(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+.capture-island.is-sorting .capture-shimmer {
+  opacity: 1;
+  animation: capture-shimmer 1.6s ease-in-out infinite;
+}
+@keyframes capture-shimmer { to { transform: translateX(100%); } }
+.capture-mic {
+  position: relative;
+  flex: none;
+  color: var(--accent);
+  transition: transform 0.6s cubic-bezier(0.22, 1.2, 0.36, 1);
+}
+.capture-island.is-listening .capture-mic {
+  transform: scale(1.15);
+}
+.capture-label {
+  position: relative;
+  display: grid;
+}
+.capture-label > span {
+  grid-area: 1 / 1;
+}
+.capture-wave {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 0;
+  height: 40px;
+  opacity: 0;
+  transition: width 0.6s cubic-bezier(0.22, 1.2, 0.36, 1), opacity 0.3s;
+}
+.capture-island.is-listening .capture-wave {
+  width: 92px;
+  opacity: 1;
+}
+.capture-wave > span {
+  flex: none;
+  width: 5px;
+  height: 40px;
+  border-radius: 3px;
+  background: linear-gradient(var(--accent), #9b82f0);
+  transform: scaleY(0.2);
+}
+.capture-type-hint {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: var(--text-2);
+  text-align: center;
+  transition: opacity 0.3s;
+}
+.capture-island.is-listening + .capture-type-hint,
+.capture-island.is-sorting + .capture-type-hint {
+  opacity: 0;
+}
+
+/* ── The Sorted card ───────────────────────────────────────────────── */
+.sorted-catcher {
+  position: fixed;
+  inset: 0;
+  z-index: 84;
+}
+.sorted-card {
+  position: fixed;
+  z-index: 85;
+  left: 50%;
+  bottom: calc(176px + env(safe-area-inset-bottom, 0px));
+  width: min(528px, calc(100vw - 28px));
+  margin-left: calc(min(528px, calc(100vw - 28px)) / -2);
+  padding: 14px;
+  border-radius: 22px;
+  background: rgb(from var(--surface) r g b / 0.78);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  backdrop-filter: blur(20px) saturate(1.6);
+  box-shadow: 0 0 0 1px rgb(from var(--accent) r g b / 0.12), 0 20px 40px -12px rgb(28 24 48 / 0.3);
+  font-size: 14px;
+  touch-action: none;
+}
+.sorted-label {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.sorted-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+.sorted-line i {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.sorted-line b {
+  overflow: hidden;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sorted-line span {
+  flex: none;
+  color: var(--text-2);
+}
+.sorted-after {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgb(from var(--accent) r g b / 0.12);
+}
+.sorted-after:empty {
+  display: none;
+}
+.sorted-text,
+.sorted-question {
+  margin: 0;
+}
+.sorted-question em {
+  font-style: normal;
+  font-weight: 650;
+}
+.sorted-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.capture-chip {
+  padding: 7px 12px;
+  border-radius: 999px;
+  font: 600 13px var(--font-body);
+  color: var(--accent);
+  cursor: pointer;
+  transition: transform 0.3s cubic-bezier(0.22, 1.2, 0.36, 1);
+}
+.capture-chip:active {
+  transform: scale(0.94);
+}
+.capture-chip.is-quiet {
+  color: var(--text-2);
+}
+.sorted-retry {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cat-canvas);
+  font: 600 14px var(--font-body);
+  text-align: left;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .capture-blob,
+  .capture-island.is-listening,
+  .capture-island.is-listening .capture-glow,
+  .capture-island.is-sorting .capture-shimmer {
+    animation: none;
+  }
+}

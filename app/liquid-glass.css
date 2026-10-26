@@ -584,7 +584,8 @@ body :is(button, a, [role="button"]):is(
   .tg-clarify-btn.is-primary, .tg-btn-accent, .tg-brief-pill, .tg-mic.is-idle, .tg-send:not(:disabled), .tg-chip.is-on,
   .knows-gtk, .knows-add-btn:not(:disabled), .gtk-primary, .gtk-send, .gtk-mic.is-on, .cmdk-mic.is-on,
   .tour-primary, .pchat-send:not(:disabled), .preview-card-btn.is-primary, .not-found-home,
-  .add-send:not(:disabled), .add-mic.is-on, .add-projects button.is-on, .setup-nudge-go
+  .add-send:not(:disabled), .add-mic.is-on, .add-projects button.is-on, .setup-nudge-go,
+  .capture-chip.is-primary
 ) {
   border: 1px solid rgb(255 255 255 / 0.38);
   background: var(--glass-catch), rgb(from var(--accent) r g b / 0.76);
@@ -611,7 +612,8 @@ body :is(button, a, [role="button"]):is(
   .knows-secondary, .knows-forget, .gtk-mic:not(.is-on), .cmdk-mic:not(.is-on), .tour-secondary,
   .attention-defer, .ui-task-help, .action-receipt-undo, .calendar-task-remove, .import-ctx-prompt button,
   .td-icon, .td-secondary, .notif-summary-btn, .side-peek-close, .resource-link, .preview-card-btn:not(.is-primary),
-  .add-mic:not(.is-on), .topbar-mic
+  .add-mic:not(.is-on), .topbar-mic,
+  .capture-open-app, .capture-chip:not(.is-primary)
 ) {
   border: 1px solid var(--lg-edge);
   background: var(--glass-catch), var(--lg-fill-strong);
