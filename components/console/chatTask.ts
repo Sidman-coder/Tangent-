@@ -4,7 +4,7 @@
 
 import type { ChatSession } from "@/lib/types";
 import type { AppState, Task } from "@/lib/types";
-import { KIND_LABEL, taskColor } from "@/lib/task-colors";
+import { categoryLabel, taskColor } from "@/lib/task-colors";
 
 export type ChatTask = {
   color: string;
@@ -38,11 +38,11 @@ export function resolveChatTask(session: ChatSession, state: AppState | null): C
   const primary = linked[0];
   const sessions = linked.slice().sort(byDate);
   const titles = new Set(linked.map((t) => t.title));
-  const kind = KIND_LABEL[primary.kind ?? "personal"];
+  const kind = categoryLabel(primary);
   return {
     color: taskColor(primary),
     name: titles.size > 1 ? `${primary.title} +${titles.size - 1} more` : primary.title,
-    detail: `${kind} · ${sessions.length} session${sessions.length === 1 ? "" : "s"}`,
+    detail: `${kind ? `${kind} · ` : ""}${sessions.length} session${sessions.length === 1 ? "" : "s"}`,
     sessions,
   };
 }

@@ -17,7 +17,7 @@ import { useAppState } from "@/components/AppStateProvider";
 import { splitCourse } from "@/lib/course";
 import { generateQuestions } from "@/lib/questions-client";
 import { formatTime12 } from "@/lib/dates";
-import { KIND_LABEL, taskColor } from "@/lib/task-colors";
+import { categoryLabel, taskColor } from "@/lib/task-colors";
 import type { Task } from "@/lib/types";
 import "./task-detail.css";
 
@@ -206,7 +206,7 @@ export default function TaskDetail() {
 
                     <div className="td-meta">
                       {course && <span className="td-chip">{course}</span>}
-                      {task.kind && <span className="td-chip is-quiet">{KIND_LABEL[task.kind]}</span>}
+                      {categoryLabel(task) && <span className="td-chip is-quiet">{categoryLabel(task)}</span>}
                       {task.recurring?.enabled && <span className="td-chip is-quiet">Repeats</span>}
                       {plan && (
                         <Link href={`/projects/${plan.id}`} className="td-chip is-link" onClick={close}>

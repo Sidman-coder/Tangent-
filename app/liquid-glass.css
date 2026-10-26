@@ -384,7 +384,6 @@
 /* Stragglers found by a sweep of every page (buttons with a fill that weren't
    glass, or weren't capsules/circles). Same three kinds as above. */
 .tg-brief-pill,
-.tg-mic.is-idle,
 .tg-send:not(:disabled) {
   border: 1px solid rgb(255 255 255 / 0.28);
   background: rgb(from var(--accent) r g b / 0.88);
@@ -419,6 +418,11 @@
 
 .tg-brief-pill,
 .tg-new-chat,
+/* The AI composer's mic at rest: clear glass, accent glyph, like every mic. */
+.tg-mic.is-idle {
+  color: var(--accent);
+}
+
 .notif-summary-btn,
 .resource-link,
 .topbar-search,
@@ -581,7 +585,7 @@
 /* Prominent: the one main action. Iris, translucent, lit from above. */
 body :is(button, a, [role="button"]):is(
   .lg-tint, .ui-button--primary, .surface-action-primary, .neu-btn-primary,
-  .tg-clarify-btn.is-primary, .tg-btn-accent, .tg-brief-pill, .tg-mic.is-idle, .tg-send:not(:disabled), .tg-chip.is-on,
+  .tg-clarify-btn.is-primary, .tg-btn-accent, .tg-brief-pill, .tg-send:not(:disabled), .tg-chip.is-on,
   .knows-gtk, .knows-add-btn:not(:disabled), .gtk-primary, .gtk-send, .gtk-mic.is-on, .cmdk-mic.is-on,
   .tour-primary, .pchat-send:not(:disabled), .preview-card-btn.is-primary, .not-found-home,
   .add-send:not(:disabled), .add-mic.is-on, .add-projects button.is-on, .setup-nudge-go,
@@ -612,7 +616,8 @@ body :is(button, a, [role="button"]):is(
   .knows-secondary, .knows-forget, .gtk-mic:not(.is-on), .cmdk-mic:not(.is-on), .tour-secondary,
   .attention-defer, .ui-task-help, .action-receipt-undo, .calendar-task-remove, .import-ctx-prompt button,
   .td-icon, .td-secondary, .notif-summary-btn, .side-peek-close, .resource-link, .preview-card-btn:not(.is-primary),
-  .add-mic:not(.is-on), .topbar-mic,
+  /* Every mic at rest is clear glass with an accent glyph (AI, Add, float, capture). */
+  .add-mic:not(.is-on), .topbar-mic, .tg-mic.is-idle,
   .capture-open-app, .capture-chip:not(.is-primary), .capture-start
 ) {
   border: 1px solid var(--lg-edge);

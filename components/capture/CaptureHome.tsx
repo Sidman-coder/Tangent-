@@ -371,6 +371,10 @@ export default function CaptureHome() {
         )}
       </m.div>
 
+      {/* The list dissolves into the page behind the island instead of running
+          under it (it steps aside while the wash is up). */}
+      <div className={`capture-fade${washOn ? " is-hidden" : ""}`} aria-hidden="true" />
+
       {/* The lavender takeover, grown from the island's centre. */}
       <AnimatePresence>
         {washOn && (

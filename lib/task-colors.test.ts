@@ -19,7 +19,7 @@ type Resolve = (specifier: string, context: unknown, next: (s: string, c: unknow
 
 
 type Mod = typeof import("./task-colors");
-void (import("./task-colors") as Promise<Mod>).then(({ taskCategory, taskColor, CATEGORY_LABEL }) => {
+void (import("./task-colors") as Promise<Mod>).then(({ taskCategory, taskColor, CATEGORY_LABEL, categoryLabel, groupByCategory }) => {
   test("Canvas wins over every kind", () => {
     assert.equal(taskCategory({ source: "canvas", kind: "school", title: "Lab 4" }), "canvas");
     assert.equal(taskCategory({ source: "canvas", kind: "side-ec", title: "x" }), "canvas");
@@ -58,5 +58,21 @@ void (import("./task-colors") as Promise<Mod>).then(({ taskCategory, taskColor, 
 
   test("once the AI has called it personal, a schoolwork-sounding title stays Other", () => {
     assert.equal(taskCategory({ kind: "personal", calendarId: "cal_other", title: "Read a chapter of Dune" }), "other");
+  });
+  test("rows are labelled by the same category as their dot, and grey ones carry no label", () => {
+    assert.equal(categoryLabel({ source: "canvas", kind: "school", title: "Lab" }), "Canvas");
+    assert.equal(categoryLabel({ kind: "personal", title: "Study for APUSH quiz" }), "Academic");
+    assert.equal(categoryLabel({ kind: "academic-ec", title: "CAD" }), "ECs");
+    assert.equal(categoryLabel({ kind: "personal", title: "Buy milk" }), null);
+  });
+
+  test("a day groups into Canvas, Academic, ECs, Other, in that order, skipping empty groups", () => {
+    const groups = groupByCategory([
+      { id: "a", kind: "personal", title: "Buy milk" },
+      { id: "b", kind: "side-ec", title: "Soccer" },
+      { id: "c", source: "canvas", title: "Lab" },
+      { id: "d", kind: "academic-ec", title: "CAD" },
+    ]);
+    assert.deepEqual(groups.map((g) => [g.category, g.tasks.map((t) => t.id)]), [["canvas", ["c"]], ["ec", ["b", "d"]], ["other", ["a"]]]);
   });
 });

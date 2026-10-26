@@ -633,18 +633,11 @@
   cursor: default;
 }
 
-/* With nothing typed, the mic is the primary (accent) action and Send
-   folds away; once there is text, Send pops in. */
+/* With nothing typed, the mic is the main action and Send folds away; once
+   there is text, Send pops in. The mic itself is the same clear glass with an
+   accent glyph as every other mic in the app (app/liquid-glass.css). */
 .tg-composer:not(.has-text).is-voice-idle .tg-mic {
-  background: var(--accent);
-  color: #fff;
-  box-shadow: 0 3px 12px rgb(from var(--accent) r g b / 0.3);
-}
-
-.tg-composer:not(.has-text).is-voice-idle .tg-mic:hover:not(:disabled) {
-  background: var(--accent);
-  color: #fff;
-  opacity: 0.9;
+  color: var(--accent);
 }
 
 .tg-composer:not(.has-text) .tg-send {

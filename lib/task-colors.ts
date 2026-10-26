@@ -71,3 +71,19 @@ export function taskGroup(task: Pick<Task, "planId" | "kind" | "source">): TaskG
   if (task.source === "canvas" || task.kind === "school") return "school";
   return "short";
 }
+
+/** The word a row or chip shows for its category: the same rule as its dot.
+ *  Grey (Other) carries no label; the dot says enough. */
+export function categoryLabel(task: Colorable): string | null {
+  const c = taskCategory(task);
+  return c === "other" ? null : CATEGORY_LABEL[c];
+}
+
+const CATEGORY_ORDER: TaskCategory[] = ["canvas", "academic", "ec", "other"];
+
+/** A list split by category, in a fixed order, empty groups left out. */
+export function groupByCategory<T extends Colorable>(tasks: T[]): { category: TaskCategory; tasks: T[] }[] {
+  return CATEGORY_ORDER.map((category) => ({ category, tasks: tasks.filter((t) => taskCategory(t) === category) })).filter(
+    (g) => g.tasks.length > 0
+  );
+}

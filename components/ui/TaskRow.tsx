@@ -7,7 +7,7 @@ import { press, spring } from "@/lib/motion";
 import type { Task } from "@/lib/types";
 import { formatTime12, isDueOnly } from "@/lib/dates";
 import TaskTitle from "@/components/ui/TaskTitle";
-import { KIND_LABEL } from "@/lib/task-colors";
+import { categoryLabel } from "@/lib/task-colors";
 
 
 type TaskRowProps = {
@@ -95,7 +95,7 @@ export default function TaskRow({
               {isDueOnly(task) ? "Due" : formatTime12(task.time)}
             </time>
             {flag}
-            {task.kind && <span className="ui-task-kind-label">{KIND_LABEL[task.kind as keyof typeof KIND_LABEL] ?? task.kind.replaceAll("-", " ")}</span>}
+            {categoryLabel(task) && <span className="ui-task-kind-label">{categoryLabel(task)}</span>}
             {task.recurring?.enabled && (
               <span className="ui-task-recurring"><Repeat2 size={12} aria-hidden="true" /> Recurring</span>
             )}

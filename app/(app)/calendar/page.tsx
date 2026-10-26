@@ -14,7 +14,7 @@ import SidePeek from "@/components/ui/SidePeek";
 import { handleResourceClick } from "@/lib/task-utils";
 import { toYMD, formatTime12 } from "@/lib/dates";
 import { isCanvasCleared } from "@/lib/canvas-clear";
-import { KIND_LABEL, TASK_GROUPS, taskColor, taskGroup, type TaskGroup } from "@/lib/task-colors";
+import { CATEGORY_COLOR, CATEGORY_LABEL, TASK_GROUPS, groupByCategory, taskColor, taskGroup, type TaskGroup } from "@/lib/task-colors";
 import { isOnboardingSchoolTask } from "@/lib/school-block";
 import { baseTitle, useShortTitles } from "@/lib/short-titles";
 import "./calendar.css";
@@ -45,37 +45,6 @@ function addDays(d: Date, n: number): Date {
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-// The day panel groups by kind; its pills use the same four category colors
-// as the dots (lib/task-colors.ts).
-function getKindColor(kind?: string): string {
-  return taskColor({ kind: kind as Task["kind"] });
-}
-
-const KIND_SORT_ORDER = ["school", "academic-ec", "commitment", "side-ec", "personal"];
-const KIND_DISPLAY_NAME: Record<string, string> = KIND_LABEL;
-const NO_KIND = "__none__";
-
-function sortKindKeys(keys: string[]): string[] {
-  return keys.slice().sort((a, b) => {
-    const ai = a === NO_KIND ? KIND_SORT_ORDER.length : KIND_SORT_ORDER.indexOf(a);
-    const bi = b === NO_KIND ? KIND_SORT_ORDER.length : KIND_SORT_ORDER.indexOf(b);
-    return ai - bi;
-  });
-}
-
-function groupTasksByKind(tasks: Task[]): { kind: string | undefined; tasks: Task[] }[] {
-  const groups = new Map<string, Task[]>();
-  for (const t of tasks) {
-    const key = t.kind ?? NO_KIND;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(t);
-  }
-  return sortKindKeys(Array.from(groups.keys())).map((key) => ({
-    kind: key === NO_KIND ? undefined : key,
-    tasks: groups.get(key)!,
-  }));
-}
 
 function getMonthGrid(year: number, monthIndex: number): Date[] {
   const first = new Date(year, monthIndex, 1);
@@ -593,11 +562,11 @@ export default function CalendarPage() {
               <p className="calendar-modal-empty">Nothing scheduled yet.</p>
             ) : (
               <div>
-                {groupTasksByKind(selectedDayTasks).map(({ kind, tasks }) => (
-                <div key={kind ?? "other"} className="day-panel-kind-group">
+                {groupByCategory(selectedDayTasks).map(({ category, tasks }) => (
+                <div key={category} className="day-panel-kind-group">
                   <div className="day-panel-kind-header">
-                    <span className="day-panel-kind-pill" style={{ background: getKindColor(kind) }} />
-                    <span className="day-panel-kind-label">{KIND_DISPLAY_NAME[kind ?? ""] ?? "Other"}</span>
+                    <span className="day-panel-kind-pill" style={{ background: CATEGORY_COLOR[category] }} />
+                    <span className="day-panel-kind-label">{CATEGORY_LABEL[category]}</span>
                   </div>
                   {tasks.map((t) => {
                   const plan = getPlan(t.planId);

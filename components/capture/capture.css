@@ -221,6 +221,23 @@
   margin-right: 0.24em;
 }
 
+/* Behind the island: the list fades into the page so rows never sit under,
+   or peek out below, the glass. */
+.capture-fade {
+  position: fixed;
+  z-index: 79;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(230px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to bottom, rgb(from var(--bg) r g b / 0), var(--bg) 58%);
+  pointer-events: none;
+  transition: opacity 0.35s;
+}
+.capture-fade.is-hidden {
+  opacity: 0;
+}
+
 /* ── The island ────────────────────────────────────────────────────── */
 .capture-dock {
   position: fixed;
