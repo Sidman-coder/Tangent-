@@ -61,7 +61,7 @@ export default function OnboardingSection({
         <div className="settings-row">
           <div className="settings-row-copy">
             <strong>Take the tour</strong>
-            <span>A two-minute walk through adding, the calendar, projects and Tangents.</span>
+            <span>A two-minute walk through adding, the calendar and projects.</span>
             <Status done={toured}>{toured ? "Done" : "Not yet"}</Status>
           </div>
           <Button size="sm" variant={toured ? "secondary" : "primary"} onClick={() => window.dispatchEvent(new Event(TOUR_EVENT))}>

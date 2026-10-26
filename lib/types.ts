@@ -403,6 +403,8 @@ export type Path = {
   constraints?: string;
   /** What you already have going for it. Seeds the first circle. */
   standing?: string;
+  /** The project this path visualises (one path per project), when it has one. */
+  planId?: string | null;
   createdAt: string;
   updatedAt: string;
 };

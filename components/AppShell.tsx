@@ -27,26 +27,10 @@ import { useAppState } from "./AppStateProvider";
 // ever showed today, which Today already does, and everything else about a task
 // belongs on the day it falls on. Tangents is deliberately not in this list: it
 // is a mode, not a page, and it gets its own door at the bottom of the rail.
-/** The Tangents orbit, small enough to be a nav icon: the dot keeps
- *  circling, so the feature that used to hide in a card at the bottom of the
- *  rail is a first-class place and still feels alive. */
-function OrbitIcon({ size = 19 }: { size?: number; strokeWidth?: number; "aria-hidden"?: boolean | "true" }) {
-  return (
-    <svg className="rail-orbit nav-orbit" viewBox="0 0 34 34" width={size} height={size} aria-hidden="true">
-      <circle className="rail-orbit-ring" cx="17" cy="17" r="13" />
-      <circle className="rail-orbit-core" cx="17" cy="17" r="4" />
-      <g className="rail-orbit-spin">
-        <circle className="rail-orbit-dot" cx="17" cy="4" r="3.4" />
-      </g>
-    </svg>
-  );
-}
-
 const NAV_LINKS = [
   { href: "/today", label: "Today", icon: Home },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/projects", label: "Projects", icon: FolderKanban },
-  { href: "/tangents", label: "Tangents", icon: OrbitIcon },
   { href: "/ai", label: "Tangent AI", icon: MessageSquareText },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
@@ -158,7 +142,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </Link>
 
         <nav className="rail-nav" aria-label="Primary">
-          {NAV_LINKS.filter((l) => l.href !== "/tangents" && l.href !== "/settings").map(({ href, label, icon: Icon }) => {
+          {NAV_LINKS.filter((l) => l.href !== "/settings").map(({ href, label, icon: Icon }) => {
             const active = pathname.startsWith(href);
             return (
               <Link
@@ -188,31 +172,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         <div className="rail-spacer" />
 
-        {/* Tangents sits at the foot of the rail, apart from the daily places:
-            the long view, one step removed. Its orbit keeps circling. */}
-        {(() => {
-          const active = pathname.startsWith("/tangents");
-          return (
-            <Link
-              href="/tangents"
-              className={`rail-btn rail-btn-tangents${active ? " is-active" : ""}`}
-              aria-current={active ? "page" : undefined}
-              aria-label="Tangents"
-            >
-              {active && (
-                <m.span
-                  layoutId="rail-active"
-                  className="rail-active-pill"
-                  transition={{ ...spring.layout, visualDuration: 0.3, bounce: 0 }}
-                  aria-hidden="true"
-                />
-              )}
-              <OrbitIcon size={22} />
-              <span className="rail-btn-label">Tangents</span>
-              <span className="rail-tooltip">Tangents</span>
-            </Link>
-          );
-        })()}
 
 
         {desktop && <NotificationBell open={notifOpen} onOpenChange={setNotifOpen} placement="rail" />}

@@ -12,6 +12,7 @@ import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import Button from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
 import AddFlow from "@/components/add/AddFlow";
+import OtherPaths from "@/components/projects/OtherPaths";
 import { takeAsk } from "@/lib/ask-handoff";
 import { formatTime12 } from "@/lib/dates";
 import { getUserToday } from "@/lib/time";
@@ -136,6 +137,7 @@ export default function ProjectsPage() {
               </div>
             </section>
           )}
+          <OtherPaths />
         </>
       )}
     </div>

@@ -2444,12 +2444,14 @@ type PathRow = {
   hours_per_week: number | null;
   constraints: string | null;
   standing: string | null;
+  plan_id: string | null;
   created_at: string;
   updated_at: string;
 };
 
+// plan_id needs supabase/migrations/20261026000000_paths_plan_id.sql applied.
 const PATH_COLUMNS =
-  "id, title, kind, target, current, deadline, hours_per_week, constraints, standing, created_at, updated_at";
+  "id, title, kind, target, current, deadline, hours_per_week, constraints, standing, plan_id, created_at, updated_at";
 
 function pathFromRow(r: PathRow): Path {
   const p: Path = {
@@ -2465,6 +2467,7 @@ function pathFromRow(r: PathRow): Path {
   if (r.hours_per_week !== null) p.hoursPerWeek = Number(r.hours_per_week);
   if (r.constraints !== null) p.constraints = r.constraints;
   if (r.standing !== null) p.standing = r.standing;
+  if (r.plan_id) p.planId = r.plan_id;
   return p;
 }
 
@@ -2479,6 +2482,7 @@ function pathPatchToRow(patch: Partial<Omit<Path, "id" | "createdAt">>): Record<
   if (has("hoursPerWeek")) row.hours_per_week = patch.hoursPerWeek ?? null;
   if (has("constraints")) row.constraints = patch.constraints ?? null;
   if (has("standing")) row.standing = patch.standing ?? null;
+  if (has("planId")) row.plan_id = isUuid(patch.planId) ? patch.planId : null;
   return row;
 }
 

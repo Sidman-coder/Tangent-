@@ -15,7 +15,7 @@ import Button from "@/components/ui/Button";
 import CanvasConnectGuide from "@/components/CanvasConnectGuide";
 import { OPEN_PALETTE_EVENT, type OpenPaletteDetail } from "@/hooks/useVoiceCapture";
 import { riseIn } from "@/lib/motion";
-import { putNewPathTitle } from "@/lib/path-handoff";
+import { putAsk } from "@/lib/ask-handoff";
 import { pathsStarterCopy, type Prefs } from "@/lib/personalize";
 import type { Path } from "@/lib/types";
 
@@ -45,10 +45,11 @@ export function StartingIntentCard({ intent, onCleared }: { intent: string; onCl
     done();
   };
 
-  const makePath = () => {
-    putNewPathTitle(intent);
+  // A goal is a project now; its path opens from the project page.
+  const makeProject = () => {
+    putAsk("project", intent);
     done();
-    router.push("/tangents?new=1");
+    router.push("/projects");
   };
 
   return (
@@ -64,8 +65,8 @@ export function StartingIntentCard({ intent, onCleared }: { intent: string; onCl
         <Button variant="secondary" size="sm" onClick={breakDown} icon={<ListChecks size={15} aria-hidden="true" />}>
           Break it into steps
         </Button>
-        <Button variant="secondary" size="sm" onClick={makePath} icon={<Route size={15} aria-hidden="true" />}>
-          Make it a Path
+        <Button variant="secondary" size="sm" onClick={makeProject} icon={<Route size={15} aria-hidden="true" />}>
+          Make it a project
         </Button>
       </div>
     </m.section>

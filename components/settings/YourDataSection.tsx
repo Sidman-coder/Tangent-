@@ -8,7 +8,7 @@ import { useState } from "react";
 import Button from "@/components/ui/Button";
 
 const STORES: { what: string; why: string }[] = [
-  { what: "Your tasks, projects, Tangents and chats", why: "That's your planner." },
+  { what: "Your tasks, projects, their paths and chats", why: "That's your planner." },
   { what: "What Tangent knows about you", why: "The facts listed above, so it doesn't ask twice. Forget any of them any time." },
   { what: "The words of your last 100 voice commands", why: "So it can act on them and you can undo. Your audio itself isn't kept." },
   { what: "Your Canvas calendar link", why: "To sync assignments. It's only ever shown masked." },

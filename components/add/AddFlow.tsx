@@ -29,7 +29,6 @@ import { useVoiceCapture } from "@/hooks/useVoiceCapture";
 import { routeAsk } from "@/lib/ask-route";
 import { heardSomethingToAdd } from "@/lib/voice-intent";
 import { putAsk } from "@/lib/ask-handoff";
-import { putNewPathTitle } from "@/lib/path-handoff";
 import { generateQuestions } from "@/lib/questions-client";
 import type { ChangeSet } from "@/lib/pipeline/changeset";
 import type { PreviewPayload } from "@/lib/pipeline/draft";
@@ -220,11 +219,12 @@ export default function AddFlow({
       router.push("/ai?ask=1");
       return;
     }
+    // A long-range goal is a project now; its path is one tap away there.
     if (handoff === "goal") {
-      putNewPathTitle(words);
+      putAsk("project", words);
       reset();
       onClose?.();
-      router.push("/tangents?new=1");
+      router.push("/projects");
       return;
     }
     void send(words);
@@ -284,7 +284,7 @@ export default function AddFlow({
   const hint = handoff === "question"
     ? { icon: MessageSquareText, text: "Sounds like a question. Enter asks Tangent AI." }
     : handoff === "goal"
-      ? { icon: Orbit, text: "Sounds like a long-range goal. Enter starts a Tangent." }
+      ? { icon: Orbit, text: "Sounds like a long-range goal. Enter makes it a project." }
       : null;
 
   return (

@@ -7,8 +7,7 @@ import { localNow } from "@/lib/time";
 import ChatSidebar from "@/components/console/ChatSidebar";
 import ChatThread from "@/components/console/ChatThread";
 import { routeAsk } from "@/lib/ask-route";
-import { takeAsk } from "@/lib/ask-handoff";
-import { putNewPathTitle } from "@/lib/path-handoff";
+import { putAsk, takeAsk } from "@/lib/ask-handoff";
 import type { ClarifyAnswer } from "@/components/console/ClarifyCard";
 import { answerQuestions as answerLaterQuestions, generateQuestions } from "@/lib/questions-client";
 import Composer from "@/components/console/Composer";
@@ -382,12 +381,12 @@ export default function AiPage() {
     if (!userText || busy) return;
     // One input, routed (lib/ask-route.ts): no Plan/Calendar switch to set.
     // A question is talked through; everything else acts. A long-range goal
-    // goes to Tangents, a multi-week effort becomes a project.
+    // becomes a project (its path opens from there), as does a multi-week effort.
     const route = followUp ? "do" : routeAsk(userText);
     if (route === "goal" && !modeOverride) {
-      putNewPathTitle(userText);
+      putAsk("project", userText);
       setInput("");
-      router.push("/tangents?new=1");
+      router.push("/projects");
       return;
     }
     const sendMode: ChatMode = modeOverride ?? (route === "question" ? "plan" : "calendar");

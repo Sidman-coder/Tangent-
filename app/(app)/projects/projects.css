@@ -657,3 +657,82 @@
   font-size: 13px;
   margin-right: 2px;
 }
+
+/* Projects → View path: the project's Path in a sheet (components/projects/ProjectPath.tsx). */
+.project-path-btn {
+  margin-top: 12px;
+}
+.project-path-error {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--red, #c0392b);
+}
+.project-path-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: end center;
+}
+.project-path-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgb(20 17 32 / 0.38);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+.project-path-sheet {
+  position: relative;
+  width: min(1100px, 100vw);
+  height: min(92dvh, 960px);
+  overflow: auto;
+  border-radius: 22px 22px 0 0;
+  background: var(--bg);
+  box-shadow: 0 -20px 60px -20px rgb(20 17 32 / 0.4);
+}
+@media (min-width: 721px) {
+  .project-path-layer {
+    place-items: center;
+  }
+  .project-path-sheet {
+    border-radius: 22px;
+  }
+}
+
+.project-path-sheet .pplan-page {
+  padding: 22px clamp(16px, 3vw, 32px) 32px;
+}
+
+/* Paths from before they belonged to projects (components/projects/OtherPaths.tsx). */
+.projects-other-paths {
+  margin-top: 28px;
+}
+.projects-other-paths h2 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text-2);
+}
+.projects-other-paths ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.projects-other-paths a {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border: 1px solid var(--lg-edge, var(--line));
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  text-decoration: none;
+}
+.projects-other-paths a:hover {
+  color: var(--accent);
+}

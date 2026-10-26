@@ -12,6 +12,7 @@ import * as m from "motion/react-m";
 import { ChevronLeft, MessageSquareText } from "lucide-react";
 import { useAppState } from "@/components/AppStateProvider";
 import ProjectChat from "@/components/projects/ProjectChat";
+import ProjectPath from "@/components/projects/ProjectPath";
 import { openTask } from "@/components/TaskDetail";
 import TaskChatModal from "@/components/TaskChatModal";
 import TaskRow from "@/components/ui/TaskRow";
@@ -124,6 +125,7 @@ export default function ProjectPage() {
               {done.length} of {steps.length} done
             </span>
           </div>
+          {plan && <ProjectPath plan={plan} steps={steps} />}
         </header>
 
       <section className="project-steps" aria-labelledby="project-next">

@@ -55,7 +55,7 @@ const STEPS: Step[] = [
     route: "/today",
     target: [".float-mic"],
     title: "Say it from anywhere",
-    body: "The mic in the bottom corner is on every page: tap it and talk, and it goes through the same Add flow. Press ⌘K to type instead. Questions go to Tangent AI and long-range goals become Tangents, from the same box.",
+    body: "The mic in the bottom corner is on every page: tap it and talk, and it goes through the same Add flow. Press ⌘K to type instead. Questions go to Tangent AI and long-range goals become projects, from the same box.",
   },
   {
     route: "/today",
@@ -91,13 +91,7 @@ const STEPS: Step[] = [
     route: "/projects",
     target: [".project-card", ".projects-new", ".page-header-actions"],
     title: "Projects, each with its own Tangent AI",
-    body: "A final, a science fair, starting a club. Tangent asks a few questions, then lays the steps across your calendar. Open a project and it has its own Tangent AI that knows it: ask what's next, or have it add and change steps.",
-  },
-  {
-    route: "/projects",
-    target: ['a.rail-btn[href="/tangents"]', '.mobile-nav-link[href="/tangents"]'],
-    title: "Tangents for long-range goals",
-    body: "Where you want to be in a year or more: a college, a rating, a career. Tangent asks what it needs to know, maps paths from what you already do, and branches off ideas you can keep.",
+    body: "A final, a science fair, starting a club. Tangent asks a few questions, then lays the steps across your calendar. Open a project and it has its own Tangent AI that knows it, and View path maps where it could go.",
   },
   {
     route: "/ai",

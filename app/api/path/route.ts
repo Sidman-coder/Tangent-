@@ -243,6 +243,8 @@ export const POST = withUser(async (req: Request) => {
       hoursPerWeek: num(body.hoursPerWeek),
       constraints: str(body.constraints) || undefined,
       standing: str(body.standing) || undefined,
+      // A project's own path (Projects → View path). One per project.
+      ...(str(body.planId) ? { planId: str(body.planId) } : {}),
     });
 
     // What they already have becomes the first circle, so the path is never
