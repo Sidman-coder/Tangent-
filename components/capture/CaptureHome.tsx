@@ -68,6 +68,22 @@ export default function CaptureHome() {
 
   const listening = hold.state === "listening";
 
+  // "Open app": Today is fetched ahead, and the home steps back before the
+  // route changes, so the hop into the app is one continuous motion.
+  const [leaving, setLeaving] = useState(false);
+  useEffect(() => {
+    router.prefetch("/today");
+  }, [router]);
+  const openApp = useCallback(
+    (e: React.MouseEvent<HTMLAnchorElement>) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+      e.preventDefault();
+      setLeaving(true);
+      window.setTimeout(() => router.push("/today"), reduced ? 0 : 170);
+    },
+    [router, reduced]
+  );
+
   const clearSendTimer = useCallback(() => {
     if (sendTimer.current !== null) window.clearTimeout(sendTimer.current);
     sendTimer.current = null;
@@ -94,6 +110,9 @@ export default function CaptureHome() {
 
   const voice = useVoiceCapture({
     live: true,
+    // Repeated captures shouldn't re-ask for the mic (Safari asks on every
+    // fresh getUserMedia); it's let go after a minute unused.
+    keepStream: true,
     onPartial: (t) => setWords(t),
     onTranscript: (t) => {
       clearSendTimer();
@@ -299,13 +318,19 @@ export default function CaptureHome() {
     <div className="capture-home">
       <m.div
         className="capture-page"
-        animate={washOn && !reduced ? { scale: 0.93, y: -8, filter: "blur(7px) saturate(0.7)", opacity: 0.55 } : { scale: 1, y: 0, filter: "blur(0px) saturate(1)", opacity: 1 }}
-        transition={{ duration: washOn ? 0.7 : 0.5, ease: EASE_OUT }}
+        // Transform and opacity only: they stay on the compositor. An animated
+        // blur over the whole list was the most expensive frame of the press.
+        animate={
+          leaving ? { opacity: 0, scale: reduced ? 1 : 0.985 }
+          : washOn && !reduced ? { scale: 0.94, y: -8, opacity: 0.5 }
+          : { scale: 1, y: 0, opacity: 1 }
+        }
+        transition={{ duration: leaving ? 0.17 : washOn ? 0.6 : 0.45, ease: leaving ? EASE_IN : EASE_OUT }}
         aria-hidden={washOn}
       >
         <header className="capture-top">
           <span className="capture-wordmark">tangent</span>
-          <Link href="/today" className="capture-open-app">Open app →</Link>
+          <Link href="/today" className="capture-open-app" onClick={openApp}>Open app →</Link>
         </header>
 
         <h1 className="capture-title">To do</h1>
@@ -371,9 +396,9 @@ export default function CaptureHome() {
                 {words.split(/\s+/).filter(Boolean).map((w, i) => (
                   <m.span
                     key={i}
-                    initial={reduced ? { opacity: 0 } : { opacity: 0, filter: "blur(8px)", y: 10 }}
+                    initial={reduced ? { opacity: 0 } : { opacity: 0, filter: "blur(6px)", y: 10 }}
                     animate={{ opacity: 1, filter: "blur(0px)", y: 0 }}
-                    transition={{ duration: 0.5, ease: EASE_OUT }}
+                    transition={{ duration: 0.42, ease: EASE_OUT }}
                   >
                     {w}
                   </m.span>
@@ -435,14 +460,17 @@ export default function CaptureHome() {
         )}
       </AnimatePresence>
 
-      <CaptureIsland
-        ref={islandRef}
-        state={hold.state}
-        level={voice.getLevel}
-        transcriptTail={words}
-        tapToStop={tapToStop}
-        onEvent={dispatch}
-      />
+      {/* Opacity only: a transform here would become the fixed island's containing block. */}
+      <m.div animate={{ opacity: leaving ? 0 : 1 }} transition={{ duration: 0.17, ease: EASE_IN }}>
+        <CaptureIsland
+          ref={islandRef}
+          state={hold.state}
+          level={voice.getLevel}
+          transcriptTail={words}
+          tapToStop={tapToStop}
+          onEvent={dispatch}
+        />
+      </m.div>
     </div>
   );
 }

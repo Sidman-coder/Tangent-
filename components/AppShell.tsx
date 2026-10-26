@@ -3,7 +3,7 @@
 import StorageStatus from "@/components/StorageStatus";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { m } from "motion/react";
 import { pageEnter, spring } from "@/lib/motion";
 import {
@@ -54,6 +54,18 @@ const NAV_LINKS = [
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  // Coming in from the capture home ("Open app"), the chrome eases in instead
+  // of appearing at once (.shell.is-arriving in globals.css).
+  const lastPath = useRef(pathname);
+  const [arriving, setArriving] = useState(false);
+  useEffect(() => {
+    const from = lastPath.current;
+    lastPath.current = pathname;
+    if (from !== "/" || pathname === "/") return;
+    setArriving(true);
+    const t = window.setTimeout(() => setArriving(false), 700);
+    return () => window.clearTimeout(t);
+  }, [pathname]);
   const [notifOpen, setNotifOpen] = useState(false);
   // One bell at a time: in the sidebar on desktop, in the top bar on a phone.
   const [desktop, setDesktop] = useState(true);
@@ -149,7 +161,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="shell">
+    <div className={arriving ? "shell is-arriving" : "shell"}>
       <a href="#main-content" className="skip-link">Skip to main content</a>
       <aside className="rail lg lg-interactive" aria-label="Primary navigation">
         <Link href="/" className="rail-logo" aria-label="Tangent home">

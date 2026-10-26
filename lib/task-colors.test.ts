@@ -52,4 +52,11 @@ void (import("./task-colors") as Promise<Mod>).then(({ taskCategory, taskColor, 
     assert.equal(taskColor({ title: "Buy poster board" }), "var(--cat-other)");
     assert.deepEqual(CATEGORY_LABEL, { canvas: "Canvas", academic: "Academic", ec: "ECs", other: "Other" });
   });
+  test("a task Tangent filed on the School calendar is Academic", () => {
+    assert.equal(taskCategory({ calendarId: "cal_school", title: "Finish the slides" }), "academic");
+  });
+
+  test("once the AI has called it personal, a schoolwork-sounding title stays Other", () => {
+    assert.equal(taskCategory({ kind: "personal", calendarId: "cal_other", title: "Read a chapter of Dune" }), "other");
+  });
 });

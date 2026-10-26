@@ -8,6 +8,7 @@ import "server-only";
 import { callClaude } from "@/lib/ai/call";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import type { Task } from "@/lib/types";
+import type { CaptureCategory } from "@/lib/capture-category";
 
 export type Refinement = {
   title: string;
@@ -21,6 +22,8 @@ export type Refinement = {
   deadline: string;
   /** One plain sentence on what changed, for the student. */
   summary: string;
+  /** What kind of thing it is, for its color and calendar (lib/capture-category.ts). */
+  category: CaptureCategory;
 };
 
 const SCHEMA = {
@@ -33,8 +36,9 @@ const SCHEMA = {
     time: { type: "string" },
     deadline: { type: "string" },
     summary: { type: "string" },
+    category: { type: "string", enum: ["academic", "extracurricular", "personal", ""] },
   },
-  required: ["title", "notes", "startAction", "date", "time", "deadline", "summary"],
+  required: ["title", "notes", "startAction", "date", "time", "deadline", "summary", "category"],
   additionalProperties: false,
 } as const;
 
@@ -47,7 +51,17 @@ Return the task's improved fields:
 - date: YYYY-MM-DD only if the answers say WHEN to do it; otherwise "".
 - time: HH:MM only if the answers give a time; otherwise "".
 - deadline: YYYY-MM-DD if the answers reveal when it's due; otherwise "".
-- summary: one short sentence on what you changed, starting with a verb ("Split into…", "Set it due…").`;
+- summary: one short sentence on what you changed, starting with a verb ("Split into…", "Set it due…").
+- category: what this is in the student's life.
+  "academic": schoolwork: homework, studying, tests, essays, labs, reading for a class, school forms.
+  "extracurricular": anything outside class they're building or part of: clubs, teams, robotics, research, competitions, volunteering, a startup or side project, sports, music, art.
+  "personal": errands, chores, appointments, family, friends, health, buying things.
+  Use the student context: a name you see among their activities (a club, a project) is extracurricular. "" only if you truly can't tell.
+
+With no answers yet you are tidying the student's raw words, so stay faithful to them:
+- Keep their meaning; never invent details, people, subjects or deadlines they didn't say.
+- The title reads like a to-do they'd write ("Email Dr. Chann about the booth"), not a rewrite or a summary.
+- If it's already clear, return it nearly as is.`;
 
 export async function refineTask(
   task: Task,

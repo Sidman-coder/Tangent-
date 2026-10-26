@@ -23,6 +23,12 @@ function redirectWithCookies(url: URL, from: NextResponse): NextResponse {
 }
 
 export async function middleware(request: NextRequest) {
+  // Local design previews (app/dev/*, sample data, no account). The pages
+  // themselves 404 outside development too.
+  if (process.env.NODE_ENV === "development" && request.nextUrl.pathname.startsWith("/dev/")) {
+    return NextResponse.next({ request });
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(

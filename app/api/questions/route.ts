@@ -7,6 +7,7 @@ import { buildStudentContext } from "@/lib/ai/student-context";
 import { extractContextFacts } from "@/lib/context-extract";
 import { placeNewTask } from "@/lib/spacing";
 import { closeQuestions, openQuestionSets, queueQuestions } from "@/lib/task-questions";
+import { categoryPatch } from "@/lib/capture-category";
 import { promptDateContext } from "@/lib/time";
 
 export const runtime = "nodejs";
@@ -54,6 +55,8 @@ export const POST = withUser(async (req: Request) => {
         title: tidy.title.trim() || task.title,
         notes: tidy.notes.trim() || task.notes,
         startAction: tidy.startAction.trim() || task.startAction,
+        // Its color and calendar, from what it actually is (not title keywords).
+        ...categoryPatch(tidy.category ?? "", task),
       });
     }
     if (!picture.capacityKnown && questions.length > 0 && questions.length < 3) questions.push(CAPACITY_QUESTION);
@@ -105,6 +108,8 @@ export const POST = withUser(async (req: Request) => {
       notes: r.notes.trim() || task.notes,
       startAction: r.startAction.trim() || task.startAction,
       ...(placed ? { date: placed.date, time: placed.time } : {}),
+      // The answers often settle what it is ("it's for robotics").
+      ...categoryPatch(r.category ?? "", task),
     });
     let actionId: string | undefined;
     if (placed && (placed.date !== task.date || placed.time !== task.time)) {

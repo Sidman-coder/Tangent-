@@ -9098,3 +9098,26 @@ body .task-chat-modal {
   --cat-ec: #4cc38f;
   --cat-other: #6e6890;
 }
+
+/* Arriving from the capture home (AppShell .is-arriving): the rail slides in,
+   the top bar and phone nav fade up. Transform and opacity only. */
+.shell.is-arriving .rail {
+  animation: shell-rail-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.shell.is-arriving .topbar,
+.shell.is-arriving .mobile-nav {
+  animation: shell-fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.06s both;
+}
+@keyframes shell-rail-in {
+  from { opacity: 0; transform: translateX(-18px); }
+}
+@keyframes shell-fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shell.is-arriving .rail,
+  .shell.is-arriving .topbar,
+  .shell.is-arriving .mobile-nav {
+    animation: none;
+  }
+}

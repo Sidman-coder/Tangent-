@@ -58,6 +58,7 @@ const CaptureIsland = forwardRef<HTMLButtonElement, Props>(function CaptureIslan
   return (
     <div className="capture-dock">
       {sorting && transcriptTail && <p className="capture-tail">“{transcriptTail}”</p>}
+      <div className={`capture-island-wrap${listening ? " is-listening" : ""}${sorting ? " is-sorting" : ""}`}>
       <m.button
         ref={ref}
         type="button"
@@ -65,9 +66,11 @@ const CaptureIsland = forwardRef<HTMLButtonElement, Props>(function CaptureIslan
         aria-label={listening ? label : "Hold to talk, or tap to type"}
         aria-pressed={listening}
         aria-busy={sorting}
-        animate={reduced ? {} : { height: swell ? 168 : 120, borderRadius: swell ? 52 : 60 }}
-        whileTap={reduced || sorting ? undefined : { scale: 0.965 }}
-        transition={{ type: "spring", visualDuration: 0.5, bounce: 0.32 }}
+        // The swell is a transform (compositor-only). Animating height re-laid
+        // out the page and re-ran the glass blur every frame: that was the lag.
+        animate={reduced ? {} : { scale: swell ? 1.045 : 1, y: swell ? -6 : 0 }}
+        whileTap={reduced || sorting || listening ? undefined : { scale: 0.965 }}
+        transition={{ type: "spring", visualDuration: 0.45, bounce: 0.3 }}
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture(e.pointerId);
           onEvent({ type: "down", t: performance.now(), y: e.clientY });
@@ -91,6 +94,7 @@ const CaptureIsland = forwardRef<HTMLButtonElement, Props>(function CaptureIslan
           ))}
         </span>
       </m.button>
+      </div>
       <p className="capture-type-hint" aria-hidden="true">or tap to type</p>
     </div>
   );

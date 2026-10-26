@@ -28,13 +28,17 @@ export const CATEGORY_LABEL: Record<TaskCategory, string> = {
 
 const SCHOOLWORK = /\b(stud(y|ying)|tests?|quiz(zes)?|exams?|midterms?|finals?|homework|hw|essays?|assignments?|chapters?|ch\.?\s?\d|problem sets?|psets?|worksheets?|labs?|reading|lectures?|apush|ap\s\w+|calc(ulus)?|algebra|geometry|precalc|chem(istry)?|physics|bio(logy)?|history|english|spanish|french|latin|sat|act|psat)\b/i;
 
-type Colorable = Pick<Task, "source" | "kind"> & { title?: string };
+type Colorable = Pick<Task, "source" | "kind"> & { title?: string; calendarId?: string | null };
 
 export function taskCategory(task: Colorable): TaskCategory {
   if (task.source === "canvas") return "canvas";
   if (task.kind === "academic-ec" || task.kind === "side-ec") return "ec";
   if (task.kind === "school") return "academic";
   if (task.kind === "commitment") return "other";
+  // Filed by Tangent (lib/capture-category.ts): the School calendar means
+  // schoolwork, and an explicit personal + No school means it isn't.
+  if (task.calendarId === "cal_school") return "academic";
+  if (task.kind === "personal" && task.calendarId === "cal_other") return "other";
   return task.title && SCHOOLWORK.test(task.title) ? "academic" : "other";
 }
 
