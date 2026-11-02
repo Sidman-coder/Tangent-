@@ -18,8 +18,8 @@ import Button from "@/components/ui/Button";
 import SidePeek from "@/components/ui/SidePeek";
 import { handleResourceClick } from "@/lib/task-utils";
 import { toYMD, formatTime12 } from "@/lib/dates";
-import { KIND_LABEL, taskColor } from "@/lib/task-colors";
-import { CALENDARS } from "@/lib/calendars";
+import { isCanvasCleared } from "@/lib/canvas-clear";
+import { CATEGORY_COLOR, CATEGORY_LABEL, TASK_GROUPS, groupByCategory, taskColor, taskGroup, type TaskGroup } from "@/lib/task-colors";
 import { isOnboardingSchoolTask } from "@/lib/school-block";
 import { baseTitle, useShortTitles } from "@/lib/short-titles";
 import "./calendar.css";
@@ -51,38 +51,6 @@ function addDays(d: Date, n: number): Date {
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-// The theme's kind tokens (globals.css), so both themes and the brand
-// palette apply here too — these used to be hard-coded Tailwind hues.
-function getKindColor(kind?: string): string {
-  const known = ["school", "commitment", "academic-ec", "side-ec", "personal"];
-  return known.includes(kind ?? "") ? `var(--kind-${kind})` : "var(--kind-default)";
-}
-
-const KIND_SORT_ORDER = ["school", "academic-ec", "commitment", "side-ec", "personal"];
-const KIND_DISPLAY_NAME: Record<string, string> = KIND_LABEL;
-const NO_KIND = "__none__";
-
-function sortKindKeys(keys: string[]): string[] {
-  return keys.slice().sort((a, b) => {
-    const ai = a === NO_KIND ? KIND_SORT_ORDER.length : KIND_SORT_ORDER.indexOf(a);
-    const bi = b === NO_KIND ? KIND_SORT_ORDER.length : KIND_SORT_ORDER.indexOf(b);
-    return ai - bi;
-  });
-}
-
-function groupTasksByKind(tasks: Task[]): { kind: string | undefined; tasks: Task[] }[] {
-  const groups = new Map<string, Task[]>();
-  for (const t of tasks) {
-    const key = t.kind ?? NO_KIND;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(t);
-  }
-  return sortKindKeys(Array.from(groups.keys())).map((key) => ({
-    kind: key === NO_KIND ? undefined : key,
-    tasks: groups.get(key)!,
-  }));
-}
 
 function getMonthGrid(year: number, monthIndex: number): Date[] {
   const first = new Date(year, monthIndex, 1);
@@ -143,7 +111,7 @@ export default function CalendarPage() {
 
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
-  const [calIdx, setCalIdx] = useState(0);
+  const [group, setGroup] = useState<TaskGroup | "all">("all");
   const [view, setView] = useState<CalView>("month");
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -170,8 +138,6 @@ export default function CalendarPage() {
   const [dayChatInput, setDayChatInput] = useState("");
   const [dayChatBusy, setDayChatBusy] = useState(false);
 
-  const calendars = state?.calendars ?? CALENDARS;
-  const activeCal = calendars[calIdx] ?? calendars[0];
   const plans: Plan[] = state?.plans ?? [];
 
   const getPlan = useCallback((planId: string | null | undefined): Plan | null => {
@@ -180,18 +146,19 @@ export default function CalendarPage() {
   }, [plans]);
 
   const getTaskCategoryColor = useCallback(
-    (t: Task): string => taskColor(t, plans),
-    [plans]
+    // Handled Canvas work (lib/canvas-clear) stays to look back on, in grey.
+    (t: Task): string => (isCanvasCleared(t, todayYmd) ? "var(--cat-other)" : taskColor(t)),
+    [todayYmd]
   );
 
   const tasksForDay = useCallback((ymd: string): Task[] => {
     // The onboarding School block stores the student's school hours for the
     // scheduler; it is not something to do, so it is never drawn.
     let tasks = (state?.tasks ?? []).filter((t) => !isOnboardingSchoolTask(t));
-    if (activeCal.category !== "ALL") tasks = tasks.filter((t) => t.calendarId === activeCal.id);
+    if (group !== "all") tasks = tasks.filter((t) => taskGroup(t) === group);
     if (planFilter) tasks = tasks.filter((t) => t.planId === planFilter);
     return tasks.filter((t) => t.date === ymd);
-  }, [state, activeCal, planFilter]);
+  }, [state, group, planFilter]);
 
   const wholeDayTasks = selectedDay
     ? tasksForDay(selectedDay).slice().sort((a, b) => a.time.localeCompare(b.time))
@@ -536,20 +503,17 @@ export default function CalendarPage() {
                 </button>
               </div>
         </div>
-          <div className="cal-segment-bar" role="tablist" aria-label="Filter by calendar">
-            {calendars.map((cal, idx) => (
+          <div className="cal-segment-bar" role="tablist" aria-label="Show">
+            {[{ id: "all" as const, label: "All" }, ...TASK_GROUPS].map((g) => (
               <button
-                key={cal.id}
+                key={g.id}
                 type="button"
                 role="tab"
-                aria-selected={idx === calIdx}
-                className={`cal-segment${idx === calIdx ? " is-active" : ""}`}
-                onClick={() => setCalIdx(idx)}
+                aria-selected={group === g.id}
+                className={`cal-segment${group === g.id ? " is-active" : ""}`}
+                onClick={() => setGroup(g.id)}
               >
-                {cal.category !== "ALL" && (cal as { color?: string }).color && (
-                  <span className="cal-segment-dot" style={{ background: (cal as { color?: string }).color }} />
-                )}
-                {cal.name}
+                {g.label}
               </button>
             ))}
           </div>
@@ -648,8 +612,13 @@ export default function CalendarPage() {
               if (!inMonth) className += " is-outside";
               if (isToday) className += " is-today";
               if (isSelected) className += " is-selected";
+              if (ymd < todayYmd) className += " is-past";
+              // How full the day is (open work, about five things is a full
+              // day): the same iris shade as the week on Today. Past days aren't shaded.
+              const openCount = dayTasks.filter((t) => !t.completed).length;
+              const load = inMonth && ymd >= todayYmd && openCount > 0 ? Math.min(1, Math.max(0.2, openCount / 5)) : 0;
               return (
-                <div key={`${ymd}-${idx}`} className={className}>
+                <div key={`${ymd}-${idx}`} className={className} style={{ "--load": load.toFixed(2) } as React.CSSProperties}>
                   <button
                     type="button"
                     className="cal-day"
@@ -670,7 +639,7 @@ export default function CalendarPage() {
                           return (
                             <span
                               key={t.id}
-                              className={`cal-event${t.completed ? " is-done" : ""}${deadline ? " is-deadline" : ""}`}
+                              className={`cal-event${t.completed ? " is-done" : ""}${isCanvasCleared(t, todayYmd) ? " is-cleared" : ""}${deadline ? " is-deadline" : ""}`}
                               style={{ "--chip": getTaskCategoryColor(t) } as React.CSSProperties}
                               data-task-tip={t.id}
                               onClick={(e) => {
@@ -756,11 +725,11 @@ export default function CalendarPage() {
               <p className="calendar-modal-empty">Nothing scheduled yet.</p>
             ) : (
               <div>
-                {groupTasksByKind(selectedDayTasks).map(({ kind, tasks }) => (
-                <div key={kind ?? "other"} className="day-panel-kind-group">
+                {groupByCategory(selectedDayTasks).map(({ category, tasks }) => (
+                <div key={category} className="day-panel-kind-group">
                   <div className="day-panel-kind-header">
-                    <span className="day-panel-kind-pill" style={{ background: getKindColor(kind) }} />
-                    <span className="day-panel-kind-label">{KIND_DISPLAY_NAME[kind ?? ""] ?? "Other"}</span>
+                    <span className="day-panel-kind-pill" style={{ background: CATEGORY_COLOR[category] }} />
+                    <span className="day-panel-kind-label">{CATEGORY_LABEL[category]}</span>
                   </div>
                   {tasks.map((t) => {
                   const plan = getPlan(t.planId);
@@ -965,7 +934,7 @@ export default function CalendarPage() {
         <AddTaskModal
           initialDate={addModalDate}
           initialTime={addModalTime}
-          initialCalendarId={activeCal.category !== "ALL" ? activeCal.id : null}
+          initialCalendarId={null}
           onClose={() => {
             setShowAddModal(false);
             setAddModalTime(undefined);

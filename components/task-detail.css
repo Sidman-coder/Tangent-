@@ -213,3 +213,26 @@
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
+
+.td-planning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgb(from var(--accent) r g b / 0.06);
+  color: var(--text-2);
+  font-size: 13.5px;
+}
+.td-planning .add-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid var(--accent);
+  border-right-color: transparent;
+  animation: td-spin 0.7s linear infinite;
+}
+@keyframes td-spin {
+  to { transform: rotate(360deg); }
+}

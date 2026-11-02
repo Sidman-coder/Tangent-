@@ -633,18 +633,11 @@
   cursor: default;
 }
 
-/* With nothing typed, the mic is the primary (accent) action and Send
-   folds away; once there is text, Send pops in. */
+/* With nothing typed, the mic is the main action and Send folds away; once
+   there is text, Send pops in. The mic itself is the same clear glass with an
+   accent glyph as every other mic in the app (app/liquid-glass.css). */
 .tg-composer:not(.has-text).is-voice-idle .tg-mic {
-  background: var(--accent);
-  color: #fff;
-  box-shadow: 0 3px 12px rgb(from var(--accent) r g b / 0.3);
-}
-
-.tg-composer:not(.has-text).is-voice-idle .tg-mic:hover:not(:disabled) {
-  background: var(--accent);
-  color: #fff;
-  opacity: 0.9;
+  color: var(--accent);
 }
 
 .tg-composer:not(.has-text) .tg-send {
@@ -2071,7 +2064,8 @@ a.tg-next:hover .tg-next-go { color: var(--accent); transform: translate(2px, -2
 
 @media (max-width: 720px) {
   .tg-hero-title { font-size: 27px; }
-  .tg-examples { justify-content: flex-start; flex-wrap: nowrap; width: 100%; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+  /* Wrap, centred: a sideways scroll cut the last chip off at the edge. */
+  .tg-examples { justify-content: center; flex-wrap: wrap; width: 100%; overflow: visible; padding-bottom: 4px; }
   .tg-examples::-webkit-scrollbar { display: none; }
   .tg-hero .tg-composer-hint { display: none; }
   .tg-next-more { display: none; }
@@ -2141,4 +2135,19 @@ a.tg-next:hover .tg-next-go { color: var(--accent); transform: translate(2px, -2
   display: inline-flex;
   align-items: center;
   gap: 7px;
+}
+
+/* No pulsing dots: the "next up" dot is a plain marker. */
+.tg-next-dot {
+  animation: none;
+}
+
+/* The hero was 2px wider than its box and showed a horizontal scrollbar. */
+.tg-hero {
+  overflow-x: clip;
+}
+
+/* The page's own background shows through, as on every other page. */
+.tg-console {
+  background: transparent;
 }

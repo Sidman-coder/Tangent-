@@ -63,15 +63,18 @@ export const ROOT_RADIUS = 190;
 /** Each generation's circle is smaller, so depth reads as scale. */
 const RADIUS_DECAY = 0.62;
 const MIN_RADIUS = 54;
-/** Tangent length relative to the radius it leaves. */
-const TANGENT_REACH = 2.05;
+/** Shortest tangent, relative to the radius it leaves. Ideas start close to
+ *  their circle and slide further out only as far as they must to clear the
+ *  cards already placed (see LabelOptions); a fixed long reach made every tree
+ *  too wide to fit at a readable zoom. */
+const TANGENT_REACH = 1.0;
 /** Angular step between sibling ideas leaving the same member, radians. Each
  *  one touches the circle a little further round and so leaves at a different
  *  angle: the tangents open like a fan instead of running side by side. */
 const IDEA_FAN = 0.44;
-/** Siblings also reach different distances, so branches off one member spread
- *  in two dimensions instead of landing in a column. */
-const IDEA_REACH_STEP = 0.42;
+/** Extra reach per sibling rank. Zero now: collision sliding already spreads
+ *  siblings that would have landed on each other, and only those. */
+const IDEA_REACH_STEP = 0;
 /** A child circle may use this much of the compass, radians. Kept under a full
  *  half-turn so a grown circle's members stay ahead of the direction it was
  *  travelling rather than folding back across the branch that made it. */
@@ -117,7 +120,42 @@ type Ctx = {
   /** Ideas the viewer has opened. A closed idea is a leaf and draws no circle. */
   expanded: Set<string>;
   maxDepth: number;
+  labels: LabelOptions | null;
+  /** Cards already placed, in world units, so later ones can keep clear. */
+  boxes: Box[];
 };
+
+type Box = { x: number; y: number; w: number; h: number };
+
+/** How big each label is on screen. Labels are HTML that hold their size while
+ *  the drawing zooms, so the layout is told the zoom it is being laid out for. */
+export type LabelOptions = {
+  /** World units per screen pixel at the zoom being laid out for. */
+  unit: number;
+  /** A label's size in screen pixels. */
+  size: (node: PathNode | null, role: "goal" | "member" | "idea") => { w: number; h: number };
+};
+
+/** Screen-pixel gap kept between any two cards. */
+const CARD_GAP = 10;
+/** How far an idea slides out along its tangent per try, in screen pixels. */
+const SLIDE_STEP = 22;
+const MAX_SLIDES = 40;
+
+function overlaps(a: Box, b: Box, gap: number): boolean {
+  return Math.abs(a.x - b.x) < (a.w + b.w) / 2 + gap && Math.abs(a.y - b.y) < (a.h + b.h) / 2 + gap;
+}
+
+/** The member label's box: pushed outside its ring along the radius, exactly as
+ *  the CSS places it (`.path-point.is-member .path-work`). */
+function memberBox(point: Vec, angle: number, w: number, h: number, unit: number): Box {
+  return {
+    x: point.x + Math.cos(angle) * (w / 2 + 10) * unit,
+    y: point.y + Math.sin(angle) * (h / 2 + 8) * unit,
+    w: w * unit,
+    h: h * unit,
+  };
+}
 
 /**
  * Lays out one circle: places its members around `facing`, draws each member's
@@ -144,12 +182,21 @@ function layoutCircle(
   const step = depth === 0 ? TAU / members.length : span / (members.length + 1);
   const start = depth === 0 ? facing : facing - span / 2 + step;
 
-  members.forEach((member, i) => {
+  // Every member first, so the ideas placed next can keep clear of all their
+  // labels, not just the ones that happened to be placed before them.
+  const placed = members.map((member, i) => {
     const angle = start + i * step;
     const point = onCircle(center, radius, angle);
     ctx.members.push({ node: member, circleId: centerId, point, angle, depth: depth + 1 });
     ctx.points.set(member.id, point);
+    if (ctx.labels) {
+      const { w, h } = ctx.labels.size(member, "member");
+      ctx.boxes.push(memberBox(point, angle, w, h, ctx.labels.unit));
+    }
+    return { member, angle };
+  });
 
+  placed.forEach(({ member, angle }) => {
     const ideas = childrenOf(ctx.nodes, member.id);
     if (ideas.length === 0) return;
 
@@ -174,8 +221,24 @@ function layoutCircle(
       const touch = onCircle(center, radius, touchAngle);
       const ccwDir = { x: -Math.sin(touchAngle), y: Math.cos(touchAngle) };
       const dir = ccw > 0 ? ccwDir : { x: -ccwDir.x, y: -ccwDir.y };
-      const reachOut = reach * (1 + rank * IDEA_REACH_STEP);
-      const end = { x: touch.x + reachOut * dir.x, y: touch.y + reachOut * dir.y };
+      let reachOut = reach * (1 + rank * IDEA_REACH_STEP);
+      let end = { x: touch.x + reachOut * dir.x, y: touch.y + reachOut * dir.y };
+      // Slide the card further out along its own tangent until it is clear of
+      // every card already down. The line stays a true tangent; only its
+      // length changes, so the drawing keeps its meaning.
+      if (ctx.labels) {
+        const u = ctx.labels.unit;
+        const { w, h } = ctx.labels.size(idea, "idea");
+        const box = { x: end.x, y: end.y, w: w * u, h: h * u };
+        let tries = 0;
+        while (tries++ < MAX_SLIDES && ctx.boxes.some((b) => overlaps(box, b, CARD_GAP * u))) {
+          reachOut += SLIDE_STEP * u;
+          end = { x: touch.x + reachOut * dir.x, y: touch.y + reachOut * dir.y };
+          box.x = end.x;
+          box.y = end.y;
+        }
+        ctx.boxes.push(box);
+      }
 
       ctx.tangents.push({ node: idea, memberId: member.id, touch, end, dir, depth: depth + 2 });
       ctx.points.set(idea.id, end);
@@ -200,7 +263,7 @@ function layoutCircle(
 
 export function layoutPath(
   nodes: PathNode[],
-  options: { expanded?: Iterable<string>; maxDepth?: number } = {}
+  options: { expanded?: Iterable<string>; maxDepth?: number; labels?: LabelOptions } = {}
 ): PathLayout {
   const ctx: Ctx = {
     nodes,
@@ -210,7 +273,13 @@ export function layoutPath(
     points: new Map(),
     expanded: new Set(options.expanded ?? []),
     maxDepth: options.maxDepth ?? 12,
+    labels: options.labels ?? null,
+    boxes: [],
   };
+  if (ctx.labels) {
+    const { w, h } = ctx.labels.size(null, "goal");
+    ctx.boxes.push({ x: 0, y: 0, w: w * ctx.labels.unit, h: h * ctx.labels.unit });
+  }
 
   // The goal is the root centre and has no node of its own in the tree: it is
   // the Goal record, and its children are the work on the first circle.

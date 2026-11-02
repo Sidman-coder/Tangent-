@@ -5,6 +5,7 @@ import { Check, Plus, Sparkles, Trash2, X } from "lucide-react";
 import type { Path, PathNode, PathNodeSchedule } from "@/lib/types";
 import { splitNodeDetail } from "@/lib/path-format";
 import PathStepScheduler from "./PathStepScheduler";
+import { AskFirstPanel, useAskFirst } from "./AskFirst";
 
 // The panel beside the drawing.
 //
@@ -25,7 +26,8 @@ type Props = {
   justKept: boolean;
   onScheduleChanged: () => Promise<void> | void;
   onClose: () => void;
-  onGenerate: (id: string) => void;
+  /** Answers to "what is this?" go along, and are kept on the item. */
+  onGenerate: (id: string, answers?: { question: string; answer: string }[]) => void;
   onStatus: (id: string, status: PathNode["status"]) => void;
   onAddWork: (parentId: string | null) => void;
   onRemove: (id: string) => void;
@@ -38,6 +40,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   course: "Course",
   project: "Project",
 };
+
 
 export default function PathInspector({
   path,
@@ -55,6 +58,7 @@ export default function PathInspector({
   onRemove,
   onSelectAncestor,
 }: Props) {
+  const ask = useAskFirst(node?.id ?? null, onGenerate);
   return (
     <AnimatePresence>
       {node && (
@@ -144,6 +148,8 @@ export default function PathInspector({
             </dl>
           )}
 
+          <AskFirstPanel ask={ask} title={node.title} />
+
           <div className="path-inspector-actions">
             {node.kind === "idea" && node.status === "suggested" && (
               <>
@@ -167,11 +173,11 @@ export default function PathInspector({
             <button
               type="button"
               className="path-btn is-accent"
-              onClick={() => onGenerate(node.id)}
-              disabled={busy}
+              onClick={() => void ask.start()}
+              disabled={busy || ask.phase !== "idle"}
             >
               <Sparkles size={15} aria-hidden="true" />
-              {busy ? "Thinking" : childCount > 0 ? "Draft three more" : "Branch from here"}
+              {busy ? "Thinking" : ask.phase === "checking" ? "Checking what I know" : childCount > 0 ? "Draft three more" : "Branch from here"}
             </button>
 
             {node.kind === "idea" && (

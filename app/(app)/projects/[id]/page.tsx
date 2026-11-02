@@ -136,7 +136,7 @@ export default function ProjectPage() {
                 <TaskRow
                   task={task}
                   showDate
-                  kindColor={taskColor(task, state?.plans ?? [])}
+                  kindColor={taskColor(task)}
                   onComplete={() => void toggle(task)}
                   onOpen={() => openTask(task.id)}
                   actions={
@@ -159,7 +159,7 @@ export default function ProjectPage() {
           </summary>
           <div className="project-step-list">
             {done.map((task) => (
-              <TaskRow key={task.id} task={task} showDate kindColor={taskColor(task, state?.plans ?? [])} onComplete={() => void toggle(task)} />
+              <TaskRow key={task.id} task={task} showDate kindColor={taskColor(task)} onComplete={() => void toggle(task)} />
             ))}
           </div>
         </details>

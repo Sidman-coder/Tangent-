@@ -6,14 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Task } from "@/lib/types";
 import { X } from "lucide-react";
 import TaskTitle from "@/components/ui/TaskTitle";
-
-const KIND_COLOR = {
-  school: "var(--kind-school)",
-  "academic-ec": "var(--kind-academic-ec)",
-  "side-ec": "var(--kind-side-ec)",
-  commitment: "var(--kind-commitment)",
-  personal: "var(--kind-personal)",
-};
+import { taskColor } from "@/lib/task-colors";
 
 type ChatMsg = { role: "user" | "assistant"; content: string; timestamp: string };
 
@@ -83,7 +76,7 @@ export default function TaskChatModal({ task, onClose }: { task: Task; onClose: 
     }
   }, [input, busy, task.id]);
 
-  const kindColor = KIND_COLOR[task.kind ?? "personal"];
+  const kindColor = taskColor(task);
 
   return (
     <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal aria-label={`AI chat for ${task.title}`}>

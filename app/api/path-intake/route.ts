@@ -3,6 +3,7 @@ import { withUser } from "@/lib/request-context";
 import { callClaude } from "@/lib/ai/call";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import { buildStudentContext } from "@/lib/ai/student-context";
+import { getPath, getPathNode, pathAncestry } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,6 +58,7 @@ export const POST = withUser(async (req: Request) => {
     kind?: string;
     title?: string;
     draft?: Record<string, string>;
+    nodeId?: string;
   };
   const picture = await buildStudentContext();
   const kind = KIND_WORDS[body.kind ?? "other"] ?? KIND_WORDS.other;
@@ -87,18 +89,72 @@ Rules: only use what the context actually supports — leave a field "" rather t
     }
   }
 
+  // Before drafting ideas off one item on a path ("CCR"), find out what
+  // Tangent would otherwise guess: what it is, what they do there, how far
+  // along they are. [] when the item is already clear enough.
+  if (body.action === "nodeQuestions") {
+    const node = body.nodeId ? await getPathNode(body.nodeId) : null;
+    if (!node) return NextResponse.json({ ok: false, error: "No such item." }, { status: 404 });
+    const [owning, chain] = await Promise.all([getPath(node.pathId), pathAncestry(node.id)]);
+    const goal = owning?.path.target || owning?.path.title || "";
+    const r = await callClaude(
+      "pathIntake",
+      {
+        system: `You are TANGENT. A high school student is about to have you suggest next moves that branch off one item on their path toward a goal. Your suggestions are only as good as what you know about that item. Decide what you would otherwise be GUESSING, and ask about it.
+
+Ask 1 to 3 questions when the item is unclear, especially:
+- what it actually is, if the name is an acronym, a nickname or vague ("CCR", "the project", "club"). Always ask this one first in that case;
+- what the student does there and their role or level;
+- how far along they are, or what they've already done in it.
+
+Ask nothing (return no questions) when the item's detail already says what it is, their role and how far along they are.
+
+Never ask about the goal itself, their schedule or anything in their context. Each question under 12 words. Give 2–4 tap answers each when the likely answers are predictable; for "what is it" questions give none (they'll type it).`,
+        messages: [
+          {
+            role: "user",
+            content: `THE GOAL: ${goal}\n\nTHE ITEM: ${node.title}${node.detail ? `\nWhat Tangent knows about it: ${node.detail}` : "\nWhat Tangent knows about it: nothing"}${node.hoursPerWeek ? `\n${node.hoursPerWeek} hrs/week` : ""}${node.years ? `, ${node.years} years` : ""}\nWhere it sits: ${chain.map((n) => n.title).join(" > ")}\n\nSTUDENT CONTEXT (background only):\n${picture.text}`,
+          },
+        ],
+      },
+      { format: { type: "json_schema", schema: QUESTIONS_SCHEMA } }
+    );
+    if (!r.ok) return NextResponse.json({ ok: true, questions: [] });
+    try {
+      const q = extractStructuredJson<{ questions: { question: string; chips: string[] }[] }>(r.message).questions;
+      return NextResponse.json({ ok: true, questions: q.slice(0, 3).map((x) => ({ question: x.question, chips: (x.chips ?? []).slice(0, 4) })) });
+    } catch {
+      return NextResponse.json({ ok: true, questions: [] });
+    }
+  }
+
   if (body.action === "questions") {
     const d = body.draft ?? {};
     const r = await callClaude(
       "pathIntake",
       {
-        system: `You are TANGENT, about to map a student's path to a long-range goal (${kind}). Before building it, ask 1 to 3 sharp questions whose answers would most change which branches you suggest. Never ask what the intake or their context already answers. Each under 14 words, specific to them; 2–4 short tap answers each.`,
+        system: `You are TANGENT, about to map a high school student's path to ONE long-range goal (${kind}), named under THE GOAL below. Before building it, ask 1 to 3 questions about reaching THAT goal. Each one must pass this test: a different answer would make you suggest clearly different next steps toward it.
+
+Every question is about the goal under THE GOAL. Use the student's context only to skip what you already know and to make the options specific. Never ask about a different goal, project or activity from their context unless it directly bears on this goal.
+
+Good questions find the gap between where they are and the goal:
+- where they stand now on what the goal actually requires (scores, rating, portfolio, experience), with real ranges as options;
+- the hard constraint that shapes everything (deadline track, budget, transport, hours they really have);
+- which of two genuinely different routes they lean toward (research vs. competitions, club team vs. coach).
+
+Never ask:
+- anything the intake or their context already answers (their goal, deadline, hours a week, activities, classes);
+- how they feel, whether they're motivated, or whether something "matters" to them;
+- yes/no questions about including something ("Will X be part of your story?");
+- vague scope questions ("What's your focus?") or anything a counsellor would find obvious.
+
+Each under 14 words, plain, specific to this goal and this student. 2–4 tap answers each, under 4 words, mutually exclusive, covering the realistic range. Fewer questions is better than a weak one.`,
         messages: [
           {
             role: "user",
-            content: `STUDENT CONTEXT:\n${picture.text}\n\nTHEIR INTAKE:\n${Object.entries(d)
+            content: `THE GOAL: ${String(d.title ?? "").slice(0, 200)}${d.target && d.target !== d.title ? ` (${String(d.target).slice(0, 200)})` : ""}\n\nTHEIR INTAKE:\n${Object.entries(d)
               .map(([k, v]) => `${k}: ${String(v).slice(0, 400)}`)
-              .join("\n")}`,
+              .join("\n")}\n\nSTUDENT CONTEXT (background only):\n${picture.text}`,
           },
         ],
       },

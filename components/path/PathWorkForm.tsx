@@ -69,7 +69,7 @@ export default function PathWorkForm({ parentId, onCancel, onSubmit }: Props) {
       <h2>{parentId ? "Your own branch" : "Something you already do"}</h2>
 
       <label className="path-form-wide">
-        <span>What is it?</span>
+        <span>Name</span>
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -80,11 +80,11 @@ export default function PathWorkForm({ parentId, onCancel, onSubmit }: Props) {
       </label>
 
       <label className="path-form-wide">
-        <span>Your role or the result</span>
+        <span>What it is, and your part in it (so Tangent doesn&apos;t guess)</span>
         <input
           value={detail}
           onChange={(e) => setDetail(e.target.value)}
-          placeholder="Programming lead, two seasons"
+          placeholder="Robotics competition team, I'm programming lead, two seasons"
           onKeyDown={(e) => e.key === "Enter" && void submit()}
         />
       </label>

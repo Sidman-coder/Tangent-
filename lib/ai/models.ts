@@ -103,7 +103,9 @@ export const AI_TASKS = {
    *  no project names the chat (app/api/sessions "autotitle"). */
   chatTitle: { feature: "classify", tier: "FAST", maxTokens: 40, temperature: 0, effort: "low" },
   /** Applies the student's answers to a saved task (lib/ai/refine.ts). */
-  refineTask: { feature: "chat", tier: "FAST", maxTokens: 600, temperature: 0 },
+  /** The detail every captured task carries (notes, first step, category). It runs
+   *  in the background after the save, so it buys quality, not speed: SMART. */
+  refineTask: { feature: "chat", tier: "SMART", maxTokens: 1200, thinking: "disabled" },
   /** Durable-fact extraction from a chat turn. */
   contextExtract: { feature: "context", tier: "FAST", maxTokens: 300, effort: "low" },
   /** Compress the context file once it grows past 40 entries. */

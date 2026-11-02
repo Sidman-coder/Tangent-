@@ -10,7 +10,7 @@ export default function SignInPage({ searchParams }: { searchParams: { next?: st
   return (
     <>
       <h1>Sign in</h1>
-      <p className="auth-lede">Say it. Capture it. Build it.</p>
+      <p className="auth-lede">Use your school or personal account. New here? It takes about a minute.</p>
       <SignInForm next={searchParams.next ?? "/"} initialError={searchParams.error ? ERRORS[searchParams.error] ?? null : null} />
     </>
   );

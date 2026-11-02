@@ -1,0 +1,491 @@
+"use client";
+
+// The first screen: what you still have to do, and a mic. Hold the island and
+// say anything; the page floods lavender while you talk, and when you let go
+// Tangent sorts it into your calendar or a project (useCapture: save first,
+// ask after). Everything else is behind "Open app" (Today, at /today).
+// Motion reference: .superpowers/brainstorm/…/capture-home-v3.html.
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { AnimatePresence, useReducedMotion } from "motion/react";
+import * as m from "motion/react-m";
+import { Check } from "lucide-react";
+import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
+import { openTask } from "@/components/TaskDetail";
+import { OPEN_PALETTE_EVENT, useVoiceCapture } from "@/hooks/useVoiceCapture";
+import { useQuestionSets } from "@/hooks/useQuestionSets";
+import { useBrowserCaption } from "@/hooks/useBrowserCaption";
+import { liveCaption } from "@/lib/live-caption";
+import { buildCaptureList } from "@/lib/capture-list";
+import { holdReducer, initialHold, listeningWithoutPress, spaceStartsHold, type Hold, type HoldEvent } from "@/lib/hold-gesture";
+import { heardSomethingToAdd, soundsLikeATask } from "@/lib/voice-intent";
+import { putAsk } from "@/lib/ask-handoff";
+import { taskColor } from "@/lib/task-colors";
+import { toYMD } from "@/lib/dates";
+import { wallClockNow } from "@/lib/time";
+import { outcomeFromError, type CaptureOutcome } from "@/lib/capture-outcome";
+import type { Task } from "@/lib/types";
+import { FOCUS_KEY, parseFocus, startFocus, type FocusSession } from "@/lib/focus-timer";
+import { revealCircle, type Point } from "@/lib/reveal-circle";
+import CaptureIsland from "./CaptureIsland";
+import FocusView, { saveFocus } from "./FocusView";
+import SortedCard from "./SortedCard";
+import { useCapture } from "./useCapture";
+import "./capture.css";
+
+const TICK_MS = 50;
+/** If a send never produces a transcript or an error (silence), stop waiting.
+ *  Covers only the wait for the transcript; the save itself has no cap. */
+const SEND_TIMEOUT_MS = 9000;
+
+const EASE_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
+const EASE_IN: [number, number, number, number] = [0.5, 0, 0.75, 0];
+
+export default function CaptureHome() {
+  const router = useRouter();
+  const reduced = useReducedMotion();
+  const { state, refresh } = useAppState();
+  const tz = useUserTimezone();
+  const today = toYMD(wallClockNow(tz));
+  const { capture, confirm, freshSet, questionsPending, clearFreshSet } = useCapture();
+  const { sets } = useQuestionSets();
+
+  const [hold, setHold] = useState<Hold>(initialHold);
+  const holdRef = useRef<Hold>(initialHold);
+  const [tapToStop, setTapToStop] = useState(false);
+  const [words, setWords] = useState("");
+  const [outcome, setOutcome] = useState<CaptureOutcome | null>(null);
+  const [done, setDone] = useState<Record<string, boolean>>({});
+  const islandRef = useRef<HTMLButtonElement>(null);
+  const [origin, setOrigin] = useState<Point>({ x: 0, y: 0 });
+  // Where the wash grows from: the island's centre, in viewport pixels.
+  const islandCentre = useCallback((): Point => {
+    const r = islandRef.current?.getBoundingClientRect();
+    return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : { x: window.innerWidth / 2, y: window.innerHeight - 90 };
+  }, []);
+  const sendTimer = useRef<number | null>(null);
+  const [focus, setFocus] = useState<{ session: FocusSession; origin: Point } | null>(null);
+
+  const listening = hold.state === "listening";
+
+  // What you're saying, as you say it: the streamed transcript when it's
+  // coming, otherwise the browser's own recognition (display only).
+  const browserText = useBrowserCaption(listening);
+  const [lastCaption, setLastCaption] = useState("");
+  useEffect(() => {
+    if (browserText) setLastCaption(browserText);
+  }, [browserText]);
+
+  // "Open app": Today is fetched ahead, and the home steps back before the
+  // route changes, so the hop into the app is one continuous motion.
+  const [leaving, setLeaving] = useState(false);
+  useEffect(() => {
+    router.prefetch("/today");
+  }, [router]);
+  const openApp = useCallback(
+    (e: React.MouseEvent<HTMLAnchorElement>) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+      e.preventDefault();
+      setLeaving(true);
+      window.setTimeout(() => router.push("/today"), reduced ? 0 : 170);
+    },
+    [router, reduced]
+  );
+
+  const clearSendTimer = useCallback(() => {
+    if (sendTimer.current !== null) window.clearTimeout(sendTimer.current);
+    sendTimer.current = null;
+  }, []);
+
+  // `seq` is the send this belongs to (lib/hold-gesture.ts): a late result
+  // from an earlier capture can't end, or fill the card of, the current one.
+  const finishSort = useCallback((seq: number) => {
+    clearSendTimer();
+    dispatchRef.current({ type: "sorted", seq });
+  }, [clearSendTimer]);
+
+  const runCapture = useCallback(
+    async (said: string, seq: number) => {
+      setOutcome(null);
+      clearFreshSet();
+      const result = await capture(said);
+      if (seq !== holdRef.current.seq) return;
+      setOutcome(result);
+      finishSort(seq);
+    },
+    [capture, clearFreshSet, finishSort]
+  );
+
+  const voice = useVoiceCapture({
+    live: true,
+    // Repeated captures shouldn't re-ask for the mic (Safari asks on every
+    // fresh getUserMedia); it's let go after a minute unused.
+    keepStream: true,
+    onPartial: (t) => setWords(t),
+    onTranscript: (t) => {
+      clearSendTimer();
+      setWords(t);
+      const seq = holdRef.current.seq;
+      // A stray sound ("um") becomes nothing, not a task.
+      if (!t.trim() || !heardSomethingToAdd(t)) {
+        finishSort(seq);
+        return;
+      }
+      // Talk aimed at the app ("listen to me") asks before anything is saved.
+      if (!soundsLikeATask(t)) {
+        setOutcome({ kind: "unsure", said: t.trim() });
+        finishSort(seq);
+        return;
+      }
+      void runCapture(t, seq);
+    },
+    onError: (message) => {
+      clearSendTimer();
+      dispatchRef.current({ type: "cancel" });
+      setOutcome(outcomeFromError("", message));
+      finishSort(holdRef.current.seq);
+    },
+  });
+
+  const voiceRef = useRef(voice);
+  voiceRef.current = voice;
+
+  const dispatch = useCallback((e: HoldEvent) => {
+    const { next, effect } = holdReducer(holdRef.current, e);
+    holdRef.current = next;
+    setHold(next);
+    const v = voiceRef.current;
+    switch (effect) {
+      case "start-listening": {
+        setOrigin(islandCentre());
+        setWords("");
+        setLastCaption("");
+        setOutcome(null);
+        navigator.vibrate?.(8);
+        void v.startRecording();
+        break;
+      }
+      case "send": {
+        setTapToStop(false);
+        const seq = next.seq;
+        // Let go before the mic was live (the permission prompt, or a very
+        // short hold): there's no recording, so no transcript is coming.
+        const wasRecording = v.status === "recording";
+        v.stopRecording();
+        if (!wasRecording) {
+          setOutcome(outcomeFromError("", "Mic's ready. Hold again to talk."));
+          queueMicrotask(() => dispatchRef.current({ type: "sorted", seq }));
+          break;
+        }
+        sendTimer.current = window.setTimeout(() => dispatchRef.current({ type: "sorted", seq }), SEND_TIMEOUT_MS);
+        break;
+      }
+      case "abort":
+        setTapToStop(false);
+        setWords("");
+        v.cancelRecording();
+        break;
+      case "open-typing":
+        window.dispatchEvent(new CustomEvent(OPEN_PALETTE_EVENT));
+        break;
+    }
+  }, []);
+  const dispatchRef = useRef(dispatch);
+  dispatchRef.current = dispatch;
+
+  // While pressed, time decides tap vs hold.
+  useEffect(() => {
+    if (hold.state !== "pressed") return;
+    const id = window.setInterval(() => dispatch({ type: "tick", t: performance.now() }), TICK_MS);
+    return () => window.clearInterval(id);
+  }, [hold.state, dispatch]);
+
+  // Space works like the island on a keyboard; losing the window cancels.
+  useEffect(() => {
+    const owns = (e: KeyboardEvent) => {
+      const el = e.target instanceof HTMLElement && e.target !== document.body ? e.target : null;
+      return spaceStartsHold(el && { tagName: el.tagName, role: el.getAttribute("role"), isContentEditable: el.isContentEditable, isIsland: el === islandRef.current });
+    };
+    const down = (e: KeyboardEvent) => {
+      if (e.code !== "Space" || e.repeat || !owns(e) || document.querySelector('[role="dialog"]')) return;
+      e.preventDefault();
+      dispatch({ type: "down", t: performance.now(), y: 0 });
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.code !== "Space" || !owns(e)) return;
+      if (holdRef.current.state === "idle" || holdRef.current.state === "sorting") return;
+      e.preventDefault();
+      dispatch({ type: "up", t: performance.now(), y: 0 });
+    };
+    const blur = () => dispatch({ type: "cancel" });
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", blur);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", blur);
+    };
+  }, [dispatch]);
+
+  // The home-screen shortcut (/?capture=1, app/manifest.ts) opens listening.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("capture") !== "1") return;
+    window.history.replaceState(null, "", "/");
+    setOrigin(islandCentre());
+    holdRef.current = { ...listeningWithoutPress, seq: holdRef.current.seq };
+    setHold(holdRef.current);
+    setTapToStop(true);
+    void voiceRef.current.startRecording();
+  }, []);
+
+  useEffect(() => () => {
+    if (sendTimer.current !== null) window.clearTimeout(sendTimer.current);
+  }, []);
+
+  const tasks = useMemo(
+    () => (state?.tasks ?? []).map((t) => (t.id in done ? { ...t, completed: done[t.id] } : t)),
+    [state?.tasks, done]
+  );
+  const rows = useMemo(() => buildCaptureList(tasks, state?.plans ?? [], today), [tasks, state?.plans, today]);
+
+  const complete = useCallback(
+    async (task: Task) => {
+      setDone((d) => ({ ...d, [task.id]: true }));
+      try {
+        const res = await fetch("/api/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "update_task", id: task.id, completed: true }),
+        });
+        if (!res.ok) throw new Error();
+        await refresh();
+      } catch {
+        // Put it back if the save didn't stick.
+        setDone((d) => {
+          const next = { ...d };
+          delete next[task.id];
+          return next;
+        });
+      }
+    },
+    [refresh]
+  );
+
+  // A focus session from before a reload picks back up, if its task is still open.
+  const resumed = useRef(false);
+  useEffect(() => {
+    if (resumed.current || !state) return;
+    resumed.current = true;
+    let saved: FocusSession | null = null;
+    try {
+      saved = parseFocus(localStorage.getItem(FOCUS_KEY));
+    } catch {
+      saved = null;
+    }
+    const task = saved && state.tasks.find((t) => t.id === saved!.taskId && !t.completed);
+    if (saved && task) setFocus({ session: saved, origin: { x: window.innerWidth / 2, y: window.innerHeight / 2 } });
+    else if (saved) saveFocus(null);
+  }, [state]);
+
+  const startFocusOn = useCallback((task: Task, from: HTMLElement) => {
+    const r = from.getBoundingClientRect();
+    const session = startFocus(task.id, Date.now());
+    saveFocus(session);
+    setFocus({ session, origin: { x: r.left + r.width / 2, y: r.top + r.height / 2 } });
+  }, []);
+  const endFocus = useCallback(() => {
+    saveFocus(null);
+    setFocus(null);
+  }, []);
+  const focusTask = focus ? state?.tasks.find((t) => t.id === focus.session.taskId) ?? null : null;
+
+  const savedLine = useMemo(() => {
+    if (outcome?.kind !== "saved") return null;
+    const task = outcome.taskId ? state?.tasks.find((t) => t.id === outcome.taskId) : undefined;
+    const plan = outcome.planId ? state?.plans.find((p) => p.id === outcome.planId) : undefined;
+    if (task) return { title: task.title, color: taskColor(task) };
+    if (plan) return { title: plan.title, color: "var(--cat-ec)" };
+    return { title: words || outcome.summary, color: "var(--cat-other)" };
+  }, [outcome, state?.tasks, state?.plans, words]);
+
+  const parkedSet = useMemo(() => {
+    const waiting = sets.filter((s) => s.id !== freshSet?.id && s.questions.length > 0);
+    return waiting.sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0] ?? null;
+  }, [sets, freshSet?.id]);
+
+  const dismiss = useCallback(() => {
+    setOutcome(null);
+    clearFreshSet();
+  }, [clearFreshSet]);
+
+  const washOn = listening;
+  const wash = revealCircle(origin, typeof window === "undefined" ? { width: 0, height: 0 } : { width: window.innerWidth, height: window.innerHeight });
+  const count = rows.length;
+
+  return (
+    <div className="capture-home">
+      <m.div
+        className="capture-page"
+        // Transform and opacity only: they stay on the compositor. An animated
+        // blur over the whole list was the most expensive frame of the press.
+        animate={
+          leaving ? { opacity: 0, scale: reduced ? 1 : 0.985 }
+          : washOn && !reduced ? { scale: 0.94, y: -8, opacity: 0.5 }
+          : { scale: 1, y: 0, opacity: 1 }
+        }
+        transition={{ duration: leaving ? 0.17 : washOn ? 0.6 : 0.45, ease: leaving ? EASE_IN : EASE_OUT }}
+        aria-hidden={washOn}
+      >
+        <header className="capture-top">
+          <span className="capture-wordmark">tangent</span>
+          <Link href="/today" className="capture-open-app" onClick={openApp}>Open app →</Link>
+        </header>
+
+        <h1 className="capture-title">To do</h1>
+        <p className="capture-count">{count === 1 ? "1 thing" : `${count} things`}</p>
+
+        {state && count === 0 ? (
+          <p className="capture-empty">Nothing to do. Hold to add something.</p>
+        ) : (
+          <ul className="capture-list">
+            <AnimatePresence initial={false}>
+              {rows.map(({ task, sub, overdue }, i) => (
+                <m.li
+                  key={task.id}
+                  layout={!reduced}
+                  className={`capture-row${overdue ? " is-overdue" : ""}`}
+                  initial={reduced ? { opacity: 0 } : { opacity: 0, y: -14, scale: 0.9, boxShadow: "0 0 0 6px rgb(91 75 196 / 0.22)" }}
+                  animate={{ opacity: 1, y: 0, scale: 1, boxShadow: "0 0 0 0px rgb(91 75 196 / 0)" }}
+                  exit={reduced ? { opacity: 0 } : { opacity: 0, x: 24, transition: { duration: 0.22 } }}
+                  transition={{ type: "spring", visualDuration: 0.55, bounce: 0.35, boxShadow: { duration: 0.9 } }}
+                >
+                  <button type="button" className="capture-check" aria-label={`Complete ${task.title}`} onClick={() => void complete(task)}>
+                    <Check size={12} strokeWidth={3} aria-hidden="true" />
+                  </button>
+                  <button type="button" className="capture-row-body" onClick={() => openTask(task.id)}>
+                    <span className="capture-row-title">{task.title}</span>
+                    {sub && <span className="capture-row-sub">{sub}</span>}
+                  </button>
+                  {i === 0 && (
+                    <button type="button" className="capture-start" onClick={(e) => startFocusOn(task, e.currentTarget)}>
+                      Start
+                    </button>
+                  )}
+                  <i className="capture-dot" style={{ background: taskColor(task) }} aria-hidden="true" />
+                </m.li>
+              ))}
+            </AnimatePresence>
+          </ul>
+        )}
+      </m.div>
+
+      {/* The list dissolves into the page behind the island instead of running
+          under it (it steps aside while the wash is up). */}
+      <div className={`capture-fade${washOn ? " is-hidden" : ""}`} aria-hidden="true" />
+
+      {/* The lavender takeover, grown from the island's centre. */}
+      <AnimatePresence>
+        {washOn && (
+          <m.div
+            key="wash"
+            className="capture-wash"
+            initial={reduced ? { opacity: 0 } : { clipPath: wash.from }}
+            animate={reduced ? { opacity: 1 } : { clipPath: wash.to, transition: { duration: 0.75, ease: EASE_OUT } }}
+            exit={reduced ? { opacity: 0 } : { clipPath: wash.from, transition: { duration: 0.55, ease: EASE_IN } }}
+            aria-hidden="true"
+          >
+            {!reduced && (
+              <>
+                <span className="capture-blob is-one" />
+                <span className="capture-blob is-two" />
+              </>
+            )}
+            <div className="capture-live">
+              <m.p className="capture-listening" initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { delay: 0.2 } }}>
+                Listening…
+              </m.p>
+              <p className="capture-words">
+                {liveCaption(words, browserText).split(/\s+/).filter(Boolean).map((w, i) => (
+                  <m.span
+                    key={i}
+                    initial={reduced ? { opacity: 0 } : { opacity: 0, filter: "blur(6px)", y: 10 }}
+                    animate={{ opacity: 1, filter: "blur(0px)", y: 0 }}
+                    transition={{ duration: 0.42, ease: EASE_OUT }}
+                  >
+                    {w}
+                  </m.span>
+                ))}
+              </p>
+            </div>
+          </m.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {outcome && (
+          <SortedCard
+            key="sorted"
+            outcome={outcome}
+            freshSet={freshSet}
+            questionsPending={questionsPending}
+            parkedSet={parkedSet}
+            line={savedLine}
+            onDismiss={dismiss}
+            onRetry={(said) => {
+              setOutcome(null);
+              const seq = holdRef.current.seq + 1;
+              holdRef.current = { ...initialHold, state: "sorting", seq };
+              setHold(holdRef.current);
+              setWords(said);
+              void runCapture(said, seq);
+            }}
+            onConfirm={(id, yes) => {
+              setOutcome(null);
+              void confirm(id, yes).then((o) => o && setOutcome(o));
+            }}
+            onAsk={(said) => {
+              putAsk("ai", said);
+              router.push("/ai?ask=1");
+            }}
+            onChanged={() => void refresh()}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {focus && focusTask && (
+          <FocusView
+            key="focus"
+            task={focusTask}
+            session={focus.session}
+            origin={focus.origin}
+            onSession={(session) => {
+              saveFocus(session);
+              setFocus((f) => (f ? { ...f, session } : f));
+            }}
+            onDone={() => {
+              void complete(focusTask);
+              endFocus();
+            }}
+            onStop={endFocus}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Opacity only: a transform here would become the fixed island's containing block. */}
+      <m.div animate={{ opacity: leaving ? 0 : 1 }} transition={{ duration: 0.17, ease: EASE_IN }}>
+        <CaptureIsland
+          ref={islandRef}
+          state={hold.state}
+          level={voice.getLevel}
+          transcriptTail={liveCaption(words, lastCaption)}
+          tapToStop={tapToStop}
+          onEvent={dispatch}
+        />
+      </m.div>
+    </div>
+  );
+}

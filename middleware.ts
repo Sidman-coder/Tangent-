@@ -30,6 +30,12 @@ function redirectWithCookies(url: URL, from: NextResponse): NextResponse {
 export async function middleware(request: NextRequest) {
   if (NO_SESSION_CHECK.some((p) => request.nextUrl.pathname.startsWith(p))) return NextResponse.next({ request });
 
+  // Local design previews (app/dev/*, sample data, no account). The pages
+  // themselves 404 outside development too.
+  if (process.env.NODE_ENV === "development" && request.nextUrl.pathname.startsWith("/dev/")) {
+    return NextResponse.next({ request });
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -62,7 +68,7 @@ export async function middleware(request: NextRequest) {
   if (user && !isEmailAllowed(user.email)) {
     await supabase.auth.signOut();
     if (isApi) {
-      const res = NextResponse.json({ ok: false, error: "TANGENT is invite-only right now" }, { status: 403 });
+      const res = NextResponse.json({ ok: false, error: "Tangent is invite-only right now" }, { status: 403 });
       response.cookies.getAll().forEach((c) => res.cookies.set(c));
       return res;
     }

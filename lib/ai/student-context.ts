@@ -6,7 +6,8 @@ import "server-only";
 // toward. This is what lets Tangent skip questions it already knows the
 // answer to, and place work around a heavy week instead of on top of it.
 
-import { getAllTasks, getContextAsString, getPathGoals } from "@/lib/store";
+import { getAllPlans, getAllTasks, getContextAsString, getPathGoals } from "@/lib/store";
+import { cleanCourse } from "@/lib/course";
 import { describeLoad, formatMinutes } from "@/lib/load";
 import { schoolHoursFromTasks } from "@/lib/school-block";
 import { isSchoolBlock } from "@/lib/schedule-slots";
@@ -23,18 +24,26 @@ export type StudentContext = {
   text: string;
   /** False until the student has told Tangent their daily capacity. */
   capacityKnown: boolean;
+  /** Projects under way, for matching a new ask to one (lib/project-match.ts). */
+  projects: { id: string; title: string }[];
 };
 
 export async function buildStudentContext(): Promise<StudentContext> {
-  const [tasks, memory, goals, { cap, known }, now] = await Promise.all([
+  const [tasks, memory, goals, { cap, known }, now, plans] = await Promise.all([
     getAllTasks(),
     getContextAsString().catch(() => ""),
     getPathGoals().catch(() => []),
     studentCapacity(),
     studentNow(),
+    getAllPlans().catch(() => []),
   ]);
 
   const sections: string[] = [];
+
+  // Today, so nothing offers a date that has already passed.
+  const [ty, tm, td] = now.date.split("-").map(Number);
+  const today = new Date(ty, tm - 1, td).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+  sections.push(`TODAY: ${today} (${now.date})`);
 
   if (memory && memory !== "No user context yet.") {
     sections.push(`WHAT YOU KNOW ABOUT THEM (from past conversations):\n${memory}`);
@@ -89,6 +98,35 @@ export async function buildStudentContext(): Promise<StudentContext> {
     );
   }
 
+  // Their classes, by the names Canvas uses, so "my chem final" can be matched
+  // to the real class instead of asking which one.
+  const classes = new Set<string>();
+  for (const t of tasks) {
+    if (t.source !== "canvas") continue;
+    const m = /\[([^\]]+)\]?\s*$/.exec(t.title);
+    const name = m ? cleanCourse(m[1]) : "";
+    if (name) classes.add(name);
+  }
+  if (classes.size > 0) {
+    sections.push(`THEIR CLASSES: ${Array.from(classes).slice(0, 12).join("; ")}`);
+  }
+
+  // Projects already under way, so a new ask that overlaps one is recognised
+  // as part of it rather than started again from nothing.
+  if (plans.length > 0) {
+    sections.push(
+      `PROJECTS ALREADY UNDER WAY:\n${plans
+        .slice(0, 10)
+        .map((p) => {
+          const steps = tasks.filter((t) => t.planId === p.id);
+          const done = steps.filter((t) => t.completed).length;
+          const next = steps.filter((t) => !t.completed).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))[0];
+          return `- ${p.title} (${done}/${steps.length} steps done${next ? `; next: ${next.title} on ${next.date}` : ""})`;
+        })
+        .join("\n")}`
+    );
+  }
+
   if (goals.length > 0) {
     sections.push(
       `GOALS THEY'RE WORKING TOWARD (Paths):\n${goals
@@ -97,5 +135,5 @@ export async function buildStudentContext(): Promise<StudentContext> {
     );
   }
 
-  return { text: sections.join("\n\n"), capacityKnown: known };
+  return { text: sections.join("\n\n"), capacityKnown: known, projects: plans.map((p) => ({ id: p.id, title: p.title })) };
 }

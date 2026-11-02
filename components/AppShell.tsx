@@ -3,7 +3,7 @@
 import StorageStatus from "@/components/StorageStatus";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { m } from "motion/react";
 import { pageEnter, spring } from "@/lib/motion";
 import {
@@ -11,12 +11,11 @@ import {
   FolderKanban,
   Home,
   MessageSquareText,
-  Search,
+  Mic,
   Settings,
 } from "lucide-react";
 import NotificationBell from "./NotificationBell";
 import CommandPalette from "./CommandPalette";
-import CaptureDock from "./CaptureDock";
 import GetToKnowYou, { GET_TO_KNOW_EVENT } from "./GetToKnowYou";
 import FirstRun from "./FirstRun";
 import TangentLogo from "@/components/TangentLogo";
@@ -44,7 +43,7 @@ function OrbitIcon({ size = 19 }: { size?: number; strokeWidth?: number; "aria-h
 }
 
 const NAV_LINKS = [
-  { href: "/", label: "Today", icon: Home },
+  { href: "/today", label: "Today", icon: Home },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/tangents", label: "Tangents", icon: OrbitIcon },
@@ -55,7 +54,51 @@ const NAV_LINKS = [
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  // Coming in from the capture home ("Open app"), the chrome eases in instead
+  // of appearing at once (.shell.is-arriving in globals.css).
+  const lastPath = useRef(pathname);
+  const [arriving, setArriving] = useState(false);
+  useEffect(() => {
+    const from = lastPath.current;
+    lastPath.current = pathname;
+    if (from !== "/" || pathname === "/") return;
+    setArriving(true);
+    const t = window.setTimeout(() => setArriving(false), 700);
+    return () => window.clearTimeout(t);
+  }, [pathname]);
   const [notifOpen, setNotifOpen] = useState(false);
+  // One bell at a time: in the sidebar on desktop, in the top bar on a phone.
+  const [desktop, setDesktop] = useState(true);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 721px)");
+    const update = () => setDesktop(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  // Hick's Law: one mic in view at a time. A page that leads with its own
+  // composer (Today) marks it [data-primary-composer]; while that's on screen
+  // the floating mic would be a second, identical choice, so it steps back.
+  const [composerInView, setComposerInView] = useState(false);
+  useEffect(() => {
+    // Re-find the element on every check: Today re-mounts when its data
+    // arrives, so an IntersectionObserver on the first node goes stale.
+    const check = () => {
+      const el = document.querySelector("[data-primary-composer]");
+      if (!el) { setComposerInView(false); return; }
+      const r = el.getBoundingClientRect();
+      setComposerInView(r.bottom > 40 && r.top < window.innerHeight - 40);
+    };
+    check();
+    const timer = window.setInterval(check, 400);
+    window.addEventListener("scroll", check, { capture: true, passive: true });
+    window.addEventListener("resize", check);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("scroll", check, { capture: true });
+      window.removeEventListener("resize", check);
+    };
+  }, [pathname]);
   const { state, refresh } = useAppState();
   const refreshState = refresh;
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -91,28 +134,34 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const profileName = state?.user.displayName?.trim() ?? "";
   const profileInitial = (profileName || "T").charAt(0).toUpperCase();
 
-  const openPalette = () => window.dispatchEvent(new Event("tangent:open-palette"));
+  const openListening = () => window.dispatchEvent(new CustomEvent("tangent:open-palette", { detail: { listen: true } }));
 
-  // Tangents takes over the window. Returning children bare rather than hiding
-  // the chrome with CSS keeps the rail and topbar out of the tree entirely, so
-  // nothing in them can catch a pointer or a tab stop over the canvas.
-  if (pathname.startsWith("/tangents")) {
+  const firstRun = showOnboarding && (
+    <FirstRun
+      onComplete={async () => {
+        await refresh();
+        setShowOnboarding(false);
+        // Setup as a conversation: right after the form, Tangent asks.
+        window.dispatchEvent(new Event(GET_TO_KNOW_EVENT));
+      }}
+    />
+  );
+
+  // The capture home (/) is the whole screen: just the list and the mic
+  // island. No rail, top bar, mobile nav or floating mic; "Open app" leads in.
+  if (pathname === "/") {
     return (
-      // Opacity only: a lift or blur here would move the goal card off the
-      // spot the field's portal delivered it to.
-      <m.div
-        key={pathname}
-        className="tangents-route"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1, transition: { duration: 0.22 } }}
-      >
+      <div className="shell is-bare">
         {children}
-      </m.div>
+        <CommandPalette />
+        <GetToKnowYou />
+        {firstRun}
+      </div>
     );
   }
 
   return (
-    <div className="shell">
+    <div className={arriving ? "shell is-arriving" : "shell"}>
       <a href="#main-content" className="skip-link">Skip to main content</a>
       <aside className="rail lg lg-interactive" aria-label="Primary navigation">
         <Link href="/" className="rail-logo" aria-label="Tangent home">
@@ -122,7 +171,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         <nav className="rail-nav" aria-label="Primary">
           {NAV_LINKS.filter((l) => l.href !== "/tangents" && l.href !== "/settings").map(({ href, label, icon: Icon }) => {
-            const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+            const active = pathname.startsWith(href);
             return (
               <Link
                 key={href}
@@ -178,6 +227,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         })()}
 
 
+        {desktop && <NotificationBell open={notifOpen} onOpenChange={setNotifOpen} placement="rail" />}
+
         <div className="rail-footer">
           <Link href="/settings" className="rail-profile" aria-label="Open account settings">
             <span className="rail-profile-avatar" aria-hidden="true">{profileInitial}</span>
@@ -192,14 +243,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className="shell-main">
         <header className="topbar">
-          <div className="topbar-right lg lg-interactive">
+          <div className="topbar-right">
             <StorageStatus />
-            <button type="button" className="topbar-search" onClick={openPalette} aria-label="Tell Tangent">
-              <Search size={16} strokeWidth={1.8} aria-hidden="true" />
-              <span>Tell Tangent</span>
-              <kbd>⌘K</kbd>
-            </button>
-            <NotificationBell open={notifOpen} onOpenChange={setNotifOpen} />
+            {!desktop && <NotificationBell open={notifOpen} onOpenChange={setNotifOpen} />}
           </div>
         </header>
 
@@ -212,7 +258,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       <nav className="mobile-nav lg" aria-label="Primary mobile navigation">
         {NAV_LINKS.map(({ href, label, icon: Icon }) => {
-          const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+          const active = pathname.startsWith(href);
           return (
             <Link
               key={href}
@@ -227,22 +273,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         })}
       </nav>
 
+      {/* The mic floats bottom-right on every page: say anything, from
+          anywhere; it opens Add already listening. (⌘K opens it to type.)
+          Not on Tangent AI, whose own composer mic talks to the chat. */}
+      {!pathname.startsWith("/ai") && !composerInView && (
+        <button type="button" className="float-mic lg lg-interactive" onClick={openListening} aria-label="Say it to Tangent" title="Say it  ·  ⌘K to type">
+          <Mic size={22} strokeWidth={2} aria-hidden="true" />
+        </button>
+      )}
+
       <CommandPalette />
       <GetToKnowYou />
-      {/* Instant capture lives on Today only. Mounted here, not in the page,
-          so it is usable while Today is still loading and a recording isn't
-          cut off when the loading skeleton swaps for the real page. */}
-      {pathname === "/" && <CaptureDock />}
       {!showOnboarding && <DesktopNotifPrompt />}
 
-      {showOnboarding && <FirstRun
-          onComplete={async () => {
-            await refresh();
-            setShowOnboarding(false);
-            // Setup as a conversation: right after the form, Tangent asks.
-            window.dispatchEvent(new Event(GET_TO_KNOW_EVENT));
-          }}
-        />}
+      {firstRun}
     </div>
   );
 }

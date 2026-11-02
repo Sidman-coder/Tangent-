@@ -49,9 +49,18 @@ export function cleanCourse(raw: string): string {
 
 /** A short chip for a cleaned course name. */
 export function courseChip(course: string): string {
+  // "APCSP", "APCSA": AP Computer Science written as one word.
+  if (/\bAP\s*CS[PA]?\b/i.test(course)) return "AP CS";
   const ap = /\bAP\b/.test(course) ? "AP " : "";
   for (const [re, name] of COURSE_NAMES) if (re.test(course)) return ap + name;
-  const words = course.replace(/\bAP\b/, "").trim().split(/\s+/).slice(0, 2).join(" ");
+  // Real words only: a stray "-" between parts is not a word.
+  const words = course
+    .replace(/\bAP\b/, "")
+    .trim()
+    .split(/\s+/)
+    .filter((w) => /[a-z0-9]/i.test(w))
+    .slice(0, 2)
+    .join(" ");
   return (ap + words).slice(0, 16).trim();
 }
 

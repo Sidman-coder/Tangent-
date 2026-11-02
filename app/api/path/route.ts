@@ -33,6 +33,7 @@ import type {
 import { withUser } from "@/lib/request-context";
 import { CAL_OTHER } from "@/lib/calendars";
 import { callClaude, messageText } from "@/lib/ai/call";
+import { buildStudentContext } from "@/lib/ai/student-context";
 import { addDaysYMD, getUserToday, localNow } from "@/lib/time";
 import { isBeforeNow, suggestSlots, toMinutes } from "@/lib/schedule-slots";
 import { splitNodeDetail, stepTitle } from "@/lib/path-format";
@@ -455,8 +456,23 @@ export const POST = withUser(async (req: Request) => {
       );
     }
 
-    const parent = await getPathNode(str(body.parentId));
+    let parent = await getPathNode(str(body.parentId));
     if (!parent) return NextResponse.json({ error: "No such node." }, { status: 404 });
+
+    // Answers to "what is this?" (components/path/PathInspector.tsx) are kept
+    // on the item, so Tangent never has to ask or guess again.
+    const answers = Array.isArray(body.answers)
+      ? (body.answers as unknown[])
+          .filter((a): a is { question: string; answer: string } => !!a && typeof a === "object" && typeof (a as { answer?: unknown }).answer === "string" && typeof (a as { question?: unknown }).question === "string")
+          .map((a) => ({ question: a.question.slice(0, 160), answer: a.answer.trim().slice(0, 400) }))
+          .filter((a) => a.answer)
+          .slice(0, 4)
+      : [];
+    if (answers.length > 0) {
+      const learned = answers.map((a) => `${a.question.replace(/\?$/, "")}: ${a.answer}`).join(". ");
+      const detail = [parent.detail, learned].filter(Boolean).join(" · ").slice(0, 900);
+      parent = (await updatePathNode(parent.id, { detail })) ?? parent;
+    }
 
     const owning = await getPath(parent.pathId);
     if (!owning) return NextResponse.json({ error: "No such path." }, { status: 404 });
@@ -486,8 +502,11 @@ export const POST = withUser(async (req: Request) => {
       .filter((n) => n.status === "accepted" && n.kind === "idea")
       .reduce((sum, n) => sum + (n.hoursPerWeek ?? 0), 0);
 
+    // Who the student is, so ideas fit them instead of a generic student.
+    const picture = await buildStudentContext().catch(() => null);
     const prompt = [
       pathBrief(owning.path, committedHours, getUserToday(await getUserTimezone())),
+      ...(picture?.text ? [`About the student (background):\n${picture.text}`] : []),
       `The chain down to what they want to branch off now:\n${chain
         .map((n, i) => `${"  ".repeat(i)}${i + 1}. ${nodeLine(n)}`)
         .join("\n")}`,

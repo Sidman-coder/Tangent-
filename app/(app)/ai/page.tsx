@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getGreeting } from "@/lib/greetings";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { localNow } from "@/lib/time";
 import ChatSidebar from "@/components/console/ChatSidebar";
@@ -102,7 +103,7 @@ function partOfDay(hour: number): string {
   if (hour >= 5 && hour < 12) return "Good morning";
   if (hour >= 12 && hour < 17) return "Good afternoon";
   if (hour >= 17 && hour < 21) return "Good evening";
-  return "Still going";
+  return "Still up";
 }
 
 /** Turns a fetch/route failure into something true and actionable. */
@@ -228,7 +229,9 @@ export default function AiPage() {
   const firstName = state?.user.displayName?.trim().split(/\s+/)[0] ?? "";
   const [greeting, setGreeting] = useState("");
   useEffect(() => {
-    setGreeting(`${partOfDay(localNow(tz).hour)}${firstName ? `, ${firstName}` : ""}`);
+    // The same greeting as Today (lib/greetings.ts), so the two never disagree.
+    const hour = localNow(tz).hour;
+    setGreeting(firstName ? getGreeting(firstName, hour) : `${partOfDay(hour)}.`);
   }, [firstName, tz]);
 
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -1091,24 +1094,15 @@ export default function AiPage() {
               <span className="tg-hero-ask">{v2 ? "What do you need?" : "What can Tangent help with?"}</span>
             </h2>
             <p className="tg-hero-sub">Ask, add, or plan anything. You’ll always see what changes.</p>
-            {today && (
-              today.next ? (
-                <Link href={`/calendar?date=${today.next.date}`} className="tg-next">
-                  <span className="tg-next-dot" aria-hidden="true" />
-                  <span className="tg-next-label">Next up</span>
-                  <span className="tg-next-title">{today.next.title}</span>
-                  <span className="tg-next-time">{formatTime12(today.next.time)}</span>
-                  {today.left > 1 && <span className="tg-next-more">+{today.left - 1} today</span>}
-                  <ArrowUpRight size={14} strokeWidth={2} aria-hidden="true" className="tg-next-go" />
-                </Link>
-              ) : (
-                <p className="tg-next is-clear">
-                  <span className="tg-next-dot" aria-hidden="true" />
-                  {today.left > 0
-                    ? `${today.left} task${today.left === 1 ? "" : "s"} left today, nothing else timed`
-                    : "Your calendar is clear today"}
-                </p>
-              )
+            {today?.next && (
+              <Link href={`/calendar?date=${today.next.date}`} className="tg-next">
+                <span className="tg-next-dot" aria-hidden="true" />
+                <span className="tg-next-label">Next up</span>
+                <span className="tg-next-title">{today.next.title}</span>
+                <span className="tg-next-time">{formatTime12(today.next.time)}</span>
+                {today.left > 1 && <span className="tg-next-more">+{today.left - 1} today</span>}
+                <ArrowUpRight size={14} strokeWidth={2} aria-hidden="true" className="tg-next-go" />
+              </Link>
             )}
             {err && <p className="tg-error" role="alert">{err}</p>}
             <div className="tg-composer-glow">{composer}</div>
@@ -1231,7 +1225,7 @@ export default function AiPage() {
               <p className="tg-dock-hint">
                 {v2
                   ? "Ask a question, add something, or start a project. You’ll see a preview before anything is added."
-                  : <>Ask a question, add something, or start a project. Tangent works out which, and you&apos;ll always see what changed.</>}
+                  : <>Think things through with Tangent here. Whatever you decide, it can add for you, and you&apos;ll always see what changed.</>}
               </p>
             </div>
           </>

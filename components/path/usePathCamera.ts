@@ -80,6 +80,27 @@ function labelMargins(width: number, height: number): { x: number; y: number } {
   };
 }
 
+/** The lowest zoom "fit everything" goes to; below it the goal is framed
+ *  and the rest is a pan away. The layout spaces cards for the same floor
+ *  (PathScene), so the two never disagree about how big a card is. */
+export function minFitScale(width: number): number {
+  return width < 640 ? 0.42 : 0.32;
+}
+
+/** The zoom `fit` would choose for these bounds, before its floor and caps.
+ *  The layout uses it to space cards for the zoom they will be shown at. */
+export function fitScaleFor(
+  bounds: Bounds,
+  size: { width: number; height: number },
+  insets: Partial<{ top: number; right: number; bottom: number; left: number }> = {}
+): number {
+  const inset = { top: 0, right: 0, bottom: 0, left: 0, ...insets };
+  const margin = labelMargins(size.width, size.height);
+  const usableW = Math.max(size.width - inset.left - inset.right - margin.x * 2, 120);
+  const usableH = Math.max(size.height - inset.top - inset.bottom - margin.y * 2, 120);
+  return Math.min(usableW / Math.max(bounds.maxX - bounds.minX, 1), usableH / Math.max(bounds.maxY - bounds.minY, 1));
+}
+
 export function usePathCamera(reduced: boolean): PathCamera {
   const stageRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
@@ -195,7 +216,7 @@ export function usePathCamera(reduced: boolean): PathCamera {
       // "fit everything" turns a big tree into a pile of cards. Below that
       // floor, frame the goal at a readable zoom and let the person pinch or
       // drag out to the rest.
-      const floor = options.minScale ?? (size.width < 640 ? 0.6 : 0.32);
+      const floor = options.minScale ?? minFitScale(size.width);
       let cx = (bounds.minX + bounds.maxX) / 2;
       let cy = (bounds.minY + bounds.maxY) / 2;
       if (scale < floor) {
@@ -242,6 +263,9 @@ export function usePathCamera(reduced: boolean): PathCamera {
   useEffect(() => {
     const el = stageRef.current;
     if (!el) return;
+    // Measure now; the observer's first report waits for a painted frame.
+    const first = el.getBoundingClientRect();
+    if (first.width > 0) setSize({ width: first.width, height: first.height });
     const observer = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect;
       setSize({ width, height });

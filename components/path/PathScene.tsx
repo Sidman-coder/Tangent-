@@ -4,10 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { Maximize2, Minus, Plus, Shrink } from "lucide-react";
 import PathAmbient from "./PathAmbient";
-import { usePathCamera } from "./usePathCamera";
+import { fitScaleFor, minFitScale, usePathCamera } from "./usePathCamera";
 import type { Bounds, PathCamera } from "./usePathCamera";
 import { layoutPath, ROOT_RADIUS } from "@/lib/path-layout";
-import type { PathLayout } from "@/lib/path-layout";
+import type { LabelOptions, PathLayout } from "@/lib/path-layout";
 import type { Path, PathNode, TangentStatus } from "@/lib/types";
 
 // The drawing.
@@ -72,6 +72,19 @@ function ZoomReadout({ camera }: { camera: PathCamera }) {
 function clip(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
+
+/** Each label's size on screen, in pixels, estimated from its text (the same
+ *  clipping and widths the CSS gives them). Generous rather than exact: the
+ *  layout uses it to keep cards apart, so erring large only adds air. */
+const labelSize: LabelOptions["size"] = (node, role) => {
+  if (role === "goal") return { w: 150, h: 60 };
+  const title = node?.title ?? "";
+  if (role === "member") return { w: Math.min(28, title.length) * 7.4 + 30, h: 32 };
+  const text = clip(title, 40);
+  const oneLine = text.length * 6.6 + 26;
+  const grows = 30;
+  return oneLine > 216 ? { w: 216 + grows, h: 54 } : { w: oneLine + grows, h: 36 };
+};
 
 /** World bounds of a node plus everything laid out beneath it, including the
  *  full extent of any circle that has been opened under it. */
@@ -158,11 +171,34 @@ export default function PathScene({
     }, 1600);
     return () => clearTimeout(t);
   }, []);
-  const stage = (base: number, i: number) => (firstPaint.current ? base + Math.min(i * 0.07, 0.6) : 0);
+  const stage = (base: number, i: number) => (firstPaint.current ? base + Math.min(i * 0.05, 0.4) : 0);
   const reduced = useReducedMotion() ?? false;
   const camera = usePathCamera(reduced);
 
-  const layout: PathLayout = useMemo(() => layoutPath(nodes, { expanded }), [nodes, expanded]);
+  // Cards hold their size on screen while the drawing zooms, so whether two of
+  // them collide depends on the zoom the tree is shown at - and that zoom
+  // depends on how wide the tree is. A few rounds settle it: lay out for a
+  // zoom, see what zoom that layout fits at, lay out again for that.
+  const stageW = camera.size.width || 1280;
+  const stageH = camera.size.height || 760;
+  const layout: PathLayout = useMemo(() => {
+    const insets = { top: stageW <= 860 ? 64 : 84, bottom: stageW <= 860 ? 124 : 84 };
+    const size = { width: stageW, height: stageH };
+    // Start from the zoom the bare geometry fits at, and only ever step down:
+    // a layout made for a zoom at or below the one it's shown at never
+    // underestimates how big a card is, so cards never land on each other.
+    let next = layoutPath(nodes, { expanded });
+    const floor = minFitScale(stageW);
+    let scale = Math.max(fitScaleFor(next.bounds, size, insets), floor);
+    for (let round = 0; round < 6; round++) {
+      const unit = Math.min(Math.max(scale, 0.72), 1) / scale;
+      next = layoutPath(nodes, { expanded, labels: { unit, size: labelSize } });
+      const fits = Math.max(fitScaleFor(next.bounds, size, insets), floor);
+      if (fits >= scale * 0.97) break;
+      scale = fits * 0.97;
+    }
+    return next;
+  }, [nodes, expanded, stageW, stageH]);
   const live = useMemo(() => branchOf(nodes, focusedId), [nodes, focusedId]);
   const dimming = live.size > 0;
 
@@ -245,7 +281,9 @@ export default function PathScene({
     const stage = camera.stageRef.current;
     if (!stage) return;
     return camera.onZoom((scale) => {
-      const lod = scale < 0.5 ? "far" : "near";
+      // The layout spaces cards for the zoom the tree fits at, so they only
+      // need folding to dots when someone zooms well past that.
+      const lod = scale < 0.3 ? "far" : "near";
       if (stage.dataset.lod !== lod) stage.dataset.lod = lod;
     });
   }, [camera]);
@@ -302,7 +340,7 @@ export default function PathScene({
               // Rings ripple out to their radius, deepest last.
               initial={reduced ? false : { r: 0 }}
               animate={{ r: circle.radius }}
-              transition={{ type: "spring", visualDuration: 0.9, bounce: 0.12, delay: stage(0.1, circle.depth) }}
+              transition={{ type: "spring", visualDuration: 0.7, bounce: 0, delay: stage(0.08, circle.depth) }}
               vectorEffect="non-scaling-stroke"
             />
           ))}
@@ -381,7 +419,7 @@ export default function PathScene({
             style={{ left: 0, top: 0 }}
             initial={reduced || fromPortal ? false : { opacity: 0, scale: 0.8, filter: "blur(8px)" }}
             animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-            transition={{ type: "spring", visualDuration: 0.7, bounce: 0.2 }}
+            transition={{ type: "spring", visualDuration: 0.5, bounce: 0 }}
           >
             <div className="path-point-inner">
               <button
@@ -417,7 +455,7 @@ export default function PathScene({
                 initial={reduced ? false : { opacity: 0, scale: 0.6 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.8 }}
-                transition={{ type: "spring", visualDuration: 0.5, bounce: 0.25, delay: stage(0.35, i) }}
+                transition={{ type: "spring", visualDuration: 0.42, bounce: 0.1, delay: stage(0.28, i) }}
               >
                 <div className="path-point-inner">
                   <button
@@ -452,8 +490,8 @@ export default function PathScene({
                   exit={{ opacity: 0, scale: 0.7 }}
                   transition={{
                     type: "spring",
-                    visualDuration: 0.5,
-                    bounce: 0.26,
+                    visualDuration: 0.42,
+                    bounce: 0.1,
                     delay: reduced ? 0 : firstPaint.current ? stage(0.7, i) : Math.min(i * 0.035, 0.3),
                   }}
                 >

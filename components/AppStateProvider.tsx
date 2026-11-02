@@ -95,3 +95,13 @@ export function useUserTimezone(): string {
   const { state } = useAppState();
   return state?.user.timezone ?? browserTimezone();
 }
+
+/** Development only (app/dev/*): a fixed state with no fetching, so a screen
+ *  can be looked at and profiled without a signed-in account. */
+export function MockAppStateProvider({ state, children }: { state: AppState; children: React.ReactNode }) {
+  const value = useMemo<Ctx>(
+    () => ({ state, loading: false, error: null, refresh: async () => {}, saveState: async () => true }),
+    [state]
+  );
+  return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
+}

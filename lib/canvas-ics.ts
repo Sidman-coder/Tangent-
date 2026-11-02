@@ -79,10 +79,10 @@ function isAllDay(event: VEvent): boolean {
   return event.datetype === "date" || Boolean(start?.dateOnly);
 }
 
-/** How far back an import reaches, in days before the student's today.
- *  Anything older is not actionable; anything inside it still might be
- *  (overdue work the student can still turn in). */
-export const IMPORT_WINDOW_DAYS = 21;
+/** How far back an import reaches, in days before the student's today. It
+ *  matches CANVAS_CLEAR_DAYS (lib/canvas-clear.ts): the feed can't say what was
+ *  submitted, so anything older counts as handled and isn't pulled back in. */
+export const IMPORT_WINDOW_DAYS = 2;
 
 export type SyncResult = { total: number; added: number; updated: number; skipped: number };
 

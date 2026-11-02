@@ -7,7 +7,7 @@ import { press, spring } from "@/lib/motion";
 import type { Task } from "@/lib/types";
 import { formatTime12, isDueOnly } from "@/lib/dates";
 import TaskTitle from "@/components/ui/TaskTitle";
-import { KIND_LABEL } from "@/lib/task-colors";
+import { categoryLabel } from "@/lib/task-colors";
 
 
 type TaskRowProps = {
@@ -23,6 +23,8 @@ type TaskRowProps = {
   hasQuestions?: boolean;
   /** Lists that span days (a project's steps) show the day, not just the time. */
   showDate?: boolean;
+  /** A short status chip in the meta line ("2 days overdue", "Due in 5 hr"). */
+  flag?: ReactNode;
 };
 
 function shortDate(ymd: string): string {
@@ -32,7 +34,7 @@ function shortDate(ymd: string): string {
 
 export default function TaskRow({
   task,
-  kindColor = "var(--kind-default)",
+  kindColor = "var(--cat-other)",
   selected = false,
   expanded = false,
   onComplete,
@@ -41,6 +43,7 @@ export default function TaskRow({
   children,
   hasQuestions = false,
   showDate = false,
+  flag,
 }: TaskRowProps) {
   const questionDot = hasQuestions ? <span className="task-question-dot" title="Tangent has a question about this" /> : null;
   return (
@@ -91,7 +94,8 @@ export default function TaskRow({
               {/* A due date isn't a time anything happens: "Due", as on the calendar. */}
               {isDueOnly(task) ? "Due" : formatTime12(task.time)}
             </time>
-            {task.kind && <span className="ui-task-kind-label">{KIND_LABEL[task.kind as keyof typeof KIND_LABEL] ?? task.kind.replaceAll("-", " ")}</span>}
+            {flag}
+            {categoryLabel(task) && <span className="ui-task-kind-label">{categoryLabel(task)}</span>}
             {task.recurring?.enabled && (
               <span className="ui-task-recurring"><Repeat2 size={12} aria-hidden="true" /> Recurring</span>
             )}

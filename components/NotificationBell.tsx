@@ -1,5 +1,6 @@
 "use client"
 import { useState, useEffect, useCallback, useRef } from "react"
+import { createPortal } from "react-dom"
 import { Sun, Lightbulb, AlertTriangle, Clock, Calendar, Bell, X, type LucideIcon } from "lucide-react"
 import { Notification } from "@/lib/types"
 import { notifyNewDesktopNotifications } from "@/lib/desktop-notifications"
@@ -10,13 +11,16 @@ import { QUESTIONS_EVENT } from "@/lib/questions-client"
 import { claimPopups, getInAppPopupsEnabled, planToasts, popupCandidates, type Toast } from "@/lib/notification-popups"
 import NotificationToasts from "@/components/NotificationToasts"
 import { humanizeTimestamps } from "@/lib/humanize"
+import { collapseDuplicates } from "@/lib/notification-dedupe"
 
 type NotificationBellProps = {
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  /** "rail": a row in the sidebar, its panel opening beside the sidebar. */
+  placement?: "top" | "rail"
 }
 
-export default function NotificationBell({ open: openProp, onOpenChange }: NotificationBellProps = {}) {
+export default function NotificationBell({ open: openProp, onOpenChange, placement = "top" }: NotificationBellProps = {}) {
   const tz = useUserTimezone()
   const email = useAppState().state?.user.email ?? ""
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -42,9 +46,11 @@ export default function NotificationBell({ open: openProp, onOpenChange }: Notif
     try {
       const r = await fetch("/api/notifications")
       const data = await r.json()
-      const list: Notification[] = data.notifications || []
+      const raw: Notification[] = data.notifications || []
+      // One per reminder: the reminder job can repeat itself (lib/notification-dedupe.ts).
+      const list = collapseDuplicates(raw)
       setNotifications(list)
-      setUnreadCount(data.unreadCount || 0)
+      setUnreadCount(list.filter(n => !n.read).length)
       // Desktop notifications piggyback on this same poll — no extra fetch.
       // See lib/desktop-notifications.ts for the opt-in + anti-spam rules.
       notifyNewDesktopNotifications(list)
@@ -127,11 +133,13 @@ export default function NotificationBell({ open: openProp, onOpenChange }: Notif
   }, [open, setOpen])
 
   const handleDismiss = async (id: string) => {
-    await fetch("/api/notifications", {
+    // Its hidden copies go with it, so an older twin doesn't take its place.
+    const twins = (notifications.find(n => n.id === id) as (Notification & { duplicateIds?: string[] }) | undefined)?.duplicateIds ?? []
+    await Promise.all([id, ...twins].map(one => fetch("/api/notifications", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "dismiss", id })
-    })
+      body: JSON.stringify({ action: "dismiss", id: one })
+    })))
     fetchNotifications()
   }
 
@@ -218,10 +226,27 @@ export default function NotificationBell({ open: openProp, onOpenChange }: Notif
     )
   }
 
+  // Escape closes the panel, like every other panel in Tangent.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [open, setOpen])
+
+  // In the sidebar, the panel is portalled out so the sidebar's glass (which
+  // contains fixed children) can't clip it; it opens beside the sidebar.
+  const wrapPanel = (panel: React.ReactNode) =>
+    placement === "rail" && typeof document !== "undefined"
+      ? createPortal(<div className="notif-rail-layer">{panel}</div>, document.body)
+      : panel
+
   const dismissToast = (key: string) => setToasts(current => current.filter(t => t.key !== key))
 
   return (
-    <div className="notif-bell-wrapper">
+    <div className={`notif-bell-wrapper${placement === "rail" ? " is-rail" : ""}`}>
       <NotificationToasts
         toasts={toasts}
         onDismiss={dismissToast}
@@ -229,7 +254,7 @@ export default function NotificationBell({ open: openProp, onOpenChange }: Notif
         onOpenInbox={() => setOpen(true)}
       />
       <button
-        className="notif-bell-btn"
+        className={placement === "rail" ? "rail-btn notif-rail-btn" : "notif-bell-btn"}
         onClick={() => setOpen(o => !o)}
         aria-label="Notifications"
       >
@@ -237,12 +262,13 @@ export default function NotificationBell({ open: openProp, onOpenChange }: Notif
           <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
+        {placement === "rail" && <span className="rail-btn-label">Notifications</span>}
         {unreadCount > 0 && (
           <span className="notif-bell-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>
         )}
       </button>
 
-      {open && (
+      {open && wrapPanel(
         <>
           <div className="notif-overlay" onClick={() => setOpen(false)} />
           <div className="notif-panel">
@@ -278,7 +304,7 @@ export default function NotificationBell({ open: openProp, onOpenChange }: Notif
             <div className="notif-list">
               {notifications.length === 0 && (
                 <div className="notif-empty">
-                  No notifications. TANGENT is watching your schedule.
+                  Nothing new. Tangent is keeping an eye on your week.
                 </div>
               )}
               {pinnedBrief && renderNotif(pinnedBrief, true)}

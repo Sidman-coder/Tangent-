@@ -23,7 +23,13 @@ type UseVoiceCaptureOptions = {
   live?: boolean;
   /** Running transcript while recording, live mode only. */
   onPartial?: (text: string) => void;
+  /** Keep the mic open between recordings (released after KEEP_STREAM_MS
+   *  unused, or on unmount). Each fresh getUserMedia can re-prompt for
+   *  permission (Safari does), so a screen made for repeated captures holds it. */
+  keepStream?: boolean;
 };
+
+const KEEP_STREAM_MS = 60_000;
 
 /** Event the global voice button fires with a finished transcript. A mounted
  *  text surface (the AI console) can claim it with preventDefault(); if nothing
@@ -71,7 +77,7 @@ async function fetchLiveToken(): Promise<string | null> {
 }
 
 export function useVoiceCapture(options: UseVoiceCaptureOptions = {}) {
-  const { onTranscript, onError, live = false, onPartial } = options;
+  const { onTranscript, onError, live = false, onPartial, keepStream = false } = options;
   const [status, setStatus] = useState<VoiceCaptureStatus>("idle");
 
   // Callbacks change identity every render; the recorder's event handlers are
@@ -95,13 +101,27 @@ export function useVoiceCapture(options: UseVoiceCaptureOptions = {}) {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
 
+  const idleTimerRef = useRef<number | null>(null);
   const teardown = useCallback(() => {
+    if (idleTimerRef.current !== null) window.clearTimeout(idleTimerRef.current);
+    idleTimerRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     analyserRef.current = null;
     void audioCtxRef.current?.close().catch(() => {});
     audioCtxRef.current = null;
   }, []);
+
+  // After a recording: let the mic go, or (keepStream) keep it warm for the
+  // next press and let it go only once it has sat unused.
+  const release = useCallback(() => {
+    if (!keepStream || !streamRef.current) {
+      teardown();
+      return;
+    }
+    if (idleTimerRef.current !== null) window.clearTimeout(idleTimerRef.current);
+    idleTimerRef.current = window.setTimeout(teardown, KEEP_STREAM_MS);
+  }, [keepStream, teardown]);
 
   const closeSocket = useCallback(() => {
     const ws = socketRef.current;
@@ -234,17 +254,24 @@ export function useVoiceCapture(options: UseVoiceCaptureOptions = {}) {
 
     try {
       // Mic permission is requested here, on first press, not on page load.
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true },
-      });
+      // A warm stream (keepStream) is reused, so it isn't asked again.
+      if (idleTimerRef.current !== null) window.clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
+      const warm = streamRef.current?.getAudioTracks().some((t) => t.readyState === "live") ? streamRef.current : null;
+      const stream =
+        warm ??
+        (await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true },
+        }));
       if (!pressActiveRef.current) {
         // Released or cancelled before permission resolved — don't record.
-        stream.getTracks().forEach((t) => t.stop());
+        if (stream === warm) release();
+        else stream.getTracks().forEach((t) => t.stop());
         return;
       }
       streamRef.current = stream;
 
-      try {
+      if (!warm || !analyserRef.current) try {
         const ctx = new AudioContext();
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 512;
@@ -269,7 +296,7 @@ export function useVoiceCapture(options: UseVoiceCaptureOptions = {}) {
         }
       };
       recorder.onstop = () => {
-        teardown();
+        release();
         mediaRecorderRef.current = null;
         if (cancelledRef.current) {
           closeSocket();
@@ -297,7 +324,7 @@ export function useVoiceCapture(options: UseVoiceCaptureOptions = {}) {
       await cb.current.onError?.(e instanceof Error ? e.message : "Microphone access denied");
       setStatus("idle");
     }
-  }, [status, live, teardown, closeSocket, finishLive, deliver, uploadRecording, openLive]);
+  }, [status, live, teardown, release, closeSocket, finishLive, deliver, uploadRecording, openLive]);
 
   const stopRecording = useCallback(() => {
     pressActiveRef.current = false;
@@ -305,10 +332,10 @@ export function useVoiceCapture(options: UseVoiceCaptureOptions = {}) {
     if (recorder && recorder.state === "recording") {
       recorder.stop();
     } else if (status === "recording") {
-      teardown();
+      release();
       setStatus("idle");
     }
-  }, [status, teardown]);
+  }, [status, release]);
 
   /** Stop and throw the recording away (Escape). */
   const cancelRecording = useCallback(() => {
