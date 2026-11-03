@@ -30,7 +30,8 @@ export async function POST(request: Request) {
         return error ? { status: error.status, code: error.code, message: error.message } : null;
       },
       async verifyCode(email, token) {
-        const { error } = await supabase.auth.verifyOtp({ email, token, type: "email" });
+        // Settings asks for this code through /auth/recover.
+        const { error } = await supabase.auth.verifyOtp({ email, token, type: "recovery" });
         return error ? { status: error.status, code: error.code, message: error.message } : null;
       },
       async updatePassword(password) {

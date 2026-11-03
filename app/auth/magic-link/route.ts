@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { NOT_INVITED, isEmailAllowed, normalizeEmail } from "@/lib/auth/access";
+import { sendFailure } from "@/lib/auth/messages";
 import { authCallbackUrl, originHeaders, requestOrigin } from "@/lib/auth/redirect";
 
 export const runtime = "nodejs";
@@ -28,11 +29,9 @@ export async function POST(request: Request) {
   // Hop timing for sign-in slowness (no email or token is logged).
   console.log(`[auth] magic-link: supabase send ${Date.now() - sendStart}ms, total ${Date.now() - started}ms`);
   if (error) {
-    console.warn("[auth/magic-link] send failed:", error.message);
-    const status = error.status === 429 ? 429 : 500;
-    const message =
-      status === 429 ? "Too many sign-in emails. Wait a minute, then try again." : "Couldn't send the email. Try again in a moment.";
-    return NextResponse.json({ ok: false, error: message }, { status });
+    console.warn("[auth/magic-link] send failed:", error.code ?? error.status ?? "error");
+    const failure = sendFailure(error);
+    return NextResponse.json({ ok: false, error: failure.error }, { status: failure.status });
   }
   return NextResponse.json({ ok: true });
 }

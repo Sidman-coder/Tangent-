@@ -278,7 +278,7 @@ Optional password next to the email code. No new migrations, so section A is unc
 - **Authentication → Sign In / Providers → User Signups → Allow new users to sign up:** keep on. Email codes create the account for invited emails; the invite list still blocks everyone else.
 - **Authentication → Attack Protection → CAPTCHA protection:** keep off. With it on, password sign-in fails without a captcha token.
 - **Authentication → Rate Limits:** leave the defaults. Tangent adds its own limit of 5 failed passwords per email and per IP every 15 minutes, in memory on each server instance; Supabase's per-IP sign-in limit sits behind it.
-- **Authentication → Emails → Magic Link template:** must still contain `{{ .Token }}`. Forgot-password uses this same code email; the "Reset password" template isn't used.
+- **Authentication → Emails → Magic Link template:** must contain `{{ .Token }}`. Confirm signup and Reset Password must too; forgot-password now sends the Reset Password email. Exact HTML is in `docs/MANUAL-STEPS.md`.
 - **Vercel → Settings → Environment Variables:** `SUPABASE_SERVICE_ROLE_KEY` must be set for Production and Preview. Without it:
   - Sign-in still works.
   - The "doesn't have a password yet" message falls back to "Wrong email or password".

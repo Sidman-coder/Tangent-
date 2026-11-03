@@ -134,23 +134,20 @@ export default function AiActivity() {
   const cols = owner ? 9 : 6;
 
   return (
-    <section id="ai-activity" className="settings-panel">
-      <div className="settings-panel-head">
-        <div>
-          <h2>AI Activity</h2>
-          <p>
-            Every request Tangent AI handled, what it understood, and what happened. For what Tangent knows about you, see{" "}
-            <a href="#what-tangent-knows">What Tangent knows</a>.
-          </p>
+    <section id="ai-activity" className="settings-group" aria-labelledby="ai-activity-title">
+      <h2 id="ai-activity-title" className="settings-group-title">AI Activity</h2>
+      <p className="settings-group-note">
+        Every request Tangent AI handled, what it understood, and what happened. For what Tangent knows about you, see{" "}
+        <a href="#what-tangent-knows">What Tangent knows</a>.
+      </p>
+      <div className="settings-card aia-card">
+      {rows.length > 0 && !confirmClear && (
+        <div className="aia-card-actions">
+          <button type="button" className="knows-secondary" onClick={() => setConfirmClear(true)}>
+            Clear activity
+          </button>
         </div>
-        {rows.length > 0 && !confirmClear && (
-          <div className="knows-head-actions">
-            <button type="button" className="knows-secondary" onClick={() => setConfirmClear(true)}>
-              Clear activity
-            </button>
-          </div>
-        )}
-      </div>
+      )}
 
       {confirmClear && (
         <div className="aia-confirm" role="alertdialog" aria-label="Clear AI activity" aria-describedby="aia-confirm-text">
@@ -285,6 +282,7 @@ export default function AiActivity() {
           )}
         </>
       )}
+      </div>
     </section>
   );
 }

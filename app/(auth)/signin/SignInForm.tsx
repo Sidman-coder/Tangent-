@@ -94,11 +94,11 @@ export default function SignInForm({
     }
   };
 
-  const sendEmail = async (): Promise<boolean> => {
+  const sendEmail = async (p: Purpose = purpose): Promise<boolean> => {
     setBusy("email");
     clearError();
     try {
-      const res = await fetch("/auth/magic-link", {
+      const res = await fetch(p === "reset" ? "/auth/recover" : "/auth/magic-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, next: dest }),
@@ -120,7 +120,7 @@ export default function SignInForm({
 
   const startCode = async (p: Purpose) => {
     setPurpose(p);
-    if (await sendEmail()) {
+    if (await sendEmail(p)) {
       setCode("");
       setResent(false);
       setStep("code");
@@ -172,7 +172,7 @@ export default function SignInForm({
       const res = await fetch("/auth/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, token, next: dest }),
+        body: JSON.stringify({ email, token, next: dest, purpose }),
       });
       const data = (await res.json().catch(() => ({ ok: false }))) as {
         ok: boolean;
@@ -289,9 +289,7 @@ export default function SignInForm({
         <div role="status">
           <p className="auth-check-title">Check your email</p>
           <p className="auth-note">
-            {purpose === "reset"
-              ? <>We sent a 6-digit code to <strong>{email}</strong>. Enter it to set a new password.</>
-              : <>We sent a 6-digit code to <strong>{email}</strong>. Enter it below, or tap the link in the same email.</>}
+            We sent a 6-digit code to <strong>{email}</strong>. Can&apos;t find it? Check spam, or tap the link in the email.
           </p>
         </div>
         <form

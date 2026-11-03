@@ -15,6 +15,8 @@ export type GoalType = "exam" | "competition" | "skill" | "habit" | "single";
 /** `assume` is what Tangent goes with if the question is skipped. */
 export type BriefQuestion = { id: string; question: string; options: string[]; assume: string };
 
+import { IF_SKIPPED, TIMEFRAME_OPTIONS, TIMEFRAME_QUESTION } from "../timeframe";
+
 type Source = { request: string; chat: string; context: string; capacityKnown: boolean };
 
 type Slot = {
@@ -27,7 +29,7 @@ type Slot = {
   /** The assumption shown when nothing fills it. */
   assume: string;
   /** The plan's date range is already stated by the drafter ("Spread from…",
-   *  "Assumed about a week"), so a date default isn't repeated. */
+   *  or that no timeframe was given), so a date default isn't repeated. */
   isDate?: boolean;
   fill: (s: Source) => string | null;
 };
@@ -98,6 +100,11 @@ function contextDate(s: Source): string | null {
   }
   return null;
 }
+/** Does this say when: a date, or a stretch of time? */
+export const saysWhen = (text: string) => DATE_RE.test(text) || TIMEFRAME_RE.test(text);
+/** A known date for this goal, from Canvas, Paths or open tasks. */
+export const knownDate = (request: string, context: string) => contextDate({ request, chat: "", context, capacityKnown: false });
+
 /** A Paths goal line for this goal that already says hours per week. */
 function contextHours(s: Source): string | null {
   const key = goalKey(s.request);
@@ -119,13 +126,13 @@ function contextMatch(s: Source, re: RegExp): string | null {
 
 // ─── The briefs ──────────────────────────────────────────────────────────────
 
-const date = (label: string, question: string, assume: string): Slot => ({
+const date = (label: string, question: string): Slot => ({
   id: label === "Exam date" ? "date" : "deadline",
   label,
   question,
-  options: ["In 1–2 weeks", "In about a month", "In 2–3 months", "Not sure yet"],
+  options: [...TIMEFRAME_OPTIONS],
   required: true,
-  assume,
+  assume: IF_SKIPPED,
   isDate: true,
   fill: (s) => first(DATE_RE, ...own(s)) ?? contextDate(s),
 });
@@ -142,7 +149,7 @@ const hours = (question: string): Slot => ({
 
 export const BRIEFS: Record<GoalType, Slot[]> = {
   exam: [
-    date("Exam date", "When is the exam?", "About a week of prep, since no date was given"),
+    date("Exam date", "When is the exam?"),
     {
       id: "subjects",
       label: "Subjects",
@@ -173,7 +180,7 @@ export const BRIEFS: Record<GoalType, Slot[]> = {
     },
   ],
   competition: [
-    date("Deadline", "When is the deadline or event?", "About a week of work, since no deadline was given"),
+    date("Deadline", "When is the deadline or event?"),
     {
       id: "stage",
       label: "Stage",
@@ -214,6 +221,16 @@ export const BRIEFS: Record<GoalType, Slot[]> = {
   ],
   skill: [
     {
+      id: "timeframe",
+      label: "Timeframe",
+      question: TIMEFRAME_QUESTION,
+      options: [...TIMEFRAME_OPTIONS],
+      required: true,
+      assume: IF_SKIPPED,
+      isDate: true,
+      fill: (s) => first(TIMEFRAME_RE, ...own(s)) ?? first(DATE_RE, ...own(s)),
+    },
+    {
       id: "level",
       label: "Goal level",
       question: "Where are you starting, and how good do you want to get?",
@@ -230,16 +247,6 @@ export const BRIEFS: Record<GoalType, Slot[]> = {
       required: true,
       assume: "3 sessions a week",
       fill: (s) => first(PER_WEEK_RE, ...own(s)),
-    },
-    {
-      id: "timeframe",
-      label: "Timeframe",
-      question: "By when?",
-      options: ["A month", "3 months", "This year", "No rush"],
-      required: true,
-      assume: "A steady first month",
-      isDate: true,
-      fill: (s) => first(TIMEFRAME_RE, ...own(s)) ?? first(DATE_RE, ...own(s)),
     },
     {
       id: "access",
@@ -295,7 +302,7 @@ export const BRIEFS: Record<GoalType, Slot[]> = {
 
 /** Most questions one card may ask, by kind: a simple ask gets 0–2, a big goal
  *  up to 4–5. */
-export const MAX_QUESTIONS: Record<GoalType, number> = { exam: 4, competition: 5, skill: 2, habit: 2, single: 0 };
+export const MAX_QUESTIONS: Record<GoalType, number> = { exam: 3, competition: 3, skill: 2, habit: 2, single: 0 };
 
 // ─── What kind of goal ───────────────────────────────────────────────────────
 
@@ -401,7 +408,8 @@ export function readBrief(
 export function briefQuestions(b: Brief): BriefQuestion[] {
   const cap = b.aspiration ? 1 : MAX_QUESTIONS[b.type];
   return b.missing
-    .filter((s) => s.required)
+    // A dream has no deadline to ask about: its one question is where they're starting.
+    .filter((s) => s.required && !(b.aspiration && s.isDate))
     .slice(0, cap)
     .map((s) => ({ id: `brief-${s.id}`, question: s.question, options: [...s.options], assume: s.assume }));
 }

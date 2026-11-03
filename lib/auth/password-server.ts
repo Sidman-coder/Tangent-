@@ -22,5 +22,8 @@ export async function accountHasPassword(email: string): Promise<boolean> {
 /** Flags the account in app_metadata, which the student can't edit. */
 export async function markPasswordSet(userId: string): Promise<void> {
   const { error } = await createAdminClient().auth.admin.updateUserById(userId, { app_metadata: { password_set: true } });
-  if (error) console.warn("[auth/password] couldn't flag the account:", error.message);
+  if (error) {
+    console.warn("[auth/password] couldn't flag the account:", error.code ?? error.status ?? "error");
+    throw new Error("password flag not saved");
+  }
 }

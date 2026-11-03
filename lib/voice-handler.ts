@@ -14,6 +14,7 @@
 // (app/api/voice-browser/route.ts) call the exact same downstream logic —
 // Next.js route files may only export HTTP method handlers, so this can't
 // live in route.ts itself.
+import { NO_TIMEFRAME_NOTE, answeredEndDate, withoutFrequencies } from "@/lib/timeframe";
 import { NextResponse } from "next/server";
 import { inferCalendarGroup, parseCalendarGroup } from "@/lib/calendars";
 import { addTasksToPlan } from "@/lib/store";
@@ -984,14 +985,22 @@ async function handleVoiceTextInner(
         [/\b((one|1|a)[- ]week|weekly|7 days)\b/i, 7],
       ];
 
+      const durationText = withoutFrequencies(text);
       for (const [pattern, days] of durationPatterns) {
-        if (pattern.test(lowerForDate)) {
+        if (pattern.test(durationText)) {
           endDate = addDaysYMD(today, days - 1);
           startDate = today;
           rangeGiven = true;
           console.log("[api/voice] Duration word matched — days:", days, "| endDate:", endDate);
           break;
         }
+      }
+      // A tapped "By when?" answer is the student's last word on it.
+      const answeredEnd = answeredEndDate(text, today);
+      if (answeredEnd) {
+        startDate = today;
+        endDate = answeredEnd;
+        rangeGiven = true;
       }
       console.log("[api/voice] Final date range:", startDate, "to", endDate);
 
@@ -1052,7 +1061,7 @@ async function handleVoiceTextInner(
           // Pipeline V2: the same tasks, saved as a draft for the student to confirm.
           const planTitle = resolvePlanTitle(generated.title, text);
           const assumptions = [`Spread from ${friendlyWhen(startDate, undefined, today)} to ${friendlyWhen(endDate, undefined, today)}`];
-          if (!rangeGiven) assumptions.push("Assumed about a week since no timeframe was given");
+          if (!rangeGiven) assumptions.push(NO_TIMEFRAME_NOTE);
           if (shifted > 0) assumptions.push(`${shifted} session${shifted > 1 ? "s" : ""} moved off days that were already full`);
           // Master fix B4: say the spacing happened even when nothing had to move.
           else if (spaced) assumptions.push("Spaced around your busy days");

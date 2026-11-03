@@ -1,5 +1,14 @@
-/* Settings › AI Activity (components/settings/AiActivity.tsx). Sits in a
-   .settings-panel next to What Tangent knows and uses the same tokens. */
+/* Settings › AI Activity (components/settings/AiActivity.tsx). A settings-group
+   next to What Tangent knows, using the same tokens. */
+
+.aia-card {
+  padding: 14px 16px;
+}
+.aia-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 12px;
+}
 
 .aia-confirm {
   display: flex;

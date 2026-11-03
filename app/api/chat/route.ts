@@ -214,6 +214,7 @@ export const POST = withUser(async (req: Request) => {
             askCapacity: !picture.capacityKnown,
             chat: messages.slice(0, -1).filter((m) => m.role === "user").map((m) => m.content).join("\n").slice(-2000),
             projects: projectId ? [] : picture.projects,
+            newProject: body.newProject === true,
           }).catch(() => [])
         : [];
       if (questions.length > 0) {

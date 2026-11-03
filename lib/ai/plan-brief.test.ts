@@ -1,7 +1,22 @@
 // Run with `npm test`. Master fix Phase 3: the adaptive grill's briefs, slot
 // filling from context, question caps and Just-do-it defaults.
+import * as nodeModule from "node:module";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+
+type Resolve = (specifier: string, context: unknown, next: (s: string, c: unknown) => unknown) => unknown;
+(nodeModule as unknown as { registerHooks: (h: { resolve: Resolve }) => void }).registerHooks({
+  resolve(specifier, context, next) {
+    if (specifier.startsWith(".") && !/\.[cm]?[jt]s$/.test(specifier)) {
+      try {
+        return next(`${specifier}.ts`, context);
+      } catch {
+        /* fall through */
+      }
+    }
+    return next(specifier, context);
+  },
+});
 
 type Mod = typeof import("./plan-brief");
 
@@ -58,13 +73,13 @@ void (import("./plan-brief.ts" as string) as Promise<Mod>).then(
     });
 
     test("only missing required slots are asked, most impact first, within each kind's cap", () => {
-      assert.deepEqual(ids("help me study for the SAT"), ["brief-date", "brief-subjects", "brief-target", "brief-hours"]);
-      assert.deepEqual(ids("help me get ready for ISEF"), ["brief-deadline", "brief-stage", "brief-category", "brief-hours", "brief-mentor"]);
-      assert.deepEqual(ids("I want to get better at chess"), ["brief-level", "brief-sessions"]);
+      assert.deepEqual(ids("help me study for the SAT"), ["brief-date", "brief-subjects", "brief-target"]);
+      assert.deepEqual(ids("help me get ready for ISEF"), ["brief-deadline", "brief-stage", "brief-category"]);
+      assert.deepEqual(ids("I want to get better at chess"), ["brief-timeframe", "brief-level"]);
       assert.deepEqual(ids("I want to start a habit of journaling every day"), ["brief-time"]);
       for (const [type, max] of Object.entries(MAX_QUESTIONS)) {
         const required = BRIEFS[type as keyof typeof BRIEFS].filter((s) => s.required).length;
-        assert.ok(max <= 5, `${type}: at most 5 questions`);
+        assert.ok(max <= 3, `${type}: at most 3 questions`);
         assert.ok(required >= Math.min(max, required), type);
       }
       assert.ok(MAX_QUESTIONS.skill <= 2 && MAX_QUESTIONS.habit <= 2, "simple asks get 0–2");

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { NOT_INVITED, isEmailAllowed, normalizeEmail } from "@/lib/auth/access";
+import { codeFailure } from "@/lib/auth/messages";
 import { safeNext } from "@/lib/auth/safe-next";
 import { hasPasswordFlag } from "@/lib/auth/password";
 
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 const EMAIL_TYPES: EmailOtpType[] = ["email", "magiclink", "signup", "invite", "recovery", "email_change"];
 
-type Body = { email?: unknown; token?: unknown; token_hash?: unknown; type?: unknown; next?: unknown };
+type Body = { email?: unknown; token?: unknown; token_hash?: unknown; type?: unknown; next?: unknown; purpose?: unknown };
 
 // Finishes email sign-in with either the 6-digit code ({email, token}) or the
 // link's token hash ({token_hash, type}, posted by /auth/confirm). A POST, so an
@@ -31,7 +32,8 @@ export async function POST(request: Request) {
     if (!isEmailAllowed(email)) {
       return NextResponse.json({ ok: false, notInvited: true, error: NOT_INVITED }, { status: 403 });
     }
-    result = await supabase.auth.verifyOtp({ email, token, type: "email" });
+    // A forgot-password code comes from the Reset Password email.
+    result = await supabase.auth.verifyOtp({ email, token, type: body.purpose === "reset" ? "recovery" : "email" });
   } else if (typeof body.token_hash === "string" && body.token_hash) {
     const type = EMAIL_TYPES.includes(body.type as EmailOtpType) ? (body.type as EmailOtpType) : "email";
     result = await supabase.auth.verifyOtp({ token_hash: body.token_hash, type });
@@ -42,20 +44,9 @@ export async function POST(request: Request) {
 
   const { data, error } = result;
   if (error) {
-    const code = (error as { code?: string }).code ?? "";
-    console.warn("[auth/verify] failed:", error.message, code ? `(${code})` : "");
-    if (error.status === 429) {
-      return NextResponse.json({ ok: false, error: "Too many tries. Wait a minute, then try again." }, { status: 429 });
-    }
-    const expired = code === "otp_expired" || /expired/i.test(error.message);
-    return NextResponse.json(
-      {
-        ok: false,
-        expired,
-        error: expired ? "That code has expired. Send a new one." : "That code isn't right. Check the email and try again.",
-      },
-      { status: 400 }
-    );
+    console.warn("[auth/verify] failed:", error.code ?? error.status ?? "error");
+    const failure = codeFailure(error);
+    return NextResponse.json({ ok: false, error: failure.error }, { status: failure.status });
   }
 
   // Use the user verifyOtp returned instead of another round-trip to Supabase.

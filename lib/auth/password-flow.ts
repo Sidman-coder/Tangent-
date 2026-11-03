@@ -3,6 +3,7 @@
 // the invite list first on every path, the limiter before Supabase, and one
 // message for a wrong password whether or not the account exists.
 import { NOT_INVITED, isEmailAllowed, normalizeEmail } from "./access";
+import { codeFailure } from "./messages";
 import {
   AttemptLimiter,
   NO_PASSWORD_YET,
@@ -111,15 +112,8 @@ export async function setPassword(
     if (code.length !== 6) return { status: 400, body: { ok: false, field: "code", error: "Enter the 6-digit code from the email." } };
     const err = await deps.verifyCode(email, code);
     if (err) {
-      const expired = err.code === "otp_expired" || /expired/i.test(err.message);
-      return {
-        status: err.status === 429 ? 429 : 400,
-        body: {
-          ok: false,
-          field: "code",
-          error: err.status === 429 ? "Too many tries. Wait a minute, then try again." : expired ? "That code has expired. Send a new one." : "That code isn't right. Check the email and try again.",
-        },
-      };
+      const failure = codeFailure(err);
+      return { status: failure.status, body: { ok: false, field: "code", error: failure.error } };
     }
   } else if (!(await deps.freshFromEmailCode())) {
     return { status: 403, body: { ok: false, proofNeeded: true, error: PROOF_NEEDED } };
@@ -129,9 +123,11 @@ export async function setPassword(
   if (err) {
     if (err.code === "same_password") return { status: 400, body: { ok: false, field: "password", error: "That's already your password. Pick a new one." } };
     if (err.code === "weak_password") return { status: 400, body: { ok: false, field: "password", error: err.message } };
-    if (err.code === "reauthentication_needed") return { status: 403, body: { ok: false, proofNeeded: true, error: PROOF_NEEDED } };
+    if (err.code === "reauthentication_needed" || err.code === "reauthentication_not_valid") return { status: 403, body: { ok: false, proofNeeded: true, error: PROOF_NEEDED } };
+    if (err.status === 401 || err.code === "session_expired" || err.code === "session_not_found") return { status: 401, body: { ok: false, error: "Your session ended. Sign in again." } };
     return { status: 500, body: { ok: false, error: "Couldn't save your password. Try again." } };
   }
-  await deps.markPasswordSet(user.id).catch(() => undefined);
-  return { status: 200, body: { ok: true } };
+  // The password is saved either way; the caller says so when the flag isn't.
+  const flagged = await deps.markPasswordSet(user.id).then(() => true, () => false);
+  return { status: 200, body: flagged ? { ok: true } : { ok: true, flagSaved: false } };
 }

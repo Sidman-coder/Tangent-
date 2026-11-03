@@ -721,3 +721,53 @@
 .calendar-page .calendar-grid-shell .cal-cell.is-past .cal-day .d {
   color: var(--text-3);
 }
+
+/* v3: dragging a block on the week grid (components/calendar/WeekView.tsx). */
+.calendar-page .wk-block.is-movable {
+  cursor: grab;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.calendar-page .wk-block.is-fixed,
+.calendar-page .wk-due-item.is-fixed {
+  cursor: not-allowed;
+}
+.calendar-page .wk-block.is-held {
+  opacity: 0.35;
+}
+.calendar-page .wk.is-dragging,
+.calendar-page .wk.is-dragging * {
+  cursor: grabbing !important;
+}
+.calendar-page .wk.is-dragging .wk-slot {
+  pointer-events: none;
+}
+.wk-ghost {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 3px 6px;
+  overflow: hidden;
+  border: 1px dashed var(--block);
+  border-left: 3px solid var(--block);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--block) 22%, var(--surface));
+  color: var(--text);
+  font: 600 11.5px/1.25 var(--font-body);
+  pointer-events: none;
+}
+.wk-ghost-warn {
+  color: var(--red);
+  font-weight: 500;
+}
+.calendar-move-error {
+  margin: 10px 0 0;
+  color: var(--red);
+  font-size: 13px;
+}

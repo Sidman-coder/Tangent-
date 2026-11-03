@@ -24,7 +24,7 @@ import { isOnboardingSchoolTask } from "@/lib/school-block";
 import { baseTitle, useShortTitles } from "@/lib/short-titles";
 import "./calendar.css";
 import { initialCalendarView, prefsOf } from "@/lib/personalize";
-import { openRecentChanges } from "@/lib/undo-events";
+import { announceUndo, openRecentChanges } from "@/lib/undo-events";
 import type { Plan, Task } from "@/lib/types";
 import { X, Check, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil, Undo2 } from "lucide-react";
 import WeekView from "@/components/calendar/WeekView";
@@ -120,6 +120,9 @@ export default function CalendarPage() {
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   // Clicking one event opens just that event; clicking the date opens the day.
   const [removed, setRemoved] = useState<{ actionId: string; title: string; label?: string } | null>(null);
+  /** A dragged block stays where it was dropped while the save is in flight. */
+  const [moving, setMoving] = useState<{ id: string; date: string; time: string } | null>(null);
+  const [moveError, setMoveError] = useState<string | null>(null);
   /** Master fix Phase 5: Remove on a busy day picks tasks with the B6 chips;
    *  this is the task that was clicked (chosen to start with). */
   const [removePick, setRemovePick] = useState<string | null>(null);
@@ -157,8 +160,33 @@ export default function CalendarPage() {
     let tasks = (state?.tasks ?? []).filter((t) => !isOnboardingSchoolTask(t));
     if (group !== "all") tasks = tasks.filter((t) => taskGroup(t) === group);
     if (planFilter) tasks = tasks.filter((t) => t.planId === planFilter);
+    if (moving) tasks = tasks.map((t) => (t.id === moving.id ? { ...t, date: moving.date, time: moving.time } : t));
     return tasks.filter((t) => t.date === ymd);
-  }, [state, group, planFilter]);
+  }, [state, group, planFilter, moving]);
+
+  // Same record as any reschedule, so the Undo toast and Recent changes revert it.
+  const moveTask = useCallback(async (t: Task, date: string, time: string) => {
+    setMoveError(null);
+    setMoving({ id: t.id, date, time });
+    try {
+      const res = await fetch("/api/reschedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId: t.id, suggestedDate: date, suggestedTime: time }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; actionId?: string };
+      if (!res.ok || !data.ok) throw new Error("move failed");
+      await refresh();
+      if (data.actionId) {
+        const day = new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: "short" });
+        announceUndo({ actionId: data.actionId, label: `Moved “${t.title}” to ${day} ${formatTime12(time)}` });
+      }
+    } catch {
+      setMoveError(`Couldn't move “${t.title}”. It's back where it was.`);
+    } finally {
+      setMoving(null);
+    }
+  }, [refresh]);
 
   const wholeDayTasks = selectedDay
     ? tasksForDay(selectedDay).slice().sort((a, b) => a.time.localeCompare(b.time))
@@ -558,8 +586,10 @@ export default function CalendarPage() {
             colorFor={getTaskCategoryColor}
             onOpenDay={setSelectedDay}
             onAddAt={(ymd, time) => openAddAt(ymd, time)}
+            onMoveTask={(t, ymd, time) => void moveTask(t, ymd, time)}
             toYMD={toYMD}
           />
+          {moveError && <p className="calendar-move-error" role="alert">{moveError}</p>}
         </m.section>
       )}
 
