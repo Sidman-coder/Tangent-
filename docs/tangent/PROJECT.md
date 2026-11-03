@@ -1,32 +1,48 @@
 # TANGENT Project
 
-Last reconciled: 2026-09-27
+Last reconciled: 2026-11-03
 
 ## Identity
 
-**One-line pitch:** TANGENT is an AI-powered productivity system for high school students—a web app paired with a custom voice-recording pen—built for the moments when a phone cannot be there to capture a thought.
+**One-line pitch:** Tangent is a phone-first student app that turns anything you say into small steps on your calendar, then checks in daily until it's done.
 
-**Tagline:** Say it. Capture it. Build it.
+**Pitch line:** Chatbots answer you. Tangent follows up.
 
-**Mission:** Make capture frictionless, then use the student's real school context to turn captured thoughts into organized, actionable work.
+**Problem:** Procrastination. Students know what to do but don't start or keep going. Capture and planning are the first two steps of fixing that, not separate products.
 
-**Primary audience:** High school students balancing classes, extracurriculars, sports, and personal projects. TANGENT is intentionally not positioned as productivity software for everyone.
+**Primary audience:** High school and college students with real goals: test prep, competitions, projects, college apps, and clubs. TANGENT is intentionally not positioned as productivity software for everyone.
 
 ## Product boundary
 
-TANGENT has two connected products:
+TANGENT is three screens:
 
-1. **Web App:** receives typed or spoken captures, understands tasks and constraints, and helps the student plan and reprioritize.
-2. **Pen:** a dedicated voice-capture device for classrooms, transitions, activities, and other moments when pulling out a phone is impractical.
+1. **Capture:** mic and typed input, with a to-do list sorted by project and priority.
+2. **Plan:** 2–3 questions, then small 10–30 minute steps with a short "why", placed around School Blocks, Canvas deadlines, and busy days. Every plan goes through preview, confirm, and undo.
+3. **Today:** 1–3 steps a day with Done, Not today, and Too big; an automatic re-plan on a miss; and a Fresh start button.
+
+**AI surfaces after the v3 build:** AddFlow for adding or planning, and one Ask Tangent chat for questions.
+
+**Paused (hidden, not deleted):** Pen hardware, Raspberry Pi, `pi-poller`, and the 3D Tangents/Paths scene.
+
+**Pricing (planned, not built):**
+
+- **Free:** capture, to-do, Canvas import, re-plan, and 3 AI projects.
+- **Student:** $4.99/month or $39/year, with annual pre-selected.
+- **Pro:** $9.99/month or $79/year.
+- **School-Year Pass:** $69, bought by parents, with a weekly recap the teen approves.
+
+**Moat:** Follow-through data (what students finish, when, and what they skip) plus structured school context. Describe this publicly as "learns from what you tell it and connect", never as "collects student data".
 
 The product is not an AI counselor, therapy product, family surveillance system, or autonomous school decision-maker. TANGENT may help a student understand workload and priorities without adopting those categories.
 
 ## Team
 
 - **Sid:** software lead; web app, AI pipeline, integrations, and product direction.
-- **Juann:** hardware co-builder; prototype pen and production-intent hardware workstream.
+- **Juann:** co-builder; app components and design in this repository, and the hardware workstream, which is paused.
 
 ## Current software state
+
+**v3 build status:** to be filled at the end of Phase 3.
 
 The repository is a Next.js 14 and TypeScript application. Current code and user-provided context establish the following:
 
@@ -118,6 +134,8 @@ These variables are obsolete; delete them from `.env.local` and from Vercel:
 
 ## Current hardware state
 
+Paused. The last known state below is kept for when hardware resumes.
+
 - **Prototype direction:** XIAO ESP32-S3 Sense, used to validate voice capture and end-to-end communication.
 - **Production-intent direction:** a custom PCB centered on the ESP32-S3-MINI-1U-N8 module.
 - **Sequence:** validate the software experience before investing deeply in custom hardware and manufacturing.
@@ -130,20 +148,22 @@ TANGENT narrowed from a general productivity concept to high school students. Th
 
 This shift is a central product lesson: a narrow audience becomes defensible when the roadmap is rebuilt around that audience's non-negotiable constraints.
 
+On 2026-11-03 Sid widened the audience to high school and college students, made the product phone-first around follow-through, and paused hardware. Sid confirmed this direction directly in the v3 build brief, without a Council Review.
+
 ## Roadmap order
 
-1. Finish and demonstrate the software.
-2. Deploy the web app to Vercel.
-3. Replace process-memory storage with persistent storage — Supabase (Postgres + Auth), confirmed by Sid on 2026-09-26; see [Persistence and accounts](#persistence-and-accounts).
-4. Complete an end-to-end ESP32 prototype.
-5. Design and validate the production-intent custom PCB.
-6. Expand the AI agent pipeline from capture through understanding to safe action.
+1. **Nov 2026:** Phase 1 core loop.
+2. **Late Nov 2026:** 14-day pilot with 20–30 students.
+3. **Dec 2026:** Billing, study buddy, and share card.
+4. **Jan 2027:** Relaunch at the new semester.
+5. **Aug 2027:** School-Year Pass push at back-to-school.
 
 ## Confirmed operating decisions
 
-- Focus on high school students rather than general productivity users.
+- Focus on high school and college students rather than general productivity users.
 - Keep one student per account for the first version.
-- Build software first and custom hardware second.
+- Pause hardware, including the Pen, Raspberry Pi path, and `pi-poller`.
+- Reach AI through two surfaces only: AddFlow and Ask Tangent.
 - Use read-only school and communication integrations unless the user deliberately approves broader permissions.
 - Avoid the AI-counselor category and its expectations.
 - Use Council Reviews only for consequential decisions, not routine work.
@@ -158,15 +178,20 @@ The following remain assumptions or unknowns until supported by research, tests,
 - Whether a dedicated Pen is meaningfully better than phone, watch, earbuds, or school-device capture.
 - School policy, privacy, consent, and recording constraints across target schools.
 - Final hardware form factor, battery life, microphone performance, unit cost, and manufacturing partner.
-- Pricing, buyer, distribution channel, and business model.
+- Whether the planned pricing, buyers, and business model work with real students, and which distribution channel works. See the [Research Ledger](RESEARCH-LEDGER.md).
 - Exact deployment readiness of each integration.
 - Competition, grant, funding, or fellowship eligibility and deadlines.
 
 ## Open questions
 
+- Price sensitivity: $4.99 versus $9.99?
+- What is week-2 retention?
+- Will parents buy the School-Year Pass?
+- Is iPhone web push reliable enough for daily check-ins?
+- How does a parent-bought pass with a teen-approved recap fit the "one student per account" and "not a family surveillance system" boundaries?
 - What single use case creates the strongest repeated demand: assignment capture, reminders, project ideas, schedule changes, or something else?
-- Is the student the buyer, or does adoption depend on parents, schools, programs, or another sponsor?
-- What evidence is required before the Pen advances from prototype to custom PCB?
+- Beyond the Student and parent buyers planned above, does adoption depend on schools, programs, or another sponsor?
+- What evidence would justify resuming the Pen?
 - Which actions may TANGENT take automatically, and which require confirmation?
-- What is the minimum privacy and consent model for classroom voice capture?
+- What is the minimum privacy and consent model for classroom voice capture, if the Pen resumes?
 - Which product metric best proves value before expanding scope?
