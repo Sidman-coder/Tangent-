@@ -44,7 +44,7 @@ The product is not an AI counselor, therapy product, family surveillance system,
 
 **v3 build status (2026-11-03, branch `v3-core-loop`, not pushed):** Phases 0–3 are built. `npm run build` passes and `npm test` has 468 passing, 0 failing. Steps only a person can do are in [MANUAL-STEPS](../MANUAL-STEPS.md). The features below haven't been run end to end with a signed-in account, a real microphone or real Canvas data.
 
-- **Not built: Today's daily loop.** Done, Not today and Too big, the automatic re-plan on a miss, and Fresh start don't exist yet. Build them next, before the pilot.
+- **Built, not yet tested signed in: Today's daily loop.** 1-3 steps with Done, Not today and Too big, the automatic re-plan on a miss, and Fresh start are in the code. Their server actions haven't run against a real account yet.
 - **Not built: anything from the December roadmap.** That covers billing, study buddy and the share card.
 - **Sign-in:** email codes, password reset by code, and clearer error messages. The codes only work once the email templates in MANUAL-STEPS are pasted in.
 - **Calendar:** dragging a task saves its new date and time, with Undo. Blocks are a fixed 45 minutes, and dragging a repeating task moves one occurrence.

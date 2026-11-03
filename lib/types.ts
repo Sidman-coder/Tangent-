@@ -263,6 +263,8 @@ export type ActionSnapshot = {
   moves?: { taskId: string; fromCalendarId: string | null }[];
   /** Prior date/time for a task rescheduled by reschedule_task — restored on undo. */
   rescheduled?: { taskId: string; fromDate: string; fromTime: string };
+  /** Prior date/time of every task moved together (Today's re-plan, Not today, Fresh start). */
+  rescheduledMany?: { taskId: string; fromDate: string; fromTime: string }[];
   /** Everything an apply_changeset did, reversed step by step on undo. */
   batch?: { changeSetId: string; steps: BatchUndoStep[] };
 };

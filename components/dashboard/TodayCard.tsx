@@ -1,46 +1,36 @@
 "use client";
 
-// Today, in one list. What needs attention (overdue, missed, starting soon,
-// Canvas deadlines - lib/urgency.ts) sits at the top with a chip saying why
-// and a Tomorrow button; the rest of today follows. One row style throughout
-// (TaskRow), so the two never read as different things.
+// Today: 1-3 steps with Done, Not today and Too big (lib/today-steps.ts). Fixed
+// events stay in view under them; everything else waits behind one tap, so the
+// steps are the only decision on the card. Fresh start sits at the bottom.
 
 import { useState } from "react";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { ArrowRight, MessageSquareText, Play, Redo2 } from "lucide-react";
+import FreshStart from "@/components/dashboard/FreshStart";
+import TodayStep, { estimate, shortDay } from "@/components/dashboard/TodayStep";
 import TaskRow from "@/components/ui/TaskRow";
 import type { Task } from "@/lib/types";
 import { formatTime12, isDueOnly } from "@/lib/dates";
 import { riseIn, rowPresence, spring } from "@/lib/motion";
 import { NO_TIME_LABEL, timeOfDay } from "@/lib/task-filters";
 import { canAskForHelp } from "@/lib/task-help";
+import type { SmallerStep } from "@/lib/today-steps";
 import { describeReason, tracksCompletion, type UrgencySummary } from "@/lib/urgency";
 
 const ATTENTION_LIMIT = 5;
-const COLLAPSED_ROWS = 3;
 
 /** The short "Completed … · Undo" line after acting on a row. */
 export type AttentionReceipt = {
   id: number;
   label: string;
-  onUndo: () => void;
+  onUndo?: () => void;
 };
-
-/** "30 mins" from Tangent's "GOAL: … TIME: 30 mins." notes, if it wrote one. */
-function estimate(task: Task): string | null {
-  const m = /TIME:\s*([^\n.]+)/i.exec(task.notes ?? "");
-  return m ? m[1].trim().replace(/\s+total$/i, "") : null;
-}
-
-function shortDay(ymd: string, today: string): string {
-  if (ymd === today) return "today";
-  const [y, mo, d] = ymd.split("-").map(Number);
-  return new Date(y, mo - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-}
 
 export default function TodayCard({
   urgency,
+  steps,
   todays,
   today,
   nextTask,
@@ -50,12 +40,18 @@ export default function TodayCard({
   receipt,
   onToggle,
   onCompleteUrgent,
-  onTomorrow,
+  onNotToday,
+  onSplit,
   onOpen,
   onHelp,
   onSeeAll,
+  freshStartCount,
+  backlog,
+  onFreshStart,
 }: {
   urgency: UrgencySummary;
+  /** The 1-3 steps for today. */
+  steps: Task[];
   /** Today's tasks, minus anything already in the attention list. */
   todays: Task[];
   today: string;
@@ -66,35 +62,37 @@ export default function TodayCard({
   receipt: AttentionReceipt | null;
   onToggle: (task: Task) => void;
   onCompleteUrgent: (task: Task) => void;
-  onTomorrow: (task: Task) => void;
+  onNotToday: (task: Task) => void;
+  onSplit: (task: Task, pieces: SmallerStep[]) => Promise<boolean>;
   onOpen: (task: Task) => void;
   onHelp: (task: Task) => void;
   onSeeAll: () => void;
+  /** How many steps Fresh start would move. */
+  freshStartCount: number;
+  /** Too much slipped for the automatic re-plan, so say Fresh start is there. */
+  backlog: boolean;
+  onFreshStart: () => Promise<boolean>;
 }) {
   const urgent = urgency.items.slice(0, ATTENTION_LIMIT);
   const hidden = urgency.items.length - urgent.length;
   const left = todays.filter((t) => !t.completed && tracksCompletion(t)).length + urgency.items.length;
   const empty = urgent.length === 0 && todays.length === 0;
-  // The one thing to do now: the most pressing attention item, else the next
-  // open thing today, else what's next on the calendar.
-  const next =
-    urgent[0]?.task ??
-    todays.find((t) => !t.completed && tracksCompletion(t)) ??
-    nextTask ??
-    null;
+  // With no steps left today, what's next on the calendar still has a place.
+  const next = steps.length === 0 ? nextTask : null;
   const nextEstimate = next ? estimate(next) : null;
-  const nextReason = next ? urgency.items.find((i) => i.task.id === next.id)?.reason ?? null : null;
-  // It's shown above, so the list below doesn't repeat it.
-  const allUrgent = next ? urgent.filter((i) => i.task.id !== next.id) : urgent;
-  const rest = next ? todays.filter((t) => t.id !== next.id) : todays;
+  // The steps are shown above, so the list below doesn't repeat them.
+  const shown = new Set(steps.map((t) => t.id));
+  if (next) shown.add(next.id);
+  const allUrgent = urgent.filter((i) => !shown.has(i.task.id));
+  const rest = todays.filter((t) => !shown.has(t.id));
   // What has no time yet goes last, under its own label.
   const allToday = [...rest.filter((t) => timeOfDay(t) !== null), ...rest.filter((t) => timeOfDay(t) === null)];
-  // Hick's Law: Next up is the one decision; the list under it starts short.
-  // Three rows are enough to see what's coming; the rest are one tap away.
+  // Hick's Law: the steps are the one decision. Fixed events stay in view,
+  // because they shape the day; the rest is one tap away.
   const [expanded, setExpanded] = useState(false);
   const total = allUrgent.length + allToday.length;
-  const listUrgent = expanded ? allUrgent : allUrgent.slice(0, COLLAPSED_ROWS);
-  const listToday = expanded ? allToday : allToday.slice(0, Math.max(0, COLLAPSED_ROWS - listUrgent.length));
+  const listUrgent = expanded ? allUrgent : [];
+  const listToday = expanded ? allToday : allToday.filter((t) => !tracksCompletion(t));
   const collapsedCount = total - listUrgent.length - listToday.length;
 
   const help = (task: Task) =>
@@ -110,14 +108,30 @@ export default function TodayCard({
       <header className="today-card-head">
         <h2 id="today-card-title">Today</h2>
         <span className="today-card-meta">
-          {urgency.items.length > 0 && (
-            <span className="today-card-urgent">
-              {urgency.items.length} need{urgency.items.length === 1 ? "s" : ""} attention
-            </span>
-          )}
           {left > 0 && <span>{left} left</span>}
         </span>
       </header>
+
+      {steps.length > 0 && (
+        <ol className="today-steps">
+          <AnimatePresence initial={false}>
+            {steps.map((task) => (
+              <TodayStep
+                key={task.id}
+                task={task}
+                today={today}
+                reason={urgency.items.find((i) => i.task.id === task.id)?.reason ?? null}
+                busy={busyTaskId === task.id}
+                help={help(task)}
+                onDone={() => onCompleteUrgent(task)}
+                onNotToday={() => onNotToday(task)}
+                onSplit={(pieces) => onSplit(task, pieces)}
+                onOpen={() => onOpen(task)}
+              />
+            ))}
+          </AnimatePresence>
+        </ol>
+      )}
 
       {next && (
         <div className="today-next">
@@ -129,7 +143,6 @@ export default function TodayCard({
             <span className="today-next-meta">
               {isDueOnly(next) ? `Due ${shortDay(next.date, today)}` : `${shortDay(next.date, today)} at ${formatTime12(next.time)}`}
               {nextEstimate && ` · about ${nextEstimate}`}
-              {nextReason && <span className={`attention-chip attention-chip--${nextReason.type}`}>{describeReason(nextReason)}</span>}
             </span>
           </div>
           <button type="button" className="today-next-start" onClick={() => onOpen(next)}>
@@ -138,11 +151,11 @@ export default function TodayCard({
         </div>
       )}
 
-      {empty ? (
+      {empty && steps.length === 0 ? (
         <p className="today-card-empty">
           {next ? "Nothing else on today." : "Nothing on today. Add something above whenever it comes to you."}
         </p>
-      ) : listUrgent.length + listToday.length === 0 ? null : (
+      ) : total === 0 ? null : (
         <div className="today-card-list">
           <AnimatePresence initial={false}>
             {listUrgent.map(({ task, reason }) => (
@@ -161,12 +174,12 @@ export default function TodayCard({
                       <button
                         type="button"
                         className="attention-defer"
-                        onClick={() => onTomorrow(task)}
+                        onClick={() => onNotToday(task)}
                         disabled={busyTaskId === task.id}
-                        aria-label={`Move ${task.title} to tomorrow`}
+                        aria-label={`Not today: ${task.title}`}
                       >
                         <Redo2 size={13} aria-hidden="true" />
-                        <span>Tomorrow</span>
+                        <span>Not today</span>
                       </button>
                     </>
                   }
@@ -189,7 +202,7 @@ export default function TodayCard({
               </m.div>,
             ])}
           </AnimatePresence>
-          {(collapsedCount > 0 || (expanded && total > COLLAPSED_ROWS)) && (
+          {(collapsedCount > 0 || expanded) && (
             <button type="button" className="today-card-more" aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
               {expanded ? "Show less" : `Show ${collapsedCount} more`}
             </button>
@@ -210,7 +223,7 @@ export default function TodayCard({
                 exit={{ opacity: 0, transition: { duration: 0.15 } }}
               >
                 <span>{receipt.label}</span>
-                <button type="button" onClick={receipt.onUndo}>Undo</button>
+                {receipt.onUndo && <button type="button" onClick={receipt.onUndo}>Undo</button>}
               </m.div>
             )}
           </AnimatePresence>
@@ -221,6 +234,7 @@ export default function TodayCard({
           )}
         </footer>
       )}
+      <FreshStart count={freshStartCount} backlog={backlog} onConfirm={onFreshStart} />
     </m.section>
   );
 }

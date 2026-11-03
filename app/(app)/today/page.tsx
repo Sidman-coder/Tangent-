@@ -9,6 +9,7 @@ import ActionReceipt from "@/components/ActionReceipt";
 import { openTask } from "@/components/TaskDetail";
 import { askAboutHref } from "@/lib/ask-handoff";
 import TodayCard, { type AttentionReceipt } from "@/components/dashboard/TodayCard";
+import { shortDay } from "@/components/dashboard/TodayStep";
 import TaskFilterChips, { useTaskFilter } from "@/components/TaskFilterChips";
 import TaskRow from "@/components/ui/TaskRow";
 import { NO_TIME_LABEL, applyTaskFilter, type TaskFilter } from "@/lib/task-filters";
@@ -18,6 +19,15 @@ import AddFlow from "@/components/add/AddFlow";
 import { CanvasCard, StartingIntentCard } from "@/components/dashboard/HomeCards";
 import PageHeader from "@/components/ui/PageHeader";
 import "@/components/dashboard/today-home.css";
+import {
+  MAX_AUTO_MOVES,
+  type SmallerStep,
+  canMoveStep,
+  freshStartSteps,
+  missedSteps,
+  pickTodaySteps,
+} from "@/lib/today-steps";
+import { readReplanDay, readSetAside, writeReplanDay, writeSetAside } from "@/lib/today-local";
 import type { ActionRecord, Task } from "@/lib/types";
 import { toYMD } from "@/lib/dates";
 import { getGreeting } from "@/lib/greetings";
@@ -142,7 +152,22 @@ export default function DashboardPage() {
   // scheduler and the week insights below; it is not a to-do, so it never
   // shows as a row. Canvas work long past due counts as handled (lib/canvas-clear).
   const doable = useMemo(() => withoutClearedCanvas(tasks.filter((t) => !isOnboardingSchoolTask(t)), today), [tasks, today]);
-  const urgency = useMemo(() => getUrgency(doable, now), [now, doable]);
+  // Set aside with Not today: gone from today's lists, still on the calendar.
+  const [setAside, setSetAside] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => setSetAside(readSetAside(today)), [today]);
+  const updateSetAside = useCallback(
+    (change: (ids: Set<string>) => void) =>
+      setSetAside((current) => {
+        const next = new Set(current);
+        change(next);
+        writeSetAside(today, next);
+        return next;
+      }),
+    [today]
+  );
+  const onToday = useMemo(() => doable.filter((t) => !setAside.has(t.id)), [doable, setAside]);
+  const steps = useMemo(() => pickTodaySteps(onToday, today), [onToday, today]);
+  const urgency = useMemo(() => getUrgency(onToday, now), [now, onToday]);
   const attentionIds = useMemo(() => new Set(urgency.items.map((i) => i.task.id)), [urgency]);
   // Handled Canvas work stays out of the week strip and its pulse too.
   const weekTasks = useMemo(() => withoutClearedCanvas(tasks, today), [tasks, today]);
@@ -159,8 +184,8 @@ export default function DashboardPage() {
   }, [doable, filter, today]);
 
   const todaysTasks = useMemo(
-    () => doable.filter((t) => t.date === today).sort((a, b) => a.time.localeCompare(b.time)),
-    [doable, today]
+    () => onToday.filter((t) => t.date === today).sort((a, b) => a.time.localeCompare(b.time)),
+    [onToday, today]
   );
   // Today's list shows what the attention section doesn't, open work first.
   const dayline = useMemo(
@@ -239,30 +264,129 @@ export default function DashboardPage() {
     [setCompleted]
   );
 
-  const moveToTomorrow = useCallback(
+  const showReceipt = useCallback((label: string, onUndo?: () => void) => {
+    setReceipt({
+      id: ++receiptSeq.current,
+      label,
+      onUndo: onUndo && (() => {
+        setReceipt(null);
+        onUndo();
+      }),
+    });
+  }, []);
+
+  const undoAction = useCallback(
+    async (id: string) => {
+      try {
+        await postJson("/api/actions", { id });
+        await refresh();
+        void loadRecentActions();
+      } catch {
+        showReceipt("That couldn't be undone. Try again from Recent activity.");
+      }
+    },
+    [loadRecentActions, refresh, showReceipt]
+  );
+
+  // A date that's a fact (Canvas, a due date, a repeating task) stays as it is:
+  // the step just leaves today's lists until tomorrow.
+  const setAsideForToday = useCallback(
     (task: Task) => {
-      const tomorrow = toYMD(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
-      let actionId: string | null = null;
-      void withOverride(task, { date: tomorrow }, async () => {
-        const data = await postJson("/api/reschedule", { taskId: task.id, suggestedDate: tomorrow, suggestedTime: task.time });
-        actionId = typeof data.actionId === "string" ? data.actionId : null;
+      updateSetAside((ids) => ids.add(task.id));
+      showReceipt(`Set “${task.title}” aside for today`, () => updateSetAside((ids) => ids.delete(task.id)));
+    },
+    [showReceipt, updateSetAside]
+  );
+
+  const notToday = useCallback(
+    (task: Task) => {
+      if (!canMoveStep(task)) return setAsideForToday(task);
+      let result: Record<string, unknown> = {};
+      void withOverride(task, {}, async () => {
+        result = await postJson("/api/today", { action: "not_today", taskId: task.id });
       }).then((ok) => {
-        if (!ok || !actionId) return;
-        const id = actionId;
-        setReceipt({
-          id: ++receiptSeq.current,
-          label: `Moved “${task.title}” to tomorrow`,
-          onUndo: () => {
-            setReceipt(null);
-            void withOverride(task, { date: task.date }, async () => {
-              await postJson("/api/actions", { id });
-            });
-          },
-        });
+        if (!ok) return showReceipt("That didn't move. Try again.");
+        const { actionId, date } = result;
+        if (typeof actionId !== "string") return setAsideForToday(task);
+        const day = typeof date === "string" ? shortDay(date, today) : "the days ahead";
+        showReceipt(`Moved “${task.title}” to ${day}`, () => void undoAction(actionId));
       });
     },
-    [now, withOverride]
+    [setAsideForToday, showReceipt, today, undoAction, withOverride]
   );
+
+  const splitStep = useCallback(
+    async (task: Task, pieces: SmallerStep[]) => {
+      let result: Record<string, unknown> = {};
+      const ok = await withOverride(task, {}, async () => {
+        result = await postJson("/api/today", { action: "split_apply", taskId: task.id, steps: pieces });
+      });
+      if (!ok) {
+        showReceipt("That didn't save. Try again.");
+        return false;
+      }
+      // A kept original (a real deadline) would otherwise sit beside its pieces.
+      const kept = result.keptOriginal === true;
+      if (kept) updateSetAside((ids) => ids.add(task.id));
+      const { actionId } = result;
+      showReceipt(`Split “${task.title}” into ${pieces.length} steps`, () => {
+        if (kept) updateSetAside((ids) => ids.delete(task.id));
+        if (typeof actionId === "string") void undoAction(actionId);
+      });
+      return true;
+    },
+    [showReceipt, undoAction, updateSetAside, withOverride]
+  );
+
+  const clearedSteps = useMemo(
+    () => freshStartSteps(doable, { date: today, minutes: now.getHours() * 60 + now.getMinutes() }),
+    [doable, now, today]
+  );
+  const missedCount = useMemo(() => missedSteps(doable, today).length, [doable, today]);
+
+  const freshStart = useCallback(async () => {
+    try {
+      const { moved, actionId } = await postJson("/api/today", { action: "fresh_start" });
+      // Undo shouldn't be followed by the automatic re-plan moving it all again.
+      writeReplanDay(today);
+      replanDay.current = today;
+      await refresh();
+      void loadRecentActions();
+      const count = Number(moved) || 0;
+      if (count > 0 && typeof actionId === "string") {
+        showReceipt(`Fresh start: ${count} step${count === 1 ? "" : "s"} moved ahead`, () => void undoAction(actionId));
+      }
+      return true;
+    } catch {
+      showReceipt("That didn't go through. Nothing moved. Try again.");
+      return false;
+    }
+  }, [loadRecentActions, refresh, showReceipt, today, undoAction]);
+
+  // The automatic re-plan on a miss: once a day, when Today opens, with Undo.
+  // Once only, so undoing it isn't undone by the next page load. No AI here,
+  // and a backlog moves nothing: Fresh start is offered instead.
+  const replanDay = useRef<string | null>(null);
+  const loaded = Boolean(state);
+  useEffect(() => {
+    if (!loaded || replanDay.current === today) return;
+    replanDay.current = today;
+    if (readReplanDay() === today || missedCount === 0 || missedCount > MAX_AUTO_MOVES) return;
+    void (async () => {
+      try {
+        const { moved, actionId } = await postJson("/api/today", { action: "replan" });
+        writeReplanDay(today);
+        const count = Number(moved) || 0;
+        if (count === 0 || typeof actionId !== "string") return;
+        await refresh();
+        void loadRecentActions();
+        showReceipt(`Re-planned ${count} step${count === 1 ? "" : "s"} from an earlier day`, () => void undoAction(actionId));
+      } catch {
+        // It tries again the next time Today opens.
+        replanDay.current = null;
+      }
+    })();
+  }, [loaded, loadRecentActions, missedCount, refresh, showReceipt, today, undoAction]);
 
   // Onboarding answers only reorder and add; with none, this is DEFAULT_HOME.
   const user = state?.user;
@@ -335,6 +459,7 @@ export default function DashboardPage() {
       ) : (
       <TodayCard
         urgency={urgency}
+        steps={steps}
         todays={dayline}
         today={today}
         nextTask={nextTask}
@@ -344,10 +469,14 @@ export default function DashboardPage() {
         receipt={receipt}
         onToggle={(task) => void setCompleted(task, !task.completed)}
         onCompleteUrgent={completeFromAttention}
-        onTomorrow={moveToTomorrow}
+        onNotToday={notToday}
+        onSplit={splitStep}
         onOpen={(task) => openTask(task.id)}
         onHelp={(task) => router.push(askAboutHref({ kind: "task", id: task.id }))}
         onSeeAll={() => router.push(`/calendar?date=${today}`)}
+        freshStartCount={clearedSteps.length}
+        backlog={missedCount > MAX_AUTO_MOVES}
+        onFreshStart={freshStart}
       />
       )}
 

@@ -98,3 +98,15 @@ The microphone only works on an `https` address, so your computer's `http://` ad
 4. **Question cards.** Say something vague, like "get better at chess". Cards should show "1 of N", with Skip and Answer later, and stop after 3 in a row.
 5. **Mini week.** Confirm a plan with several steps. The preview's week view should fit the screen with no sideways scrolling, and Edit should switch to the list.
 6. **Phone width.** Go through Today, Calendar, Projects, School (only if Canvas is connected), one project, the AI page and Settings. Nothing should scroll sideways, and every button should be easy to tap.
+
+## Today daily loop: test signed in, on a phone
+
+No new migration or variable. The dev preview has no session, so these have not run against a real account yet.
+
+1. Today shows 1-3 steps. Done completes one, and Undo brings it back.
+2. Not today on your own step moves it to a later day. Undo puts it back.
+3. Not today on a Canvas or repeating step removes it from Today until tomorrow, and its date does not change. Confirm the card disappears right away.
+4. Too big shows 2-3 smaller steps. Keep as is changes nothing. Use these replaces the step, and Undo restores it.
+5. Leave 1-5 steps unfinished on an earlier day, then open Today: they move once, with Undo. Undo, reload, and they should not move again that day.
+6. Leave more than 5 unfinished: nothing moves, and Today offers Fresh start.
+7. Fresh start says how many steps it will move, moves them only after you confirm, and Undo restores them. Canvas dates stay put.

@@ -104,6 +104,8 @@ export const AI_TASKS = {
   /** The detail every captured task carries (notes, first step, category). It runs
    *  in the background after the save, so it buys quality, not speed: SMART. */
   refineTask: { feature: "chat", tier: "SMART", maxTokens: 1200, thinking: "disabled" },
+  /** Too big on Today: one step into 2-3 smaller ones (lib/ai/split.ts). */
+  splitStep: { feature: "chat", tier: "FAST", maxTokens: 500 },
   /** Durable-fact extraction from a chat turn. */
   contextExtract: { feature: "context", tier: "FAST", maxTokens: 300, effort: "low" },
   /** Compress the context file once it grows past 40 entries. */

@@ -188,7 +188,7 @@ export function spreadSessions(
 
 /** Work that can be moved to make room: not a deadline (Canvas), not a fixed
  *  commitment or repeating block, not done. */
-function isMovable(t: Task): boolean {
+export function isMovable(t: Task): boolean {
   return (
     !t.completed &&
     t.source !== "canvas" &&

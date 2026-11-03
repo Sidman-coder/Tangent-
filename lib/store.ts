@@ -2330,6 +2330,8 @@ async function applyUndo(record: ActionRecord): Promise<void> {
     }
     case "delete_task":
     case "delete_all_tasks": {
+      // A Too big split: its smaller steps leave as the original comes back.
+      await deleteTaskIds("undoAction", snap.addedTaskIds ?? []);
       // Plans first, so the tasks come back linked to them.
       for (const plan of snap.removedPlans ?? []) await restorePlanRow(plan);
       await restoreTasks(snap.removedTasks ?? []);
@@ -2348,6 +2350,9 @@ async function applyUndo(record: ActionRecord): Promise<void> {
     case "reschedule_task": {
       const r = snap.rescheduled;
       if (r) await updateTask(r.taskId, { date: r.fromDate, time: r.fromTime });
+      for (const move of snap.rescheduledMany ?? []) {
+        await updateTask(move.taskId, { date: move.fromDate, time: move.fromTime });
+      }
       break;
     }
     case "apply_changeset": {
