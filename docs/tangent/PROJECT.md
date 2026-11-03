@@ -42,7 +42,17 @@ The product is not an AI counselor, therapy product, family surveillance system,
 
 ## Current software state
 
-**v3 build status:** to be filled at the end of Phase 3.
+**v3 build status (2026-11-03, branch `v3-core-loop`, not pushed):** Phases 0–3 are built. `npm run build` passes and `npm test` has 468 passing, 0 failing. Steps only a person can do are in [MANUAL-STEPS](../MANUAL-STEPS.md). The features below haven't been run end to end with a signed-in account, a real microphone or real Canvas data.
+
+- **Not built: Today's daily loop.** Done, Not today and Too big, the automatic re-plan on a miss, and Fresh start don't exist yet. Build them next, before the pilot.
+- **Not built: anything from the December roadmap.** That covers billing, study buddy and the share card.
+- **Sign-in:** email codes, password reset by code, and clearer error messages. The codes only work once the email templates in MANUAL-STEPS are pasted in.
+- **Calendar:** dragging a task saves its new date and time, with Undo. Blocks are a fixed 45 minutes, and dragging a repeating task moves one occurrence.
+- **Capture:** a phone mic with live words, up to 3 question cards in a row, task filters, and a mini week in the preview.
+- **Two chats:** capture and the AI page are the only chats. An "Ask" on a project or task opens the AI page with it attached. Old task chat history stays in `task_chat_messages` but isn't shown anywhere.
+- **Grill me:** a queue of template questions in `grill_questions`, answered on Today, under a confirmed preview, or in Settings. It reads empty until the migration is run.
+- **Projects:** a School card and page built from Canvas, plus stats on each project. "Completed in the last 7 days" is approximate, because tasks have no completed-at time.
+- **Tangents:** the rail link is hidden. The route still exists.
 
 The repository is a Next.js 14 and TypeScript application. Current code and user-provided context establish the following:
 
@@ -118,6 +128,8 @@ Dev and Preview share the production Supabase project, so Supabase values and `C
 | `DEEPGRAM_API_KEY` | Secret | No | Production, Preview | Browser voice transcription; voice capture is disabled without it |
 | `OWNER_EMAIL` | Config | No | Production, Preview | The one account allowed to use the env-based Google integrations |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN` | Secret | No | Production, Preview | Owner-only Gmail and Google Calendar access; currently unset |
+
+`TANGENT_PIPELINE_V2` (Config, optional, server only) turns on draft ChangeSets for typed AI changes. It's off unless set to `true` or `1`, and it's read once at startup.
 
 Set automatically or used only in tests (don't add these to Vercel):
 
