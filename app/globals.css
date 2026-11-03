@@ -9158,3 +9158,241 @@ body .task-chat-modal {
     animation: none;
   }
 }
+
+
+/* v3: the phone's round mic. A long press shouldn't select or open a menu. */
+.capture-mic-float {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* v3: the day and time chips above the to-do list. */
+.task-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 12px;
+}
+.task-filter-row {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.task-filter-row::-webkit-scrollbar {
+  display: none;
+}
+.task-filter-chip {
+  flex: none;
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  font: 600 13px var(--font-body);
+  cursor: pointer;
+}
+.task-filter-chip[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+.task-filter-chip:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.task-filter-group {
+  margin: 10px 0 4px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  list-style: none;
+}
+.task-filter-empty {
+  margin: 0;
+  padding: 16px;
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+/* v3: the plan preview's mini week. */
+.preview-week-toggle {
+  display: inline-flex;
+  align-self: flex-start;
+  margin-bottom: 8px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.preview-week-toggle button {
+  min-height: 28px;
+  padding: 3px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  font: 600 12px var(--font-body);
+  cursor: pointer;
+}
+.preview-week-toggle button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+.preview-week-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.preview-week-nav small {
+  margin-left: 6px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 500;
+}
+.preview-week-nav button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.preview-week-nav button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.preview-week-frame {
+  padding-left: 26px;
+}
+.preview-week-head,
+.preview-week-strip,
+.preview-week-cols {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+.preview-week-head span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.preview-week-head b {
+  color: var(--text-2);
+  font-size: 12px;
+}
+.preview-week-strip > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px;
+  padding: 3px 2px;
+}
+.preview-week-untimed {
+  width: 100%;
+  height: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.preview-week-body {
+  position: relative;
+  height: 264px;
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.preview-week-hours span {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px solid var(--line);
+}
+.preview-week-hours em {
+  position: absolute;
+  left: -26px;
+  top: -1px;
+  color: var(--text-3);
+  font-size: 10px;
+  font-style: normal;
+}
+.preview-week-cols {
+  position: absolute;
+  inset: 0;
+}
+.preview-week-cols i {
+  border-left: 1px solid var(--line);
+}
+.preview-week-block {
+  position: absolute;
+  width: calc(100% / 7 - 4px);
+  margin-left: 2px;
+  padding: 1px 3px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 4px;
+  background: var(--text-3);
+  color: #fff;
+  font: 600 9.5px/1.15 var(--font-body);
+  text-align: left;
+  cursor: pointer;
+}
+.preview-week-block.is-existing {
+  opacity: 0.4;
+}
+.preview-week-block.is-school {
+  opacity: 0.16;
+}
+.preview-week-block.is-new {
+  z-index: 1;
+  /* Task colors run pale and dark, so the title sits on a tint of one. */
+  border-left: 3px solid var(--block);
+  background: color-mix(in srgb, var(--block) 35%, var(--surface));
+  color: var(--text);
+  box-shadow: 0 0 0 1px var(--surface);
+}
+.preview-week-block span {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.preview-week-block:focus-visible,
+.preview-week-untimed:focus-visible,
+.preview-week-toggle button:focus-visible,
+.preview-week-nav button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.preview-week-tip {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: max-content;
+  max-width: min(240px, 100%);
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 10px 24px -12px rgb(0 0 0 / 0.4);
+  font-size: 12px;
+  pointer-events: none;
+}
+.preview-week-tip span {
+  color: var(--text-2);
+}

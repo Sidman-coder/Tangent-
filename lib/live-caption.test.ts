@@ -19,7 +19,24 @@ type Resolve = (specifier: string, context: unknown, next: (s: string, c: unknow
 
 
 type Mod = typeof import("./live-caption");
-void (import("./live-caption") as Promise<Mod>).then(({ liveCaption, browserCaptionAllowed }) => {
+void (import("./live-caption") as Promise<Mod>).then(({ captionWords, liveCaption, browserCaptionAllowed }) => {
+  test("interim words are marked, settled ones aren't", () => {
+    assert.deepEqual(captionWords("finish the deck", "deck", ""), [
+      { word: "finish", interim: false },
+      { word: "the", interim: false },
+      { word: "deck", interim: true },
+    ]);
+    assert.deepEqual(captionWords("finish the", "", "ignored"), [
+      { word: "finish", interim: false },
+      { word: "the", interim: false },
+    ]);
+  });
+
+  test("a browser caption is all interim, and silence is nothing", () => {
+    assert.deepEqual(captionWords("", "", "hi there").map((w) => w.interim), [true, true]);
+    assert.deepEqual(captionWords("  ", "", ""), []);
+  });
+
   test("the streamed transcript wins once it has words; until then the browser's guess shows", () => {
     assert.equal(liveCaption("", "finish the deck"), "finish the deck");
     assert.equal(liveCaption("finish the deck by", "finish the deck"), "finish the deck by");

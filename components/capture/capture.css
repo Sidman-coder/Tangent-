@@ -208,6 +208,12 @@
   color: var(--wash-hint);
 }
 .capture-words {
+  /* The newest words stay in view; the oldest slip off the top. */
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-end;
+  max-height: calc(100dvh - 400px - env(safe-area-inset-bottom, 0px));
+  overflow: hidden;
   margin: 0;
   font-family: var(--font-display);
   font-size: 30px;
@@ -219,6 +225,9 @@
 .capture-words > span {
   display: inline-block;
   margin-right: 0.24em;
+}
+.capture-words > .is-interim {
+  color: color-mix(in srgb, var(--wash-ink) 55%, transparent);
 }
 
 /* Behind the island: the list fades into the page so rows never sit under,
@@ -459,6 +468,17 @@
 .sorted-question {
   margin: 0;
 }
+.sorted-question {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.sorted-count {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
 .sorted-question em {
   font-style: normal;
   font-weight: 650;
@@ -476,6 +496,11 @@
   color: var(--accent);
   cursor: pointer;
   transition: transform 0.3s cubic-bezier(0.22, 1.2, 0.36, 1);
+}
+.sorted-question + .sorted-chips .capture-chip {
+  min-height: 44px;
+  padding: 10px 16px;
+  font-size: 15px;
 }
 .capture-chip:active {
   transform: scale(0.94);

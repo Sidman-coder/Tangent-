@@ -9,6 +9,9 @@ import ActionReceipt from "@/components/ActionReceipt";
 import { openTask } from "@/components/TaskDetail";
 import TaskChatModal from "@/components/TaskChatModal";
 import TodayCard, { type AttentionReceipt } from "@/components/dashboard/TodayCard";
+import TaskFilterChips, { useTaskFilter } from "@/components/TaskFilterChips";
+import TaskRow from "@/components/ui/TaskRow";
+import { NO_TIME_LABEL, applyTaskFilter, type TaskFilter } from "@/lib/task-filters";
 import WeekStrip from "@/components/dashboard/WeekStrip";
 import SetupNudge from "@/components/dashboard/SetupNudge";
 import AddFlow from "@/components/add/AddFlow";
@@ -53,6 +56,8 @@ async function postJson(url: string, body: unknown): Promise<Record<string, unkn
   if (!res.ok || data.ok === false) throw new Error(String(data.error ?? "Request failed"));
   return data;
 }
+
+const TODAY_AS_USUAL: TaskFilter = { day: "today", time: "any" };
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -138,6 +143,16 @@ export default function DashboardPage() {
   // Handled Canvas work stays out of the week strip and its pulse too.
   const weekTasks = useMemo(() => withoutClearedCanvas(tasks, today), [tasks, today]);
   const insight = useMemo(() => getSchedulePulse(weekTasks, now), [now, weekTasks]);
+
+  // The chips: today as usual until the student narrows it or looks further out.
+  // Past events that were never "done" aren't overdue work, so they stay out.
+  const [filter, setFilter] = useTaskFilter("today", TODAY_AS_USUAL);
+  const filtered = useMemo(() => {
+    const open = doable
+      .filter((t) => !t.completed && (!t.date || t.date >= today || tracksCompletion(t)))
+      .sort((a, b) => (!a.date !== !b.date ? (a.date ? -1 : 1) : a.date.localeCompare(b.date) || a.time.localeCompare(b.time)));
+    return applyTaskFilter(open, (t) => t, filter, today);
+  }, [doable, filter, today]);
 
   const todaysTasks = useMemo(
     () => doable.filter((t) => t.date === today).sort((a, b) => a.time.localeCompare(b.time)),
@@ -289,6 +304,31 @@ export default function DashboardPage() {
 
       {error && <p className="today-inline-error" role="status">Your schedule could not refresh. Showing the latest available view.</p>}
 
+      <TaskFilterChips filter={filter} onChange={setFilter} />
+
+      {filter.day !== "today" || filter.time !== "any" ? (
+        <section className="today-card" aria-label="Filtered to-do">
+          {filtered.main.length + filtered.noTime.length === 0 ? (
+            <p className="task-filter-empty">Nothing here. Try another filter.</p>
+          ) : (
+            <div className="today-card-list">
+              {[...filtered.main, ...filtered.noTime].flatMap((task, i) => [
+                ...(i === filtered.main.length ? [<p key="no-time" className="task-filter-group">{NO_TIME_LABEL}</p>] : []),
+                <div key={task.id} className="today-card-row">
+                  <TaskRow
+                    task={task}
+                    showDate={task.date !== today}
+                    hasQuestions={questionTaskIds.has(task.id)}
+                    kindColor={colorForTask(task)}
+                    onComplete={tracksCompletion(task) ? () => void setCompleted(task, true) : undefined}
+                    onOpen={() => openTask(task.id)}
+                  />
+                </div>,
+              ])}
+            </div>
+          )}
+        </section>
+      ) : (
       <TodayCard
         urgency={urgency}
         todays={dayline}
@@ -305,6 +345,7 @@ export default function DashboardPage() {
         onHelp={setHelpTask}
         onSeeAll={() => router.push(`/calendar?date=${today}`)}
       />
+      )}
 
       <WeekStrip tasks={weekTasks} now={now} insight={insight} />
 

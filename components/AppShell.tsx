@@ -20,6 +20,7 @@ import GetToKnowYou, { GET_TO_KNOW_EVENT } from "./GetToKnowYou";
 import FirstRun from "./FirstRun";
 import TangentLogo from "@/components/TangentLogo";
 import DesktopNotifPrompt from "./DesktopNotifPrompt";
+import CaptureMic from "./capture/CaptureMic";
 import { useAppState } from "./AppStateProvider";
 
 // Five places you work, plus settings. Projects is where Plans live now;
@@ -276,7 +277,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       {/* The mic floats bottom-right on every page: say anything, from
           anywhere; it opens Add already listening. (⌘K opens it to type.)
           Not on Tangent AI, whose own composer mic talks to the chat. */}
-      {!pathname.startsWith("/ai") && !composerInView && (
+      {/* On a phone the round mic is the way back to capture mode. */}
+      {!pathname.startsWith("/ai") && !desktop && <CaptureMic />}
+      {!pathname.startsWith("/ai") && desktop && !composerInView && (
         <button type="button" className="float-mic lg lg-interactive" onClick={openListening} aria-label="Say it to Tangent" title="Say it  ·  ⌘K to type">
           <Mic size={22} strokeWidth={2} aria-hidden="true" />
         </button>

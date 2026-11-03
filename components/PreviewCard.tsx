@@ -9,10 +9,12 @@
 // Keys while the card has focus: Enter confirms, Esc discards.
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeSet } from "@/lib/pipeline/changeset";
 import type { DraftEdit, PreviewPayload } from "@/lib/pipeline/draft";
+import { previewWeeks } from "@/lib/preview-week";
 import { receiptView } from "@/lib/pipeline/receipt";
+import PreviewWeek from "@/components/PreviewWeek";
 import { useAppState } from "@/components/AppStateProvider";
 
 type Phase = "draft" | "confirmed" | "discarded" | "undone";
@@ -60,6 +62,13 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
   const [allOpen, setAllOpen] = useState(false);
   const [chatting, setChatting] = useState(false);
   const [expired, setExpired] = useState(false);
+  /** The mini week by default; a phone is too narrow for it to read first. */
+  const [layout, setLayout] = useState<"calendar" | "list">(() =>
+    typeof window !== "undefined" && window.matchMedia("(max-width: 599px)").matches ? "list" : "calendar"
+  );
+  const weeks = useMemo(() => previewWeeks(cs.ops, state?.tasks ?? []), [cs.ops, state?.tasks]);
+  // Editing happens on the list's rows.
+  const showWeek = layout === "calendar" && weeks.length > 0 && !editing;
   const cardRef = useRef<HTMLDivElement>(null);
   const shownRef = useRef(false);
   const base = `/api/changesets/${encodeURIComponent(cs.id)}`;
@@ -253,7 +262,14 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
       </p>
       <p className="preview-card-title">{cs.summary}</p>
 
-      <ul className="preview-card-lines">
+      {weeks.length > 0 && !editing && (
+        <div className="preview-week-toggle" role="group" aria-label="Preview layout">
+          <button type="button" aria-pressed={layout === "calendar"} onClick={() => setLayout("calendar")}>Calendar</button>
+          <button type="button" aria-pressed={layout === "list"} onClick={() => setLayout("list")}>List</button>
+        </div>
+      )}
+
+      {showWeek ? <PreviewWeek weeks={weeks} /> : <ul className="preview-card-lines">
         {view.lines.map((line, i) => {
           const op = cs.ops[i];
           // A plan removal shows as its checkbox below, not as a line.
@@ -296,7 +312,7 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
             </li>
           );
         })}
-      </ul>
+      </ul>}
 
       {/* Master fix B6: several selected plans read as one group. */}
       {view.planRemovals && view.planRemovals.length > 1 && <p className="preview-card-muted">Also remove these plans</p>}

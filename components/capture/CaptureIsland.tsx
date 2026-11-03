@@ -18,12 +18,14 @@ type Props = {
   level: () => number;
   /** The last thing heard, shown small while sorting. */
   transcriptTail: string;
+  /** Nothing streamed: the recording is being read after the fact. */
+  transcribing: boolean;
   /** Listening began without a press (?capture=1): the next tap sends. */
   tapToStop: boolean;
   onEvent: (e: HoldEvent) => void;
 };
 
-const CaptureIsland = forwardRef<HTMLButtonElement, Props>(function CaptureIsland({ state, level, transcriptTail, tapToStop, onEvent }, ref) {
+const CaptureIsland = forwardRef<HTMLButtonElement, Props>(function CaptureIsland({ state, level, transcriptTail, transcribing, tapToStop, onEvent }, ref) {
   const reduced = useReducedMotion();
   const bars = useRef<HTMLSpanElement[]>([]);
   const listening = state === "listening";
@@ -52,7 +54,7 @@ const CaptureIsland = forwardRef<HTMLButtonElement, Props>(function CaptureIslan
     return () => cancelAnimationFrame(raf);
   }, [listening, level]);
 
-  const label = sorting ? "Sorting…" : listening ? (tapToStop ? "Tap to add" : "Let go to add") : "Hold to talk";
+  const label = sorting ? (transcribing ? "Transcribing…" : "Sorting…") : listening ? (tapToStop ? "Tap to add" : "Let go to add") : "Hold to talk";
   const swell = listening && !reduced;
 
   return (

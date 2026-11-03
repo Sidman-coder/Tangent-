@@ -17,8 +17,10 @@ import { openTask } from "@/components/TaskDetail";
 import { OPEN_PALETTE_EVENT, useVoiceCapture } from "@/hooks/useVoiceCapture";
 import { useQuestionSets } from "@/hooks/useQuestionSets";
 import { useBrowserCaption } from "@/hooks/useBrowserCaption";
-import { liveCaption } from "@/lib/live-caption";
-import { buildCaptureList } from "@/lib/capture-list";
+import { captionWords, liveCaption } from "@/lib/live-caption";
+import { buildCaptureList, type CaptureRow } from "@/lib/capture-list";
+import { NO_TIME_LABEL, applyTaskFilter, type TaskFilter } from "@/lib/task-filters";
+import TaskFilterChips, { useTaskFilter } from "@/components/TaskFilterChips";
 import { holdReducer, initialHold, listeningWithoutPress, spaceStartsHold, type Hold, type HoldEvent } from "@/lib/hold-gesture";
 import { heardSomethingToAdd, soundsLikeATask } from "@/lib/voice-intent";
 import { putAsk } from "@/lib/ask-handoff";
@@ -40,6 +42,10 @@ const TICK_MS = 50;
  *  Covers only the wait for the transcript; the save itself has no cap. */
 const SEND_TIMEOUT_MS = 9000;
 
+/** The whole list until the student narrows it. */
+const ALL_TASKS: TaskFilter = { day: "all", time: "any" };
+const rowTask = (row: CaptureRow) => row.task;
+
 const EASE_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
 const EASE_IN: [number, number, number, number] = [0.5, 0, 0.75, 0];
 
@@ -56,6 +62,7 @@ export default function CaptureHome() {
   const holdRef = useRef<Hold>(initialHold);
   const [tapToStop, setTapToStop] = useState(false);
   const [words, setWords] = useState("");
+  const [interim, setInterim] = useState("");
   const [outcome, setOutcome] = useState<CaptureOutcome | null>(null);
   const [done, setDone] = useState<Record<string, boolean>>({});
   const islandRef = useRef<HTMLButtonElement>(null);
@@ -123,7 +130,11 @@ export default function CaptureHome() {
     // Repeated captures shouldn't re-ask for the mic (Safari asks on every
     // fresh getUserMedia); it's let go after a minute unused.
     keepStream: true,
-    onPartial: (t) => setWords(t),
+    onPartial: (t, guess) => {
+      setWords(t);
+      setInterim("");
+      setInterim(guess);
+    },
     onTranscript: (t) => {
       clearSendTimer();
       setWords(t);
@@ -249,7 +260,10 @@ export default function CaptureHome() {
     () => (state?.tasks ?? []).map((t) => (t.id in done ? { ...t, completed: done[t.id] } : t)),
     [state?.tasks, done]
   );
-  const rows = useMemo(() => buildCaptureList(tasks, state?.plans ?? [], today), [tasks, state?.plans, today]);
+  const allRows = useMemo(() => buildCaptureList(tasks, state?.plans ?? [], today), [tasks, state?.plans, today]);
+  const [filter, setFilter] = useTaskFilter("capture", ALL_TASKS);
+  const filtered = useMemo(() => applyTaskFilter(allRows, rowTask, filter, today), [allRows, filter, today]);
+  const rows = useMemo(() => [...filtered.main, ...filtered.noTime], [filtered]);
 
   const complete = useCallback(
     async (task: Task) => {
@@ -347,12 +361,17 @@ export default function CaptureHome() {
         <h1 className="capture-title">To do</h1>
         <p className="capture-count">{count === 1 ? "1 thing" : `${count} things`}</p>
 
-        {state && count === 0 ? (
+        {allRows.length > 0 && <TaskFilterChips filter={filter} onChange={setFilter} />}
+
+        {state && allRows.length === 0 ? (
           <p className="capture-empty">Nothing to do. Hold to add something.</p>
+        ) : state && count === 0 ? (
+          <p className="capture-empty">Nothing here. Try another filter.</p>
         ) : (
           <ul className="capture-list">
             <AnimatePresence initial={false}>
-              {rows.map(({ task, sub, overdue }, i) => (
+              {rows.flatMap(({ task, sub, overdue }, i) => [
+                ...(i === filtered.main.length ? [<li key="no-time" className="task-filter-group">{NO_TIME_LABEL}</li>] : []),
                 <m.li
                   key={task.id}
                   layout={!reduced}
@@ -375,8 +394,8 @@ export default function CaptureHome() {
                     </button>
                   )}
                   <i className="capture-dot" style={{ background: taskColor(task) }} aria-hidden="true" />
-                </m.li>
-              ))}
+                </m.li>,
+              ])}
             </AnimatePresence>
           </ul>
         )}
@@ -408,14 +427,15 @@ export default function CaptureHome() {
                 Listening…
               </m.p>
               <p className="capture-words">
-                {liveCaption(words, browserText).split(/\s+/).filter(Boolean).map((w, i) => (
+                {captionWords(words, interim, browserText).map((w, i) => (
                   <m.span
                     key={i}
+                    className={w.interim ? "is-interim" : undefined}
                     initial={reduced ? { opacity: 0 } : { opacity: 0, filter: "blur(6px)", y: 10 }}
                     animate={{ opacity: 1, filter: "blur(0px)", y: 0 }}
                     transition={{ duration: 0.42, ease: EASE_OUT }}
                   >
-                    {w}
+                    {w.word}
                   </m.span>
                 ))}
               </p>
@@ -482,6 +502,7 @@ export default function CaptureHome() {
           state={hold.state}
           level={voice.getLevel}
           transcriptTail={liveCaption(words, lastCaption)}
+          transcribing={voice.status === "transcribing" && !words}
           tapToStop={tapToStop}
           onEvent={dispatch}
         />

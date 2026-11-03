@@ -13,6 +13,7 @@ import TaskRow from "@/components/ui/TaskRow";
 import type { Task } from "@/lib/types";
 import { formatTime12, isDueOnly } from "@/lib/dates";
 import { riseIn, rowPresence, spring } from "@/lib/motion";
+import { NO_TIME_LABEL, timeOfDay } from "@/lib/task-filters";
 import { canAskForHelp } from "@/lib/task-help";
 import { describeReason, tracksCompletion, type UrgencySummary } from "@/lib/urgency";
 
@@ -85,7 +86,9 @@ export default function TodayCard({
   const nextReason = next ? urgency.items.find((i) => i.task.id === next.id)?.reason ?? null : null;
   // It's shown above, so the list below doesn't repeat it.
   const allUrgent = next ? urgent.filter((i) => i.task.id !== next.id) : urgent;
-  const allToday = next ? todays.filter((t) => t.id !== next.id) : todays;
+  const rest = next ? todays.filter((t) => t.id !== next.id) : todays;
+  // What has no time yet goes last, under its own label.
+  const allToday = [...rest.filter((t) => timeOfDay(t) !== null), ...rest.filter((t) => timeOfDay(t) === null)];
   // Hick's Law: Next up is the one decision; the list under it starts short.
   // Three rows are enough to see what's coming; the rest are one tap away.
   const [expanded, setExpanded] = useState(false);
@@ -170,7 +173,10 @@ export default function TodayCard({
                 />
               </m.div>
             ))}
-            {listToday.map((task) => (
+            {listToday.flatMap((task, i) => [
+              ...(timeOfDay(task) === null && (i === 0 || timeOfDay(listToday[i - 1]) !== null)
+                ? [<p key="no-time" className="task-filter-group">{NO_TIME_LABEL}</p>]
+                : []),
               <m.div key={task.id} layout="position" transition={spring.layout} {...rowPresence} className="today-card-row">
                 <TaskRow
                   task={task}
@@ -180,8 +186,8 @@ export default function TodayCard({
                   onOpen={() => onOpen(task)}
                   actions={help(task) ?? undefined}
                 />
-              </m.div>
-            ))}
+              </m.div>,
+            ])}
           </AnimatePresence>
           {(collapsedCount > 0 || (expanded && total > COLLAPSED_ROWS)) && (
             <button type="button" className="today-card-more" aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
