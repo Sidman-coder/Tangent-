@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Check } from "lucide-react";
 import Button from "@/components/ui/Button";
+import GrillQueue from "@/components/settings/GrillQueue";
 import { GET_TO_KNOW_DONE_EVENT, GET_TO_KNOW_EVENT } from "@/components/GetToKnowYou";
 import { TOUR_DONE_KEY, TOUR_EVENT } from "@/components/FeatureTour";
 
@@ -61,7 +62,7 @@ export default function OnboardingSection({
         <div className="settings-row">
           <div className="settings-row-copy">
             <strong>Take the tour</strong>
-            <span>A two-minute walk through adding, the calendar, projects and Tangents.</span>
+            <span>A two-minute walk through adding, the calendar, projects and Ask Tangent.</span>
             <Status done={toured}>{toured ? "Done" : "Not yet"}</Status>
           </div>
           <Button size="sm" variant={toured ? "secondary" : "primary"} onClick={() => window.dispatchEvent(new Event(TOUR_EVENT))}>
@@ -80,15 +81,7 @@ export default function OnboardingSection({
           </Button>
         </div>
 
-        <div className="settings-row">
-          <div className="settings-row-copy">
-            <strong>Grill me</strong>
-            <span>Tangent asks one sharp question at a time, as many as you like. Answer out loud or tap.</span>
-          </div>
-          <Button size="sm" onClick={() => window.dispatchEvent(new CustomEvent(GET_TO_KNOW_EVENT, { detail: { mode: "grill" } }))}>
-            Grill me
-          </Button>
-        </div>
+        <GrillQueue />
 
         <div className="settings-row">
           <div className="settings-row-copy">

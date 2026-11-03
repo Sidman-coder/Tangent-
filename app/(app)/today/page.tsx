@@ -7,7 +7,7 @@ import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { localNow, wallClockNow } from "@/lib/time";
 import ActionReceipt from "@/components/ActionReceipt";
 import { openTask } from "@/components/TaskDetail";
-import TaskChatModal from "@/components/TaskChatModal";
+import { askAboutHref } from "@/lib/ask-handoff";
 import TodayCard, { type AttentionReceipt } from "@/components/dashboard/TodayCard";
 import TaskFilterChips, { useTaskFilter } from "@/components/TaskFilterChips";
 import TaskRow from "@/components/ui/TaskRow";
@@ -27,6 +27,8 @@ import { getSchedulePulse } from "@/lib/schedule-insights";
 import { isOnboardingSchoolTask } from "@/lib/school-block";
 import QuestionsInbox from "@/components/dashboard/QuestionsInbox";
 import { useQuestionSets } from "@/hooks/useQuestionSets";
+import { useGrillQueue } from "@/hooks/useGrillQueue";
+import { todayQueue } from "@/lib/grill-queue";
 import { taskColor } from "@/lib/task-colors";
 import { getUrgency, tracksCompletion } from "@/lib/urgency";
 import { withoutClearedCanvas } from "@/lib/canvas-clear";
@@ -71,11 +73,9 @@ export default function DashboardPage() {
   const [overrides, setOverrides] = useState<Record<string, Override>>({});
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<AttentionReceipt | null>(null);
-  // The task assistant already existed end to end — component, /api/task-chat,
-  // and per-task history in the store — but nothing ever opened it.
-  const [helpTask, setHelpTask] = useState<Task | null>(null);
   const receiptSeq = useRef(0);
   const { sets: questionSets, reload: reloadQuestions } = useQuestionSets();
+  const { items: grillItems, reload: reloadGrill } = useGrillQueue();
   const questionTaskIds = useMemo(() => new Set(questionSets.map((q) => q.taskId)), [questionSets]);
 
   // "Starts in 40 min" and "missed earlier today" drift, so keep the clock live.
@@ -132,6 +132,10 @@ export default function DashboardPage() {
   );
 
   const today = toYMD(now);
+  const grillToday = useMemo(
+    () => todayQueue(grillItems, today, (at) => new Date(at).toLocaleDateString("en-CA", { timeZone: tz })),
+    [grillItems, today, tz]
+  );
   const colorForTask = useCallback((task: Task) => taskColor(task), []);
 
   // The onboarding School block holds the student's school hours for the
@@ -300,7 +304,7 @@ export default function DashboardPage() {
         <AddFlow variant="hero" />
       </m.div>
 
-      <QuestionsInbox sets={questionSets} onChanged={() => { void reloadQuestions(); void refresh(); }} />
+      <QuestionsInbox sets={questionSets} grill={grillToday} onChanged={() => { void reloadQuestions(); void reloadGrill(); void refresh(); }} />
 
       {error && <p className="today-inline-error" role="status">Your schedule could not refresh. Showing the latest available view.</p>}
 
@@ -342,7 +346,7 @@ export default function DashboardPage() {
         onCompleteUrgent={completeFromAttention}
         onTomorrow={moveToTomorrow}
         onOpen={(task) => openTask(task.id)}
-        onHelp={setHelpTask}
+        onHelp={(task) => router.push(askAboutHref({ kind: "task", id: task.id }))}
         onSeeAll={() => router.push(`/calendar?date=${today}`)}
       />
       )}
@@ -354,8 +358,6 @@ export default function DashboardPage() {
       ) : (
         showCanvasCard && user && <CanvasCard email={user.email} />
       )}
-
-      {helpTask && <TaskChatModal task={helpTask} onClose={() => setHelpTask(null)} />}
 
       {recentActions.length > 0 && (
         <m.details variants={riseIn} className="today-recent">

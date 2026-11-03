@@ -75,8 +75,6 @@ export const AI_TASKS = {
   agent: { feature: "agent", tier: "SMART", maxTokens: 2048, thinking: "disabled", cacheTtl: "5m" },
   /** Plan-mode chat reply (talks a plan through, never acts). */
   chatPlan: { feature: "chat", tier: "SMART", maxTokens: 700, thinking: "disabled" },
-  /** Per-task helper chat. */
-  taskChat: { feature: "chat", tier: "SMART", maxTokens: 500, thinking: "disabled" },
   /** On-demand and scheduled Daily Brief narrative. */
   dailyBrief: { feature: "brief", tier: "SMART", maxTokens: 300, thinking: "disabled", cacheTtl: "5m" },
   /** Brief sources: page summary, narration, source suggestions. */

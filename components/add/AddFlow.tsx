@@ -33,6 +33,7 @@ import { putNewPathTitle } from "@/lib/path-handoff";
 import { generateQuestions } from "@/lib/questions-client";
 import type { ChangeSet } from "@/lib/pipeline/changeset";
 import type { PreviewPayload } from "@/lib/pipeline/draft";
+import HelpPlanBetter from "@/components/grill/HelpPlanBetter";
 import "./add.css";
 
 type Dest = "calendar" | "project";
@@ -60,7 +61,7 @@ type Phase =
   | { kind: "working"; text: string }
   | { kind: "asking"; text: string; questions: ClarifyQuestion[]; message: string }
   | { kind: "confirm"; id: string; message: string }
-  | { kind: "preview"; changeSet: ChangeSet; preview: PreviewPayload }
+  | { kind: "preview"; changeSet: ChangeSet; preview: PreviewPayload; said: string; asked: number }
   | { kind: "done"; summary: string; actionId: string | null; where: { href: string; label: string } | null }
   | { kind: "error"; message: string }
   | { kind: "heard"; text: string };
@@ -102,6 +103,8 @@ export default function AddFlow({
   const { state, refresh } = useAppState();
   const [text, setText] = useState(initialText);
   const [phase, setPhase] = useState<Phase>({ kind: "compose" });
+  // With Pipeline V2 off there's no preview card to carry these.
+  const [help, setHelp] = useState<{ planId: string; said: string; asked: number } | null>(null);
   const [destChoice, setDestChoice] = useState<Dest | null>(null);
   const [projectId, setProjectId] = useState<string | "new">("new");
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -148,13 +151,15 @@ export default function AddFlow({
   }, []);
 
   const finish = useCallback(
-    (data: Reply, said: string, deferQuestions: boolean) => {
+    (data: Reply, said: string, deferQuestions: boolean, asked = 0) => {
       const where = data.taskDate
         ? { href: `/calendar?date=${data.taskDate}`, label: `On your calendar · ${dayName(data.taskDate)}` }
         : data.projectId || data.plan?.id
           ? { href: `/projects/${data.projectId ?? data.plan!.id}`, label: data.plan?.title ? `Project · ${data.plan.title}` : "In your project" }
           : null;
       setPhase({ kind: "done", summary: clean(data.message ?? data.response, "Added."), actionId: data.actionId ?? null, where });
+      const planId = data.projectId ?? data.plan?.id;
+      if (planId) setHelp({ planId, said, asked });
       reset();
       void refresh();
       // Skipped questions, or a quick capture: Tangent asks later, on Today.
@@ -170,6 +175,7 @@ export default function AddFlow({
       const words = said.trim();
       if (!words) return;
       setPhase({ kind: "working", text: words });
+      setHelp(null);
       const toProject = dest === "project";
       try {
         const res = await fetch("/api/chat", {
@@ -198,7 +204,7 @@ export default function AddFlow({
           return;
         }
         if (data.action === "preview" && data.changeSet && data.preview) {
-          setPhase({ kind: "preview", changeSet: data.changeSet, preview: data.preview });
+          setPhase({ kind: "preview", changeSet: data.changeSet, preview: data.preview, said: words, asked: followUp?.answers?.length ?? 0 });
           return;
         }
         // Pipeline V2's intent router can decide mid-flight that this is
@@ -213,7 +219,7 @@ export default function AddFlow({
         }
         // Answered questions already sharpened it; otherwise ask later.
         const answered = Boolean(followUp?.answers && followUp.answers.length > 0);
-        finish(data, words, !answered);
+        finish(data, words, !answered, followUp?.answers?.length ?? 0);
       } catch (e) {
         setPhase({ kind: "error", message: e instanceof Error ? e.message : "Something went wrong." });
       }
@@ -426,6 +432,7 @@ export default function AddFlow({
               changeSet={phase.changeSet}
               preview={phase.preview}
               onChanged={() => void refresh()}
+              grill={{ said: phase.said, asked: phase.asked }}
               onSettled={() => window.setTimeout(() => setPhase({ kind: "compose" }), 2500)}
             />
           </m.div>
@@ -455,6 +462,7 @@ export default function AddFlow({
           </m.p>
         )}
       </AnimatePresence>
+      {help && <HelpPlanBetter key={help.planId} planId={help.planId} said={help.said} asked={help.asked} onDone={() => setHelp(null)} />}
     </section>
   );
 }

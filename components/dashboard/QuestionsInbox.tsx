@@ -9,13 +9,15 @@ import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import ActionReceipt from "@/components/ActionReceipt";
 import ClarifyCard from "@/components/console/ClarifyCard";
+import GrillDeck from "@/components/grill/GrillDeck";
+import type { GrillItem } from "@/lib/grill-queue";
 import { answerQuestions, dismissQuestions, type QuestionSet } from "@/lib/questions-client";
 import { spring } from "@/lib/motion";
 import "./questions-inbox.css";
 
-type Props = { sets: QuestionSet[]; onChanged: () => void };
+type Props = { sets: QuestionSet[]; grill?: GrillItem[]; onChanged: () => void };
 
-export default function QuestionsInbox({ sets, onChanged }: Props) {
+export default function QuestionsInbox({ sets, grill = [], onChanged }: Props) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ summary: string; actionId?: string } | null>(null);
@@ -31,9 +33,9 @@ export default function QuestionsInbox({ sets, onChanged }: Props) {
   }, []);
 
   const current = sets[0];
-  if (!current && !result) return null;
+  if (!current && !result && grill.length === 0) return null;
 
-  const count = sets.reduce((n, s) => n + s.questions.length, 0);
+  const count = sets.reduce((n, s) => n + s.questions.length, 0) + grill.length;
 
   return (
     <section id="questions" className="today-questions" aria-label="Questions from Tangent">
@@ -48,7 +50,7 @@ export default function QuestionsInbox({ sets, onChanged }: Props) {
       >
         <span className="today-questions-dot" aria-hidden="true" />
         <span className="today-questions-title">
-          {current ? `${count} question${count === 1 ? "" : "s"} from Tangent` : "All caught up"}
+          {count > 0 ? `${count} question${count === 1 ? "" : "s"} from Tangent` : "All caught up"}
         </span>
         <span className="today-questions-cta">{open ? "Close" : "Answer"}</span>
       </button>
@@ -104,6 +106,15 @@ export default function QuestionsInbox({ sets, onChanged }: Props) {
                   Don&apos;t ask about this
                 </button>
               </div>
+            )}
+            {!current && grill.length > 0 && (
+              <GrillDeck
+                items={grill}
+                onDone={() => {
+                  setOpen(false);
+                  onChanged();
+                }}
+              />
             )}
           </m.div>
         )}

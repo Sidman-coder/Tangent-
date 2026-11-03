@@ -99,9 +99,9 @@ export default function TodayCard({
 
   const help = (task: Task) =>
     canAskForHelp(task) ? (
-      <button type="button" className="ui-task-help" onClick={() => onHelp(task)} aria-label={`Get help with ${task.title}`}>
+      <button type="button" className="ui-task-help" onClick={() => onHelp(task)} aria-label={`Ask about ${task.title}`}>
         <MessageSquareText size={13} aria-hidden="true" />
-        <span>Help</span>
+        <span>Ask</span>
       </button>
     ) : null;
 

@@ -1,0 +1,112 @@
+/* The stats panel on a project and on School, and the School card's small chart. */
+
+.pstats {
+  display: grid;
+  gap: 18px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.pstats-block { display: grid; gap: 6px; min-width: 0; }
+.pstats-block + .pstats-block { padding-top: 16px; border-top: 1px solid var(--line); }
+.pstats h3 { margin: 0; color: var(--text); font: 600 13px/1.3 var(--font-body); }
+
+.pstats-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.pstats-figure { color: var(--text); font: 600 13px/1 var(--font-body); font-variant-numeric: tabular-nums; }
+
+.pstats-bar { height: 6px; overflow: hidden; border-radius: 999px; background: var(--surface-2); }
+.pstats-bar span { display: block; height: 100%; border-radius: 999px; background: var(--project-color, var(--accent)); }
+
+.pstats-note { margin: 0; color: var(--text-2); font-size: 13px; line-height: 1.45; }
+.pstats-note strong { color: var(--text); font-weight: 600; }
+.pstats-sentence { margin: 2px 0 0; color: var(--text); font-size: 14px; line-height: 1.45; }
+.pstats-focus { margin: 0; color: var(--text); font-size: 14px; font-weight: 600; line-height: 1.35; }
+
+/* Status: always icon and word, the color only backs them up. */
+.pstats-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px 3px 7px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font: 600 12px/1.3 var(--font-body);
+  white-space: nowrap;
+}
+.pstats-chip.is-good { color: var(--green); }
+.pstats-chip.is-warn { color: var(--amber); }
+.pstats-chip.is-bad { color: var(--red); }
+
+.pstats-steps { display: grid; gap: 2px; margin: 4px 0 0; padding: 0; list-style: none; }
+.pstats-steps button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-sizing: border-box;
+  width: calc(100% + 16px);
+  min-height: 44px;
+  padding: 6px 8px;
+  margin: 0 -8px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.pstats-steps button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pstats-steps time { flex: none; color: var(--text-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+.pstats-steps button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (hover: hover) and (pointer: fine) {
+  .pstats-steps button:hover { background: var(--surface-2); }
+}
+
+.pstats-chart { display: grid; gap: 6px; }
+.pstats-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.pstats-chart rect { outline: none; cursor: default; }
+.pstats-chart rect:focus-visible { stroke: var(--accent); stroke-width: 2; }
+.pstats-axis { stroke: var(--line); stroke-width: 1; }
+.pstats-mark { fill: var(--project-color, var(--accent)); opacity: 0.82; }
+.pstats-mark.is-on { opacity: 1; }
+.pstats-value { fill: var(--text); font: 600 11px var(--font-body); }
+.pstats-tick { fill: var(--text-3); font: 500 10.5px var(--font-body); }
+
+.pstats-mini { display: inline-flex; flex: none; align-items: flex-end; gap: 2px; width: 44px; height: 28px; }
+.pstats-mini span { flex: 1; border-radius: 3px 3px 0 0; background: var(--accent); }
+.pstats-mini span.is-empty { background: var(--line); }
+
+/* School, on the Projects page. */
+.school-section { display: grid; gap: 10px; }
+.school-section h2,
+.school-course h2 { margin: 0; color: var(--text); font: 600 15px/1.3 var(--font-body); }
+
+.school-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 160ms ease;
+}
+.school-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) {
+  .school-card:hover { border-color: var(--accent); }
+}
+.school-card-copy { display: grid; gap: 3px; min-width: 0; }
+.school-card-copy strong { overflow: hidden; color: var(--text); font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.school-card-copy span { color: var(--text-2); font-size: 13px; line-height: 1.4; }
+
+/* School's own page. */
+.school-course { display: grid; gap: 8px; }
+.school-course-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.school-course-head span { color: var(--text-3); font-size: 12px; }

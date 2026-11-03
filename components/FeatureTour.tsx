@@ -5,8 +5,8 @@
 // pages itself, waits for each control to appear, and falls back to a centred
 // card when a control isn't on screen (a phone, an empty state).
 //
-// Mounted in app/(app)/layout.tsx, outside AppShell, so it survives the
-// Tangents takeover. Starts on TOUR_EVENT: after Get to know you the first
+// Mounted in app/(app)/layout.tsx, outside AppShell, so it survives full-screen
+// pages. Starts on TOUR_EVENT: after Get to know you the first
 // time, from Today's "Take the tour", or from Settings.
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -55,7 +55,7 @@ const STEPS: Step[] = [
     route: "/today",
     target: [".float-mic"],
     title: "Say it from anywhere",
-    body: "The mic in the bottom corner is on every page: tap it and talk, and it goes through the same Add flow. Press ⌘K to type instead. Questions go to Tangent AI and long-range goals become Tangents, from the same box.",
+    body: "The mic in the bottom corner is on every page: tap it and talk, and it goes through the same Add flow. Press ⌘K to type instead. Questions go to Ask Tangent, from the same box.",
   },
   {
     route: "/today",
@@ -90,14 +90,8 @@ const STEPS: Step[] = [
   {
     route: "/projects",
     target: [".project-card", ".projects-new", ".page-header-actions"],
-    title: "Projects, each with its own Tangent AI",
-    body: "A final, a science fair, starting a club. Tangent asks a few questions, then lays the steps across your calendar. Open a project and it has its own Tangent AI that knows it: ask what's next, or have it add and change steps.",
-  },
-  {
-    route: "/projects",
-    target: ['a.rail-btn[href="/tangents"]', '.mobile-nav-link[href="/tangents"]'],
-    title: "Tangents for long-range goals",
-    body: "Where you want to be in a year or more: a college, a rating, a career. Tangent asks what it needs to know, maps paths from what you already do, and branches off ideas you can keep.",
+    title: "Projects, and how they're going",
+    body: "A final, a science fair, starting a club. Tangent asks a few questions, then lays the steps across your calendar. Open a project to see your pace and next steps, or tap Ask about this to talk it through in Tangent AI.",
   },
   {
     route: "/ai",

@@ -12,8 +12,12 @@ import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import Button from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
 import AddFlow from "@/components/add/AddFlow";
+import { MiniWorkload } from "@/components/projects/ProjectStats";
 import { takeAsk } from "@/lib/ask-handoff";
+import { withoutClearedCanvas } from "@/lib/canvas-clear";
+import { splitCourse } from "@/lib/course";
 import { formatTime12 } from "@/lib/dates";
+import { courseGroups, dueThisWeek, nextDeadline, shortDate, workloadByWeek } from "@/lib/project-stats";
 import { getUserToday } from "@/lib/time";
 import type { Plan, Task } from "@/lib/types";
 import "./projects.css";
@@ -63,6 +67,20 @@ export default function ProjectsPage() {
       })
       .filter((p) => p.steps.length > 0 || p.plan.taskCount === 0);
   }, [state, today]);
+
+  // School is there once Canvas is connected, even before anything's due.
+  const [canvasConnected, setCanvasConnected] = useState(false);
+  useEffect(() => {
+    void fetch("/api/canvas/status")
+      .then((res) => res.json())
+      .then((data: { ok?: boolean; feed?: unknown }) => setCanvasConnected(Boolean(data.ok && data.feed)))
+      .catch(() => {});
+  }, []);
+  const schoolTasks = useMemo(
+    () => withoutClearedCanvas((state?.tasks ?? []).filter((t) => t.source === "canvas"), today),
+    [state, today]
+  );
+  const showSchool = canvasConnected || schoolTasks.length > 0;
 
   const active = projects.filter((p) => p.next).sort((a, b) => (a.next!.date + a.next!.time).localeCompare(b.next!.date + b.next!.time));
   const finished = projects.filter((p) => !p.next);
@@ -119,6 +137,12 @@ export default function ProjectsPage() {
         </div>
       ) : (
         <>
+          {showSchool && (
+            <section className="school-section" aria-labelledby="school-heading">
+              <h2 id="school-heading">School</h2>
+              <SchoolCard tasks={schoolTasks} today={today} />
+            </section>
+          )}
           {active.length > 0 && (
             <div className="projects-grid">
               {active.map((p) => (
@@ -139,6 +163,24 @@ export default function ProjectsPage() {
         </>
       )}
     </div>
+  );
+}
+
+function SchoolCard({ tasks, today }: { tasks: Task[]; today: string }) {
+  const courses = courseGroups(tasks, today);
+  const deadline = nextDeadline(tasks, today);
+  const due = dueThisWeek(tasks, today);
+  return (
+    <Link href="/projects/school" className="school-card">
+      <div className="school-card-copy">
+        <strong>{deadline ? `Next: ${splitCourse(deadline).title}` : "Nothing due from Canvas"}</strong>
+        <span>
+          {deadline ? `${shortDate(deadline.date)} · ` : ""}
+          {due} due this week · {courses.length} course{courses.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      <MiniWorkload weeks={workloadByWeek(tasks, today)} />
+    </Link>
   );
 }
 

@@ -10,13 +10,14 @@ import { useParams, useRouter } from "next/navigation";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { ChevronLeft, MessageSquareText } from "lucide-react";
-import { useAppState } from "@/components/AppStateProvider";
-import ProjectChat from "@/components/projects/ProjectChat";
+import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { openTask } from "@/components/TaskDetail";
-import TaskChatModal from "@/components/TaskChatModal";
+import { askAboutHref } from "@/lib/ask-handoff";
+import ProjectStats from "@/components/projects/ProjectStats";
 import TaskRow from "@/components/ui/TaskRow";
 import { rowPresence, spring } from "@/lib/motion";
 import { taskColor } from "@/lib/task-colors";
+import { getUserToday } from "@/lib/time";
 import type { Task } from "@/lib/types";
 import "../projects.css";
 
@@ -30,10 +31,10 @@ export default function ProjectPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { state, refresh } = useAppState();
+  const today = getUserToday(useUserTimezone());
   const plan = state?.plans.find((p) => p.id === id) ?? null;
   const [title, setTitle] = useState("");
   const [goal, setGoal] = useState("");
-  const [helpTask, setHelpTask] = useState<Task | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
 
@@ -53,7 +54,6 @@ export default function ProjectPage() {
   );
   const open = steps.filter((t) => !t.completed);
   const done = steps.filter((t) => t.completed);
-  const pct = steps.length ? Math.round((done.length / steps.length) * 100) : 0;
 
   const save = useCallback(
     async (patch: { title?: string; description?: string }) => {
@@ -92,39 +92,30 @@ export default function ProjectPage() {
     <div className="project-page" style={{ "--project-color": plan.color } as React.CSSProperties}>
       <Link href="/projects" className="project-back"><ChevronLeft size={16} aria-hidden="true" /> Projects</Link>
 
-
+      <header className="project-head">
+        <input
+          className="project-title-input"
+          value={title}
+          aria-label="Project name"
+          onChange={(e) => setTitle(e.target.value)}
+          onBlur={() => void save({ title })}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          }}
+        />
+        <textarea
+          className="project-goal-input"
+          value={goal}
+          rows={2}
+          placeholder="What's the goal? Tangent uses it for every step."
+          aria-label="Project goal"
+          onChange={(e) => setGoal(e.target.value)}
+          onBlur={() => void save({ description: goal })}
+        />
+      </header>
 
       <div className="project-layout">
         <div className="project-main">
-        <header className="project-head">
-          <input
-            className="project-title-input"
-            value={title}
-            aria-label="Project name"
-            onChange={(e) => setTitle(e.target.value)}
-            onBlur={() => void save({ title })}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-            }}
-          />
-          <textarea
-            className="project-goal-input"
-            value={goal}
-            rows={2}
-            placeholder="What's the goal? Tangent uses it for every step."
-            aria-label="Project goal"
-            onChange={(e) => setGoal(e.target.value)}
-            onBlur={() => void save({ description: goal })}
-          />
-          <div className="project-head-progress">
-            <div className="project-progress" aria-hidden="true">
-              <span style={{ width: `${pct}%` }} />
-            </div>
-            <span>
-              {done.length} of {steps.length} done
-            </span>
-          </div>
-        </header>
 
       <section className="project-steps" aria-labelledby="project-next">
         <h2 id="project-next">{open.length > 0 ? "Up next" : "All done"}</h2>
@@ -140,10 +131,10 @@ export default function ProjectPage() {
                   onComplete={() => void toggle(task)}
                   onOpen={() => openTask(task.id)}
                   actions={
-                    <button type="button" className="ui-task-help" onClick={() => setHelpTask(task)} aria-label={`Get help with ${task.title}`}>
+                    <Link className="ui-task-help" href={askAboutHref({ kind: "task", id: task.id })} aria-label={`Ask about ${task.title}`}>
                       <MessageSquareText size={13} aria-hidden="true" />
-                      <span>Help</span>
-                    </button>
+                      <span>Ask</span>
+                    </Link>
                   }
                 />
               </m.div>
@@ -195,11 +186,14 @@ export default function ProjectPage() {
 
         </div>
         <aside className="project-side">
-          <ProjectChat projectId={plan.id} projectTitle={plan.title} onChanged={() => void refresh()} />
+          <Link className="project-ask-link" href={askAboutHref({ kind: "project", id: plan.id })}>
+            <MessageSquareText size={15} aria-hidden="true" />
+            <span>Ask about this</span>
+          </Link>
+          <ProjectStats tasks={steps} today={today} />
         </aside>
       </div>
 
-      {helpTask && <TaskChatModal task={helpTask} onClose={() => setHelpTask(null)} />}
     </div>
   );
 }

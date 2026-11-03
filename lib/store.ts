@@ -7,6 +7,7 @@ import type { OnboardingPreferences, OnboardingSubmission, PreferencesPatch, Sch
 import { SCHOOL_SERIES_WEEKS, planSchoolReplace, schoolHoursFromTasks } from "./school-block";
 import { CALENDARS, calendarGroupOf } from "./calendars";
 import { DEFAULT_CAPACITY, type Capacity } from "./load";
+import { changesPlan, factCategory, factFromAnswer, isStale, pickGrillQuestions, rankQueue, type GrillItem, type GrillStatus } from "./grill-queue";
 import { decryptFeedUrl, encryptFeedUrl, maskCanvasFeedUrl as maskFeedUrl } from "./canvas-feed-security";
 import type {
   Task,
@@ -303,13 +304,13 @@ export async function addTask(task: Omit<Task, "id">): Promise<Task & { wasDupli
   const sameDay = await selectTasks("addTask", (q) => q.eq("date", task.date).eq("completed", false));
   const duplicate = findDuplicateIn(sameDay, task);
   if (duplicate) {
-    console.log("[store] addTask: skipped duplicate of", duplicate.id, duplicate.title);
+    console.log("[store] addTask: skipped duplicate of", duplicate.id);
     return { ...duplicate, wasDuplicate: true };
   }
   const { data, error } = await db.from("tasks").insert(newTaskRow(userId, task)).select(TASK_COLUMNS).single();
   if (error) fail("addTask", error);
   const created = taskFromRow(data as TaskRow);
-  console.log("[store] addTask:", created.id, created.title, created.date, created.time, created.kind);
+  console.log("[store] addTask:", created.id, created.kind);
   return created;
 }
 
@@ -343,7 +344,7 @@ export async function addPathTask(
     fail("addPathTask", error);
   }
   const created = taskFromRow(data as TaskRow);
-  console.log("[store] addPathTask:", created.id, created.title, created.date, created.time, "node", pathNodeId);
+  console.log("[store] addPathTask:", created.id, "node", pathNodeId);
   return { task: created };
 }
 
@@ -576,7 +577,7 @@ export async function addVoiceLog(entry: Omit<VoiceLogEntry, "at">): Promise<voi
     const { error: delError } = await db.from("voice_logs").delete().eq("user_id", userId).in("id", oldIds);
     if (delError) fail("addVoiceLog", delError);
   }
-  console.log("[store] addVoiceLog action:", entry.action, "| ok:", entry.ok, "| text:", entry.text);
+  console.log("[store] addVoiceLog action:", entry.action, "| ok:", entry.ok);
 }
 
 // ─── Calendar functions ───────────────────────────────────────────────────────
@@ -909,7 +910,7 @@ export async function addPlan(plan: Omit<Plan, "id" | "createdAt" | "color">): P
     .single();
   if (error) fail("addPlan", error);
   const newPlan = planFromRow(data as PlanRow);
-  console.log("[store] addPlan:", newPlan.id, newPlan.title, "tasks:", newPlan.taskIds.length);
+  console.log("[store] addPlan:", newPlan.id, "tasks:", newPlan.taskIds.length);
   return newPlan;
 }
 
@@ -961,7 +962,7 @@ export async function addPlanWithTasks(
     .eq("user_id", userId)
     .eq("id", created.id);
   if (linkError) fail("addPlanWithTasks", linkError);
-  console.log("[store] addPlanWithTasks:", created.id, created.title, "tasks:", taskIds.length, "| duplicates skipped:", skippedDuplicates);
+  console.log("[store] addPlanWithTasks:", created.id, "tasks:", taskIds.length, "| duplicates skipped:", skippedDuplicates);
   return { plan: { ...created, taskIds, taskCount: taskIds.length }, tasks: inserted, skippedDuplicates };
 }
 
@@ -1445,7 +1446,7 @@ function messageRefsMissing(error: { code?: string; message: string }): boolean 
 }
 
 /** Deletes the oldest rows of a message thread beyond the cap. */
-async function trimThread(table: "chat_messages" | "task_chat_messages", column: "session_id" | "task_id", key: string) {
+async function trimThread(table: "chat_messages", column: "session_id", key: string) {
   const { db, userId } = ctx();
   const { data, error } = await db
     .from(table)
@@ -1459,35 +1460,6 @@ async function trimThread(table: "chat_messages" | "task_chat_messages", column:
   if (ids.length === 0) return;
   const { error: delError } = await db.from(table).delete().eq("user_id", userId).in("id", ids);
   if (delError) fail(`trim ${table}`, delError);
-}
-
-export async function getTaskChat(taskId: string): Promise<ChatMessage[]> {
-  if (!isUuid(taskId)) return [];
-  const { db, userId } = ctx();
-  const rows = await selectAll<MessageRow>("getTaskChat", (from, to) =>
-    db
-      .from("task_chat_messages")
-      .select("id, role, content, created_at")
-      .eq("user_id", userId)
-      .eq("task_id", taskId)
-      .order("id")
-      .range(from, to)
-  );
-  return rows.map(messageFromRow);
-}
-
-export async function addTaskChatMessage(taskId: string, role: "user" | "assistant", content: string): Promise<ChatMessage> {
-  if (!isUuid(taskId)) throw new Error("[store] addTaskChatMessage: task not found");
-  const { db, userId } = ctx();
-  const { data, error } = await db
-    .from("task_chat_messages")
-    .insert({ user_id: userId, task_id: taskId, role, content })
-    .select("id, role, content, created_at")
-    .single();
-  if (error) fail("addTaskChatMessage", error);
-  await trimThread("task_chat_messages", "task_id", taskId);
-  console.log("[store] addTaskChatMessage:", taskId, role, content.slice(0, 60));
-  return messageFromRow(data as MessageRow);
 }
 
 // ─── Chat session functions ───────────────────────────────────────────────────
@@ -1621,7 +1593,7 @@ export async function createChatSession(title?: string): Promise<ChatSession> {
     if (delError) fail("createChatSession", delError);
   }
 
-  console.log("[store] createChatSession:", session.id, session.title);
+  console.log("[store] createChatSession:", session.id);
   return session;
 }
 
@@ -1934,7 +1906,7 @@ export async function addContextEntry(entry: Omit<ContextEntry, "id" | "timestam
     context_updated_at: new Date().toISOString(),
   });
   const full = contextFromRow(data as ContextRow);
-  console.log("[store] Context entry added:", full.category, full.fact.slice(0, 60));
+  console.log("[store] Context entry added:", full.category);
   return full;
 }
 
@@ -2135,7 +2107,7 @@ export async function addNotification(notif: Omit<Notification, "id" | "timestam
     if (delError) fail("addNotification", delError);
   }
 
-  console.log("[store] Notification added:", full.type, full.title);
+  console.log("[store] Notification added:", full.type);
   return full;
 }
 
@@ -2264,7 +2236,7 @@ export async function recordAction(
   if (error) fail("recordAction", error);
   await trimNewest("action_records", MAX_ACTIONS);
   const record = actionFromRow(data as ActionRow);
-  console.log("[store] recordAction:", record.id, kind, "-", summary);
+  console.log("[store] recordAction:", record.id, kind);
   return record;
 }
 
@@ -2442,7 +2414,7 @@ export async function addPendingConfirmation(
   if (error) fail("addPendingConfirmation", error);
   await trimNewest("pending_confirmations", MAX_PENDING);
   const pending = pendingFromRow(data as PendingRow);
-  console.log("[store] addPendingConfirmation:", pending.id, kind, "-", message);
+  console.log("[store] addPendingConfirmation:", pending.id, kind);
   return pending;
 }
 
@@ -3159,4 +3131,153 @@ export async function clearSuggestions(parentId: string): Promise<void> {
     .eq("parent_id", parentId)
     .eq("status", "suggested");
   if (error) fail("clearSuggestions", error);
+}
+
+// ---- Grill me queue ----------------------------------------------------------
+
+function isMissingTable(error: { code?: string; message: string }): boolean {
+  return error.code === "42P01" || error.code === "PGRST205" || /relation .* does not exist|Could not find the table/i.test(error.message);
+}
+
+let warnedGrillMissing = false;
+function warnGrillMissing() {
+  if (warnedGrillMissing) return;
+  warnedGrillMissing = true;
+  console.warn("[grill] grill_questions table missing: run the migration in docs/MANUAL-STEPS.md. The queue reads empty until then.");
+}
+
+type GrillRow = {
+  id: string;
+  project_id: string | null;
+  question: string;
+  kind: string;
+  choices: unknown;
+  priority: number;
+  status: GrillStatus;
+  answer: string | null;
+  created_at: string;
+  answered_at: string | null;
+};
+
+function grillFromRow(row: GrillRow): GrillItem {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    question: row.question,
+    kind: row.kind,
+    choices: Array.isArray(row.choices) ? row.choices.map(String) : [],
+    priority: row.priority,
+    status: row.status,
+    answer: row.answer,
+    createdAt: iso(row.created_at),
+    answeredAt: row.answered_at ? iso(row.answered_at) : null,
+  };
+}
+
+/** The student's queue, newest first. Questions left too long quietly expire. */
+export async function getGrillQuestions(): Promise<GrillItem[]> {
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("grill_questions")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) {
+    if (isMissingTable(error)) {
+      warnGrillMissing();
+      return [];
+    }
+    fail("getGrillQuestions", error);
+  }
+  const items = (data as GrillRow[]).map(grillFromRow);
+  const now = new Date();
+  const stale = items.filter((i) => isStale(i, now)).map((i) => i.id);
+  if (stale.length) {
+    const { error: expireError } = await db.from("grill_questions").update({ status: "expired" }).eq("user_id", userId).in("id", stale);
+    if (expireError) console.warn("[grill] could not expire stale questions:", expireError.code ?? "unknown");
+  }
+  return items.map((i) => (stale.includes(i.id) ? { ...i, status: "expired" as const } : i));
+}
+
+/** Queues the questions a just-confirmed plan earns, and returns them. Empty
+ *  whenever there's nothing to ask or nothing to ask about: never an error. */
+export async function seedGrillQuestions(planId: string, said: string, askedJustNow: number): Promise<GrillItem[]> {
+  if (!isUuid(planId)) return [];
+  const { db, userId } = ctx();
+  const { data: plan } = await db.from("plans").select("id,title").eq("id", planId).eq("user_id", userId).maybeSingle();
+  if (!plan) return [];
+
+  const { data: existing, error } = await db
+    .from("grill_questions")
+    .select("kind,status")
+    .eq("user_id", userId)
+    .eq("project_id", planId);
+  if (error) {
+    if (isMissingTable(error)) {
+      warnGrillMissing();
+      return [];
+    }
+    fail("seedGrillQuestions", error);
+  }
+  const asked = (existing as { kind: string; status: GrillStatus }[]).filter((r) => r.status !== "expired").map((r) => r.kind);
+
+  const { entries } = await getUserContext();
+  const drafts = pickGrillQuestions({
+    title: plan.title as string,
+    facts: entries.map((e) => e.fact),
+    said,
+    asked,
+    // A plan already asked some of its budget counts those too.
+    askedJustNow: askedJustNow + asked.length,
+  });
+  if (drafts.length === 0) return [];
+
+  const { data: inserted, error: insertError } = await db
+    .from("grill_questions")
+    .insert(drafts.map((d) => ({ user_id: userId, project_id: planId, question: d.question, kind: d.kind, choices: d.choices, priority: d.priority })))
+    .select("*");
+  if (insertError) fail("seedGrillQuestions", insertError);
+  return rankQueue((inserted as GrillRow[]).map(grillFromRow));
+}
+
+/** Saves the answer and files it under What Tangent knows, naming the project.
+ *  Says whether it could change the plan; moving anything is the student's call. */
+export async function answerGrillQuestion(
+  id: string,
+  answer: string,
+): Promise<{ replan: boolean; projectId: string | null; question: string } | null> {
+  if (!isUuid(id)) return null;
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("grill_questions")
+    .update({ status: "answered", answer, answered_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("user_id", userId)
+    .eq("status", "open")
+    .select("*")
+    .maybeSingle();
+  if (error) fail("answerGrillQuestion", error);
+  if (!data) return null;
+  const item = grillFromRow(data as GrillRow);
+
+  let title: string | null = null;
+  if (item.projectId) {
+    const { data: plan } = await db.from("plans").select("title").eq("id", item.projectId).eq("user_id", userId).maybeSingle();
+    title = (plan?.title as string | undefined) ?? null;
+  }
+  await addContextEntry({ category: factCategory(item.kind), fact: factFromAnswer(item, answer, title), source: "manual" });
+  return { replan: changesPlan(item.kind) && Boolean(item.projectId), projectId: item.projectId, question: item.question };
+}
+
+export async function skipGrillQuestion(id: string): Promise<void> {
+  if (!isUuid(id)) return;
+  const { db, userId } = ctx();
+  const { error } = await db
+    .from("grill_questions")
+    .update({ status: "skipped", answered_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("user_id", userId)
+    .eq("status", "open");
+  if (error) fail("skipGrillQuestion", error);
 }

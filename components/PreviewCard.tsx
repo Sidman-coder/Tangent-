@@ -15,6 +15,7 @@ import type { DraftEdit, PreviewPayload } from "@/lib/pipeline/draft";
 import { previewWeeks } from "@/lib/preview-week";
 import { receiptView } from "@/lib/pipeline/receipt";
 import PreviewWeek from "@/components/PreviewWeek";
+import HelpPlanBetter from "@/components/grill/HelpPlanBetter";
 import { useAppState } from "@/components/AppStateProvider";
 
 type Phase = "draft" | "confirmed" | "discarded" | "undone";
@@ -34,6 +35,9 @@ type Props = {
   /** Shows a "Just talking, don't add" chip: discards the draft (reason
    *  just_chatting), then the caller answers conversationally. */
   onJustChatting?: () => void;
+  /** What the student said and how many questions they already answered, so
+   *  "Help Tangent plan better" doesn't ask them again. */
+  grill?: { said: string; asked: number };
 };
 
 async function post(url: string, body?: unknown, method = "POST"): Promise<{ status: number; data: Record<string, unknown> }> {
@@ -49,7 +53,7 @@ async function post(url: string, body?: unknown, method = "POST"): Promise<{ sta
 const phaseOf = (status: unknown): Phase | null =>
   status === "confirmed" || status === "discarded" || status === "undone" || status === "draft" ? status : null;
 
-export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed, autoFocus = false, className, onSettled, onJustChatting }: Props) {
+export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed, autoFocus = false, className, onSettled, onJustChatting, grill }: Props) {
   const { state } = useAppState();
   const [cs, setCs] = useState(changeSet);
   const [view, setView] = useState(preview);
@@ -75,9 +79,14 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
   const settledRef = useRef(onSettled);
   settledRef.current = onSettled;
 
+  // A confirmed plan stays put until its "Help Tangent plan better" is through.
+  const [grillDone, setGrillDone] = useState(false);
+  const grillPlan = result && result.created !== 0 ? result.planId ?? cs.target_plan_id ?? null : null;
+  const grillWaiting = phase === "confirmed" && Boolean(grillPlan) && !grillDone;
+
   useEffect(() => {
-    if (phase !== "draft") settledRef.current?.(phase);
-  }, [phase]);
+    if (phase !== "draft" && !grillWaiting) settledRef.current?.(phase);
+  }, [phase, grillWaiting]);
 
   // preview_shown, once per card.
   useEffect(() => {
@@ -233,6 +242,9 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
           <p className="preview-card-note">Skipped, already on your calendar: {result.skipped.join(", ")}</p>
         )}
         {error && <p className="preview-card-error" role="alert">{error}</p>}
+        {phase === "confirmed" && grillPlan && !grillDone && (
+          <HelpPlanBetter planId={grillPlan} said={grill?.said ?? cs.summary} asked={grill?.asked ?? 0} onDone={() => setGrillDone(true)} />
+        )}
       </div>
     );
   }

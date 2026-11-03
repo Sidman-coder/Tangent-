@@ -1560,22 +1560,6 @@ textarea:focus-visible {
   color: var(--muted);
 }
 
-/* ── Task chat button ────────────────────────────────────────────────────────── */
-.task-chat-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 0.9rem;
-  padding: 0 0.2rem;
-  opacity: 0.5;
-  line-height: 1;
-  flex-shrink: 0;
-  transition: opacity 0.15s;
-}
-.task-check-row:hover .task-chat-btn {
-  opacity: 1;
-}
-
 /* ── Task delete button ──────────────────────────────────────────────────────── */
 .task-delete-btn {
   background: none;
@@ -1595,77 +1579,6 @@ textarea:focus-visible {
   background: color-mix(in srgb, var(--red) 12%, transparent);
 }
 
-/* ── Task chat modal ─────────────────────────────────────────────────────────── */
-.task-chat-modal {
-  background: var(--surface);
-  border-radius: var(--radius);
-  border-top: 3px solid var(--accent);
-  width: min(520px, 92vw);
-  max-height: 85vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 24px 64px rgba(20, 15, 30, 0.14);
-  overflow: hidden;
-}
-.task-chat-header {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.85rem 1rem 0.65rem;
-  border-bottom: 1px solid var(--line);
-  flex-shrink: 0;
-}
-.task-chat-title > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.task-chat-title {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex: 1;
-  font-weight: 600;
-  font-size: 0.92rem;
-  color: var(--text);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.task-chat-label {
-  font-size: 0.72rem;
-  color: var(--muted);
-  background: rgb(from var(--accent) r g b / 0.18);
-  border: 1px solid rgb(from var(--accent-hover) r g b / 0.3);
-  border-radius: 999px;
-  padding: 0.15rem 0.55rem;
-  flex-shrink: 0;
-}
-.task-chat-scroll {
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 0.65rem;
-  padding: 0.85rem 1rem;
-  min-height: 0;
-  max-height: 440px;
-}
-.task-chat-empty {
-  font-size: 0.88rem;
-  color: var(--muted);
-  text-align: center;
-  padding: 2rem 1rem;
-  line-height: 1.6;
-}
-.task-chat-modal .chat-form {
-  padding: 0.75rem 1rem 1rem;
-  border-top: 1px solid var(--line);
-  margin-top: 0;
-}
 .modal-close {
   background: none;
   border: 1px solid var(--line);
@@ -2058,12 +1971,6 @@ select option {
 /* ── Modal ────────────────────────────────────────────────────────────────────── */
 
 .modal {
-  background: var(--elev-1);
-  border: 1px solid var(--line);
-  border-top: 3px solid var(--accent);
-}
-
-.task-chat-modal {
   background: var(--elev-1);
   border: 1px solid var(--line);
   border-top: 3px solid var(--accent);
@@ -9090,8 +8997,7 @@ h1, h2, h3, h4, h5, h6 {
    bell. Scoped through body so their own stylesheets can't win on load order. */
 body .td-card,
 body .tour-card,
-body .gtk-sheet,
-body .task-chat-modal {
+body .gtk-sheet {
   background: var(--glass-thick);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
@@ -9104,8 +9010,7 @@ body .task-chat-modal {
 @media (prefers-reduced-transparency: reduce) {
   body .td-card,
   body .tour-card,
-  body .gtk-sheet,
-  body .task-chat-modal {
+  body .gtk-sheet {
     background: var(--surface);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;

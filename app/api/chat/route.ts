@@ -38,6 +38,18 @@ async function projectBrief(projectId: string): Promise<string | null> {
   return `(This request is inside the student's project "${plan.title}".${plan.description ? ` Goal: ${plan.description}.` : ""} Anything you add belongs to this project. Its steps so far:\n${steps.join("\n") || "none yet"})`;
 }
 
+/** The one task a chat is about ("Ask about this" on a task). */
+async function findTaskBrief(taskId: string): Promise<{ planId?: string; brief: string } | null> {
+  const task = (await getAllTasks()).find((t) => t.id === taskId);
+  if (!task) return null;
+  const when = [task.date, task.time].filter(Boolean).join(" at ") || "no date yet";
+  const notes = task.notes?.trim() ? ` Notes: ${task.notes.trim().slice(0, 600)}` : "";
+  return {
+    planId: task.planId ?? undefined,
+    brief: `(The student is asking about this one task: "${task.title}", ${when}.${notes} Help them plan, break down, think through or do it. Be concise, under 100 words unless they ask for more. Don't change other tasks unless they ask.)`,
+  };
+}
+
 /** Saves a quick capture: spacing brain for the when, no model. */
 async function saveQuickCapture(quick: QuickCapture): Promise<Record<string, unknown>> {
   const placed = await placeNewTask({ date: quick.date ?? null, time: quick.time ?? null, deadline: quick.deadline ?? null });
@@ -100,6 +112,7 @@ export const POST = withUser(async (req: Request) => {
       capture?: unknown;
       /** Asked from inside a Project: its steps join it. */
       projectId?: unknown;
+      taskId?: unknown;
       /** "New project" on the Projects page: always builds a plan. */
       newProject?: unknown;
       /** Pipeline V2: "chat" is the "Just talking, don't add" re-ask. */
@@ -140,9 +153,9 @@ export const POST = withUser(async (req: Request) => {
       return NextResponse.json({ ok: false, error: "Missing ANTHROPIC_API_KEY on the server." }, { status: 401 });
     }
 
-    console.log("[api/chat] User message:", userText);
-
     let projectId = typeof body.projectId === "string" && body.projectId ? body.projectId : "";
+    const aboutTask = typeof body.taskId === "string" && body.taskId ? await findTaskBrief(body.taskId) : null;
+    if (aboutTask?.planId && !projectId) projectId = aboutTask.planId;
 
     // An answer to a pending question (A1), flag on and off: resolved before
     // any other routing, so it never becomes a plan or hits a fast path. A
@@ -169,9 +182,9 @@ export const POST = withUser(async (req: Request) => {
     // Flag off: the Plan/Calendar switch decides, as before. Flag on there is
     // one box and no mode, except the Projects chat, which still talks a
     // project through in Plan mode.
-    if (mode === "plan" && (!TANGENT_PIPELINE_V2 || projectId)) {
+    if (mode === "plan" && (!TANGENT_PIPELINE_V2 || projectId || aboutTask)) {
       // Asked from inside a project: the talk is about that project.
-      const note = projectId ? (await projectBrief(projectId)) ?? "" : "";
+      const note = [projectId ? await projectBrief(projectId) : null, aboutTask?.brief].filter(Boolean).join("\n\n");
       if (body.stream !== true) {
         const reply = await planReply(messages, { projectNote: note });
         return NextResponse.json({ message: reply, action: "plan_reply", mode, ok: true });
@@ -230,6 +243,7 @@ export const POST = withUser(async (req: Request) => {
     // what it's adding to, and its steps join it; a new project always builds
     // a plan, with the student's first words as its goal.
     let project: CalendarReplyOptions["project"];
+    if (aboutTask) pipelineText = `${pipelineText}\n\n${aboutTask.brief}`;
     if (projectId) {
       const found = await projectBrief(projectId);
       if (found) {
@@ -243,8 +257,8 @@ export const POST = withUser(async (req: Request) => {
     // Pipeline V2: every message goes through the intake (lib/pipeline/intake.ts),
     // so anything the AI writes is a preview card first; route "chat" is the
     // "Just talking" re-ask. Project requests skip the intake but are drafted
-    // too (A6): a ChangeSet of add_task ops with plan_id, confirmed inline
-    // (components/projects/InlinePreview.tsx).
+    // too (A6): a ChangeSet of add_task ops with plan_id, confirmed on its
+    // preview card in Tangent AI.
     // Flag off: straight to the voice pipeline, as on main; project requests
     // save directly (with Undo).
     const reply = (onProgress?: Parameters<typeof calendarReply>[2]) =>

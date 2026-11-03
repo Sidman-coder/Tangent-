@@ -7,11 +7,13 @@ import { localNow } from "@/lib/time";
 import ChatSidebar from "@/components/console/ChatSidebar";
 import ChatThread from "@/components/console/ChatThread";
 import { routeAsk } from "@/lib/ask-route";
-import { takeAsk } from "@/lib/ask-handoff";
+import { ASK_ABOUT_EVENT, attachmentFromSearch, takeAsk, type AskAbout } from "@/lib/ask-handoff";
+import { splitCourse } from "@/lib/course";
 import { putNewPathTitle } from "@/lib/path-handoff";
 import { PENDING_QUESTION_ID } from "@/lib/pending-question";
 import type { ClarifyAnswer } from "@/components/console/ClarifyCard";
 import { answerQuestions as answerLaterQuestions, generateQuestions } from "@/lib/questions-client";
+import { seedGrill } from "@/lib/grill-client";
 import Composer from "@/components/console/Composer";
 import {
   actionLabel,
@@ -44,6 +46,7 @@ import {
   ArrowLeft,
   ArrowUpRight,
   BookOpen,
+  X,
   CalendarClock,
   CalendarPlus,
   CalendarRange,
@@ -173,6 +176,9 @@ function logChatEvent(type: string, props: Record<string, string | number | bool
   }).catch(() => {});
 }
 
+const PROJECT_STARTERS = ["What should I do next?", "Break the next step down", "Add a review session before the deadline", "Am I on track?"];
+const TASK_STARTERS = ["Break this down", "How long will this take?", "How should I start?"];
+
 export default function AiPage() {
   const router = useRouter();
   const { state, refresh } = useAppState();
@@ -233,6 +239,18 @@ export default function AiPage() {
     const hour = localNow(tz).hour;
     setGreeting(firstName ? getGreeting(firstName, hour) : `${partOfDay(hour)}.`);
   }, [firstName, tz]);
+
+  /** "Ask about this": the project or task this chat is about. Only the id
+   *  is kept; its title comes from the app state. */
+  const [attachment, setAttachment] = useState<AskAbout | null>(null);
+  const attachedPlan = attachment?.kind === "project" ? state?.plans.find((p) => p.id === attachment.id) : undefined;
+  const attachedTask = attachment?.kind === "task" ? state?.tasks.find((t) => t.id === attachment.id) : undefined;
+  const attachedTitle = attachedPlan?.title ?? (attachedTask ? splitCourse(attachedTask).title : undefined);
+  // Deleted, or not this student's: nothing to attach.
+  useEffect(() => {
+    if (state && attachment && !attachedTitle) setAttachment(null);
+  }, [state, attachment, attachedTitle]);
+  const arrivedAttached = useRef(false);
 
   const [turns, setTurns] = useState<Turn[]>([]);
   /** A4: the finished schedule the "Add plan to calendar" chip adds. */
@@ -354,6 +372,7 @@ export default function AiPage() {
   }, []);
 
   const openSession = useCallback(async (sessionId: string) => {
+    setAttachment(null);
     try {
       const [res, confirms] = await Promise.all([
         fetch(`/api/sessions?sessionId=${encodeURIComponent(sessionId)}`),
@@ -381,6 +400,7 @@ export default function AiPage() {
 
   const newChat = useCallback(() => {
     if (busy) return;
+    setAttachment(null);
     setActiveSessionId(null);
     setSaveWarning(null);
     setTurns([]);
@@ -396,8 +416,11 @@ export default function AiPage() {
   // A question handed over from Cmd-K (/ai?ask=1): open a fresh chat and ask
   // it. Two steps so send() runs with the new, empty chat in scope.
   const [handedAsk, setHandedAsk] = useState<string | null>(null);
+  const askIntoOngoing = useRef(false);
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("ask") !== "1") return;
+    // Asked about a project: the attach effect sends it into that chat.
+    if (attachmentFromSearch(window.location.search)) return;
     const text = takeAsk("ai");
     router.replace("/ai");
     if (!text) return;
@@ -406,6 +429,45 @@ export default function AiPage() {
       newChat();
       setHandedAsk(text);
     }, 0);
+    // Once per arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // "Ask about this": a project reopens its one ongoing chat, a task starts a
+  // fresh one. Either way the chat carries the chip until it's removed.
+  const attach = useCallback(async (about: AskAbout) => {
+    let ongoing: string | undefined;
+    if (about.kind === "project") {
+      try {
+        const res = await fetch("/api/sessions");
+        const data = (await res.json()) as { ok?: boolean; sessions?: ChatSession[] };
+        ongoing = data.sessions?.find((s) => s.planId === about.id)?.id;
+      } catch {}
+    }
+    if (ongoing) await openSession(ongoing);
+    else newChat();
+    setAttachment(about);
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+    // inputRef is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openSession, newChat]);
+  useEffect(() => {
+    const about = attachmentFromSearch(window.location.search);
+    if (about) {
+      // Grill me's re-plan offer: goes straight into the chat, as a draft to confirm.
+      const asked = new URLSearchParams(window.location.search).get("ask") === "1" ? takeAsk("ai") : null;
+      arrivedAttached.current = true;
+      router.replace("/ai");
+      void attach(about).then(() => {
+        if (!asked) return;
+        askIntoOngoing.current = true;
+        setHandedAsk(asked);
+      });
+    }
+    // Already on this page (a task card opened here): no navigation, no remount.
+    const onAsk = (e: Event) => void attach((e as CustomEvent<AskAbout>).detail);
+    window.addEventListener(ASK_ABOUT_EVENT, onAsk);
+    return () => window.removeEventListener(ASK_ABOUT_EVENT, onAsk);
     // Once per arrival.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -444,6 +506,11 @@ export default function AiPage() {
 
   useEffect(() => {
     void loadSessions();
+    // Arrived from "Ask about this": that chat opens, not the last one.
+    if (arrivedAttached.current || attachmentFromSearch(window.location.search)) {
+      arrivedAttached.current = true;
+      return;
+    }
     const storedId = window.localStorage.getItem(SESSION_STORAGE_KEY);
     if (storedId) {
       setRestoring(true);
@@ -478,9 +545,10 @@ export default function AiPage() {
     // goes to Tangents, a multi-week effort becomes a project.
     // Pipeline V2 (A4): after "Just talking" the plan is talked through until
     // the student asks to act (components/console/talking.ts).
-    const talk = v2 && !followUp && !waiting ? talkingRoute(prior, userText) : undefined;
+    // A chat about one project or task stays on it: no Tangents, no new project.
+    const talk = v2 && !followUp && !waiting && !attachment ? talkingRoute(prior, userText) : undefined;
     const route = followUp || waiting || talk ? "do" : routeAsk(userText);
-    if (route === "goal" && !modeOverride) {
+    if (route === "goal" && !modeOverride && !attachment) {
       putNewPathTitle(userText);
       setInput("");
       router.push("/tangents?new=1");
@@ -511,6 +579,14 @@ export default function AiPage() {
           window.localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
           isNewSession = true;
           autoTitle(data.session.id, { text: userText });
+          // The project's one ongoing chat: "Ask about this" comes back to it.
+          if (attachment?.kind === "project") {
+            await fetch("/api/sessions", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "link", sessionId: data.session.id, planId: attachment.id }),
+            }).catch(() => {});
+          }
           void loadSessions();
         } else {
           throw new Error("create failed");
@@ -562,7 +638,9 @@ export default function AiPage() {
           source,
           route: talk,
           // Flag on, a big ask is drafted by the intake (preview first) instead.
-          newProject: route === "project" && !v2 ? true : undefined,
+          newProject: route === "project" && !v2 && !attachment ? true : undefined,
+          projectId: attachment?.kind === "project" ? attachment.id : undefined,
+          taskId: attachment?.kind === "task" ? attachment.id : undefined,
         }),
       });
       // Calendar mode streams NDJSON: plan progress lines, then {type:"result"}.
@@ -693,6 +771,8 @@ export default function AiPage() {
       if (data.actionId) announceUndo({ actionId: data.actionId, label: notif ?? "Change applied", from: "/ai" });
       // Master fix Phase 4: a new project names the chat.
       if (sessionId && data.plan?.title) autoTitle(sessionId, { projectTitle: data.plan.title });
+      // No preview card with Pipeline V2 off: its questions wait on Today.
+      if (data.plan?.id) void seedGrill(data.plan.id, followUp?.request ?? userText, followUp?.answers?.length ?? 0);
 
       await linkAction(sessionId, data.actionId);
       await refresh();
@@ -791,10 +871,13 @@ export default function AiPage() {
   const draftingPlans = useRef(new Set<string>());
 
   useEffect(() => {
-    if (!handedAsk || activeSessionId || turns.length > 0 || busy) return;
+    if (!handedAsk || busy) return;
+    const into = askIntoOngoing.current;
+    if (!into && (activeSessionId || turns.length > 0)) return;
     const text = handedAsk;
+    askIntoOngoing.current = false;
     setHandedAsk(null);
-    void send(text);
+    void send(text, into ? "calendar" : undefined);
   }, [handedAsk, activeSessionId, turns.length, busy, send]);
 
   /** Answers to a turn's questions (or "Just do it") run the original ask. */
@@ -1001,6 +1084,17 @@ export default function AiPage() {
   // so it only appears once there is a chat to go back to.
   const sidebarHidden = chatsHidden || sessions.length === 0;
 
+  const attachedChip = attachment && attachedTitle ? (
+    <div className="tg-attached">
+      <span className="tg-attached-label">About</span>
+      <span className="tg-attached-title">{attachedTitle}</span>
+      <button type="button" className="tg-attached-remove" onClick={() => setAttachment(null)} aria-label={`Stop asking about ${attachedTitle}`}>
+        <X size={14} aria-hidden="true" />
+      </button>
+    </div>
+  ) : null;
+  const starters = attachment ? (attachment.kind === "project" ? PROJECT_STARTERS : TASK_STARTERS) : null;
+
   const composer = (
     <Composer
       value={input}
@@ -1105,12 +1199,26 @@ export default function AiPage() {
               </Link>
             )}
             {err && <p className="tg-error" role="alert">{err}</p>}
+            {attachedChip}
             <div className="tg-composer-glow">{composer}</div>
             <p className="tg-composer-hint">
               <kbd>Enter</kbd> to send · <kbd>Shift</kbd> + <kbd>Enter</kbd> for a new line
             </p>
             <div className="tg-examples" aria-label="Try asking">
-              {suggestions.map(({ icon: Icon, text, detail }) => (
+              {starters?.map((text) => (
+                <button
+                  key={text}
+                  type="button"
+                  className="tg-example"
+                  onClick={() => {
+                    setInput(text);
+                    inputRef.current?.focus();
+                  }}
+                >
+                  <span className="tg-example-title">{text}</span>
+                </button>
+              ))}
+              {!starters && suggestions.map(({ icon: Icon, text, detail }) => (
                 <button
                   key={text}
                   type="button"
@@ -1221,6 +1329,7 @@ export default function AiPage() {
               )}
               {err && <p className="tg-error" role="alert">{err}</p>}
               {saveWarning && <p className="tg-error" role="alert">{saveWarning}</p>}
+              {attachedChip}
               <div className="tg-composer-glow">{composer}</div>
               <p className="tg-dock-hint">
                 {v2

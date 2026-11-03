@@ -235,7 +235,6 @@
 .gtk-primary,
 .gtk-send,
 .tour-primary,
-.pchat-send,
 .project-ask-send,
 .capture-stop,
 .capture-text-btn.is-primary,
@@ -356,7 +355,6 @@
   .gtk-send,
   .tour-primary,
   .tour-secondary,
-  .pchat-send,
   .project-ask-send,
   .capture-stop,
   .capture-text-btn,
@@ -587,7 +585,7 @@ body :is(button, a, [role="button"]):is(
   .lg-tint, .ui-button--primary, .surface-action-primary, .neu-btn-primary,
   .tg-clarify-btn.is-primary, .tg-btn-accent, .tg-brief-pill, .tg-send:not(:disabled), .tg-chip.is-on,
   .knows-gtk, .knows-add-btn:not(:disabled), .gtk-primary, .gtk-send, .gtk-mic.is-on, .cmdk-mic.is-on,
-  .tour-primary, .pchat-send:not(:disabled), .preview-card-btn.is-primary, .not-found-home,
+  .tour-primary, .preview-card-btn.is-primary, .not-found-home,
   .add-send:not(:disabled), .add-mic.is-on, .add-projects button.is-on, .setup-nudge-go,
   .capture-chip.is-primary
 ) {
@@ -604,7 +602,7 @@ body :is(button, a, [role="button"]):is(
 body :is(button, a, [role="button"]):is(
   .lg-tint, .ui-button--primary, .surface-action-primary, .neu-btn-primary,
   .tg-clarify-btn.is-primary, .tg-btn-accent, .tg-brief-pill, .tg-send, .knows-gtk, .knows-add-btn, .gtk-primary,
-  .gtk-send, .tour-primary, .pchat-send, .preview-card-btn.is-primary, .not-found-home, .add-send, .setup-nudge-go
+  .gtk-send, .tour-primary, .preview-card-btn.is-primary, .not-found-home, .add-send, .setup-nudge-go
 ):hover:not(:disabled) {
   background: var(--glass-catch), rgb(from var(--accent) r g b / 0.86);
 }

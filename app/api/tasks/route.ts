@@ -52,7 +52,7 @@ export const POST = withUser(async (req: Request) => {
       ids?: unknown;
     };
 
-    console.log("[api/tasks] POST action:", body.action, "| title:", body.title, "| date:", body.date);
+    console.log("[api/tasks] POST action:", body.action);
 
     const action = body.action;
 

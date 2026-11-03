@@ -8,11 +8,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { Check, MessageSquareText, Trash2, X } from "lucide-react";
 import ActionReceipt from "@/components/ActionReceipt";
-import TaskChatModal from "@/components/TaskChatModal";
+import { ASK_ABOUT_EVENT, askAboutHref, type AskAbout } from "@/lib/ask-handoff";
 import { useAppState } from "@/components/AppStateProvider";
 import { splitCourse } from "@/lib/course";
 import { generateQuestions } from "@/lib/questions-client";
@@ -51,12 +52,12 @@ function longDate(ymd: string): string {
 }
 
 export default function TaskDetail() {
+  const router = useRouter();
   const { state, refresh } = useAppState();
   const [taskId, setTaskId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [moreNotes, setMoreNotes] = useState(false);
   const [removed, setRemoved] = useState<{ actionId: string; title: string } | null>(null);
-  const [chat, setChat] = useState<Task | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
   const task = taskId ? state?.tasks.find((t) => t.id === taskId) ?? null : null;
@@ -98,12 +99,12 @@ export default function TaskDetail() {
   useEffect(() => {
     if (!taskId) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !chat) close();
+      if (e.key === "Escape") close();
     };
     window.addEventListener("keydown", onKey);
     window.setTimeout(() => cardRef.current?.focus(), 30);
     return () => window.removeEventListener("keydown", onKey);
-  }, [taskId, chat, close]);
+  }, [taskId, close]);
 
   const post = async (body: unknown) => {
     const res = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -163,9 +164,11 @@ export default function TaskDetail() {
                   <>
                     <button type="button" className="td-icon lg lg-interactive" onClick={() => {
                         // One window at a time: the card steps aside for the chat.
-                        setChat(task);
+                        const about: AskAbout = { kind: "task", id: task.id };
                         setTaskId(null);
-                      }} aria-label="Get help with this" title="Help">
+                        if (window.location.pathname === "/ai") window.dispatchEvent(new CustomEvent(ASK_ABOUT_EVENT, { detail: about }));
+                        else router.push(askAboutHref(about));
+                      }} aria-label="Ask about this" title="Ask about this">
                       <MessageSquareText size={17} aria-hidden="true" />
                     </button>
                     <button type="button" className="td-icon lg lg-interactive" onClick={() => void remove()} disabled={busy} aria-label="Remove task" title="Remove">
@@ -280,7 +283,6 @@ export default function TaskDetail() {
           </m.div>
         )}
       </AnimatePresence>
-      {chat && <TaskChatModal task={chat} onClose={() => setChat(null)} />}
     </>,
     document.body
   );

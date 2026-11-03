@@ -116,7 +116,6 @@ export async function calendarReply(
   const { source, project, preview = true, forceTask } = opts;
   let voiceRes: Response | null = null;
   try {
-    console.log("[api/chat] Calling voice pipeline:", userText);
     voiceRes = await handleVoiceText(userText, { context: conversationContext(messages), onProgress, preview, source, forceTask, ...project });
   } catch (err) {
     console.error("[api/chat] Voice pipeline error:", err);
@@ -181,7 +180,6 @@ async function replyFromVoice(
       questions?: unknown;
       pendingQuestion?: unknown;
     };
-    console.log("[api/chat] Voice pipeline result:", JSON.stringify(voiceData).slice(0, 300));
     voiceResponse = voiceData.response ?? "";
     voiceAction = voiceData.action ?? "";
     voiceOk = voiceData.ok === true;
@@ -234,7 +232,6 @@ async function replyFromVoice(
   }
 
   if (voiceOk && voiceResponse.trim()) {
-    console.log("[api/chat] Voice pipeline succeeded, skipping Anthropic rephrase:", voiceResponse.slice(0, 100));
     extractContextFireAndForget(userText, voiceResponse.trim());
     // New work can tip a day over the student's load: offer one move, never
     // make it (the student taps to accept; /api/reschedule records Undo).

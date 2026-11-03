@@ -714,7 +714,6 @@ async function handleVoiceTextInner(
   try {
     const tz = await getUserTimezone();
     const local = localNow(tz);
-    console.log("[api/voice] POST received text:", text);
 
     // Deletes of more than one task, before the router or any model call:
     // an explicit full clear, or a named group ("all of the SAT tasks").
@@ -731,7 +730,7 @@ async function handleVoiceTextInner(
 
     // ── Deterministic intent classification — runs before any AI plan-generation path ──
     const classifiedIntent = classifyIntent(text);
-    console.log("[intent] classified as:", classifiedIntent, "for:", text);
+    console.log("[intent] classified as:", classifiedIntent);
 
     if (classifiedIntent === "recurring_commitment") {
       received("recurring");
@@ -1311,7 +1310,7 @@ async function handleVoiceTextInner(
     const response = (cmd.response as string | undefined) ?? "";
     const time = hasTimeWords(text) ? ((cmd.time as string | undefined) ?? "") : "";
 
-    console.log("[api/voice] Parsed — action:", action, "| title:", title);
+    console.log("[api/voice] Parsed — action:", action);
 
     // ── Recurring task ─────────────────────────────────────────────────────────
     if (action === "add_recurring_task") {
@@ -1539,12 +1538,12 @@ async function handleVoiceTextInner(
       const task = await addTask({ title, date: placed.date, time: placed.time, completed: false, calendarId, notes, startAction, resources, ...(opts.projectId ? { planId: opts.projectId } : {}) });
       if (task.wasDuplicate) {
         const dupResponse = `Skipped 1 duplicate (already have "${task.title}" around ${task.time}).`;
-        console.log("[api/voice] add_task skipped duplicate:", task.id, task.title);
+        console.log("[api/voice] add_task skipped duplicate:", task.id);
         await addVoiceLog({ text, response: dupResponse, action, ok: true });
         return NextResponse.json({ ok: true, action, task, response: dupResponse, state: await getAppState() });
       }
       const addRecord = await recordAction("add_task", `Added "${task.title}"`, { addedTaskIds: [task.id] });
-      console.log("[api/voice] add_task success:", task.id, task.title, task.date, task.time);
+      console.log("[api/voice] add_task success:", task.id);
       // Say when it landed: the model's own sentence may name a time the brain changed.
       const placedResponse = `Added ${task.title} for ${friendlyWhen(task.date, task.time, today)}.${placed.note ? ` ${placed.note}` : ""}`;
       await addVoiceLog({ text, response: placedResponse, action, ok: true });

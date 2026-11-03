@@ -679,7 +679,7 @@ export async function runVoiceAgentToolLoop(userText: string, requestText = user
 
     const toolResults: { type: "tool_result"; tool_use_id: string; content: string }[] = [];
     for (const block of toolUseBlocks) {
-      console.log(`[voice-agent-tools] Calling tool: ${block.name}`, JSON.stringify(block.input));
+      console.log(`[voice-agent-tools] Calling tool: ${block.name}`);
       const sourceLabel = sourceLabelForTool(block.name);
       if (sourceLabel) sourcesChecked.add(sourceLabel);
       let resultPayload: unknown;
