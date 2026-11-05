@@ -8,6 +8,7 @@ import * as m from "motion/react-m";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import ActionReceipt from "@/components/ActionReceipt";
 import AddFlow, { type AddDestination } from "@/components/add/AddFlow";
+import HomeChat from "@/components/chat/HomeChat";
 import FreshStart from "@/components/dashboard/FreshStart";
 import { CanvasCard, StartingIntentCard } from "@/components/dashboard/HomeCards";
 import QuestionsInbox from "@/components/dashboard/QuestionsInbox";
@@ -377,6 +378,10 @@ export default function TodayHome() {
           onDestinationClear={() => setDestination(null)}
           onDestinationUsed={() => setDestination(null)}
         />
+      </m.div>
+
+      <m.div variants={riseIn} className="today-ask">
+        <HomeChat />
       </m.div>
 
       <m.div variants={riseIn}>

@@ -11,7 +11,11 @@ import {
   deleteChatSession,
   linkChatSession,
   styleChatSession,
+  findScopedChatSession,
+  getOrCreateScopedChatSession,
 } from "@/lib/store";
+import { parseScope } from "@/lib/chat/scope";
+import { summarizeIfDue } from "@/lib/chat/server";
 import { withUser } from "@/lib/request-context";
 import { callClaude, messageText } from "@/lib/ai/call";
 import { cleanTitle, fallbackTitle } from "@/lib/chat-title";
@@ -24,6 +28,14 @@ export const dynamic = "force-dynamic";
 
 export const GET = withUser(async (req: Request) => {
   const { searchParams } = new URL(req.url);
+  // The continuing thread for a task or project, or the general chat to pick
+  // back up (null: none yet; the first message starts it with "open").
+  const scopeType = searchParams.get("scope");
+  if (scopeType) {
+    const scope = parseScope({ type: scopeType, taskId: searchParams.get("taskId"), projectId: searchParams.get("projectId") });
+    if (!scope) return NextResponse.json({ ok: false, error: "Bad scope" }, { status: 400 });
+    return NextResponse.json({ ok: true, session: await findScopedChatSession(scope) });
+  }
   const sessionId = searchParams.get("sessionId");
   if (sessionId) {
     const session = await getChatSession(sessionId);
@@ -50,6 +62,8 @@ export const POST = withUser(async (req: Request) => {
       planId?: string | null;
       color?: string | null;
       pinned?: boolean;
+      /** open: { type, taskId?, projectId? } (lib/chat/scope.ts). */
+      scope?: unknown;
       /** autotitle: the chat's first request, and the project it made (wins). */
       text?: string;
       projectTitle?: string;
@@ -58,6 +72,13 @@ export const POST = withUser(async (req: Request) => {
 
     if (action === "create") {
       const session = await createChatSession(body.title);
+      return NextResponse.json({ ok: true, session });
+    }
+
+    if (action === "open") {
+      const scope = parseScope(body.scope);
+      if (!scope) return NextResponse.json({ ok: false, error: "Bad scope" }, { status: 400 });
+      const session = await getOrCreateScopedChatSession(scope, typeof body.title === "string" ? body.title.slice(0, 80) : undefined);
       return NextResponse.json({ ok: true, session });
     }
 
@@ -71,6 +92,8 @@ export const POST = withUser(async (req: Request) => {
         changeSetId: uuidOrUndefined(body.changeSetId),
       });
       if (!msg) return NextResponse.json({ ok: false, error: "Session not found" }, { status: 404 });
+      // The running summary scoped chats read back (best effort, after the save).
+      if (role === "assistant") await summarizeIfDue(sessionId).catch(() => false);
       return NextResponse.json({ ok: true, message: msg });
     }
 

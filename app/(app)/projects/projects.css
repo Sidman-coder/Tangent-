@@ -353,6 +353,7 @@
   color: var(--text);
   font: 550 14px/1 var(--font-body);
   text-decoration: none;
+  cursor: pointer;
 }
 .project-ask-link:hover {
   background: var(--elev-1);

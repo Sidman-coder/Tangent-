@@ -468,7 +468,7 @@ export default function CaptureHome() {
             }}
             onAsk={(said) => {
               putAsk("ai", said);
-              router.push("/ai?ask=1");
+              router.push("/?ask=1");
             }}
             onChanged={() => void refresh()}
           />

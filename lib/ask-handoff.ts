@@ -23,18 +23,11 @@ export function takeAsk(target: Target): string | null {
   }
 }
 
-/** "Ask about this": a project or task opened in Tangent AI as a chip. */
+/** "Ask about this": a task opens its own chat over Home; a project opens its
+ *  chat on the project page. */
 export type AskAbout = { kind: "project" | "task"; id: string };
-export const ASK_ABOUT_EVENT = "tangent:ask-about";
 
 export function askAboutHref({ kind, id }: AskAbout): string {
-  return `/ai?${kind}=${encodeURIComponent(id)}`;
-}
-
-export function attachmentFromSearch(search: string): AskAbout | null {
-  const params = new URLSearchParams(search);
-  const project = params.get("project");
-  if (project) return { kind: "project", id: project };
-  const task = params.get("task");
-  return task ? { kind: "task", id: task } : null;
+  const safe = encodeURIComponent(id);
+  return kind === "project" ? `/projects/${safe}?chat=1` : `/?taskChat=${safe}`;
 }

@@ -46,6 +46,7 @@ import type { ChangeSet, ChangeSetStatus } from "./pipeline/changeset";
 import { canTransition, decisionColumns, isOutcome, type DecisionInput, type Outcome } from "./pipeline/decisions";
 import { aliasFor } from "./pipeline/match";
 import { createAdminClient } from "./supabase/admin";
+import { canContinueGeneral, sameScope, scopeOfSession, type ChatScope } from "./chat/scope";
 
 export type { ChatMessage, ChatSession } from "./types";
 
@@ -1545,9 +1546,40 @@ type SessionRow = {
   pinned: boolean;
   created_at: string;
   updated_at: string;
+  // Round 2 Phase D (chat_scope migration); absent before it runs.
+  scope?: "general" | "task" | "project" | null;
+  task_id?: string | null;
+  summary?: string | null;
 };
 
-const SESSION_COLUMNS = "id, title, task_ids, plan_id, color, pinned, created_at, updated_at";
+const SESSION_COLUMNS_V1 = "id, title, task_ids, plan_id, color, pinned, created_at, updated_at";
+const SESSION_COLUMNS_V2 = `${SESSION_COLUMNS_V1}, scope, task_id, summary`;
+const missingChatScope = createColumnMemo();
+const CHAT_SCOPE_KEY = "chat_sessions.scope";
+const chatScopeReady = () => !missingChatScope.isMissing(CHAT_SCOPE_KEY);
+type SessionDbError = { code?: string; message: string } | null;
+
+/** Runs a chat_sessions query with the scope columns, and again without them
+ *  when the chat_scope migration hasn't run yet. */
+async function withSessionColumns(
+  run: (columns: string) => PromiseLike<{ data: unknown; error: SessionDbError }>
+): Promise<{ data: unknown; error: SessionDbError }> {
+  if (!chatScopeReady()) return run(SESSION_COLUMNS_V1);
+  const first = await run(SESSION_COLUMNS_V2);
+  if (schemaErrorKind(first.error) === "missing_column") {
+    missingChatScope.markMissing(CHAT_SCOPE_KEY);
+    warnSchemaOnce(CHAT_SCOPE_KEY, "chat_sessions.scope is missing; run 20261105040000_chat_scope.sql. Chat scope is inferred meanwhile.");
+    return run(SESSION_COLUMNS_V1);
+  }
+  return first;
+}
+
+const scopeInput = (r: Pick<SessionRow, "scope" | "task_id" | "plan_id" | "task_ids">) => ({
+  scope: r.scope ?? undefined,
+  taskId: r.task_id,
+  planId: r.plan_id ?? undefined,
+  taskIds: r.task_ids ?? undefined,
+});
 
 function sessionFromRow(r: SessionRow, messages: ChatMessage[]): ChatSession {
   const s: ChatSession = {
@@ -1561,18 +1593,18 @@ function sessionFromRow(r: SessionRow, messages: ChatMessage[]): ChatSession {
   if (r.task_ids?.length) s.taskIds = [...r.task_ids];
   if (r.plan_id) s.planId = r.plan_id;
   if (r.color) s.color = r.color;
+  if (r.scope) s.scope = r.scope;
+  if (r.task_id) s.taskId = r.task_id;
+  if (r.summary) s.summary = r.summary;
   return s;
 }
 
 async function getSessionRow(sessionId: string): Promise<SessionRow | null> {
   if (!isUuid(sessionId)) return null;
   const { db, userId } = ctx();
-  const { data, error } = await db
-    .from("chat_sessions")
-    .select(SESSION_COLUMNS)
-    .eq("user_id", userId)
-    .eq("id", sessionId)
-    .maybeSingle();
+  const { data, error } = await withSessionColumns((columns) =>
+    db.from("chat_sessions").select(columns).eq("user_id", userId).eq("id", sessionId).maybeSingle()
+  );
   if (error) fail("getChatSession", error);
   return (data as SessionRow | null) ?? null;
 }
@@ -1580,13 +1612,9 @@ async function getSessionRow(sessionId: string): Promise<SessionRow | null> {
 async function updateSessionRow(where: string, sessionId: string, row: Record<string, unknown>): Promise<SessionRow | null> {
   if (!isUuid(sessionId)) return null;
   const { db, userId } = ctx();
-  const { data, error } = await db
-    .from("chat_sessions")
-    .update(row)
-    .eq("user_id", userId)
-    .eq("id", sessionId)
-    .select(SESSION_COLUMNS)
-    .maybeSingle();
+  const { data, error } = await withSessionColumns((columns) =>
+    db.from("chat_sessions").update(row).eq("user_id", userId).eq("id", sessionId).select(columns).maybeSingle()
+  );
   if (error) fail(where, error);
   return (data as SessionRow | null) ?? null;
 }
@@ -1621,52 +1649,157 @@ async function sessionMessages(sessionIds: string[]): Promise<Map<string, ChatMe
   return bySession;
 }
 
-/** Newest chat first, each with its messages (the chat list searches them). */
+/** Most recently used chat first, each with its messages (the library searches
+ *  them). Task and project threads don't count toward MAX_CHATS, so the list
+ *  reads up to twice that. */
 export async function getAllChatSessions(): Promise<ChatSession[]> {
   const { db, userId } = ctx();
-  const { data, error } = await db
-    .from("chat_sessions")
-    .select(SESSION_COLUMNS)
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .order("id")
-    .limit(MAX_CHATS);
+  const { data, error } = await withSessionColumns((columns) =>
+    db
+      .from("chat_sessions")
+      .select(columns)
+      .eq("user_id", userId)
+      .order("updated_at", { ascending: false })
+      .order("id")
+      .limit(MAX_CHATS * 2)
+  );
   if (error) fail("getAllChatSessions", error);
   const rows = (data ?? []) as SessionRow[];
   const messages = await sessionMessages(rows.map((r) => r.id));
   return rows.map((r) => sessionFromRow(r, messages.get(r.id) ?? []));
 }
 
-export async function createChatSession(title?: string): Promise<ChatSession> {
+export async function createChatSession(title?: string, scope: ChatScope = { type: "general" }): Promise<ChatSession> {
   const { db, userId } = ctx();
-  const { data, error } = await db
-    .from("chat_sessions")
-    .insert({
-      user_id: userId,
-      title: title ?? `Chat ${new Date().toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`,
-    })
-    .select(SESSION_COLUMNS)
-    .single();
+  const base: Record<string, unknown> = {
+    user_id: userId,
+    title: title ?? `Chat ${new Date().toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`,
+  };
+  // Before the migration a scoped thread is marked the old way (plan_id, or
+  // task_ids with one task), which scopeOfSession reads back.
+  if (scope.type === "project") base.plan_id = scope.projectId;
+  if (scope.type === "task") base.task_ids = [scope.taskId];
+  const { data, error } = await withSessionColumns((columns) => {
+    const row =
+      columns === SESSION_COLUMNS_V2 ? { ...base, scope: scope.type, task_id: scope.type === "task" ? scope.taskId : null } : base;
+    return db.from("chat_sessions").insert(row).select(columns).single();
+  });
   if (error) fail("createChatSession", error);
   const session = sessionFromRow(data as SessionRow, []);
+  await trimGeneralChats();
+  console.log("[store] createChatSession:", session.id, scope.type);
+  return session;
+}
 
-  // Keep the newest MAX_CHATS chats; their messages cascade.
-  const { data: old, error: oldError } = await db
-    .from("chat_sessions")
-    .select("id")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .order("id")
-    .range(MAX_CHATS, MAX_CHATS + PAGE - 1);
-  if (oldError) fail("createChatSession", oldError);
-  const oldIds = (old ?? []).map((r: { id: string }) => r.id);
+/** Keeps the newest MAX_CHATS general chats; their messages cascade. Task and
+ *  project threads are never trimmed: they live as long as their task or project. */
+async function trimGeneralChats(): Promise<void> {
+  const { db, userId } = ctx();
+  const { data, error } = await withSessionColumns((columns) =>
+    db
+      .from("chat_sessions")
+      .select(columns === SESSION_COLUMNS_V2 ? "id, plan_id, task_ids, scope, task_id" : "id, plan_id, task_ids")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .order("id")
+      .limit(PAGE)
+  );
+  if (error) fail("createChatSession", error);
+  const rows = (data ?? []) as unknown as (Pick<SessionRow, "id" | "plan_id" | "task_ids" | "scope" | "task_id">)[];
+  const oldIds = rows
+    .filter((r) => scopeOfSession(scopeInput(r)).type === "general")
+    .slice(MAX_CHATS)
+    .map((r) => r.id);
   if (oldIds.length) {
     const { error: delError } = await db.from("chat_sessions").delete().eq("user_id", userId).in("id", oldIds);
     if (delError) fail("createChatSession", delError);
   }
+}
 
-  console.log("[store] createChatSession:", session.id);
+/**
+ * The one continuing thread for a task or project, or the last general chat
+ * used within two hours. Null when there is none yet (the first message
+ * creates it with getOrCreateScopedChatSession). After the migration, a
+ * project with no tagged thread adopts its newest linked chat (how the old
+ * project chat found its thread).
+ */
+export async function findScopedChatSession(scope: ChatScope): Promise<ChatSession | null> {
+  if (scope.type === "task" && !isUuid(scope.taskId)) return null;
+  if (scope.type === "project" && !isUuid(scope.projectId)) return null;
+  const { db, userId } = ctx();
+  const { data, error } = await withSessionColumns((columns) => {
+    let q = db.from("chat_sessions").select(columns).eq("user_id", userId);
+    if (scope.type === "project") q = q.eq("plan_id", scope.projectId);
+    else if (scope.type === "task" && columns === SESSION_COLUMNS_V2) q = q.or(`task_id.eq.${scope.taskId},task_ids.cs.{${scope.taskId}}`);
+    else if (scope.type === "task") q = q.contains("task_ids", [scope.taskId]);
+    return q.order("updated_at", { ascending: false }).order("id").limit(20);
+  });
+  if (error) fail("findScopedChatSession", error);
+  const rows = (data ?? []) as unknown as SessionRow[];
+  let row: SessionRow | null = rows.find((r) => sameScope(scopeOfSession(scopeInput(r)), scope)) ?? null;
+  if (scope.type === "project" && !row) row = rows[0] ?? null;
+  if (scope.type === "project" && row && chatScopeReady() && row.scope !== "project") {
+    row = (await updateSessionRow("findScopedChatSession", row.id, { scope: "project" })) ?? row;
+  }
+  if (scope.type === "task" && row && chatScopeReady() && row.scope !== "task") {
+    row = (await updateSessionRow("findScopedChatSession", row.id, { scope: "task", task_id: scope.taskId })) ?? row;
+  }
+  if (scope.type === "general" && row && !canContinueGeneral(iso(row.updated_at), new Date())) row = null;
+  if (!row) return null;
+  const messages = await sessionMessages([row.id]);
+  return sessionFromRow(row, messages.get(row.id) ?? []);
+}
+
+/** Finds the scope's thread or starts it. A new task thread copies that task's
+ *  old task_chat_messages, so earlier task chats carry over (the old rows stay). */
+export async function getOrCreateScopedChatSession(scope: ChatScope, title?: string): Promise<ChatSession> {
+  if (scope.type !== "general") {
+    const existing = await findScopedChatSession(scope);
+    if (existing) return existing;
+  }
+  const session = await createChatSession(title, scope);
+  if (scope.type === "task") {
+    const copied = await copyTaskChatMessages(session.id, scope.taskId);
+    if (copied) return (await getChatSession(session.id)) ?? session;
+  }
   return session;
+}
+
+async function copyTaskChatMessages(sessionId: string, taskId: string): Promise<number> {
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("task_chat_messages")
+    .select("role, content, created_at")
+    .eq("user_id", userId)
+    .eq("task_id", taskId)
+    .order("id")
+    .limit(200);
+  if (error) {
+    if (schemaErrorKind(error)) return 0;
+    fail("copyTaskChatMessages", error);
+  }
+  const rows = (data ?? []) as { role: string; content: string; created_at: string }[];
+  if (!rows.length) return 0;
+  const { error: insertError } = await db
+    .from("chat_messages")
+    .insert(rows.map((r) => ({ user_id: userId, session_id: sessionId, role: r.role, content: r.content, created_at: r.created_at })));
+  if (insertError) fail("copyTaskChatMessages", insertError);
+  return rows.length;
+}
+
+/** Saves the thread's running summary. A no-op before the migration. */
+export async function setChatSessionSummary(sessionId: string, summary: string): Promise<boolean> {
+  if (!chatScopeReady() || !isUuid(sessionId)) return false;
+  const { db, userId } = ctx();
+  const { error } = await db.from("chat_sessions").update({ summary: summary.slice(0, 1200) }).eq("user_id", userId).eq("id", sessionId);
+  if (error) {
+    if (schemaErrorKind(error) === "missing_column") {
+      missingChatScope.markMissing(CHAT_SCOPE_KEY);
+      return false;
+    }
+    fail("setChatSessionSummary", error);
+  }
+  return true;
 }
 
 export async function getChatSession(sessionId: string): Promise<ChatSession | null> {

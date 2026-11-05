@@ -334,6 +334,13 @@ export type ChatSession = {
   color?: string | null;
   /** Pinned chats sit in their own section at the top of the list. */
   pinned?: boolean;
+  /** Round 2 chat_scope migration: what the chat is about. Absent before it
+   *  runs; lib/chat/scope.ts scopeOfSession infers it then. */
+  scope?: "general" | "task" | "project";
+  /** The task a task chat is about (scope "task"). */
+  taskId?: string | null;
+  /** A short summary, refreshed about every 6 messages. */
+  summary?: string | null;
 };
 
 // ─── Tangents: your current work, and the lines that branch off it ───────────

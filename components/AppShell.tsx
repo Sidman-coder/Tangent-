@@ -31,7 +31,7 @@ const NAV_LINKS = [
   { href: "/", label: "Today", icon: Home },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/projects", label: "Projects", icon: FolderKanban },
-  { href: "/ai", label: "Tangent AI", icon: MessageSquareText },
+  { href: "/ai", label: "Chats", icon: MessageSquareText },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -238,11 +238,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </nav>
 
       {/* The mic floats bottom-right on every page: say anything, from
-          anywhere; it opens Add already listening. (⌘K opens it to type.)
-          Not on Tangent AI, whose own composer mic talks to the chat. */}
+          anywhere; it opens Add already listening. (⌘K opens it to type.) */}
       {/* On a phone the round mic is the way back to capture mode. */}
-      {!pathname.startsWith("/ai") && !desktop && !composerInView && <CaptureMic />}
-      {!pathname.startsWith("/ai") && desktop && !composerInView && (
+      {!desktop && !composerInView && <CaptureMic />}
+      {desktop && !composerInView && (
         <button type="button" className="float-mic lg lg-interactive" onClick={openListening} aria-label="Say it to Tangent" title="Say it  ·  ⌘K to type">
           <Mic size={22} strokeWidth={2} aria-hidden="true" />
         </button>

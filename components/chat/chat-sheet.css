@@ -1,0 +1,265 @@
+/* The chat panel that opens over Home, a task or a project. */
+.chat-sheet-root {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.chat-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: color-mix(in srgb, #000 42%, transparent);
+  cursor: default;
+  animation: chat-sheet-fade 160ms ease-out;
+}
+
+.chat-sheet {
+  position: relative;
+  width: min(560px, 100vw);
+  height: 100dvh;
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  box-shadow: -18px 0 48px color-mix(in srgb, #000 22%, transparent);
+  display: flex;
+  flex-direction: column;
+  animation: chat-sheet-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.chat-sheet .tg-console {
+  height: 100%;
+  min-height: 0;
+  flex: 1;
+}
+
+@media (max-width: 640px) {
+  .chat-sheet {
+    width: 100vw;
+    border-left: 0;
+    box-shadow: none;
+  }
+}
+
+@keyframes chat-sheet-in {
+  from { transform: translateX(24px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+@keyframes chat-sheet-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-sheet,
+  .chat-sheet-backdrop {
+    animation: none;
+  }
+}
+
+/* Home's "Ask anything" bar. */
+.home-ask {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.home-ask:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.home-ask:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.home-ask-label {
+  flex: 1;
+}
+
+.home-ask-link {
+  font-size: 0.85rem;
+  color: var(--text-2);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.home-ask-link:hover {
+  color: var(--accent);
+}
+
+.home-ask-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* The chat library at /ai. */
+.chat-library {
+  max-width: 760px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.chat-library-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.chat-library-search {
+  flex: 1 1 220px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.chat-library-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.chat-library-tab {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  cursor: pointer;
+}
+
+.chat-library-tab[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.chat-library-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-library-row {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.chat-library-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 12px;
+}
+
+.chat-library-open:focus-visible,
+.chat-library-delete:focus-visible,
+.chat-library-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.chat-library-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--chat-dot, var(--series-neutral));
+}
+
+.chat-library-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chat-library-title {
+  font-weight: 600;
+}
+
+.chat-library-meta,
+.chat-library-preview {
+  font-size: 0.85rem;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-library-delete {
+  flex: none;
+  min-width: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+}
+
+.chat-library-delete:hover {
+  color: var(--danger, #c0392b);
+}
+
+.chat-library-empty {
+  color: var(--text-2);
+  padding: 24px 0;
+  text-align: center;
+}
+
+.chat-library-delete.is-confirm {
+  padding: 0 12px;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--danger, #c0392b);
+}
+
+/* 44px targets in the sheet's header. */
+.chat-sheet .tg-main-head .tg-icon-btn,
+.chat-sheet .tg-main-head .tg-done {
+  min-width: 44px;
+  min-height: 44px;
+}

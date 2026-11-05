@@ -13,6 +13,7 @@ import { PipelineFlagProvider } from "@/components/PipelineFlag";
 import AppShell from "@/components/AppShell";
 import LiquidGlass from "@/components/LiquidGlass";
 import TaskDetail from "@/components/TaskDetail";
+import TaskChatSheet from "@/components/chat/TaskChatSheet";
 import TodayHome from "@/components/today/TodayHome";
 import PlanCalendarPreview from "@/components/preview/PlanCalendarPreview";
 import ColorPicker from "@/components/projects/ColorPicker";
@@ -100,6 +101,7 @@ export default function AppPreview() {
           </AppShell>
           <LiquidGlass />
           <TaskDetail />
+          <TaskChatSheet />
         </MotionProvider>
       </MockAppStateProvider>
     </PipelineFlagProvider>

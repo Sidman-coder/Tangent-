@@ -260,7 +260,7 @@ export default function AddFlow({
       putAsk("ai", words);
       reset();
       onClose?.();
-      router.push("/ai?ask=1");
+      router.push("/?ask=1");
       return;
     }
     if (handoff === "goal") {

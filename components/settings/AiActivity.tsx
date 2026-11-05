@@ -378,7 +378,7 @@ function Why({ row, onUndone, onDelete }: { row: ActivityRow; onUndone: () => vo
         {w.undo && <ActionReceipt actionId={w.undo.actionId} label={w.undo.label} onUndone={onUndone} />}
         {w.draftOpen && (
           <Link className="aia-link" href="/ai">
-            Open draft
+            Find it in Chats
           </Link>
         )}
         <button type="button" className="aia-delete" onClick={onDelete}>

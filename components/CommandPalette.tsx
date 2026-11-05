@@ -186,7 +186,7 @@ export default function CommandPalette() {
           setToast(null);
           if (data.action === "route_tangent") putNewPathTitle(trimmed);
           else putAsk("ai", trimmed);
-          router.push(data.action === "route_tangent" ? "/tangents?new=1" : "/ai?ask=1");
+          router.push(data.action === "route_tangent" ? "/tangents?new=1" : "/?ask=1");
           return;
         }
         if (data.action === "preview" && data.changeSet && data.preview) {

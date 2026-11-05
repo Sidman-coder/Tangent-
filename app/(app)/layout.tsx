@@ -6,6 +6,7 @@ import { TANGENT_PIPELINE_V2 } from "@/lib/pipeline/flags";
 import FeatureTour from "@/components/FeatureTour";
 import LiquidGlass from "@/components/LiquidGlass";
 import TaskDetail from "@/components/TaskDetail";
+import TaskChatSheet from "@/components/chat/TaskChatSheet";
 import RecentChanges from "@/components/RecentChanges";
 import UndoToast from "@/components/UndoToast";
 
@@ -23,6 +24,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <FeatureTour />
           <LiquidGlass />
           <TaskDetail />
+          <TaskChatSheet />
           <RecentChanges />
           <UndoToast />
         </MotionProvider>

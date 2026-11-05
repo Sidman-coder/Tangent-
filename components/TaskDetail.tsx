@@ -8,12 +8,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { Check, MessageSquareText, Trash2, X } from "lucide-react";
 import ActionReceipt from "@/components/ActionReceipt";
-import { ASK_ABOUT_EVENT, askAboutHref, type AskAbout } from "@/lib/ask-handoff";
+import { openTaskChat } from "@/components/chat/TaskChatSheet";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { splitCourse } from "@/lib/course";
 import { generateQuestions } from "@/lib/questions-client";
@@ -49,7 +48,6 @@ const planned = new Set<string>();
 
 
 export default function TaskDetail() {
-  const router = useRouter();
   const { state, refresh } = useAppState();
   const timezone = useUserTimezone();
   const [taskId, setTaskId] = useState<string | null>(null);
@@ -174,10 +172,8 @@ export default function TaskDetail() {
                   <>
                     <button type="button" className="td-icon lg lg-interactive" onClick={() => {
                         // One window at a time: the card steps aside for the chat.
-                        const about: AskAbout = { kind: "task", id: task.id };
                         setTaskId(null);
-                        if (window.location.pathname === "/ai") window.dispatchEvent(new CustomEvent(ASK_ABOUT_EVENT, { detail: about }));
-                        else router.push(askAboutHref(about));
+                        openTaskChat(task.id);
                       }} aria-label="Ask about this" title="Ask about this">
                       <MessageSquareText size={17} aria-hidden="true" />
                     </button>

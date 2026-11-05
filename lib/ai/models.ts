@@ -103,6 +103,9 @@ export const AI_TASKS = {
   /** Master fix Phase 4: a 3–6 word chat title from the first message, when
    *  no project names the chat (app/api/sessions "autotitle"). */
   chatTitle: { feature: "classify", tier: "FAST", maxTokens: 40, temperature: 0, effort: "low" },
+  /** Round 2 Phase D: a running summary of a chat thread every ~6 messages
+   *  (lib/chat/summary.ts), read back into that thread's context. */
+  chatSummary: { feature: "context", tier: "FAST", maxTokens: 250, temperature: 0, effort: "low" },
   /** Applies the student's answers to a saved task (lib/ai/refine.ts). */
   /** The detail every captured task carries (notes, first step, category). It runs
    *  in the background after the save, so it buys quality, not speed: SMART. */

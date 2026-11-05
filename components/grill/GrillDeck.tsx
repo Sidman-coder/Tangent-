@@ -3,7 +3,7 @@
 // Asks queued Grill me questions, one card at a time. Skip always works, Later
 // closes and leaves the rest in the queue. It checks in after IN_A_ROW, and an
 // answer that could change a plan offers a re-plan preview: never silent, and
-// nothing moves until the student confirms that preview in /ai.
+// nothing moves until the student confirms that preview in the project chat.
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";

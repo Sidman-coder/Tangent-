@@ -12,7 +12,9 @@ import * as m from "motion/react-m";
 import { ChevronLeft, MessageSquareText } from "lucide-react";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { openTask } from "@/components/TaskDetail";
-import { askAboutHref } from "@/lib/ask-handoff";
+import { takeAsk } from "@/lib/ask-handoff";
+import ChatSheet from "@/components/chat/ChatSheet";
+import { openTaskChat } from "@/components/chat/TaskChatSheet";
 import ColorPicker from "@/components/projects/ColorPicker";
 import ProjectStats from "@/components/projects/ProjectStats";
 import TaskRow from "@/components/ui/TaskRow";
@@ -38,6 +40,18 @@ export default function ProjectPage() {
   const [goal, setGoal] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
+  const [chatOpen, setChatOpen] = useState(false);
+  const [askOnOpen, setAskOnOpen] = useState<string | null>(null);
+
+  // /projects/<id>?chat=1 opens the project's chat (the library, Grill, old
+  // links); &ask=1 also asks what Cmd-K handed over.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("chat") !== "1") return;
+    if (params.get("ask") === "1") setAskOnOpen(takeAsk("ai"));
+    setChatOpen(true);
+    router.replace(`/projects/${encodeURIComponent(id)}`, { scroll: false });
+  }, [id, router]);
 
   useEffect(() => {
     if (!plan) return;
@@ -132,10 +146,10 @@ export default function ProjectPage() {
                   onComplete={() => void toggle(task)}
                   onOpen={() => openTask(task.id)}
                   actions={
-                    <Link className="ui-task-help" href={askAboutHref({ kind: "task", id: task.id })} aria-label={`Ask about ${task.title}`}>
+                    <button type="button" className="ui-task-help" onClick={() => openTaskChat(task.id)} aria-label={`Ask about ${task.title}`}>
                       <MessageSquareText size={13} aria-hidden="true" />
                       <span>Ask</span>
-                    </Link>
+                    </button>
                   }
                 />
               </m.div>
@@ -187,10 +201,20 @@ export default function ProjectPage() {
 
         </div>
         <aside className="project-side">
-          <Link className="project-ask-link" href={askAboutHref({ kind: "project", id: plan.id })}>
+          <button type="button" className="project-ask-link" onClick={() => setChatOpen(true)} aria-haspopup="dialog">
             <MessageSquareText size={15} aria-hidden="true" />
             <span>Ask about this</span>
-          </Link>
+          </button>
+          <ChatSheet
+            open={chatOpen}
+            scope={{ type: "project", projectId: plan.id }}
+            askOnOpen={askOnOpen}
+            label={`Chat about ${plan.title}`}
+            onClose={() => {
+              setChatOpen(false);
+              setAskOnOpen(null);
+            }}
+          />
           <ColorPicker planId={plan.id} color={plan.color} onChanged={() => void refresh()} />
           <ProjectStats tasks={steps} today={today} />
         </aside>

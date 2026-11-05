@@ -17,6 +17,8 @@ import { matchProject } from "@/lib/project-match";
 import { placeNewTask, reliefSuggestion } from "@/lib/spacing";
 import { addDaysYMD, localNow } from "@/lib/time";
 import { cleanTitle } from "@/lib/quick-add";
+import { projectContext, taskContext } from "@/lib/chat/server";
+import { getChatSession } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,29 +30,10 @@ export const maxDuration = 60;
 /** "calendar" acts on the calendar; "plan" only talks a plan through. */
 type ChatMode = "plan" | "calendar";
 
-/** What the model needs to know about the project a request was made in. */
-async function projectBrief(projectId: string): Promise<string | null> {
-  const plan = (await getAllPlans()).find((p) => p.id === projectId);
-  if (!plan) return null;
-  const steps = (await getAllTasks())
-    .filter((t) => t.planId === projectId)
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(0, 30)
-    .map((t) => `- ${t.completed ? "[done] " : ""}${t.title} (${t.date})`);
-  return `(This request is inside the student's project "${plan.title}".${plan.description ? ` Goal: ${plan.description}.` : ""} Anything you add belongs to this project. Its steps so far:\n${steps.join("\n") || "none yet"})`;
-}
-
-/** The one task a chat is about ("Ask about this" on a task). */
-async function findTaskBrief(taskId: string): Promise<{ planId?: string; brief: string } | null> {
-  const task = (await getAllTasks()).find((t) => t.id === taskId);
-  if (!task) return null;
-  const when = [task.date, task.time].filter(Boolean).join(" at ") || "no date yet";
-  const notes = task.notes?.trim() ? ` Notes: ${task.notes.trim().slice(0, 600)}` : "";
-  return {
-    planId: task.planId ?? undefined,
-    brief: `(The student is asking about this one task: "${task.title}", ${when}.${notes} Help them plan, break down, think through or do it. Be concise, under 100 words unless they ask for more. Don't change other tasks unless they ask.)`,
-  };
-}
+// The task and project notes live in lib/chat/server.ts (budgeted, with the
+// thread's running summary).
+const projectBrief = (projectId: string, summary?: string | null) => projectContext(projectId, summary);
+const findTaskBrief = (taskId: string, summary?: string | null) => taskContext(taskId, summary);
 
 /** Saves a quick capture: spacing brain for the when, no model. */
 async function saveQuickCapture(quick: QuickCapture): Promise<Record<string, unknown>> {
@@ -115,6 +98,8 @@ export const POST = withUser(async (req: Request) => {
       /** Asked from inside a Project: its steps join it. */
       projectId?: unknown;
       taskId?: unknown;
+      /** The chat thread this message belongs to; its running summary joins the note. */
+      sessionId?: unknown;
       /** "New project" on the Projects page: always builds a plan. */
       newProject?: unknown;
       /** Pipeline V2: "chat" is the "Just talking, don't add" re-ask. */
@@ -160,7 +145,11 @@ export const POST = withUser(async (req: Request) => {
     }
 
     let projectId = typeof body.projectId === "string" && body.projectId ? body.projectId : "";
-    const aboutTask = typeof body.taskId === "string" && body.taskId ? await findTaskBrief(body.taskId) : null;
+    const threadSummary =
+      typeof body.sessionId === "string" && body.sessionId
+        ? ((await getChatSession(body.sessionId).catch(() => null))?.summary ?? null)
+        : null;
+    const aboutTask = typeof body.taskId === "string" && body.taskId ? await findTaskBrief(body.taskId, threadSummary) : null;
     if (aboutTask?.planId && !projectId) projectId = aboutTask.planId;
 
     // An answer to a pending question (A1), flag on and off: resolved before
@@ -190,7 +179,7 @@ export const POST = withUser(async (req: Request) => {
     // project through in Plan mode.
     if (mode === "plan" && (!TANGENT_PIPELINE_V2 || projectId || aboutTask)) {
       // Asked from inside a project: the talk is about that project.
-      const note = [projectId ? await projectBrief(projectId) : null, aboutTask?.brief].filter(Boolean).join("\n\n");
+      const note = [projectId && !aboutTask ? await projectBrief(projectId, threadSummary) : null, aboutTask?.brief].filter(Boolean).join("\n\n");
       if (body.stream !== true) {
         const reply = await planReply(messages, { projectNote: note });
         return NextResponse.json({ message: reply, action: "plan_reply", mode, ok: true });
@@ -289,10 +278,11 @@ export const POST = withUser(async (req: Request) => {
     let project: CalendarReplyOptions["project"];
     if (aboutTask) pipelineText = `${pipelineText}\n\n${aboutTask.brief}`;
     if (projectId) {
-      const found = await projectBrief(projectId);
-      if (found) {
+      const found = aboutTask ? "" : await projectBrief(projectId, threadSummary);
+      // A task's note already lists its project's other steps.
+      if (found !== null) {
         project = { projectId };
-        pipelineText = `${pipelineText}\n\n${found}`;
+        if (found) pipelineText = `${pipelineText}\n\n${found}`;
       }
     } else if (body.newProject === true) {
       project = { forcePlan: true, projectGoal: userText.slice(0, 300) };
