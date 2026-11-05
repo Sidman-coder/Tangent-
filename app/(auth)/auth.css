@@ -162,3 +162,16 @@
 }
 .auth-tab[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: 0 0 0 1px var(--line-strong); }
 .auth-tab:focus-visible, .auth-link--button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* The card and icon glass above is written for light. Dark gets the same
+   glass made from the dark surface, so sign-in follows the saved theme. */
+[data-theme="dark"] .auth-feature-icon {
+  border-color: var(--glass-edge);
+  background: var(--glass);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08), 0 6px 16px -10px rgb(0 0 0 / 0.6);
+}
+[data-theme="dark"] .auth-card {
+  border-color: var(--glass-edge);
+  background: var(--glass-thick);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08), 0 24px 60px -24px rgb(0 0 0 / 0.7);
+}

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 // Body type is the platform's own (SF Pro on Apple devices); Tangent's display
 // face, Bricolage Grotesque, is kept for big titles — the brand's voice.
 import "@fontsource-variable/bricolage-grotesque/opsz.css";
@@ -10,6 +10,14 @@ export const metadata: Metadata = {
   description: "A focused productivity workspace for students to plan their time and follow through.",
   // Added to an iPhone home screen, open full-screen like an app.
   appleWebApp: { capable: true, title: "Tangent", statusBarStyle: "default" },
+};
+
+// viewport-fit=cover makes env(safe-area-inset-*) real on notched phones. The
+// bottom bar, capture mode and sheets already pad with it.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 // Runs before the first paint, so a dark workspace opens dark. Applying the
