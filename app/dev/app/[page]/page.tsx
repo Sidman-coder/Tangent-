@@ -7,19 +7,41 @@
 // anything loaded from the server shows its empty or error state.
 
 import { notFound, useParams } from "next/navigation";
-import { MockAppStateProvider } from "@/components/AppStateProvider";
+import { MockAppStateProvider, useUserTimezone } from "@/components/AppStateProvider";
 import MotionProvider from "@/components/MotionProvider";
 import { PipelineFlagProvider } from "@/components/PipelineFlag";
 import AppShell from "@/components/AppShell";
 import LiquidGlass from "@/components/LiquidGlass";
 import TaskDetail from "@/components/TaskDetail";
 import TodayHome from "@/components/today/TodayHome";
+import PlanCalendarPreview from "@/components/preview/PlanCalendarPreview";
 import CalendarPage from "@/app/(app)/calendar/page";
 import ProjectsPage from "@/app/(app)/projects/page";
 import SchoolPage from "@/app/(app)/projects/school/page";
 import SettingsPage from "@/app/(app)/settings/page";
 import AiPage from "@/app/(app)/ai/page";
 import { SAMPLE_STATE } from "@/lib/dev/sample-state";
+import { addDaysYMD, getUserToday } from "@/lib/time";
+
+function PreviewCalendarSample() {
+  const today = getUserToday(useUserTimezone());
+  return (
+    <section className="preview-card" style={{ maxWidth: 680, margin: "24px auto" }}>
+      <h1 className="preview-card-title">Robotics plan preview</h1>
+      <PlanCalendarPreview
+        ops={[
+          { op: "add_task", title: "Sketch the intake arm", date: today, time: "16:00", commitment: "flexible", plan_id: "p1", notes: "Make the first prototype easier to measure." },
+          { op: "add_task", title: "Test the servo travel", date: addDaysYMD(today, 3), time: "16:30", commitment: "flexible", plan_id: "p1" },
+          { op: "add_task", title: "Update the CAD model", date: addDaysYMD(today, 7), time: "17:00", commitment: "flexible", plan_id: "p1" },
+        ]}
+        tasks={SAMPLE_STATE.tasks}
+        plans={SAMPLE_STATE.plans}
+        weekStart={0}
+        today={today}
+      />
+    </section>
+  );
+}
 
 const PAGES: Record<string, React.ComponentType> = {
   today: TodayHome,
@@ -28,6 +50,7 @@ const PAGES: Record<string, React.ComponentType> = {
   school: SchoolPage,
   settings: SettingsPage,
   ai: AiPage,
+  preview: PreviewCalendarSample,
 };
 
 export default function AppPreview() {

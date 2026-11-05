@@ -4,6 +4,7 @@
 
 import { isDueOnly } from "./dates";
 import { addDaysYMD } from "./time";
+import { startOfPreviewWeek, type WeekStart } from "./month-grid";
 
 export type DayFilter = "today" | "tomorrow" | "week" | "all";
 export type TimeFilter = "morning" | "afternoon" | "evening" | "any";
@@ -33,30 +34,28 @@ export function timeOfDay(task: Pick<Filterable, "time" | "source">): Exclude<Ti
   return task.time <= "17:00" ? "afternoon" : "evening";
 }
 
-/** The Sunday ending the Monday-to-Sunday week `ymd` falls in. */
-export function endOfWeek(ymd: string): string {
-  const [y, m, d] = ymd.split("-").map(Number);
-  const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-  return addDaysYMD(ymd, weekday === 0 ? 0 : 7 - weekday);
+/** Last day of the week containing `ymd`. */
+export function endOfWeek(ymd: string, weekStart: WeekStart = 1): string {
+  return addDaysYMD(startOfPreviewWeek(ymd, weekStart), 6);
 }
 
 /** Overdue work counts as today and this week, so a filter never hides it.
  *  A task with no date only shows under All. */
-export function matchesDay(date: string, day: DayFilter, today: string): boolean {
+export function matchesDay(date: string, day: DayFilter, today: string, weekStart?: WeekStart): boolean {
   if (day === "all") return true;
   if (!date) return false;
   if (day === "today") return date <= today;
   if (day === "tomorrow") return date === addDaysYMD(today, 1);
-  return date <= endOfWeek(today);
+  return date <= endOfWeek(today, weekStart);
 }
 
 /** `of` reads the task out of whatever the list holds; order is kept. */
-export function applyTaskFilter<T>(items: T[], of: (item: T) => Filterable, filter: TaskFilter, today: string): { main: T[]; noTime: T[] } {
+export function applyTaskFilter<T>(items: T[], of: (item: T) => Filterable, filter: TaskFilter, today: string, weekStart?: WeekStart): { main: T[]; noTime: T[] } {
   const main: T[] = [];
   const noTime: T[] = [];
   for (const item of items) {
     const task = of(item);
-    if (!matchesDay(task.date, filter.day, today)) continue;
+    if (!matchesDay(task.date, filter.day, today, weekStart)) continue;
     const when = timeOfDay(task);
     if (when === null) {
       if (filter.time !== "any") continue;

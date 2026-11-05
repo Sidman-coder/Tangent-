@@ -4,9 +4,11 @@
 // outside the hours is pressed against the edge rather than dropped. Pure.
 
 import { formatTime12, isDueOnly } from "./dates";
+import { startOfPreviewWeek, weekLabel, type MonthGridItem, type WeekStart } from "./month-grid";
 import type { ChangeSet } from "./pipeline/changeset";
 import { schoolEndFromNotes } from "./schedule-slots";
 import { isOnboardingSchoolTask } from "./school-block";
+import { commitmentLabel } from "./task-kind";
 import { assignProjectColor, planSeriesColor, seriesColor, taskSeries } from "./task-colors";
 import { addDaysYMD } from "./time";
 import type { Plan, Task } from "./types";
@@ -35,6 +37,7 @@ export type WeekBlock = {
   color: string | null;
   when: string;
   why: string | null;
+  label?: string;
 };
 
 export type PreviewWeek = { start: string; label: string; days: { ymd: string; label: string }[]; blocks: WeekBlock[] };
@@ -107,8 +110,9 @@ function newBlocks(ops: Op[], tasks: Task[], plans: PlanColors): Placed[] {
           date,
           ...place,
           color: addedColor(op, plans),
-          when: op.time ? `${dayLabel(date)} · ${formatTime12(op.time)}` : dayLabel(date),
+          when: `${dayLabel(date)} · ${op.time ? formatTime12(op.time) : "Anytime"}`,
           why: whyLine(op.notes, op.startAction),
+          label: op.commitment ? commitmentLabel(op.commitment) : undefined,
         });
       }
     } else if (op.op === "move_task") {
@@ -152,14 +156,29 @@ function calendarBlocks(tasks: Task[], ops: Op[]): Placed[] {
   return out;
 }
 
+export function previewMonthItems(ops: Op[], tasks: Task[], plans: PlanColors): MonthGridItem[] {
+  const moved = new Set(ops.flatMap((op) => op.op === "move_task" ? [op.task_id] : []));
+  const fresh = newBlocks(ops, tasks, plans).map(({ key, date, title, when, why, color, label }): MonthGridItem => ({
+    key, date, title, kind: "new", when, why: why ?? undefined, color: color ?? undefined, label,
+  }));
+  const existing = tasks.filter((task) => !task.completed && task.date && !moved.has(task.id)).map((task): MonthGridItem => ({
+    key: task.id,
+    date: task.date,
+    title: task.title,
+    kind: "existing",
+    when: `${dayLabel(task.date)} · ${task.time && !isDueOnly(task) ? formatTime12(task.time) : "Anytime"}`,
+  }));
+  return [...fresh, ...existing];
+}
+
 /** The weeks the change touches, in order and with no gaps. The first holds
  *  the first new task, so that's where the preview opens. */
-export function previewWeeks(ops: Op[], tasks: Task[], plans: PlanColors = []): PreviewWeek[] {
+export function previewWeeks(ops: Op[], tasks: Task[], plans: PlanColors = [], selected?: { date: string; weekStart: WeekStart }): PreviewWeek[] {
   const fresh = newBlocks(ops, tasks, plans);
   if (fresh.length === 0) return [];
   const dates = fresh.map((b) => b.date).sort();
-  const first = mondayOf(dates[0]);
-  const lastStart = mondayOf(dates[dates.length - 1]);
+  const first = selected ? startOfPreviewWeek(selected.date, selected.weekStart) : mondayOf(dates[0]);
+  const lastStart = selected ? first : mondayOf(dates[dates.length - 1]);
   const others = calendarBlocks(tasks, ops);
   const weeks: PreviewWeek[] = [];
   for (let start = first; start <= lastStart && weeks.length < MAX_WEEKS; start = addDaysYMD(start, 7)) {
@@ -168,7 +187,7 @@ export function previewWeeks(ops: Op[], tasks: Task[], plans: PlanColors = []): 
     const inWeek = (b: Placed) => b.date >= start && b.date <= end;
     weeks.push({
       start,
-      label: `${shortDate(start)} – ${shortDate(end)}`,
+      label: selected ? weekLabel(start) : `${shortDate(start)} – ${shortDate(end)}`,
       days: Array.from({ length: 7 }, (_, i) => {
         const ymd = addDaysYMD(start, i);
         return { ymd, label: WEEKDAYS[parts(ymd).getUTCDay()] };

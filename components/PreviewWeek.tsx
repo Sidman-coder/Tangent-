@@ -22,7 +22,7 @@ function tipStyle(b: WeekBlock): React.CSSProperties {
   return top > 55 ? { ...side, bottom: `${100 - top + 1}%` } : { ...side, top: `${top + b.heightPct + 1}%` };
 }
 
-export default function PreviewWeek({ weeks }: { weeks: Week[] }) {
+export default function PreviewWeek({ weeks, selectedDate }: { weeks: Week[]; selectedDate?: string }) {
   const [wanted, setWanted] = useState(0);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   // Edits can take a week away.
@@ -34,7 +34,7 @@ export default function PreviewWeek({ weeks }: { weeks: Week[] }) {
 
   const blockProps = (b: WeekBlock) => ({
     type: "button" as const,
-    "aria-label": `${b.title}, ${b.when}${b.why ? `. ${b.why}` : ""}`,
+    "aria-label": `${b.title}, ${b.when}${b.label ? `. ${b.label}` : ""}${b.why ? `. ${b.why}` : ""}`,
     onMouseEnter: () => setActiveKey(b.key),
     onMouseLeave: () => setActiveKey(null),
     onFocus: () => setActiveKey(b.key),
@@ -60,7 +60,7 @@ export default function PreviewWeek({ weeks }: { weeks: Week[] }) {
       <div className="preview-week-frame">
         <div className="preview-week-head" aria-hidden="true">
           {week.days.map((d) => (
-            <span key={d.ymd}>{d.label}<b>{Number(d.ymd.slice(8))}</b></span>
+            <span key={d.ymd} className={d.ymd === selectedDate ? "is-selected" : undefined}>{d.label}<b>{Number(d.ymd.slice(8))}</b></span>
           ))}
         </div>
         {strip.length > 0 && (
@@ -102,6 +102,7 @@ export default function PreviewWeek({ weeks }: { weeks: Week[] }) {
             <div className="preview-week-tip" role="tooltip" style={tipStyle(active)}>
               <strong>{active.title}</strong>
               <span>{active.when}</span>
+              {active.label && <span>{active.label}</span>}
               {active.why && <span>{active.why}</span>}
             </div>
           )}

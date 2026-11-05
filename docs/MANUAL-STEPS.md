@@ -117,5 +117,6 @@ Dev, Preview and Production share one Supabase project. Back up the database bef
 
 1. `supabase/migrations/20261105000000_task_commitment_type.sql` adds the task commitment and overdue dismissal fields, then classifies unfinished tasks. Until applied, Today uses the same classification rules in code; dismissal lasts only for the current visit and a Type change cannot be saved.
 2. `supabase/migrations/20261105010000_project_color.sql` maps existing project colors to the new palette keys. The app can read old hex colors before this runs.
+3. `supabase/migrations/20261105020000_profile_week_start.sql` adds the calendar week start preference. The plan preview uses Sunday until the migration is applied or when there is no preference.
 
 On a test account, check the new `/` Today sections and `/capture` mic, including Undo for Done, Not today, Too big, overdue Dismiss, task Type, and project color. Check `/today` redirects to `/`. Repeat in light and dark themes on a phone, including the on-screen keyboard and bottom safe area. These checks need a real signed-in account and have not been verified against the shared Supabase project.

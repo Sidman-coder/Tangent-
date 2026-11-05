@@ -262,7 +262,7 @@ export default function CaptureHome() {
   );
   const allRows = useMemo(() => buildCaptureList(tasks, state?.plans ?? [], today), [tasks, state?.plans, today]);
   const [filter, setFilter] = useTaskFilter("capture", ALL_TASKS);
-  const filtered = useMemo(() => applyTaskFilter(allRows, rowTask, filter, today), [allRows, filter, today]);
+  const filtered = useMemo(() => applyTaskFilter(allRows, rowTask, filter, today, state?.user.weekStart ?? 0), [allRows, filter, today, state?.user.weekStart]);
   const rows = useMemo(() => [...filtered.main, ...filtered.noTime], [filtered]);
 
   const complete = useCallback(

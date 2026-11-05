@@ -138,3 +138,9 @@ Cleared as measurement artifacts, not bugs: the Browser pane was hidden, which s
 - Reviewed the inherited Phase A changes, the new task grouping and classification tests, and the migration fallback paths. `npm test` passed with 573 tests; `npx tsc --noEmit` passed after fixing three incomplete imports/expressions. `npm run build` passed outside the filesystem sandbox after its generated `.next` writes were denied in the sandbox.
 - Viewed Today at 390px and 1440px in both themes on `/dev/app/today`. The sections, input and navigation fit without horizontal scrolling. The sample route returns 401 for account APIs because it has no session, so its console is not clean; that route still needs API mocking for meaningful interaction checks. Signed-in saves, real email, phone safe areas, and Supabase behavior need the manual checks in `docs/MANUAL-STEPS.md`.
 - Phase A's code, build, and sample UI review are complete. The remaining audit findings stay assigned to Phases B–G; the sample route's 401 console noise and real account checks remain open.
+
+### Phase B — Plan preview (2026-11-05)
+
+- The plan preview opens to Month and supports Week, date navigation, and a mobile day sheet. Calendar and the preview use the stored week start when available.
+- Verified the seven-column sample preview at 390px and 1440px in light and dark themes without horizontal scrolling. On mobile, the day sheet showed new and existing tasks and opened the selected week. The development shell still makes unauthenticated requests that return 401.
+- `npm test` passed all 578 tests and `npm run build` passed. Signed-in confirmation and the week start migration still need the checks in `docs/MANUAL-STEPS.md`.

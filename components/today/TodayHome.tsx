@@ -171,8 +171,8 @@ export default function TodayHome() {
     const open = doable
       .filter((t) => !t.completed && (!t.date || t.date >= today || tracksCompletion(t)))
       .sort((a, b) => (!a.date !== !b.date ? (a.date ? -1 : 1) : a.date.localeCompare(b.date) || a.time.localeCompare(b.time)));
-    return applyTaskFilter(open, (t) => t, filter, today);
-  }, [doable, filter, today]);
+    return applyTaskFilter(open, (t) => t, filter, today, state?.user.weekStart ?? 0);
+  }, [doable, filter, today, state?.user.weekStart]);
 
   const displayName = state?.user.displayName?.trim() ?? "";
   const leftToday = groups.mustDo.length + groups.todaysPlan.length;

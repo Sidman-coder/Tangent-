@@ -41,8 +41,8 @@ const VIEWS: { id: CalView; label: string }[] = [
 const VIEW_KEY = "tangent-cal-view";
 const AGENDA_DAYS = 21;
 
-function startOfWeek(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - d.getDay());
+function startOfWeek(d: Date, firstDay: number): Date {
+  return addDays(d, -((d.getDay() - firstDay + 7) % 7));
 }
 
 function addDays(d: Date, n: number): Date {
@@ -52,9 +52,9 @@ function addDays(d: Date, n: number): Date {
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-function getMonthGrid(year: number, monthIndex: number): Date[] {
+function getMonthGrid(year: number, monthIndex: number, firstDay: number): Date[] {
   const first = new Date(year, monthIndex, 1);
-  const startPad = first.getDay();
+  const startPad = (first.getDay() - firstDay + 7) % 7;
   const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
   const cells: Date[] = [];
   for (let i = 0; i < startPad; i++) {
@@ -108,6 +108,7 @@ export default function CalendarPage() {
   const { state, refresh } = useAppState();
   const now = wallClockNow(useUserTimezone());
   const todayYmd = toYMD(now);
+  const firstDay = state?.user.weekStart ?? 0;
 
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
@@ -115,7 +116,8 @@ export default function CalendarPage() {
   const [view, setView] = useState<CalView>("month");
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(now));
+  const [weekAnchor, setWeekAnchor] = useState(now);
+  const weekStart = startOfWeek(weekAnchor, firstDay);
   const [agendaStart, setAgendaStart] = useState(() => new Date(now.getFullYear(), now.getMonth(), now.getDate()));
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   // Clicking one event opens just that event; clicking the date opens the day.
@@ -339,7 +341,7 @@ export default function CalendarPage() {
     [refresh]
   );
 
-  const cells = getMonthGrid(year, month);
+  const cells = getMonthGrid(year, month, firstDay);
 
   // Which way the last month change went, so the new month slides in from
   // the side you are travelling toward.
@@ -348,13 +350,13 @@ export default function CalendarPage() {
   const goToday = () => {
     const here = year * 12 + month; const there = now.getFullYear() * 12 + now.getMonth();
     setMonthDir(Math.sign(there - here)); setYear(now.getFullYear()); setMonth(now.getMonth());
-    setWeekStart(startOfWeek(now));
+    setWeekAnchor(now);
     setAgendaStart(new Date(now.getFullYear(), now.getMonth(), now.getDate()));
   };
   const step = (dir: -1 | 1) => {
     if (view === "month") { if (dir < 0) prevMonth(); else nextMonth(); return; }
     setMonthDir(dir);
-    if (view === "week") setWeekStart((w) => addDays(w, dir * 7));
+    if (view === "week") setWeekAnchor((w) => addDays(w, dir * 7));
     else setAgendaStart((a) => addDays(a, dir * AGENDA_DAYS));
   };
   const prevMonth = () => { setMonthDir(-1); if (month === 0) { setYear((y) => y - 1); setMonth(11); } else setMonth((mo) => mo - 1); };
@@ -452,7 +454,7 @@ export default function CalendarPage() {
     const d = new Date(`${ymd}T00:00:00`);
     setYear(d.getFullYear());
     setMonth(d.getMonth());
-    setWeekStart(startOfWeek(d));
+    setWeekAnchor(d);
     setSelectedDay(ymd);
   }, []);
 
@@ -612,7 +614,7 @@ export default function CalendarPage() {
       {view === "month" && (
       <section className="calendar-grid-shell">
           <div className="cal-weekday-row" aria-hidden="true">
-            {WEEKDAY_LABELS.map((d) => (
+            {[...WEEKDAY_LABELS.slice(firstDay), ...WEEKDAY_LABELS.slice(0, firstDay)].map((d) => (
               <div key={d} className="cal-weekday-label">
                 {d}
               </div>

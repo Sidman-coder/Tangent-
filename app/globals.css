@@ -9145,6 +9145,80 @@ body .gtk-sheet {
   border: 1px solid var(--line);
   border-radius: 999px;
 }
+
+.plan-month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+}
+.plan-month-weekday {
+  color: var(--muted);
+  text-align: center;
+  font-size: .7rem;
+  padding-block: 6px;
+}
+.plan-month-cell {
+  position: relative;
+  min-width: 0;
+  min-height: 76px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.plan-month-cell.is-today { border-color: var(--accent); }
+.plan-month-cell.is-outside { color: var(--muted); background: color-mix(in srgb, currentColor 5%, transparent); }
+.plan-month-day {
+  width: 100%;
+  min-height: 44px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  font-size: .8rem;
+  cursor: pointer;
+}
+.plan-month-items { display: flex; align-items: center; justify-content: center; gap: 3px; min-height: 12px; font-size: .6rem; }
+.plan-month-items i { width: 4px; height: 4px; border-radius: 50%; background: var(--muted); }
+.plan-month-step { border: 0; padding: 0; width: 22%; height: 12px; background: transparent; cursor: pointer; }
+.plan-month-step::before { content: ""; display: block; height: 5px; border-radius: 8px; background: var(--step-color); }
+.plan-month-tip {
+  display: none;
+  position: absolute;
+  z-index: 3;
+  inset-block-start: 100%;
+  inset-inline-start: 0;
+  width: min(200px, 60vw);
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  text-align: left;
+  font-size: .75rem;
+}
+.plan-month-cell:nth-child(7n) .plan-month-tip, .plan-month-cell:nth-child(7n - 1) .plan-month-tip { inset-inline: auto 0; }
+@media (hover: hover) {
+  .plan-month-step:hover .plan-month-tip, .plan-month-step:focus-visible .plan-month-tip { display: grid; gap: 4px; }
+}
+.preview-week-head .is-selected { outline: 1px solid var(--accent); outline-offset: -1px; border-radius: 5px; }
+.plan-day-sheet {
+  width: min(420px, calc(100% - 24px));
+  max-height: 70vh;
+  overflow: auto;
+  padding: 16px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+.plan-day-sheet::backdrop { background: rgb(0 0 0 / .45); }
+.plan-day-sheet ul { padding: 0; margin: 12px 0; list-style: none; }
+.plan-day-sheet li { display: grid; gap: 4px; padding-block: 8px; }
+.plan-day-sheet li span { color: var(--muted); font-size: .85rem; }
+@media (max-width: 599px) {
+  .plan-month-step { width: 7px; }
+  .plan-month-step::before { width: 6px; height: 6px; }
+  .plan-day-sheet { margin: auto auto max(12px, env(safe-area-inset-bottom)); }
+}
 .preview-week-toggle button {
   min-height: 28px;
   padding: 3px 12px;

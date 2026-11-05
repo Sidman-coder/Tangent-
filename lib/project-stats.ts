@@ -7,6 +7,7 @@
 
 import { splitCourse } from "./course";
 import { estimateMinutes } from "./load";
+import type { WeekStart } from "./month-grid";
 import { endOfWeek } from "./task-filters";
 import { addDaysYMD, daysBetweenYMD } from "./time";
 import type { Task } from "./types";
@@ -101,13 +102,12 @@ export function recommendedPace(tasks: StatTask[], today: string): string {
   return `About ${sessions} session${sessions === 1 ? "" : "s"} of ${length} min this week keeps you on track.`;
 }
 
-/** The next 4 weeks, as the calendar counts them: the first runs from today to
- *  Sunday and holds anything overdue, since that work is still to do. */
-export function workloadByWeek(tasks: StatTask[], today: string, weeks = 4): WeekLoad[] {
+/** The first week starts today and includes unfinished work from earlier days. */
+export function workloadByWeek(tasks: StatTask[], today: string, weeks = 4, weekStart?: WeekStart): WeekLoad[] {
   const open = tasks.filter((t) => !t.completed && t.date);
   const out: WeekLoad[] = [];
   let start = today;
-  let end = endOfWeek(today);
+  let end = endOfWeek(today, weekStart);
   for (let i = 0; i < weeks; i++) {
     const from = start;
     const to = end;

@@ -739,11 +739,13 @@ type ProfileRow = {
   day_view?: string | null;
   working_toward?: string | null;
   starting_intent?: string | null;
+  week_start?: number;
 };
 
 const LEGACY_PROFILE_COLUMNS =
   "display_name, email, is_high_school, onboarded_at, timezone, weekly_plan, last_voice_command, last_voice_response, context_summary, context_interactions, context_updated_at";
 const PROFILE_COLUMNS = `${LEGACY_PROFILE_COLUMNS}, help_focus, slip_point, day_view, working_toward, starting_intent`;
+const missingWeekStart = createColumnMemo();
 
 /** Postgres "undefined_column": the onboarding migration isn't applied yet. */
 function isMissingColumn(error: { code?: string; message: string }): boolean {
@@ -752,7 +754,16 @@ function isMissingColumn(error: { code?: string; message: string }): boolean {
 
 async function getProfileRow(where: string): Promise<ProfileRow> {
   const { db, userId } = ctx();
-  let { data, error } = await db.from("profiles").select(PROFILE_COLUMNS).eq("user_id", userId).maybeSingle();
+  const query = (columns: string) => db.from("profiles").select(columns).eq("user_id", userId).maybeSingle().overrideTypes<ProfileRow, { merge: false }>();
+  const includeWeekStart = !missingWeekStart.isMissing("week_start");
+  let { data, error } = await query(includeWeekStart ? `${PROFILE_COLUMNS}, week_start` : PROFILE_COLUMNS);
+  if (includeWeekStart && schemaErrorKind(error) === "missing_column") {
+    ({ data, error } = await query(PROFILE_COLUMNS));
+    if (!error) {
+      missingWeekStart.markMissing("week_start");
+      warnSchemaOnce("profiles.week_start", "profiles.week_start is missing; using Sunday as the first day of the week");
+    }
+  }
   // The migration must ship before this code, but if it hasn't, reading the
   // profile should not take the whole app down: answers read as unanswered
   // (default behavior) and only saving them fails.
@@ -762,7 +773,7 @@ async function getProfileRow(where: string): Promise<ProfileRow> {
   }
   if (error) fail(where, error);
   if (!data) throw new Error(`[store] ${where}: no profile for this student`);
-  return data as ProfileRow;
+  return data;
 }
 
 async function updateProfile(where: string, row: Record<string, unknown>): Promise<void> {
@@ -819,6 +830,7 @@ function userFromRow(r: ProfileRow): UserProfile {
     isHighSchool: r.is_high_school,
     onboardedAt: r.onboarded_at ? iso(r.onboarded_at) : null,
     timezone: isValidTimezone(r.timezone) ? r.timezone : DEFAULT_TIMEZONE,
+    weekStart: r.week_start === 1 || r.week_start === 6 ? r.week_start : 0,
     ...preferencesFrom({
       helpFocus: r.help_focus,
       slipPoint: r.slip_point,

@@ -106,6 +106,8 @@ export type UserProfile = {
   onboardedAt?: string | null;
   /** IANA timezone captured from the browser at onboarding. */
   timezone?: string;
+  /** First day of the calendar week: Sunday, Monday, or Saturday. */
+  weekStart?: 0 | 1 | 6;
   /** Onboarding answers (lib/onboarding.ts). null or missing means "not
    *  answered", and lib/personalize.ts keeps the default behavior. */
   helpFocus?: HelpFocus | null;

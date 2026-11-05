@@ -13,11 +13,11 @@ import { commitmentLabel } from "@/lib/task-kind";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeSet } from "@/lib/pipeline/changeset";
 import type { DraftEdit, PreviewPayload } from "@/lib/pipeline/draft";
-import { previewWeeks } from "@/lib/preview-week";
 import { receiptView } from "@/lib/pipeline/receipt";
-import PreviewWeek from "@/components/PreviewWeek";
+import PlanCalendarPreview from "@/components/preview/PlanCalendarPreview";
+import { getUserToday } from "@/lib/time";
 import HelpPlanBetter from "@/components/grill/HelpPlanBetter";
-import { useAppState } from "@/components/AppStateProvider";
+import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 
 type Phase = "draft" | "confirmed" | "discarded" | "undone";
 
@@ -56,6 +56,7 @@ const phaseOf = (status: unknown): Phase | null =>
 
 export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed, autoFocus = false, className, onSettled, onJustChatting, grill }: Props) {
   const { state } = useAppState();
+  const timezone = useUserTimezone();
   const [cs, setCs] = useState(changeSet);
   const [view, setView] = useState(preview);
   const [phase, setPhase] = useState<Phase>(phaseOf(changeSet.status) ?? "draft");
@@ -67,13 +68,7 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
   const [allOpen, setAllOpen] = useState(false);
   const [chatting, setChatting] = useState(false);
   const [expired, setExpired] = useState(false);
-  /** The mini week by default; a phone is too narrow for it to read first. */
-  const [layout, setLayout] = useState<"calendar" | "list">(() =>
-    typeof window !== "undefined" && window.matchMedia("(max-width: 599px)").matches ? "list" : "calendar"
-  );
-  const weeks = useMemo(() => previewWeeks(cs.ops, state?.tasks ?? [], state?.plans ?? []), [cs.ops, state?.tasks, state?.plans]);
-  // Editing happens on the list's rows.
-  const showWeek = layout === "calendar" && weeks.length > 0 && !editing;
+  const hasCalendar = useMemo(() => cs.ops.some((op) => op.op === "add_task" || op.op === "move_task"), [cs.ops]);
   const cardRef = useRef<HTMLDivElement>(null);
   const shownRef = useRef(false);
   const base = `/api/changesets/${encodeURIComponent(cs.id)}`;
@@ -275,18 +270,13 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
       </p>
       <p className="preview-card-title">{cs.summary}</p>
 
-      {weeks.length > 0 && !editing && (
-        <div className="preview-week-toggle" role="group" aria-label="Preview layout">
-          <button type="button" aria-pressed={layout === "calendar"} onClick={() => setLayout("calendar")}>Calendar</button>
-          <button type="button" aria-pressed={layout === "list"} onClick={() => setLayout("list")}>List</button>
-        </div>
-      )}
+      {hasCalendar && !editing && <PlanCalendarPreview ops={cs.ops} tasks={state?.tasks ?? []} plans={state?.plans ?? []} weekStart={state?.user.weekStart ?? 0} today={getUserToday(timezone)} />}
 
-      {showWeek ? <PreviewWeek weeks={weeks} /> : <ul className="preview-card-lines">
+      <ul className="preview-card-lines" hidden={hasCalendar && !editing && cs.ops.every((op) => op.op === "add_task" || op.op === "move_task" || op.op === "create_plan")}>
         {view.lines.map((line, i) => {
           const op = cs.ops[i];
           // A plan removal shows as its checkbox below, not as a line.
-          if (op?.op === "delete_plan") return null;
+          if (op?.op === "delete_plan" || (hasCalendar && !editing && (op?.op === "add_task" || op?.op === "move_task" || op?.op === "create_plan"))) return null;
           const movable = op && (op.op === "add_task" || op.op === "move_task");
           return (
             <li key={`${i}-${line}`}>
@@ -326,7 +316,7 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
             </li>
           );
         })}
-      </ul>}
+      </ul>
 
       {/* Master fix B6: several selected plans read as one group. */}
       {view.planRemovals && view.planRemovals.length > 1 && <p className="preview-card-muted">Also remove these plans</p>}

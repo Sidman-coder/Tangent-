@@ -5,6 +5,7 @@
 
 import { useMemo, useState } from "react";
 import { AlertCircle, CheckCircle2, Clock } from "lucide-react";
+import { useAppState } from "@/components/AppStateProvider";
 import { openTask } from "@/components/TaskDetail";
 import { splitCourse } from "@/lib/course";
 import {
@@ -45,6 +46,7 @@ function duration(minutes: number): string {
 }
 
 export default function ProjectStats({ tasks, today, school = false }: { tasks: StatTask[]; today: string; school?: boolean }) {
+  const weekStart = useAppState().state?.user.weekStart ?? 0;
   const stats = useMemo(() => {
     const open = tasks.filter((t) => !t.completed);
     return {
@@ -54,9 +56,9 @@ export default function ProjectStats({ tasks, today, school = false }: { tasks: 
       next: nextSteps(open),
       focus: school ? schoolFocus(tasks, today) : bottleneckStep(tasks, today),
       sentence: recommendedPace(tasks, today),
-      weeks: workloadByWeek(tasks, today),
+      weeks: workloadByWeek(tasks, today, 4, weekStart),
     };
-  }, [tasks, today, school]);
+  }, [tasks, today, school, weekStart]);
   const { progress, pace, deadline, next, focus, sentence, weeks } = stats;
   const label = (t: StatTask) => splitCourse(t).title;
   const PaceIcon = PACE_ICON[pace.status];
