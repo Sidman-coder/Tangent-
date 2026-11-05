@@ -99,13 +99,13 @@ const STEPS: Step[] = [
     body: "Ask Tangent from Home, or tap Ask on a task or project to talk about just that. Each keeps its own thread, and they all land here. Tangent already knows your schedule, classes and projects, so it won't ask what it can see.",
   },
   {
-    route: "/settings",
+    route: "/settings/context",
     target: ["#onboarding"],
     title: "Set Tangent up in Settings",
-    body: "Onboarding has this tour, Tangent's first questions about you, Grill me and your setup answers. Just below, Connections brings in Canvas, your Google, Apple or Outlook calendar, and notes from Notion, Docs or other AIs.",
+    body: "Getting to know you has this tour, Tangent's first questions about you, Grill me and your setup answers. Canvas and your Google, Apple or Outlook calendar live under Schedule.",
   },
   {
-    route: "/settings",
+    route: "/settings/context",
     target: ["#what-tangent-knows"],
     title: "What Tangent knows",
     body: "Everything Tangent has learned about you, in one place. Forget anything wrong, or tell it something new.",

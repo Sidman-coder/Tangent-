@@ -194,7 +194,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {desktop && <NotificationBell open={notifOpen} onOpenChange={setNotifOpen} placement="rail" />}
 
         <div className="rail-footer">
-          <Link href="/settings" className="rail-profile" aria-label="Open account settings">
+          <Link href="/settings/account" className="rail-profile" aria-label="Open account settings">
             <span className="rail-profile-avatar" aria-hidden="true">{profileInitial}</span>
             <span className="rail-profile-copy">
               <strong>{profileName || "Your workspace"}</strong>

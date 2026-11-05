@@ -230,7 +230,7 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
               Open project
             </Link>
           )}
-          <Link className="action-receipt-details" href={`/settings?activity=cs:${cs.id}#ai-activity`}>
+          <Link className="action-receipt-details" href={`/settings/activity?activity=${encodeURIComponent(`cs:${cs.id}`)}`}>
             Details
           </Link>
         </div>

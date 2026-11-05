@@ -39,6 +39,8 @@ import type {
 } from "./types";
 import { commitmentOf } from "./task-kind";
 import { createColumnMemo, schemaErrorKind, warnSchemaOnce } from "./schema-compat";
+import { parseNotificationPrefs, type NotificationPrefs } from "./settings/notification-prefs";
+import { EXPORT_TABLES, redactExportRow } from "./settings/data-export";
 import { assignProjectColor, projectSeries, type SeriesKey } from "./task-colors";
 import { parseChangeSet } from "./pipeline/changeset";
 import { undoStepsWith } from "./pipeline/undo-core";
@@ -822,6 +824,59 @@ export async function setCapacity(cap: Capacity): Promise<boolean> {
     return false;
   }
   return true;
+}
+
+/** Updates profile columns that a newer migration adds; false (and no error)
+ *  when a column isn't there yet. Columns are tried one at a time so one
+ *  missing column doesn't block the others. */
+async function updateProfileOptional(where: string, row: Record<string, unknown>): Promise<boolean> {
+  const { db, userId } = ctx();
+  let all = true;
+  for (const [column, value] of Object.entries(row)) {
+    const { error } = await db.from("profiles").update({ [column]: value }).eq("user_id", userId);
+    if (!error) continue;
+    if (schemaErrorKind(error) === "missing_column") {
+      warnSchemaOnce(`profiles.${column}`, `profiles.${column} is missing; apply the latest migrations`);
+      all = false;
+      continue;
+    }
+    fail(where, error);
+  }
+  return all;
+}
+
+/** First day of the week: 0 Sunday, 1 Monday, 6 Saturday. */
+export async function setWeekStart(day: 0 | 1 | 6): Promise<boolean> {
+  return updateProfileOptional("setWeekStart", { week_start: day });
+}
+
+/** Nudge times and quiet hours (migration 20261105050000); empty when the
+ *  column isn't there yet. */
+export async function getNotificationPrefs(): Promise<NotificationPrefs> {
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("profiles").select("notification_prefs").eq("user_id", userId).maybeSingle();
+  if (error || !data) return {};
+  return parseNotificationPrefs((data as { notification_prefs?: unknown }).notification_prefs);
+}
+
+export async function setNotificationPrefs(prefs: NotificationPrefs): Promise<boolean> {
+  return updateProfileOptional("setNotificationPrefs", { notification_prefs: parseNotificationPrefs(prefs) });
+}
+
+/** Every row the student owns, for "Export my data". Secrets are dropped
+ *  (redactExportRow); a table the database doesn't have yet is skipped. */
+export async function exportUserData(): Promise<Record<string, Record<string, unknown>[]>> {
+  const { db, userId } = ctx();
+  const out: Record<string, Record<string, unknown>[]> = {};
+  for (const table of EXPORT_TABLES) {
+    const { data, error } = await db.from(table).select("*").eq("user_id", userId).limit(5000);
+    if (error) {
+      if (schemaErrorKind(error) === "missing_table") continue;
+      fail(`exportUserData ${table}`, error);
+    }
+    out[table] = ((data ?? []) as Record<string, unknown>[]).map((row) => redactExportRow(table, row));
+  }
+  return out;
 }
 
 function userFromRow(r: ProfileRow): UserProfile {
@@ -2124,6 +2179,15 @@ export async function removeContextEntry(id: string): Promise<boolean> {
   return (data?.length ?? 0) > 0;
 }
 
+/** "Forget everything" in Settings: every remembered fact goes. Returns how
+ *  many were removed. */
+export async function clearContextEntries(): Promise<number> {
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("context_entries").delete().eq("user_id", userId).select("id");
+  if (error) fail("clearContextEntries", error);
+  return data?.length ?? 0;
+}
+
 export async function getContextAsString(): Promise<string> {
   const c = await getUserContext();
   const entries = c.entries
@@ -3023,6 +3087,11 @@ export async function resetUserData(): Promise<void> {
     const { error } = await db.from(table).delete().eq("user_id", userId);
     if (error) fail(`resetUserData ${table}`, error);
   }
+  // Newer tables: skipped quietly on a database that doesn't have them yet.
+  for (const table of ["change_sets", "ai_decisions", "context_slots", "grill_questions"]) {
+    const { error } = await db.from(table).delete().eq("user_id", userId);
+    if (error && schemaErrorKind(error) !== "missing_table") fail(`resetUserData ${table}`, error);
+  }
   const { error: calError } = await db
     .from("calendars")
     .delete()
@@ -3046,6 +3115,7 @@ export async function resetUserData(): Promise<void> {
     context_interactions: 0,
     context_updated_at: new Date().toISOString(),
   });
+  await updateProfileOptional("resetUserData prefs", { notification_prefs: {}, week_start: 0 });
   console.log("[store] resetUserData: done");
 }
 

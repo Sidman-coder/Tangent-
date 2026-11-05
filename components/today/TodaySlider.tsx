@@ -176,7 +176,7 @@ export default function TodaySlider({ glance, onGlance, plans, destination, onDe
                 <div className="today-from-row">
                   <span>Finish setting up ({setupLeft} left)</span>
                   <span className="today-from-actions">
-                    <Link href="/settings#onboarding" className="today-from-go">Open</Link>
+                    <Link href="/settings/context" className="today-from-go">Open</Link>
                     <button type="button" className="today-from-hide" aria-label="Hide Finish setting up" onClick={onHideSetup}>
                       <X size={14} aria-hidden="true" />
                     </button>

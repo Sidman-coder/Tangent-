@@ -10,6 +10,10 @@ import { useCallback, useEffect, useState } from "react";
 import type { ContextEntry } from "@/lib/types";
 import { GET_TO_KNOW_DONE_EVENT } from "@/components/GetToKnowYou";
 import { usePipelineV2 } from "@/components/PipelineFlag";
+import Link from "next/link";
+import Button from "@/components/ui/Button";
+import ConfirmPanel from "@/components/ui/ConfirmPanel";
+import FormMessage from "@/components/ui/FormMessage";
 
 const CATEGORY_LABEL: Record<ContextEntry["category"], string> = {
   goal: "Goals",
@@ -34,6 +38,9 @@ export default function WhatTangentKnows() {
   const [summary, setSummary] = useState("");
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirmingForget, setConfirmingForget] = useState(false);
+  const [forgetting, setForgetting] = useState(false);
+  const [note, setNote] = useState<{ tone: "success" | "error"; text: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -58,6 +65,16 @@ export default function WhatTangentKnows() {
     if (!(await post({ action: "forget", id }))) void load();
   };
 
+  const forgetAll = async () => {
+    setForgetting(true);
+    setNote(null);
+    const ok = await post({ action: "forget_all", confirm: "FORGET" });
+    setForgetting(false);
+    setConfirmingForget(false);
+    setNote(ok ? { tone: "success", text: "Tangent forgot everything it knew about you." } : { tone: "error", text: "Couldn't forget that. Try again." });
+    void load();
+  };
+
   const remember = async () => {
     const fact = draft.trim();
     if (!fact) return;
@@ -77,7 +94,7 @@ export default function WhatTangentKnows() {
         {v2 && (
           <>
             {" "}
-            To see what Tangent did, open <a href="#ai-activity">AI Activity</a>.
+            To see what Tangent did, open <Link href="/settings/activity">AI activity</Link>.
           </>
         )}
       </p>
@@ -130,7 +147,31 @@ export default function WhatTangentKnows() {
           Add
         </button>
       </form>
+      {(entries?.length ?? 0) > 0 || summary ? (
+        <div className={`settings-row${confirmingForget ? " is-stacked" : ""}`}>
+          <div className="settings-row-copy">
+            <strong>Forget everything</strong>
+            <span>Clears every fact above. Your tasks, projects and chats stay.</span>
+          </div>
+          {confirmingForget ? (
+            <ConfirmPanel
+              title="Forget everything Tangent knows?"
+              word="FORGET"
+              actionLabel="Forget everything"
+              busyLabel="Forgetting…"
+              busy={forgetting}
+              onCancel={() => setConfirmingForget(false)}
+              onConfirm={() => void forgetAll()}
+            >
+              <p>Tangent will plan without any of these facts until it learns them again. This can&apos;t be undone.</p>
+            </ConfirmPanel>
+          ) : (
+            <Button size="sm" variant="danger" onClick={() => setConfirmingForget(true)}>Forget everything</Button>
+          )}
+        </div>
+      ) : null}
       </div>
+      {note && <div className="settings-section-footer"><FormMessage tone={note.tone}>{note.text}</FormMessage></div>}
     </section>
   );
 }

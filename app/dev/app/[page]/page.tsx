@@ -2,7 +2,8 @@
 
 // Development-only: a page of the app inside the real shell, with sample data
 // (lib/dev/sample-state.ts), for design review without an account.
-// /dev/app/today, /dev/app/calendar, /dev/app/projects, /dev/app/school, /dev/app/settings,
+// /dev/app/today, /dev/app/calendar, /dev/app/projects, /dev/app/school, /dev/app/settings, /dev/app/settings-account (…-security, -schedule,
+// -notifications, -context, -activity, -data),
 // /dev/app/ai, /dev/app/preview, /dev/app/color, /dev/app/grill. 404s in production. API calls fail here (no session), so
 // anything loaded from the server shows its empty or error state.
 
@@ -23,6 +24,14 @@ import CalendarPage from "@/app/(app)/calendar/page";
 import ProjectsPage from "@/app/(app)/projects/page";
 import SchoolPage from "@/app/(app)/projects/school/page";
 import SettingsPage from "@/app/(app)/settings/page";
+import SettingsFrame from "@/components/settings/SettingsFrame";
+import AccountSettings from "@/app/(app)/settings/account/page";
+import SecuritySettingsPage from "@/app/(app)/settings/security/page";
+import ScheduleSettings from "@/app/(app)/settings/schedule/page";
+import NotificationSettings from "@/app/(app)/settings/notifications/page";
+import ContextSettings from "@/app/(app)/settings/context/page";
+import ActivitySettings from "@/app/(app)/settings/activity/page";
+import DataSettings from "@/app/(app)/settings/data/page";
 import AiPage from "@/app/(app)/ai/page";
 import { SAMPLE_STATE } from "@/lib/dev/sample-state";
 import { addDaysYMD, getUserToday } from "@/lib/time";
@@ -73,12 +82,26 @@ function GrillSample() {
   );
 }
 
+/** The settings layout doesn't apply under /dev, so each page gets the frame here. */
+function framed(Inner: React.ComponentType): React.ComponentType {
+  return function Framed() {
+    return <SettingsFrame><Inner /></SettingsFrame>;
+  };
+}
+
 const PAGES: Record<string, React.ComponentType> = {
   today: TodayHome,
   calendar: CalendarPage,
   projects: ProjectsPage,
   school: SchoolPage,
-  settings: SettingsPage,
+  settings: framed(SettingsPage),
+  "settings-account": framed(AccountSettings),
+  "settings-security": framed(SecuritySettingsPage),
+  "settings-schedule": framed(ScheduleSettings),
+  "settings-notifications": framed(NotificationSettings),
+  "settings-context": framed(ContextSettings),
+  "settings-activity": framed(ActivitySettings),
+  "settings-data": framed(DataSettings),
   ai: AiPage,
   preview: PreviewCalendarSample,
   color: ColorPickerSample,

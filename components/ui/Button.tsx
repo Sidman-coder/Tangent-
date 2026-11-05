@@ -1,6 +1,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
-export type ButtonVariant = "primary" | "secondary" | "quiet" | "danger";
+/** "quiet" is the old name for "ghost" and still works. */
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "quiet" | "danger";
 export type ButtonSize = "sm" | "md";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -25,7 +26,7 @@ export default function Button({
   return (
     <button
       {...props}
-      className={`ui-button ui-button--${variant} ui-button--${size}${variant === "primary" ? " lg lg-tint lg-interactive" : variant === "quiet" ? "" : " lg lg-interactive"} ${className}`.trim()}
+      className={`ui-button ui-button--${variant} ui-button--${size}${variant === "primary" ? " lg lg-tint lg-interactive" : variant === "ghost" ? "" : " lg lg-interactive"} ${className}`.trim()}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
     >

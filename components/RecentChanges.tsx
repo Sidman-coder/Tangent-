@@ -74,7 +74,7 @@ export default function RecentChanges() {
               <div key={r.id} className="cmdk-item">
                 <ActionReceipt actionId={r.id} label={`${r.summary} · ${changeTime(r.createdAt, new Date(), tz)}`} onUndone={() => void refresh()} />
                 {aiIds.has(r.id) && (
-                  <Link className="action-receipt-details" href={`/settings?activity=action:${r.id}#ai-activity`} onClick={() => setOpen(false)}>
+                  <Link className="action-receipt-details" href={`/settings/activity?activity=${encodeURIComponent(`action:${r.id}`)}`} onClick={() => setOpen(false)}>
                     Details
                   </Link>
                 )}

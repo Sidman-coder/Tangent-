@@ -1019,7 +1019,7 @@ export default function ChatPanel({ scope, openId = null, askOnOpen = null, onDo
           </div>
           <div className="tg-head-actions">
             {v2 && (
-              <Link href="/settings#ai-activity" className="tg-icon-btn" aria-label="AI activity" title="AI activity">
+              <Link href="/settings/activity" className="tg-icon-btn" aria-label="AI activity" title="AI activity">
                 <Clock size={17} strokeWidth={1.8} aria-hidden="true" />
               </Link>
             )}

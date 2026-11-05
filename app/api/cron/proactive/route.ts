@@ -3,7 +3,8 @@ import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import { runProactiveCheck } from "@/lib/proactive";
 import { pollPendingBriefBatch } from "@/lib/daily-brief";
 import { forEachCronUser } from "@/lib/cron-users";
-import { purgeOldDecisions } from "@/lib/store";
+import { getNotificationPrefs, getUserTimezone, purgeOldDecisions } from "@/lib/store";
+import { inQuietHours, localClock } from "@/lib/settings/notification-prefs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,6 +30,10 @@ export async function GET(request: Request) {
   }
   try {
     const results = await forEachCronUser("proactive", async () => {
+      // Quiet hours (Settings → Notifications): no new nudges; the next tick
+      // or the student's next visit catches up.
+      const quiet = inQuietHours(await getNotificationPrefs(), localClock(await getUserTimezone()));
+      if (quiet) return { ok: true, skipped: "quiet_hours" as const, briefPoll: await pollPendingBriefBatch() };
       const proactive = await runProactiveCheck("cron");
       const briefPoll = await pollPendingBriefBatch();
       return { ...proactive, briefPoll };

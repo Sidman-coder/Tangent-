@@ -5,6 +5,7 @@
 // context from another AI, Canvas, and the setup answers.
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { Check } from "lucide-react";
 import Button from "@/components/ui/Button";
 import GrillQueue from "@/components/settings/GrillQueue";
@@ -56,7 +57,7 @@ export default function OnboardingSection({
 
   return (
     <section id="onboarding" className="settings-group" aria-labelledby="onboarding-title">
-      <h2 id="onboarding-title" className="settings-group-title">Onboarding</h2>
+      <h2 id="onboarding-title" className="settings-group-title">Getting to know you</h2>
       <p className="settings-group-note">Everything Tangent needs to fit you. Come back to any of it whenever you like.</p>
       <div className="settings-card">
         <div className="settings-row">
@@ -86,12 +87,12 @@ export default function OnboardingSection({
         <div className="settings-row">
           <div className="settings-row-copy">
             <strong>Connect your apps</strong>
-            <span>Canvas, your calendars, Notion and other AIs, so Tangent starts out knowing your week.</span>
+            <span>Canvas and your calendars, so Tangent starts out knowing your week.</span>
             {canvasLoaded && <Status done={canvasConnected}>{canvasConnected ? "Canvas connected" : "Nothing connected yet"}</Status>}
           </div>
-          <Button size="sm" variant={canvasConnected ? "secondary" : "primary"} onClick={() => document.getElementById("connections")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+          <Link href="/settings/schedule" className={`ui-button ui-button--sm ${canvasConnected ? "ui-button--secondary lg lg-interactive" : "ui-button--primary lg lg-tint lg-interactive"}`}>
             Open
-          </Button>
+          </Link>
         </div>
 
         <div className="settings-row">

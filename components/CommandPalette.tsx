@@ -31,7 +31,7 @@ import { UNDO_TOAST_MS, openRecentChanges } from "@/lib/undo-events";
 /** Context actions (lib/context-actions.ts) plus "Undo recent change", which opens Recent changes. */
 type QuickAction = ContextAction | { label: string; detail?: string; kind: "recent"; value: string };
 const UNDO_RECENT: QuickAction = { label: "Undo recent change", kind: "recent", value: "" };
-const OPEN_AI_ACTIVITY: QuickAction = { label: "Open AI activity", kind: "navigate", value: "/settings#ai-activity" };
+const OPEN_AI_ACTIVITY: QuickAction = { label: "Open AI activity", kind: "navigate", value: "/settings/activity" };
 
 function cleanReply(text: string): string {
   if (!text) return "Done! Your request has been processed.";

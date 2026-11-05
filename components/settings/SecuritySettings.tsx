@@ -5,8 +5,9 @@
 // first time (or after forgetting it) needs a fresh 6-digit email code. The
 // link in that email lands back here with ?reset=1, and counts as the proof.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Button from "@/components/ui/Button";
+import ConfirmPanel from "@/components/ui/ConfirmPanel";
 import NewPasswordFields, { PasswordInput, newPasswordProblem } from "@/components/auth/PasswordFields";
 import { createClient } from "@/lib/supabase/client";
 import { amrFromAccessToken, hasPasswordFlag, signedInByEmailCodeRecently } from "@/lib/auth/password";
@@ -30,6 +31,9 @@ export default function SecuritySettings({ email }: { email: string }) {
   const [busy, setBusy] = useState<"send" | "save" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [confirmingSignOut, setConfirmingSignOut] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const signOutForm = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     const supabase = createClient();
@@ -74,7 +78,7 @@ export default function SecuritySettings({ email }: { email: string }) {
       const res = await fetch("/auth/recover", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, next: "/settings?reset=1#security" }),
+        body: JSON.stringify({ email, next: "/settings/security?reset=1" }),
       });
       const data = (await res.json().catch(() => ({ ok: false }))) as { ok: boolean; error?: string };
       if (!data.ok) setError(data.error ?? "Couldn't send the email. Try again.");
@@ -225,25 +229,32 @@ export default function SecuritySettings({ email }: { email: string }) {
           )}
         </div>
 
-        <div className="settings-row">
+        <div className={`settings-row${confirmingSignOut ? " is-stacked" : ""}`}>
           <div className="settings-row-copy">
             <strong>Sign out of all devices</strong>
             <span>Ends every Tangent session for your account, including this one.</span>
           </div>
-          <form
-            action="/auth/signout"
-            method="post"
-            onSubmit={(e) => {
-              if (!window.confirm("Sign out of Tangent on every device, including this one?")) {
-                e.preventDefault();
-                return;
-              }
-              clearLocalAppData();
-            }}
-          >
+          <form ref={signOutForm} action="/auth/signout" method="post" hidden>
             <input type="hidden" name="scope" value="global" />
-            <Button type="submit" size="sm">Sign out everywhere</Button>
           </form>
+          {confirmingSignOut ? (
+            <ConfirmPanel
+              title="Sign out everywhere?"
+              actionLabel="Sign out everywhere"
+              busyLabel="Signing out…"
+              busy={signingOut}
+              onCancel={() => setConfirmingSignOut(false)}
+              onConfirm={() => {
+                setSigningOut(true);
+                clearLocalAppData();
+                signOutForm.current?.submit();
+              }}
+            >
+              <p>Every phone, laptop and pen signed in to Tangent will need to sign in again, including this one. Nothing is deleted.</p>
+            </ConfirmPanel>
+          ) : (
+            <Button size="sm" onClick={() => setConfirmingSignOut(true)}>Sign out everywhere</Button>
+          )}
         </div>
       </div>
       {msg && <p className="settings-status" role="status">{msg}</p>}
