@@ -43,8 +43,12 @@ A concrete operation TANGENT proposes or performs after understanding a Capture,
 _Avoid_: Suggestion, automation when no operation occurs
 
 **Today**:
-The screen that shows the Student 1–3 steps for the day and the actions on them.
-_Avoid_: Dashboard, home, daily brief
+The home screen at `/`, with one capture input and three sections: Must do, Today's plan, and Coming up. Its flexible plan steps support Done, Not today, and Too big.
+_Avoid_: Dashboard, daily brief
+
+**Task commitment**:
+Whether a task is fixed, a reminder, or a flexible plan step. This is separate from the existing task `kind`, which describes the area of work.
+_Avoid_: Task kind when referring to whether a task can move
 
 **Push**:
 One suggested next step.

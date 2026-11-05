@@ -13,7 +13,7 @@ import { PipelineFlagProvider } from "@/components/PipelineFlag";
 import AppShell from "@/components/AppShell";
 import LiquidGlass from "@/components/LiquidGlass";
 import TaskDetail from "@/components/TaskDetail";
-import TodayPage from "@/app/(app)/today/page";
+import TodayHome from "@/components/today/TodayHome";
 import CalendarPage from "@/app/(app)/calendar/page";
 import ProjectsPage from "@/app/(app)/projects/page";
 import SchoolPage from "@/app/(app)/projects/school/page";
@@ -22,7 +22,7 @@ import AiPage from "@/app/(app)/ai/page";
 import { SAMPLE_STATE } from "@/lib/dev/sample-state";
 
 const PAGES: Record<string, React.ComponentType> = {
-  today: TodayPage,
+  today: TodayHome,
   calendar: CalendarPage,
   projects: ProjectsPage,
   school: SchoolPage,

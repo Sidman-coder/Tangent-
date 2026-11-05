@@ -154,7 +154,7 @@ export default function SortedCard({ outcome, freshSet, questionsPending, parked
         <p className="sorted-label">{outcome.kind === "error" || outcome.kind === "unsure" ? "Not added" : "Sorted"}</p>
         {outcome.kind === "saved" && (
           <m.div className="sorted-line" {...lineIn(0)}>
-            <i style={{ background: line?.color ?? "var(--cat-other)" }} aria-hidden="true" />
+            <i style={{ background: line?.color ?? "var(--series-neutral)" }} aria-hidden="true" />
             <b>{line?.title ?? outcome.summary}</b>
             <span>→ {outcome.where}</span>
           </m.div>

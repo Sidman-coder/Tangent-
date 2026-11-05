@@ -334,3 +334,34 @@
     font-size: 16px;
   }
 }
+
+/* The Send to choice, for the next send only. */
+.add-dest-chip {
+  flex: none;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 140px;
+  padding-left: 12px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--text);
+  font-size: 13px;
+}
+.add-dest-chip-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.add-dest-chip-clear {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-left: -8px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.add-dest-chip-clear:hover { color: var(--text); }
+.add-dest-chip-clear:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

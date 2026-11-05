@@ -54,6 +54,7 @@ type AddTaskOp = Extract<ChangeOp, { op: "add_task" }>;
 function newTask(op: AddTaskOp): Omit<Task, "id" | "planId"> {
   const t: Omit<Task, "id" | "planId"> = { title: op.title, date: op.date, time: op.time ?? "", completed: false };
   if (op.kind !== undefined) t.kind = op.kind;
+  if (op.commitment !== undefined) t.commitment = op.commitment;
   if (op.calendarId !== undefined) t.calendarId = op.calendarId;
   if (op.notes !== undefined) t.notes = op.notes;
   if (op.startAction !== undefined) t.startAction = op.startAction;
@@ -207,6 +208,7 @@ export async function applyChangeSetWith(store: ApplyStore, input: ChangeSet): P
           if (op.calendarId !== undefined) patch.calendarId = op.calendarId;
           if (op.notes !== undefined) patch.notes = op.notes;
           if (op.kind !== undefined) patch.kind = op.kind;
+          if (op.commitment !== undefined) patch.commitment = op.commitment;
           const keys = Object.keys(patch) as (keyof RestoredTaskFields)[];
           const step: Extract<BatchUndoStep, { type: "restore_task_fields" }> = { type: "restore_task_fields", taskId: task.id, fields: priorFields(task, keys) };
           steps.push(step);

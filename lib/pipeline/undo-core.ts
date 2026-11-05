@@ -45,6 +45,12 @@ export function fieldValues(task: Task, keys: (keyof RestoredTaskFields)[]): Res
       case "kind":
         out.kind = task.kind ?? null;
         break;
+      case "commitment":
+        out.commitment = task.commitment ?? null;
+        break;
+      case "overdueDismissedAt":
+        out.overdueDismissedAt = task.overdueDismissedAt ?? null;
+        break;
     }
   }
   return out;

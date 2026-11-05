@@ -24,7 +24,7 @@ import TaskFilterChips, { useTaskFilter } from "@/components/TaskFilterChips";
 import { holdReducer, initialHold, listeningWithoutPress, spaceStartsHold, type Hold, type HoldEvent } from "@/lib/hold-gesture";
 import { heardSomethingToAdd, soundsLikeATask } from "@/lib/voice-intent";
 import { putAsk } from "@/lib/ask-handoff";
-import { taskColor } from "@/lib/task-colors";
+import { planSeriesColor, seriesColor, taskSeries } from "@/lib/task-colors";
 import { toYMD } from "@/lib/dates";
 import { wallClockNow } from "@/lib/time";
 import { outcomeFromError, type CaptureOutcome } from "@/lib/capture-outcome";
@@ -89,14 +89,14 @@ export default function CaptureHome() {
   // route changes, so the hop into the app is one continuous motion.
   const [leaving, setLeaving] = useState(false);
   useEffect(() => {
-    router.prefetch("/today");
+    router.prefetch("/");
   }, [router]);
   const openApp = useCallback(
     (e: React.MouseEvent<HTMLAnchorElement>) => {
       if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
       e.preventDefault();
       setLeaving(true);
-      window.setTimeout(() => router.push("/today"), reduced ? 0 : 170);
+      window.setTimeout(() => router.push("/"), reduced ? 0 : 170);
     },
     [router, reduced]
   );
@@ -241,10 +241,10 @@ export default function CaptureHome() {
     };
   }, [dispatch]);
 
-  // The home-screen shortcut (/?capture=1, app/manifest.ts) opens listening.
+  // The home-screen shortcut (/capture?capture=1, app/manifest.ts) opens listening.
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("capture") !== "1") return;
-    window.history.replaceState(null, "", "/");
+    window.history.replaceState(null, "", "/capture");
     setOrigin(islandCentre());
     holdRef.current = { ...listeningWithoutPress, seq: holdRef.current.seq };
     setHold(holdRef.current);
@@ -320,9 +320,9 @@ export default function CaptureHome() {
     if (outcome?.kind !== "saved") return null;
     const task = outcome.taskId ? state?.tasks.find((t) => t.id === outcome.taskId) : undefined;
     const plan = outcome.planId ? state?.plans.find((p) => p.id === outcome.planId) : undefined;
-    if (task) return { title: task.title, color: taskColor(task) };
-    if (plan) return { title: plan.title, color: "var(--cat-ec)" };
-    return { title: words || outcome.summary, color: "var(--cat-other)" };
+    if (task) return { title: task.title, color: seriesColor(taskSeries(task, state?.plans ?? [])) };
+    if (plan) return { title: plan.title, color: planSeriesColor(plan) };
+    return { title: words || outcome.summary, color: seriesColor("neutral") };
   }, [outcome, state?.tasks, state?.plans, words]);
 
   const parkedSet = useMemo(() => {
@@ -355,7 +355,7 @@ export default function CaptureHome() {
       >
         <header className="capture-top">
           <span className="capture-wordmark">tangent</span>
-          <Link href="/today" className="capture-open-app" onClick={openApp}>Open app →</Link>
+          <Link href="/" className="capture-open-app" onClick={openApp}>Open app →</Link>
         </header>
 
         <h1 className="capture-title">To do</h1>
@@ -393,7 +393,7 @@ export default function CaptureHome() {
                       Start
                     </button>
                   )}
-                  <i className="capture-dot" style={{ background: taskColor(task) }} aria-hidden="true" />
+                  <i className="capture-dot" style={{ background: seriesColor(taskSeries(task, state?.plans ?? [])) }} aria-hidden="true" />
                 </m.li>,
               ])}
             </AnimatePresence>

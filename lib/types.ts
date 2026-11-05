@@ -2,6 +2,11 @@ import type { DayView, HelpFocus, SchoolHours, SlipPoint, WorkingToward } from "
 
 export type TaskKind = "school" | "academic-ec" | "side-ec" | "personal" | "commitment";
 
+/** What kind of promise a task is, which decides where it sits on Today.
+ *  Separate from TaskKind, which says what the work is about. Stored in
+ *  tasks.commitment_type; read it through commitmentOf (lib/task-kind.ts). */
+export type TaskCommitment = "fixed" | "reminder" | "flexible";
+
 export type RecurringConfig = {
   enabled: boolean;
   frequency: "daily" | "weekly" | "monthly" | "yearly";
@@ -26,6 +31,9 @@ export type Task = {
    * personal: default fallback
    */
   kind?: TaskKind;
+  commitment?: TaskCommitment;
+  /** When the student dismissed this overdue item from Must do. It stays on the calendar. */
+  overdueDismissedAt?: string | null;
   calendarId?: string | null;
   planId?: string | null;
   notes?: string;
@@ -221,6 +229,8 @@ export type RestoredTaskFields = {
   calendarId?: string | null;
   notes?: string | null;
   kind?: TaskKind | null;
+  commitment?: TaskCommitment | null;
+  overdueDismissedAt?: string | null;
 };
 
 /** One step that reverses part of an applied ChangeSet. Steps are recorded in
@@ -267,6 +277,10 @@ export type ActionSnapshot = {
   rescheduledMany?: { taskId: string; fromDate: string; fromTime: string }[];
   /** Everything an apply_changeset did, reversed step by step on undo. */
   batch?: { changeSetId: string; steps: BatchUndoStep[] };
+  /** Prior field values of tasks changed in place (Type selector, Dismiss). */
+  restoredFields?: { taskId: string; fields: RestoredTaskFields }[];
+  /** A project's color before the picker changed it. */
+  planColor?: { planId: string; from: string };
 };
 
 export interface ActionRecord {

@@ -13,10 +13,11 @@ import { ChevronLeft, MessageSquareText } from "lucide-react";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { openTask } from "@/components/TaskDetail";
 import { askAboutHref } from "@/lib/ask-handoff";
+import ColorPicker from "@/components/projects/ColorPicker";
 import ProjectStats from "@/components/projects/ProjectStats";
 import TaskRow from "@/components/ui/TaskRow";
 import { rowPresence, spring } from "@/lib/motion";
-import { taskColor } from "@/lib/task-colors";
+import { planSeriesColor } from "@/lib/task-colors";
 import { getUserToday } from "@/lib/time";
 import type { Task } from "@/lib/types";
 import "../projects.css";
@@ -89,7 +90,7 @@ export default function ProjectPage() {
   if (!plan) return <div className="project-page" aria-busy="true" />;
 
   return (
-    <div className="project-page" style={{ "--project-color": plan.color } as React.CSSProperties}>
+    <div className="project-page" style={{ "--project-color": planSeriesColor(plan) } as React.CSSProperties}>
       <Link href="/projects" className="project-back"><ChevronLeft size={16} aria-hidden="true" /> Projects</Link>
 
       <header className="project-head">
@@ -127,7 +128,7 @@ export default function ProjectPage() {
                 <TaskRow
                   task={task}
                   showDate
-                  kindColor={taskColor(task)}
+                  kindColor={planSeriesColor(plan)}
                   onComplete={() => void toggle(task)}
                   onOpen={() => openTask(task.id)}
                   actions={
@@ -150,7 +151,7 @@ export default function ProjectPage() {
           </summary>
           <div className="project-step-list">
             {done.map((task) => (
-              <TaskRow key={task.id} task={task} showDate kindColor={taskColor(task)} onComplete={() => void toggle(task)} />
+              <TaskRow key={task.id} task={task} showDate kindColor={planSeriesColor(plan)} onComplete={() => void toggle(task)} />
             ))}
           </div>
         </details>
@@ -190,6 +191,7 @@ export default function ProjectPage() {
             <MessageSquareText size={15} aria-hidden="true" />
             <span>Ask about this</span>
           </Link>
+          <ColorPicker planId={plan.id} color={plan.color} onChanged={() => void refresh()} />
           <ProjectStats tasks={steps} today={today} />
         </aside>
       </div>

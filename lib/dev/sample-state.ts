@@ -15,7 +15,7 @@ const t = (id: string, title: string, day: number, time: string, extra: Record<s
 
 export const SAMPLE_STATE = {
   user: { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, displayName: "Juann", onboardedAt: "2026-10-01", preferences: {} },
-  plans: [{ id: "p1", title: "Robotics", description: "Intake arm for regionals", taskIds: [], color: "#2f9e6e", createdAt: "", taskCount: 3 }],
+  plans: [{ id: "p1", title: "Robotics", description: "Intake arm for regionals", taskIds: [], color: "green", createdAt: "", taskCount: 3 }],
   tasks: [
     t("1", "Physics lab writeup", 1, "23:59", { source: "canvas", kind: "school" }),
     t("2", "Study for APUSH quiz", 0, "17:00", { kind: "personal", startAction: "Open chapter 7 and skim the headings" }),

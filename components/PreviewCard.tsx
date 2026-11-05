@@ -9,6 +9,7 @@
 // Keys while the card has focus: Enter confirms, Esc discards.
 
 import Link from "next/link";
+import { commitmentLabel } from "@/lib/task-kind";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeSet } from "@/lib/pipeline/changeset";
 import type { DraftEdit, PreviewPayload } from "@/lib/pipeline/draft";
@@ -70,7 +71,7 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
   const [layout, setLayout] = useState<"calendar" | "list">(() =>
     typeof window !== "undefined" && window.matchMedia("(max-width: 599px)").matches ? "list" : "calendar"
   );
-  const weeks = useMemo(() => previewWeeks(cs.ops, state?.tasks ?? []), [cs.ops, state?.tasks]);
+  const weeks = useMemo(() => previewWeeks(cs.ops, state?.tasks ?? [], state?.plans ?? []), [cs.ops, state?.tasks, state?.plans]);
   // Editing happens on the list's rows.
   const showWeek = layout === "calendar" && weeks.length > 0 && !editing;
   const cardRef = useRef<HTMLDivElement>(null);
@@ -290,6 +291,7 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
           return (
             <li key={`${i}-${line}`}>
               <span className="preview-card-line">{line}</span>
+                {op?.op === "add_task" && op.commitment && <span className="preview-card-kind">{commitmentLabel(op.commitment)}</span>}
               {editing && (
                 <span className="preview-card-edit">
                   {movable && (

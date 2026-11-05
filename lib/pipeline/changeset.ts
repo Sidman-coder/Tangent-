@@ -9,6 +9,7 @@
 
 import { z } from "zod";
 import { formatTime12 } from "../dates";
+import { commitmentLabel } from "../task-kind";
 
 // Same loose shape the store accepts (lib/store.ts isUuid).
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -20,6 +21,7 @@ const Hm = z.string().regex(/^(?:(?:[01]\d|2[0-3]):[0-5]\d)?$/, "must be HH:MM o
 const Title = z.string().trim().min(1).max(200);
 const Notes = z.string().max(2000);
 const Kind = z.enum(["school", "academic-ec", "side-ec", "personal", "commitment"]);
+const Commitment = z.enum(["fixed", "reminder", "flexible"]);
 /** A name for a plan created earlier in the same ChangeSet, e.g. "p1". */
 const Ref = z.string().regex(/^[a-z0-9_-]{1,32}$/i, "must be a short token");
 
@@ -51,6 +53,7 @@ export const AddTaskOp = z
     calendarId: z.string().min(1).max(64).optional(),
     notes: Notes.optional(),
     kind: Kind.optional(),
+    commitment: Commitment.optional(),
     /** The first concrete step, as the plan generator writes it. */
     startAction: z.string().trim().min(1).max(300).optional(),
     resources: z.array(z.strictObject({ label: z.string().trim().min(1).max(200), url: z.url().max(2000) })).max(10).optional(),
@@ -80,9 +83,10 @@ export const UpdateTaskOp = z
     calendarId: z.string().min(1).max(64).optional(),
     notes: Notes.optional(),
     kind: Kind.optional(),
+    commitment: Commitment.optional(),
   })
   .refine(
-    (o) => [o.title, o.date, o.time, o.calendarId, o.notes, o.kind].some((v) => v !== undefined),
+    (o) => [o.title, o.date, o.time, o.calendarId, o.notes, o.kind, o.commitment].some((v) => v !== undefined),
     "update_task needs at least one field to change"
   );
 
@@ -263,6 +267,7 @@ export function describeChangeSet(cs: Pick<ChangeSet, "ops">, known: DescribeCon
         else if (op.time !== undefined) parts.push(op.time ? `time ${formatTime12(op.time)}` : "clear time");
         if (op.calendarId !== undefined) parts.push("change calendar");
         if (op.kind !== undefined) parts.push(`mark as ${op.kind}`);
+        if (op.commitment !== undefined) parts.push(`make it a ${commitmentLabel(op.commitment).toLowerCase()}`);
         if (op.notes !== undefined) parts.push("edit notes");
         return `Change ${task(op.task_id)}: ${parts.join(", ")}`;
       }

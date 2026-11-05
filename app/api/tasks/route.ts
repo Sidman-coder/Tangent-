@@ -13,10 +13,11 @@ import {
   recordAction,
 } from "@/lib/store";
 import { getUserToday } from "@/lib/time";
-import type { TaskKind } from "@/lib/types";
+import type { TaskCommitment, TaskKind } from "@/lib/types";
 import { withUser } from "@/lib/request-context";
 
 const TASK_KINDS: TaskKind[] = ["school", "academic-ec", "side-ec", "personal", "commitment"];
+const COMMITMENTS: TaskCommitment[] = ["fixed", "reminder", "flexible"];
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,6 +39,7 @@ export const POST = withUser(async (req: Request) => {
       date?: string;
       time?: string;
       kind?: string;
+      commitment?: string;
       completed?: boolean;
       calendarId?: string | null;
       // recurring
@@ -145,6 +147,42 @@ export const POST = withUser(async (req: Request) => {
       if (!task) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
       console.log("[api/tasks] update_task success:", body.id);
       return NextResponse.json({ ok: true, task, state: await getAppState() });
+    }
+
+    // The Type selector in task detail. `saved` is false until the column exists.
+    if (action === "set_commitment") {
+      if (!body.id) return NextResponse.json({ ok: false, error: "id is required" }, { status: 400 });
+      if (!COMMITMENTS.includes(body.commitment as TaskCommitment)) {
+        return NextResponse.json({ ok: false, error: "commitment must be fixed|reminder|flexible" }, { status: 400 });
+      }
+      const commitment = body.commitment as TaskCommitment;
+      const before = await updateTask(body.id, {});
+      if (!before) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
+      const task = await updateTask(body.id, { commitment });
+      if (!task) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
+      const saved = task.commitment === commitment;
+      const record = saved
+        ? await recordAction("reschedule_task", `Changed the type of "${task.title}"`, {
+            restoredFields: [{ taskId: task.id, fields: { commitment: before.commitment ?? null } }],
+          })
+        : null;
+      return NextResponse.json({ ok: true, task, saved, actionId: record?.id ?? null, state: await getAppState() });
+    }
+
+    // Dismiss on an overdue row: hides it, without completing or deleting it.
+    if (action === "dismiss_overdue") {
+      if (!body.id) return NextResponse.json({ ok: false, error: "id is required" }, { status: 400 });
+      const before = await updateTask(body.id, {});
+      if (!before) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
+      const task = await updateTask(body.id, { overdueDismissedAt: new Date().toISOString() });
+      if (!task) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
+      const saved = Boolean(task.overdueDismissedAt);
+      const record = saved
+        ? await recordAction("reschedule_task", `Dismissed "${task.title}"`, {
+            restoredFields: [{ taskId: task.id, fields: { overdueDismissedAt: before.overdueDismissedAt ?? null } }],
+          })
+        : null;
+      return NextResponse.json({ ok: true, task, saved, actionId: record?.id ?? null, state: await getAppState() });
     }
 
     if (action === "add_recurring_task") {

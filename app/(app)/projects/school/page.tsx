@@ -12,7 +12,7 @@ import { openTask } from "@/components/TaskDetail";
 import TaskRow from "@/components/ui/TaskRow";
 import { withoutClearedCanvas } from "@/lib/canvas-clear";
 import { courseGroups } from "@/lib/project-stats";
-import { taskColor } from "@/lib/task-colors";
+import { seriesColor, taskSeries } from "@/lib/task-colors";
 import { getUserToday } from "@/lib/time";
 import type { Task } from "@/lib/types";
 import "../projects.css";
@@ -74,7 +74,7 @@ export default function SchoolPage() {
                 </div>
                 <div className="project-step-list">
                   {c.open.map((task) => (
-                    <TaskRow key={task.id} task={task} showDate kindColor={taskColor(task)} onComplete={() => void toggle(task)} onOpen={() => openTask(task.id)} />
+                    <TaskRow key={task.id} task={task} showDate kindColor={seriesColor(taskSeries(task, state?.plans ?? []))} onComplete={() => void toggle(task)} onOpen={() => openTask(task.id)} />
                   ))}
                 </div>
               </section>

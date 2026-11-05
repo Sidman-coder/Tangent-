@@ -14,12 +14,13 @@ import * as m from "motion/react-m";
 import { Check, MessageSquareText, Trash2, X } from "lucide-react";
 import ActionReceipt from "@/components/ActionReceipt";
 import { ASK_ABOUT_EVENT, askAboutHref, type AskAbout } from "@/lib/ask-handoff";
-import { useAppState } from "@/components/AppStateProvider";
+import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { splitCourse } from "@/lib/course";
 import { generateQuestions } from "@/lib/questions-client";
-import { formatTime12 } from "@/lib/dates";
-import { categoryLabel, taskColor } from "@/lib/task-colors";
-import type { Task } from "@/lib/types";
+import { categoryLabel, seriesColor, taskSeries } from "@/lib/task-colors";
+import { COMMITMENT_OPTIONS, commitmentOf } from "@/lib/task-kind";
+import { formatTaskDay, formatTaskWhen, taskEndTime } from "@/lib/task-when";
+import type { Task, TaskCommitment } from "@/lib/types";
 import "./task-detail.css";
 
 export const OPEN_TASK_EVENT = "tangent:open-task";
@@ -46,18 +47,16 @@ function noteParts(notes: string): { label: string; text: string }[] | null {
 /** Tasks already given steps this session, so a card never asks twice. */
 const planned = new Set<string>();
 
-function longDate(ymd: string): string {
-  const [y, mo, d] = ymd.split("-").map(Number);
-  return new Date(y, mo - 1, d).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
-}
 
 export default function TaskDetail() {
   const router = useRouter();
   const { state, refresh } = useAppState();
+  const timezone = useUserTimezone();
   const [taskId, setTaskId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [moreNotes, setMoreNotes] = useState(false);
   const [removed, setRemoved] = useState<{ actionId: string; title: string } | null>(null);
+  const [typeChange, setTypeChange] = useState<{ actionId: string } | { note: string } | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
   const task = taskId ? state?.tasks.find((t) => t.id === taskId) ?? null : null;
@@ -84,6 +83,7 @@ export default function TaskDetail() {
       const id = (e as CustomEvent<{ taskId: string }>).detail?.taskId;
       if (!id) return;
       setRemoved(null);
+      setTypeChange(null);
       setMoreNotes(false);
       setTaskId(id);
     };
@@ -108,7 +108,7 @@ export default function TaskDetail() {
 
   const post = async (body: unknown) => {
     const res = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    return (await res.json().catch(() => ({}))) as { ok?: boolean; actionId?: string };
+    return (await res.json().catch(() => ({}))) as { ok?: boolean; saved?: boolean; actionId?: string };
   };
 
   const toggle = async () => {
@@ -117,6 +117,16 @@ export default function TaskDetail() {
     await post({ action: "update_task", id: task.id, completed: !task.completed });
     await refresh();
     setBusy(false);
+  };
+
+  const changeType = async (commitment: TaskCommitment) => {
+    if (!task) return;
+    setBusy(true);
+    const data = await post({ action: "set_commitment", id: task.id, commitment });
+    setBusy(false);
+    if (data.saved && data.actionId) setTypeChange({ actionId: data.actionId });
+    else setTypeChange({ note: data.ok ? "This can't be saved yet." : "Couldn't change the type. Try again." });
+    void refresh();
   };
 
   const remove = async () => {
@@ -133,7 +143,7 @@ export default function TaskDetail() {
   const open = Boolean(taskId && (task || removed));
   const { title, course } = task ? splitCourse(task) : { title: removed?.title ?? "", course: null };
   const due = task ? task.source === "canvas" || task.time === "23:59" : false;
-  const color = task ? taskColor(task) : "var(--accent)";
+  const color = task ? seriesColor(taskSeries(task, state?.plans ?? [])) : "var(--accent)";
 
   return createPortal(
     <>
@@ -202,7 +212,9 @@ export default function TaskDetail() {
                           {title}
                         </h2>
                         <p className="td-when">
-                          {due ? `Due ${longDate(task.date)}` : `${longDate(task.date)}${task.time ? ` · ${formatTime12(task.time)}` : ""}`}
+                          {due
+                            ? `Due ${formatTaskDay(task.date, new Date(), timezone)}`
+                            : formatTaskWhen({ date: task.date, time: task.time, endTime: taskEndTime(task) }, new Date(), timezone)}
                         </p>
                       </div>
                     </div>
@@ -222,6 +234,32 @@ export default function TaskDetail() {
                         </Link>
                       )}
                     </div>
+
+                    <fieldset className="td-section td-type" disabled={busy}>
+                      <legend>Type</legend>
+                      <div className="td-type-options">
+                        {COMMITMENT_OPTIONS.map((option) => (
+                          <label key={option.value} className="td-type-option">
+                            <input
+                              type="radio"
+                              name="td-type"
+                              checked={commitmentOf(task) === option.value}
+                              onChange={() => void changeType(option.value)}
+                            />
+                            <span>{option.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                      {typeChange && "actionId" in typeChange && (
+                        <ActionReceipt
+                          key={typeChange.actionId}
+                          actionId={typeChange.actionId}
+                          label="Type changed"
+                          onUndone={() => void refresh()}
+                        />
+                      )}
+                      {typeChange && "note" in typeChange && <p role="status">{typeChange.note}</p>}
+                    </fieldset>
 
                     {task.startAction && (
                       <div className="td-section">

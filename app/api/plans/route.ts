@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getAllPlans, deletePlan, deleteTask, getAllTasks, getAppState, updatePlan } from "@/lib/store";
+import { getAllPlans, deletePlan, deleteTask, getAllTasks, getAppState, recordAction, updatePlan } from "@/lib/store";
+import { SERIES_KEYS, type SeriesKey } from "@/lib/task-colors";
 import { withUser } from "@/lib/request-context";
 
 export const runtime = "nodejs";
@@ -17,6 +18,7 @@ export const POST = withUser(async (req: Request) => {
       deleteTasks?: boolean;
       title?: string;
       description?: string;
+      color?: string;
     };
     const { action, planId } = body;
 
@@ -36,6 +38,22 @@ export const POST = withUser(async (req: Request) => {
       const plan = await updatePlan(planId, { title: body.title, description: body.description });
       if (!plan) return NextResponse.json({ ok: false, error: "Project not found" }, { status: 404 });
       return NextResponse.json({ ok: true, plan });
+    }
+
+    // Project page: palette swatches only.
+    if (action === "set_color") {
+      if (!planId) return NextResponse.json({ ok: false, error: "Missing planId" }, { status: 400 });
+      if (!SERIES_KEYS.includes(body.color as SeriesKey)) {
+        return NextResponse.json({ ok: false, error: "Pick a color from the palette" }, { status: 400 });
+      }
+      const before = (await getAllPlans()).find((p) => p.id === planId);
+      if (!before) return NextResponse.json({ ok: false, error: "Project not found" }, { status: 404 });
+      const plan = await updatePlan(planId, { color: body.color });
+      if (!plan) return NextResponse.json({ ok: false, error: "Project not found" }, { status: 404 });
+      const record = await recordAction("reschedule_task", `Changed the color of "${plan.title}"`, {
+        planColor: { planId, from: before.color },
+      });
+      return NextResponse.json({ ok: true, plan, actionId: record.id });
     }
 
     return NextResponse.json({ ok: false, error: "Unknown action" }, { status: 400 });

@@ -8,6 +8,7 @@
 // its notes when the AI wrote one, otherwise by what kind of thing it is).
 
 import { firstOpenTime, isSchoolBlock } from "./schedule-slots";
+import { commitmentOf } from "./task-kind";
 import { addDaysYMD, daysBetweenYMD, weekdayOf, WEEKDAY_NAMES } from "./time";
 import type { Task } from "./types";
 
@@ -99,6 +100,24 @@ export type Placement = {
   note?: string;
 };
 
+/** How new flexible steps are placed. Minutes in `preferredWindows` count from
+ *  midnight, in the student's own time. */
+export type PlacementRules = {
+  maxPerProjectPerDay: number;
+  bufferMinutes: number;
+  preferredWindows?: { start: number; end: number }[];
+};
+
+export const DEFAULT_PLACEMENT_RULES: PlacementRules = { maxPerProjectPerDay: 2, bufferMinutes: 15 };
+
+/** Said in the preview when the per-project limit had to give way. */
+export const PACKED_NOTE = "Packed because the deadline is close";
+
+/** Open flexible steps a project already has on a day. */
+function projectStepsOn(tasks: Task[], date: string, projectId: string): number {
+  return tasks.filter((t) => t.date === date && t.planId === projectId && !t.completed && commitmentOf(t) === "flexible").length;
+}
+
 /**
  * Where a new piece of work should go: the lightest day between `earliest`
  * and `latest` that still has room, leaning a little toward sooner so work
@@ -115,6 +134,9 @@ export function placeTask(
     earliest?: string;
     latest?: string;
     preferredDate?: string;
+    /** Left out, none of these apply: no per-project limit, no buffer. */
+    rules?: PlacementRules;
+    projectId?: string | null;
   }
 ): Placement | null {
   const minutes = opts.minutes ?? DEFAULT_TASK_MIN;
@@ -123,31 +145,37 @@ export function placeTask(
     opts.latest && opts.latest >= earliest ? opts.latest : addDaysYMD(earliest, DEFAULT_HORIZON_DAYS);
   const span = daysBetweenYMD(earliest, latest) + 1;
 
+  const { rules, projectId } = opts;
   const candidates = loadByDay(tasks, earliest, span, opts.cap).map((d, i) => {
     const after = d.minutes + minutes;
     return {
       ...d,
       fits: after <= d.capacity,
+      atLimit: Boolean(rules && projectId) && projectStepsOn(tasks, d.date, projectId as string) >= (rules as PlacementRules).maxPerProjectPerDay,
       // Fullness after adding it, plus a small nudge toward sooner.
       score: after / d.capacity + (0.25 * i) / Math.max(1, span),
     };
   });
 
   const timeOn = (date: string) =>
-    firstOpenTime(tasks, date, date === opts.now.date ? opts.now.minutes + LEAD_MIN : 0, minutes);
+    firstOpenTime(tasks, date, date === opts.now.date ? opts.now.minutes + LEAD_MIN : 0, minutes, rules);
 
   const preferred = opts.preferredDate ? candidates.find((c) => c.date === opts.preferredDate) : undefined;
-  if (preferred?.fits) {
+  if (preferred?.fits && !preferred.atLimit) {
     const time = timeOn(preferred.date);
     if (time) return { date: preferred.date, time };
   }
 
-  const ranked = [...candidates].sort((a, b) => Number(b.fits) - Number(a.fits) || a.score - b.score);
+  const ranked = [...candidates].sort(
+    (a, b) => Number(a.atLimit) - Number(b.atLimit) || Number(b.fits) - Number(a.fits) || a.score - b.score
+  );
   for (const c of ranked) {
     const time = timeOn(c.date);
     if (!time) continue;
     let note: string | undefined;
-    if (preferred && preferred.date !== c.date) {
+    if (c.atLimit) {
+      note = PACKED_NOTE;
+    } else if (preferred && preferred.date !== c.date) {
       note = `${dayName(preferred.date)} already has about ${formatMinutes(preferred.minutes)} planned, so I put it on ${dayName(c.date)}.`;
     } else if (!c.fits) {
       note = `Heads up: every day in range is already full, so ${dayName(c.date)} is now over your usual load.`;
@@ -166,21 +194,37 @@ export function placeTask(
 export function spreadSessions(
   tasks: Task[],
   dates: string[],
-  opts: { now: Now; minutes?: number; cap: Capacity; slack?: number }
-): { date: string; time: string }[] {
+  opts: { now: Now; minutes?: number; cap: Capacity; slack?: number; rules?: PlacementRules; projectId?: string | null }
+): { date: string; time: string; note?: string }[] {
   const minutes = opts.minutes ?? DEFAULT_TASK_MIN;
   const slack = opts.slack ?? 1;
   const working = [...tasks];
-  const out: { date: string; time: string }[] = [];
+  const out: { date: string; time: string; note?: string }[] = [];
   let floor = opts.now.date;
+  const lastDate = dates.length ? [...dates].sort().pop()! : floor;
+  // A new project has no id yet; its own sessions still count toward the limit.
+  const projectId = opts.rules ? (opts.projectId ?? "new-project") : null;
   for (const target of dates) {
     const earliest = [addDaysYMD(target, -slack), floor].sort().pop()!;
     const latest = [addDaysYMD(target, slack), earliest].sort().pop()!;
-    const placed = placeTask(working, { now: opts.now, minutes, cap: opts.cap, earliest, latest, preferredDate: target });
+    const base = { now: opts.now, minutes, cap: opts.cap, earliest, preferredDate: target, rules: opts.rules, projectId };
+    let placed = placeTask(working, { ...base, latest });
+    // Every nearby day is at the limit: look further before packing a day.
+    if (placed?.note === PACKED_NOTE && lastDate > latest) {
+      placed = placeTask(working, { ...base, latest: lastDate }) ?? placed;
+    }
     const date = placed?.date ?? (target < floor ? floor : target);
     const time = placed?.time ?? "16:00";
-    out.push({ date, time });
-    working.push({ id: `pending-${out.length}`, title: "", date, time, completed: false, notes: `TIME: ${minutes} min` });
+    out.push(placed?.note === PACKED_NOTE ? { date, time, note: PACKED_NOTE } : { date, time });
+    working.push({
+      id: `pending-${out.length}`,
+      title: "",
+      date,
+      time,
+      completed: false,
+      notes: `TIME: ${minutes} min`,
+      ...(projectId ? { planId: projectId, commitment: "flexible" as const } : {}),
+    });
     floor = addDaysYMD(date, 1);
   }
   return out;

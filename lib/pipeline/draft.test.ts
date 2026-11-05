@@ -23,6 +23,15 @@ type Resolve = (specifier: string, context: unknown, next: (s: string, c: unknow
 type Mod = typeof import("./draft");
 
 void (import("./draft") as Promise<Mod>).then(({ taskOp, planOps, buildDraft, summarize, editOps, parseDraftEdit }) => {
+  test("every drafted task gets a kind", () => {
+    const base = { title: "Read ch. 3", date: "2026-11-10", time: "16:00" };
+    assert.equal(taskOp(base, {}).commitment, "flexible");
+    assert.equal(taskOp({ ...base, title: "call grandma" }, {}).commitment, "reminder");
+    assert.equal(taskOp({ ...base, kind: "commitment" }, {}).commitment, "fixed");
+    assert.equal(taskOp({ ...base, title: "call grandma", commitment: "fixed" }, {}).commitment, "fixed");
+    assert.equal(taskOp({ ...base, title: "call grandma" }, { plan_ref: "p1" }).commitment, "flexible");
+  });
+
   const USER = "33333333-3333-4333-8333-000000000001";
   const ID = "44444444-4444-4444-8444-000000000001";
   const draft = (ops: ChangeOp[], assumptions?: string[]) =>
@@ -59,6 +68,7 @@ void (import("./draft") as Promise<Mod>).then(({ taskOp, planOps, buildDraft, su
       calendarId: "cal_school",
       notes: "pages 40-60",
       kind: "school",
+      commitment: "flexible",
       startAction: "Open the book",
       resources: [{ label: "Khan", url: "https://www.khanacademy.org/" }],
     });

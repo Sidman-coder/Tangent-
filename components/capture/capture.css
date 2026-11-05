@@ -151,7 +151,7 @@
   color: var(--text-2);
 }
 .capture-row.is-overdue .capture-row-sub {
-  color: var(--cat-canvas);
+  color: var(--danger-text);
 }
 .capture-dot {
   flex: none;
@@ -512,7 +512,7 @@
   padding: 0;
   border: 0;
   background: none;
-  color: var(--cat-canvas);
+  color: var(--danger-text);
   font: 600 14px var(--font-body);
   text-align: left;
   cursor: pointer;

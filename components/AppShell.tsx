@@ -28,7 +28,7 @@ import { useAppState } from "./AppStateProvider";
 // and everything else about a task belongs on the day it falls on. Tangents has
 // no link for now (v3: not part of the core loop); /tangents still works.
 const NAV_LINKS = [
-  { href: "/today", label: "Today", icon: Home },
+  { href: "/", label: "Today", icon: Home },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/ai", label: "Tangent AI", icon: MessageSquareText },
@@ -45,7 +45,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const from = lastPath.current;
     lastPath.current = pathname;
-    if (from !== "/" || pathname === "/") return;
+    if (from !== "/capture" || pathname === "/capture") return;
     setArriving(true);
     const t = window.setTimeout(() => setArriving(false), 700);
     return () => window.clearTimeout(t);
@@ -65,22 +65,27 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // the floating mic would be a second, identical choice, so it steps back.
   const [composerInView, setComposerInView] = useState(false);
   useEffect(() => {
-    // Re-find the element on every check: Today re-mounts when its data
-    // arrives, so an IntersectionObserver on the first node goes stale.
-    const check = () => {
+    // Today re-mounts its composer when its data arrives, so watch the page for
+    // a new node and move the observer onto it.
+    let watched: Element | null = null;
+    const seen = new IntersectionObserver(
+      ([entry]) => setComposerInView(Boolean(entry?.isIntersecting)),
+      { rootMargin: "-40px 0px" },
+    );
+    const find = () => {
       const el = document.querySelector("[data-primary-composer]");
-      if (!el) { setComposerInView(false); return; }
-      const r = el.getBoundingClientRect();
-      setComposerInView(r.bottom > 40 && r.top < window.innerHeight - 40);
+      if (el === watched) return;
+      if (watched) seen.unobserve(watched);
+      watched = el;
+      if (el) seen.observe(el);
+      else setComposerInView(false);
     };
-    check();
-    const timer = window.setInterval(check, 400);
-    window.addEventListener("scroll", check, { capture: true, passive: true });
-    window.addEventListener("resize", check);
+    find();
+    const page = new MutationObserver(find);
+    page.observe(document.body, { childList: true, subtree: true });
     return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("scroll", check, { capture: true });
-      window.removeEventListener("resize", check);
+      page.disconnect();
+      seen.disconnect();
     };
   }, [pathname]);
   const { state, refresh } = useAppState();
@@ -131,9 +136,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     />
   );
 
-  // The capture home (/) is the whole screen: just the list and the mic
+  // The capture home (/capture) is the whole screen: just the list and the mic
   // island. No rail, top bar, mobile nav or floating mic; "Open app" leads in.
-  if (pathname === "/") {
+  if (pathname === "/capture") {
     return (
       <div className="shell is-bare">
         {children}
@@ -155,7 +160,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         <nav className="rail-nav" aria-label="Primary">
           {NAV_LINKS.filter((l) => l.href !== "/settings").map(({ href, label, icon: Icon }) => {
-            const active = pathname.startsWith(href);
+            const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
             return (
               <Link
                 key={href}
@@ -217,7 +222,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       <nav className="mobile-nav lg" aria-label="Primary mobile navigation">
         {NAV_LINKS.map(({ href, label, icon: Icon }) => {
-          const active = pathname.startsWith(href);
+          const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
           return (
             <Link
               key={href}
@@ -236,7 +241,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           anywhere; it opens Add already listening. (⌘K opens it to type.)
           Not on Tangent AI, whose own composer mic talks to the chat. */}
       {/* On a phone the round mic is the way back to capture mode. */}
-      {!pathname.startsWith("/ai") && !desktop && <CaptureMic />}
+      {!pathname.startsWith("/ai") && !desktop && !composerInView && <CaptureMic />}
       {!pathname.startsWith("/ai") && desktop && !composerInView && (
         <button type="button" className="float-mic lg lg-interactive" onClick={openListening} aria-label="Say it to Tangent" title="Say it  ·  ⌘K to type">
           <Mic size={22} strokeWidth={2} aria-hidden="true" />

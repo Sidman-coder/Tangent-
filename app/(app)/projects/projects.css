@@ -394,3 +394,49 @@
   font-size: 13px;
   margin-right: 2px;
 }
+
+/* Project color: palette swatches only. */
+.project-color-picker {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.project-color-picker legend {
+  padding: 0;
+  margin-bottom: 4px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+.project-color-swatches { display: flex; flex-wrap: wrap; }
+.project-color-swatch {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+.project-color-swatch input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.project-color-swatch span {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+}
+.project-color-swatch input:checked + span {
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--text);
+}
+.project-color-swatch input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 5px;
+}
+.project-color-note { margin: 0; color: var(--text-2); font-size: 13px; }

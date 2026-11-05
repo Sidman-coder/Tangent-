@@ -3763,6 +3763,12 @@ textarea:focus {
   line-height: 1.45;
 }
 
+.preview-card-kind {
+  flex: none;
+  align-self: center;
+  font-size: 0.72rem;
+  color: var(--text-2);
+}
 .preview-card-line {
   flex: 1;
   min-width: 0;
@@ -8116,7 +8122,7 @@ textarea:focus {
   transition: background 0.14s ease, border-color 0.14s ease;
 }
 .ag-check:hover { background: color-mix(in srgb, var(--item) 14%, transparent); }
-.ag-item.is-done .ag-check { background: var(--item); border-color: var(--item); color: #fff; }
+.ag-item.is-done .ag-check { background: var(--item); border-color: var(--item); color: var(--surface); }
 .ag-time {
   flex: none;
   width: 64px;
@@ -8680,6 +8686,8 @@ h1, h2, h3, h4, h5, h6 {
 [data-theme="light"] {
   --font-display: "Bricolage Grotesque Variable", "Bricolage Grotesque", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
 
+  --danger-text: #a82a42;
+  --amber-text: #80560a;
   --bg: #f5f4f9;
   --bg-sunken: #f5f4f9;
   --surface: #ffffff;
@@ -8722,6 +8730,8 @@ h1, h2, h3, h4, h5, h6 {
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    --danger-text: #f2707f;
+    --amber-text: #e0b15c;
     --bg: #0e0d14;
     --bg-sunken: #0e0d14;
     --surface: #1a1824;
@@ -8757,6 +8767,8 @@ h1, h2, h3, h4, h5, h6 {
 
 [data-theme="dark"] {
   --font-display: "Bricolage Grotesque Variable", "Bricolage Grotesque", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+  --danger-text: #f2707f;
+  --amber-text: #e0b15c;
   --bg: #0e0d14;
   --bg-sunken: #0e0d14;
   --surface: #1a1824;

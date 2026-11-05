@@ -7,9 +7,9 @@ import { formatTime12, isDueOnly } from "./dates";
 import type { ChangeSet } from "./pipeline/changeset";
 import { schoolEndFromNotes } from "./schedule-slots";
 import { isOnboardingSchoolTask } from "./school-block";
-import { taskColor } from "./task-colors";
+import { assignProjectColor, planSeriesColor, seriesColor, taskSeries } from "./task-colors";
 import { addDaysYMD } from "./time";
-import type { Task } from "./types";
+import type { Plan, Task } from "./types";
 
 export const DAY_START = 7 * 60;
 export const DAY_END = 23 * 60;
@@ -85,8 +85,16 @@ export function opDates(op: Extract<Op, { op: "add_task" }>): string[] {
 }
 
 type Placed = Omit<WeekBlock, "dayIndex"> & { date: string };
+type PlanColors = readonly Pick<Plan, "id" | "color">[];
 
-function newBlocks(ops: Op[], tasks: Task[]): Placed[] {
+/** A new step's color: its project's, or the one its new project is about to get. */
+function addedColor(op: Extract<Op, { op: "add_task" }>, plans: PlanColors): string {
+  if (op.plan_id) return planSeriesColor({ id: op.plan_id, color: plans.find((p) => p.id === op.plan_id)?.color ?? "" });
+  if (op.plan_ref) return seriesColor(assignProjectColor(plans.map((p) => p.color)));
+  return seriesColor(op.commitment === "fixed" || op.commitment === "reminder" ? "personal" : "neutral");
+}
+
+function newBlocks(ops: Op[], tasks: Task[], plans: PlanColors): Placed[] {
   const out: Placed[] = [];
   ops.forEach((op, i) => {
     if (op.op === "add_task") {
@@ -98,7 +106,7 @@ function newBlocks(ops: Op[], tasks: Task[]): Placed[] {
           title: op.title,
           date,
           ...place,
-          color: taskColor({ kind: op.kind, title: op.title, calendarId: op.calendarId, source: undefined }),
+          color: addedColor(op, plans),
           when: op.time ? `${dayLabel(date)} · ${formatTime12(op.time)}` : dayLabel(date),
           why: whyLine(op.notes, op.startAction),
         });
@@ -113,7 +121,7 @@ function newBlocks(ops: Op[], tasks: Task[]): Placed[] {
         title: task?.title ?? "Moved task",
         date: op.date,
         ...place,
-        color: task ? taskColor(task) : "var(--accent)",
+        color: task ? seriesColor(taskSeries(task, plans)) : "var(--accent)",
         when: time ? `${dayLabel(op.date)} · ${formatTime12(time)}` : dayLabel(op.date),
         why: task ? whyLine(task.notes, task.startAction) : null,
       });
@@ -146,8 +154,8 @@ function calendarBlocks(tasks: Task[], ops: Op[]): Placed[] {
 
 /** The weeks the change touches, in order and with no gaps. The first holds
  *  the first new task, so that's where the preview opens. */
-export function previewWeeks(ops: Op[], tasks: Task[]): PreviewWeek[] {
-  const fresh = newBlocks(ops, tasks);
+export function previewWeeks(ops: Op[], tasks: Task[], plans: PlanColors = []): PreviewWeek[] {
+  const fresh = newBlocks(ops, tasks, plans);
   if (fresh.length === 0) return [];
   const dates = fresh.map((b) => b.date).sort();
   const first = mondayOf(dates[0]);

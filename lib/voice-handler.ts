@@ -25,6 +25,7 @@ import { needsAgentTools, runVoiceAgentToolLoop } from "@/lib/voice-agent-tools"
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import { generatePlan, isClearPlanRequest, planDates } from "@/lib/ai/plan";
 import { placeNewTask, spreadPlanDates } from "@/lib/spacing";
+import { PACKED_NOTE } from "@/lib/load";
 import { buildStudentContext } from "@/lib/ai/student-context";
 import { briefAssumptions, briefNotes, readBrief } from "@/lib/ai/plan-brief";
 import { resolvePlanTitle } from "@/lib/plan-title";
@@ -39,6 +40,7 @@ import { TANGENT_PIPELINE_V2 } from "@/lib/pipeline/flags";
 import { logEvent } from "@/lib/pipeline/events";
 import { respondWithDraft } from "@/lib/pipeline/drafting";
 import { planOps, taskOp } from "@/lib/pipeline/draft";
+import { classifyWithFallback } from "@/lib/task-kind-ai";
 import { closestQuestion } from "@/lib/closest-match";
 import { pickCandidates } from "@/lib/ai/pick-candidate";
 import { ASK_WHICH, bulkDeleteMessage, emptiedPlans, isFullClearRequest, parseDeleteScope, planBulkDelete, planRemovalNote, titleList } from "@/lib/delete-scope";
@@ -1064,6 +1066,7 @@ async function handleVoiceTextInner(
           if (shifted > 0) assumptions.push(`${shifted} session${shifted > 1 ? "s" : ""} moved off days that were already full`);
           // Master fix B4: say the spacing happened even when nothing had to move.
           else if (spaced) assumptions.push("Spaced around your busy days");
+          if (spaced?.some((s) => s.note)) assumptions.push(PACKED_NOTE);
           if (text.includes("\n\nMy answers to your questions:")) assumptions.push("Built from your answers above");
           if (brief) assumptions.push(...briefAssumptions(brief));
           const draftTasks = planTasks.map((t) => ({ ...t, resources: t.resources ?? [] }));
@@ -1515,6 +1518,8 @@ async function handleVoiceTextInner(
         console.warn("[api/voice] spacing failed, using the model's time:", e instanceof Error ? e.message : e);
         return { date, time, note: undefined };
       });
+      // Only a time the student said counts as fixed: placed.time may be Tangent's pick.
+      const { kind: commitment } = await classifyWithFallback({ title, hasFixedTime: Boolean(saidTime), source: "capture", projectId: opts.projectId });
       if (drafting) {
         return await respondWithDraft(
           {
@@ -1522,7 +1527,7 @@ async function handleVoiceTextInner(
             requestText: text,
             summary: "Add a task",
             intent: "add_task",
-            ops: [taskOp({ title, date: placed.date, time: placed.time, calendarId, notes, startAction, resources }, opts.projectId ? { plan_id: opts.projectId } : {})],
+            ops: [taskOp({ title, date: placed.date, time: placed.time, calendarId, notes, startAction, resources, commitment }, opts.projectId ? { plan_id: opts.projectId } : {})],
             assumptions: [
               ...(!saidTime ? ["No time given, so Tangent picked an open time"] : []),
               ...(!saidDay ? ["No day given, so Tangent picked the lightest day with room"] : []),
@@ -1535,7 +1540,7 @@ async function handleVoiceTextInner(
       // The title is the title. Every surface renders task.time next to it
       // (TaskRow, the Today hero, the calendar day panel), so folding the time
       // into the title printed it twice: "Study math (15:00)  3:00 PM".
-      const task = await addTask({ title, date: placed.date, time: placed.time, completed: false, calendarId, notes, startAction, resources, ...(opts.projectId ? { planId: opts.projectId } : {}) });
+      const task = await addTask({ title, date: placed.date, time: placed.time, completed: false, commitment, calendarId, notes, startAction, resources, ...(opts.projectId ? { planId: opts.projectId } : {}) });
       if (task.wasDuplicate) {
         const dupResponse = `Skipped 1 duplicate (already have "${task.title}" around ${task.time}).`;
         console.log("[api/voice] add_task skipped duplicate:", task.id);

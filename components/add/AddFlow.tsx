@@ -19,10 +19,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
-import { ArrowRight, ArrowUp, CalendarDays, FolderKanban, Mic, Orbit, MessageSquareText, Square } from "lucide-react";
+import { ArrowRight, ArrowUp, CalendarDays, FolderKanban, Mic, Orbit, MessageSquareText, Square, X } from "lucide-react";
 import ActionReceipt from "@/components/ActionReceipt";
 import PreviewCard from "@/components/PreviewCard";
 import { useAppState } from "@/components/AppStateProvider";
+import { planSeriesColor } from "@/lib/task-colors";
 import "@/components/console/clarify-card.css";
 import ClarifyCard, { type ClarifyAnswer, type ClarifyQuestion } from "@/components/console/ClarifyCard";
 import { useVoiceCapture } from "@/hooks/useVoiceCapture";
@@ -76,6 +77,9 @@ function dayName(ymd: string): string {
   return new Date(y, mo - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
 
+/** A destination chosen outside the box (Today's Send to), for the next send only. */
+export type AddDestination = { dest: Dest; projectId?: string; label?: string; color?: string };
+
 export default function AddFlow({
   variant = "hero",
   autoFocus = false,
@@ -85,6 +89,10 @@ export default function AddFlow({
   onTextChange,
   defaultDest,
   placeholder,
+  destination = null,
+  onDestinationClear,
+  onDestinationUsed,
+  hideDest = false,
 }: {
   variant?: "hero" | "sheet";
   autoFocus?: boolean;
@@ -98,6 +106,12 @@ export default function AddFlow({
   /** Where it goes until the student picks (Projects starts on Project). */
   defaultDest?: Dest;
   placeholder?: string;
+  /** Overrides everything else for the next send; shown as a chip in the box. */
+  destination?: AddDestination | null;
+  onDestinationClear?: () => void;
+  onDestinationUsed?: () => void;
+  /** Today picks the destination in its slider, so the "Goes to" row stays away. */
+  hideDest?: boolean;
 }) {
   const router = useRouter();
   const { state, refresh } = useAppState();
@@ -116,8 +130,9 @@ export default function AddFlow({
   const projects = useMemo(() => (state?.plans ?? []).slice(-6).reverse(), [state?.plans]);
   const route = routeAsk(text);
   // The student's tap wins; otherwise the words decide.
-  const dest: Dest = destChoice ?? defaultDest ?? (route === "project" ? "project" : "calendar");
-  const handoff = !destChoice && !defaultDest && (route === "question" || route === "goal") ? route : null;
+  const dest: Dest = destination?.dest ?? destChoice ?? defaultDest ?? (route === "project" ? "project" : "calendar");
+  const handoff = !destination && !destChoice && !defaultDest && (route === "question" || route === "goal") ? route : null;
+  const targetProject = destination?.projectId ?? projectId;
 
   useEffect(() => {
     if (autoFocus) window.setTimeout(() => inputRef.current?.focus(), 30);
@@ -177,6 +192,7 @@ export default function AddFlow({
       setPhase({ kind: "working", text: words });
       setHelp(null);
       const toProject = dest === "project";
+      onDestinationUsed?.();
       try {
         const res = await fetch("/api/chat", {
           method: "POST",
@@ -190,7 +206,7 @@ export default function AddFlow({
             capture: !toProject && !followUp,
             clarify: !followUp,
             answers: followUp?.answers ?? undefined,
-            ...(toProject ? (projectId === "new" ? { newProject: true } : { projectId }) : {}),
+            ...(toProject ? (targetProject === "new" ? { newProject: true } : { projectId: targetProject }) : {}),
           }),
         });
         const data = (await res.json()) as Reply;
@@ -224,7 +240,7 @@ export default function AddFlow({
         setPhase({ kind: "error", message: e instanceof Error ? e.message : "Something went wrong." });
       }
     },
-    [dest, finish, onClose, projectId, reset, router]
+    [dest, finish, onClose, onDestinationUsed, reset, router, targetProject]
   );
 
   const submit = useCallback(() => {
@@ -337,6 +353,15 @@ export default function AddFlow({
             if (e.key === "Escape" && listening) voice.cancelRecording();
           }}
         />
+        {destination && (
+          <span className="add-dest-chip">
+            {destination.color && <span className="add-project-dot" style={{ background: destination.color }} aria-hidden="true" />}
+            <span className="add-dest-chip-label">{destination.label ?? (destination.dest === "project" ? "Project" : "Calendar")}</span>
+            <button type="button" className="add-dest-chip-clear" aria-label="Send with Auto instead" onClick={onDestinationClear}>
+              <X size={14} aria-hidden="true" />
+            </button>
+          </span>
+        )}
         <button type="button" className="add-send" onClick={submit} disabled={busy || !text.trim()} aria-label="Add">
           {busy ? <span className="add-spinner" aria-hidden="true" /> : <ArrowUp size={18} strokeWidth={2.4} aria-hidden="true" />}
         </button>
@@ -344,7 +369,7 @@ export default function AddFlow({
 
       {/* Where it goes. Hidden until there's something to place. */}
       <AnimatePresence initial={false}>
-        {text.trim() && phase.kind !== "asking" && (
+        {text.trim() && phase.kind !== "asking" && (hint || !hideDest) && (
           <m.div
             key="dest"
             className="add-dest"
@@ -386,7 +411,7 @@ export default function AddFlow({
                         className={projectId === p.id ? "is-on" : ""}
                         onClick={() => setProjectId(p.id)}
                       >
-                        <span className="add-project-dot" style={{ background: p.color }} aria-hidden="true" />
+                        <span className="add-project-dot" style={{ background: planSeriesColor(p) }} aria-hidden="true" />
                         {p.title}
                       </button>
                     ))}

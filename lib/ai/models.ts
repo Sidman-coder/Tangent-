@@ -117,6 +117,8 @@ export const AI_TASKS = {
   /** Master fix B5: which of a question's options an unclear reply means, or
    *  none (lib/ai/pick-candidate.ts). Numbers in, numbers out. */
   pickCandidate: { feature: "classify", tier: "FAST", maxTokens: 150, temperature: 0, effort: "low" },
+  /** Fixed, reminder or flexible, when the rules aren't sure (lib/task-kind-ai.ts). */
+  classifyCommitment: { feature: "classify", tier: "FAST", maxTokens: 60, temperature: 0, effort: "low" },
   /** Pipeline V2: only the new tasks for an existing plan (lib/pipeline/extend-plan.ts). */
   extendPlan: { feature: "extendPlan", tier: "SMART", maxTokens: 1500, thinking: "disabled" },
 } as const satisfies Record<string, TaskConfig>;

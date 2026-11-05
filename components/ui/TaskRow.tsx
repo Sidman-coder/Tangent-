@@ -34,7 +34,7 @@ function shortDate(ymd: string): string {
 
 export default function TaskRow({
   task,
-  kindColor = "var(--cat-other)",
+  kindColor = "var(--series-neutral)",
   selected = false,
   expanded = false,
   onComplete,

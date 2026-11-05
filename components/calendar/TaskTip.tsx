@@ -89,7 +89,7 @@ export default function TaskTip({ tasks, plans, colorFor }: Props) {
       <p className="task-tip-when">{whenOf(task)}</p>
       <p className="task-tip-meta">
         <span className="task-tip-project">
-          <span className="task-tip-dot" style={{ background: plan?.color || colorFor(task) }} aria-hidden="true" />
+          <span className="task-tip-dot" style={{ background: colorFor(task) }} aria-hidden="true" />
           {plan ? plan.title : "No project"}
         </span>
         <span className="task-tip-cal">{school ? "School" : "No school"}</span>

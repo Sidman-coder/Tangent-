@@ -67,7 +67,7 @@ export async function extendPlan(planId: string, request: string, source: "typed
   const open = existing.filter((t) => !t.completed && t.date >= today);
   const lastDate = open.length ? open[open.length - 1].date : null;
   const targets = targetDates(out.tasks, today, lastDate);
-  const spaced = await spreadPlanDates(targets).catch((e) => {
+  const spaced: { date: string; time: string; note?: string }[] = await spreadPlanDates(targets, plan.id).catch((e) => {
     console.warn("[extend-plan] spacing failed, using target dates:", e instanceof Error ? e.message : e);
     return targets.map((date) => ({ date, time: "16:00" }));
   });
@@ -83,7 +83,7 @@ export async function extendPlan(planId: string, request: string, source: "typed
       intent: out.tasks.length ? "add_to_plan" : "change_plan",
       targetPlanId: plan.id,
       ops: extendOps(plan.id, placed, out.new_title, calendarId),
-      assumptions: spacingNotes(placed),
+      assumptions: [...spacingNotes(placed), ...Array.from(new Set(spaced.flatMap((s) => (s.note ? [s.note] : []))))],
     },
     { text: request, today, route: "extend_plan" }
   );

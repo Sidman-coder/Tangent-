@@ -32,7 +32,7 @@ export default function CaptureMic() {
         const timer = window.setTimeout(() => {
           held.current = true;
           press.current = null;
-          router.push("/?capture=1");
+          router.push("/capture?capture=1");
         }, LONG_PRESS_MS);
         press.current = { timer, x: e.clientX, y: e.clientY };
       }}
@@ -49,7 +49,7 @@ export default function CaptureMic() {
           held.current = false;
           return;
         }
-        router.push("/");
+        router.push("/capture");
       }}
     >
       <Mic size={22} strokeWidth={2} aria-hidden="true" />

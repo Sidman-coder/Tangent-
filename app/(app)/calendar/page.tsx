@@ -19,7 +19,7 @@ import SidePeek from "@/components/ui/SidePeek";
 import { handleResourceClick } from "@/lib/task-utils";
 import { toYMD, formatTime12 } from "@/lib/dates";
 import { isCanvasCleared } from "@/lib/canvas-clear";
-import { CATEGORY_COLOR, CATEGORY_LABEL, TASK_GROUPS, groupByCategory, taskColor, taskGroup, type TaskGroup } from "@/lib/task-colors";
+import { CATEGORY_COLOR, CATEGORY_LABEL, TASK_GROUPS, groupByCategory, planSeriesColor, seriesColor, taskGroup, taskSeries, type TaskGroup } from "@/lib/task-colors";
 import { isOnboardingSchoolTask } from "@/lib/school-block";
 import { baseTitle, useShortTitles } from "@/lib/short-titles";
 import "./calendar.css";
@@ -150,8 +150,8 @@ export default function CalendarPage() {
 
   const getTaskCategoryColor = useCallback(
     // Handled Canvas work (lib/canvas-clear) stays to look back on, in grey.
-    (t: Task): string => (isCanvasCleared(t, todayYmd) ? "var(--cat-other)" : taskColor(t)),
-    [todayYmd]
+    (t: Task): string => (isCanvasCleared(t, todayYmd) ? seriesColor("neutral") : seriesColor(taskSeries(t, plans))),
+    [todayYmd, plans]
   );
 
   const tasksForDay = useCallback((ymd: string): Task[] => {
@@ -563,7 +563,7 @@ export default function CalendarPage() {
       </section>
 
       {activePlan && (
-        <div className="plan-filter-banner" style={{ borderLeft: `3px solid ${activePlan.color}` }}>
+        <div className="plan-filter-banner" style={{ borderLeft: `3px solid ${planSeriesColor(activePlan)}` }}>
           <span>Filtering by plan: <strong>{activePlan.title}</strong></span>
           <Button variant="quiet" size="sm" onClick={() => setPlanFilter(null)} icon={<X size={14} aria-hidden="true" />}>Clear filter</Button>
         </div>
@@ -789,7 +789,11 @@ export default function CalendarPage() {
                       {plan && (
                         <button
                           className="plan-tag"
-                          style={{ background: plan.color + "22", color: plan.color, borderColor: plan.color + "44" }}
+                          style={{
+                            background: `color-mix(in srgb, ${planSeriesColor(plan)} 14%, transparent)`,
+                            color: "var(--text)",
+                            borderColor: `color-mix(in srgb, ${planSeriesColor(plan)} 44%, transparent)`,
+                          }}
                           onClick={() => { setPlanFilter(t.planId ?? null); setSelectedDay(null); }}
                           title={`Filter by plan: ${plan.title}`}
                         >

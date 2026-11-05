@@ -1,3 +1,4 @@
+import { SERIES_CSS } from "@/lib/task-colors";
 import type { Metadata, Viewport } from "next";
 // Body type is the platform's own (SF Pro on Apple devices); Tangent's display
 // face, Bricolage Grotesque, is kept for big titles — the brand's voice.
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" data-theme="light" suppressHydrationWarning>
       <head>
         <meta name="theme-color" content="#f5f4f9" />
+        <style dangerouslySetInnerHTML={{ __html: SERIES_CSS }} />
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
       </head>
       <body>

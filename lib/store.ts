@@ -37,6 +37,9 @@ import type {
   TangentStatus,
   BatchUndoStep,
 } from "./types";
+import { commitmentOf } from "./task-kind";
+import { createColumnMemo, schemaErrorKind, warnSchemaOnce } from "./schema-compat";
+import { assignProjectColor, projectSeries, type SeriesKey } from "./task-colors";
 import { parseChangeSet } from "./pipeline/changeset";
 import { undoStepsWith } from "./pipeline/undo-core";
 import type { ChangeSet, ChangeSetStatus } from "./pipeline/changeset";
@@ -110,10 +113,52 @@ type TaskRow = {
   source: Task["source"] | null;
   external_id: string | null;
   path_node_id: string | null;
+  /** Absent until migration 20261105000000 has run. */
+  commitment_type?: Task["commitment"] | null;
+  overdue_dismissed_at?: string | null;
 };
-
-const TASK_COLUMNS =
+const BASE_TASK_COLUMNS =
   "id, title, date, time, completed, kind, calendar_id, plan_id, notes, recurring, resources, start_action, source, external_id, path_node_id";
+
+// New code ships before its migration runs. A column named here that the
+// database doesn't have yet is left out of reads and writes until a re-check
+// finds it, and the app reads the missing value through the same rules
+// (commitmentOf in lib/task-kind.ts).
+const OPTIONAL_TASK_COLUMNS = ["commitment_type", "overdue_dismissed_at"] as const;
+const missingTaskColumns = createColumnMemo();
+
+function taskColumns(): string {
+  const present = OPTIONAL_TASK_COLUMNS.filter((c) => !missingTaskColumns.isMissing(c));
+  return present.length ? `${BASE_TASK_COLUMNS}, ${present.join(", ")}` : BASE_TASK_COLUMNS;
+}
+
+function withoutMissingColumns(row: Record<string, unknown>): Record<string, unknown> {
+  const kept = { ...row };
+  for (const c of OPTIONAL_TASK_COLUMNS) if (missingTaskColumns.isMissing(c)) delete kept[c];
+  return kept;
+}
+
+/** True when the error names an optional column, now remembered as missing. */
+function noteMissingTaskColumn(error: { code?: string; message?: string }): boolean {
+  if (schemaErrorKind(error) !== "missing_column") return false;
+  const named = OPTIONAL_TASK_COLUMNS.filter((c) => error.message?.includes(c) && !missingTaskColumns.isMissing(c));
+  for (const c of named) {
+    missingTaskColumns.markMissing(c);
+    warnSchemaOnce(`tasks.${c}`, `tasks.${c} is missing; apply the migrations in docs/MANUAL-STEPS.md`);
+  }
+  return named.length > 0;
+}
+
+/** Runs a tasks query, again without any optional column the database turns out
+ *  not to have. `run` must build its query afresh, from taskColumns() and
+ *  withoutMissingColumns(), every time it's called. */
+async function taskQuery<R extends { error: { code?: string; message: string } | null }>(run: () => PromiseLike<R>): Promise<R> {
+  let result = await run();
+  for (let i = 0; i < OPTIONAL_TASK_COLUMNS.length && result.error && noteMissingTaskColumn(result.error); i++) {
+    result = await run();
+  }
+  return result;
+}
 
 function taskFromRow(r: TaskRow): Task {
   const t: Task = { id: r.id, title: r.title, date: r.date, time: r.time, completed: r.completed };
@@ -126,6 +171,8 @@ function taskFromRow(r: TaskRow): Task {
   if (r.source) t.source = r.source;
   if (r.external_id !== null) t.externalId = r.external_id;
   if (r.path_node_id !== null) t.pathNodeId = r.path_node_id;
+  if (r.commitment_type) t.commitment = r.commitment_type;
+  if (r.overdue_dismissed_at) t.overdueDismissedAt = r.overdue_dismissed_at;
   // Old ids (Personal/Work/Study/custom) become School or No school here, so
   // nothing above the store sees them (lib/calendars.ts).
   t.calendarId = calendarGroupOf({ ...t, calendarId: r.calendar_id ?? undefined });
@@ -152,29 +199,36 @@ function taskPatchToRow(patch: Partial<Omit<Task, "id">>): Record<string, unknow
   if (has("startAction")) row.start_action = patch.startAction ?? null;
   if (has("source")) row.source = patch.source ?? null;
   if (has("externalId")) row.external_id = patch.externalId ?? null;
+  if (has("commitment")) row.commitment_type = patch.commitment ?? null;
+  if (has("overdueDismissedAt")) row.overdue_dismissed_at = patch.overdueDismissedAt ?? null;
   return row;
 }
 
 function newTaskRow(userId: string, task: Omit<Task, "id">): Record<string, unknown> {
-  return { user_id: userId, completed: false, ...taskPatchToRow({ ...task, time: task.time ?? "" }) };
+  // Every new task gets a kind here, so voice, AI, Canvas, calendar import and
+  // manual adds can't miss it. Capture may have already asked Haiku (lib/task-kind-ai.ts).
+  const commitment = commitmentOf({ ...task, id: "", time: task.time ?? "" } as Task);
+  return { user_id: userId, completed: false, ...taskPatchToRow({ ...task, time: task.time ?? "", commitment }) };
 }
 
 async function selectTasks(where: string, filter?: (q: any) => any): Promise<Task[]> {
   const { db, userId } = ctx();
-  const rows = await selectAll<TaskRow>(where, (from, to) => {
-    let q = db.from("tasks").select(TASK_COLUMNS).eq("user_id", userId);
-    if (filter) q = filter(q);
-    return q.order("date").order("time").order("created_at").order("id").range(from, to);
-  });
+  const rows = await selectAll<TaskRow>(where, (from, to) =>
+    taskQuery(() => {
+      let q = db.from("tasks").select(taskColumns()).eq("user_id", userId);
+      if (filter) q = filter(q);
+      return q.order("date").order("time").order("created_at").order("id").range(from, to);
+    }) as PromiseLike<{ data: TaskRow[] | null; error: { message: string } | null }>
+  );
   return rows.map(taskFromRow);
 }
 
 async function getTask(id: string): Promise<Task | null> {
   if (!isUuid(id)) return null;
   const { db, userId } = ctx();
-  const { data, error } = await db.from("tasks").select(TASK_COLUMNS).eq("user_id", userId).eq("id", id).maybeSingle();
+  const { data, error } = await taskQuery(() => db.from("tasks").select(taskColumns()).eq("user_id", userId).eq("id", id).maybeSingle());
   if (error) fail("getTask", error);
-  return data ? taskFromRow(data as TaskRow) : null;
+  return data ? taskFromRow(data as unknown as TaskRow) : null;
 }
 
 /** Deletes tasks by id (chunked) and returns how many were removed. */
@@ -238,7 +292,10 @@ async function restoreTasks(tasks: Task[]): Promise<void> {
     path_node_id: pathNodeFor(rest),
   }));
   for (let i = 0; i < rows.length; i += 500) {
-    const { error } = await db.from("tasks").upsert(rows.slice(i, i + 500), { onConflict: "id", ignoreDuplicates: true });
+    const chunk = rows.slice(i, i + 500);
+    const { error } = await taskQuery(() =>
+      db.from("tasks").upsert(chunk.map(withoutMissingColumns), { onConflict: "id", ignoreDuplicates: true })
+    );
     if (error) fail("restoreTasks", error);
   }
 }
@@ -307,9 +364,10 @@ export async function addTask(task: Omit<Task, "id">): Promise<Task & { wasDupli
     console.log("[store] addTask: skipped duplicate of", duplicate.id);
     return { ...duplicate, wasDuplicate: true };
   }
-  const { data, error } = await db.from("tasks").insert(newTaskRow(userId, task)).select(TASK_COLUMNS).single();
+  const row = newTaskRow(userId, task);
+  const { data, error } = await taskQuery(() => db.from("tasks").insert(withoutMissingColumns(row)).select(taskColumns()).single());
   if (error) fail("addTask", error);
-  const created = taskFromRow(data as TaskRow);
+  const created = taskFromRow(data as unknown as TaskRow);
   console.log("[store] addTask:", created.id, created.kind);
   return created;
 }
@@ -332,18 +390,17 @@ export async function addPathTask(
 ): Promise<{ task: Task } | { error: "already_scheduled" | "no_node" }> {
   if (!isUuid(pathNodeId)) return { error: "no_node" };
   const { db, userId } = ctx();
-  const { data, error } = await db
-    .from("tasks")
-    .insert({ ...newTaskRow(userId, task), path_node_id: pathNodeId })
-    .select(TASK_COLUMNS)
-    .single();
+  const row = { ...newTaskRow(userId, task), path_node_id: pathNodeId };
+  const { data, error } = await taskQuery(() =>
+    db.from("tasks").insert(withoutMissingColumns(row)).select(taskColumns()).single()
+  );
   if (error) {
     if (isActivePathStepConflict(error)) return { error: "already_scheduled" };
     // Foreign key: the node is gone (or was never this student's).
     if ((error as DbError).code === "23503") return { error: "no_node" };
     fail("addPathTask", error);
   }
-  const created = taskFromRow(data as TaskRow);
+  const created = taskFromRow(data as unknown as TaskRow);
   console.log("[store] addPathTask:", created.id, "node", pathNodeId);
   return { task: created };
 }
@@ -406,7 +463,12 @@ export async function updateTask(id: string, patch: Partial<Omit<Task, "id">>): 
   if (Object.keys(row).length === 0) return getTask(id);
   const { db, userId } = ctx();
   const run = (r: Record<string, unknown>) =>
-    db.from("tasks").update(r).eq("user_id", userId).eq("id", id).select(TASK_COLUMNS).maybeSingle();
+    taskQuery(() => {
+      const kept = withoutMissingColumns(r);
+      // Only an optional column was changing and the database doesn't have it yet.
+      if (Object.keys(kept).length === 0) return db.from("tasks").select(taskColumns()).eq("user_id", userId).eq("id", id).maybeSingle();
+      return db.from("tasks").update(kept).eq("user_id", userId).eq("id", id).select(taskColumns()).maybeSingle();
+    });
   let { data, error } = await run(row);
   // Reopening an old path step while its node already has another open step
   // would break the one-open-step rule. The reopened task stays, as an
@@ -420,7 +482,7 @@ export async function updateTask(id: string, patch: Partial<Omit<Task, "id">>): 
     console.log("[store] updateTask: not found", id);
     return null;
   }
-  return taskFromRow(data as TaskRow);
+  return taskFromRow(data as unknown as TaskRow);
 }
 
 // ─── Recurring task functions ─────────────────────────────────────────────────
@@ -471,10 +533,12 @@ export async function addRecurringTask(
   }
   for (let i = 0; i < toInsert.length; i += 500) {
     const chunk = toInsert.slice(i, i + 500);
-    const { data, error } = await db.from("tasks").insert(chunk.map((c) => c.row)).select(TASK_COLUMNS);
+    const { data, error } = await taskQuery(() =>
+      db.from("tasks").insert(chunk.map((c) => withoutMissingColumns(c.row))).select(taskColumns())
+    );
     if (error) fail("addRecurringTask", error);
     // Inserted rows come back in insert order.
-    (data as TaskRow[]).forEach((r, k) => {
+    (data as unknown as TaskRow[]).forEach((r, k) => {
       results[chunk[k].index] = taskFromRow(r);
     });
   }
@@ -847,18 +911,6 @@ export async function restartOnboarding(): Promise<void> {
 
 // ─── Plan functions ───────────────────────────────────────────────────────────
 
-// Tangent's palette, not stock Tailwind hues: iris, teal, lilac, mauve,
-// deep teal-blue and their mid tones. Plans made before this carry an old
-// colour in the database; planFromRow maps those onto this set.
-const PLAN_COLORS = ["#4b3a8c", "#1f8f86", "#8a78e0", "#b06a9a", "#3d6f8a", "#6b5bc4", "#3aa89f"];
-
-function brandColor(color: string, id: string): string {
-  if (PLAN_COLORS.includes(color.toLowerCase())) return color;
-  let h = 0;
-  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return PLAN_COLORS[h % PLAN_COLORS.length];
-}
-
 type PlanRow = {
   id: string;
   title: string;
@@ -875,7 +927,8 @@ function planFromRow(r: PlanRow): Plan {
     title: r.title,
     description: r.description,
     taskIds: [...(r.task_ids ?? [])],
-    color: brandColor(r.color ?? "", r.id),
+    // A key into the series palette. Old rows hold a hex until the migration runs.
+    color: projectSeries(r.color, r.id),
     createdAt: r.created_at,
     taskCount: r.task_count,
   };
@@ -891,11 +944,16 @@ export async function getAllPlans(): Promise<Plan[]> {
 
 export async function addPlan(plan: Omit<Plan, "id" | "createdAt" | "color">): Promise<Plan> {
   const { db, userId } = ctx();
-  const { count, error: countError } = await db
+  const { data: existing, error: colorError } = await db
     .from("plans")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId);
-  if (countError) fail("addPlan", countError);
+    .select("id, color")
+    .eq("user_id", userId)
+    .order("created_at")
+    .order("id");
+  if (colorError) fail("addPlan", colorError);
+  const usedColors: SeriesKey[] = ((existing ?? []) as { id: string; color: string | null }[]).map((p) =>
+    projectSeries(p.color, p.id)
+  );
   const { data, error } = await db
     .from("plans")
     .insert({
@@ -904,7 +962,7 @@ export async function addPlan(plan: Omit<Plan, "id" | "createdAt" | "color">): P
       description: plan.description ?? "",
       task_ids: plan.taskIds.filter(isUuid),
       task_count: plan.taskCount,
-      color: PLAN_COLORS[(count ?? 0) % PLAN_COLORS.length],
+      color: assignProjectColor(usedColors),
     })
     .select("*")
     .single();
@@ -945,13 +1003,13 @@ export async function addPlanWithTasks(
   const inserted: Task[] = [];
   for (let i = 0; i < fresh.length; i += 500) {
     const rows = fresh.slice(i, i + 500).map((t) => newTaskRow(userId, { ...t, planId: created.id }));
-    const { data, error } = await db.from("tasks").insert(rows).select(TASK_COLUMNS);
+    const { data, error } = await taskQuery(() => db.from("tasks").insert(rows.map(withoutMissingColumns)).select(taskColumns()));
     if (error) {
       // A failed insert writes nothing; don't leave an empty plan behind.
       await deletePlan(created.id).catch(() => {});
       fail("addPlanWithTasks", error);
     }
-    const batch = (data as TaskRow[]).map(taskFromRow);
+    const batch = (data as unknown as TaskRow[]).map(taskFromRow);
     inserted.push(...batch);
     hooks.onTasksInserted?.(batch);
   }
@@ -988,9 +1046,10 @@ export async function addTasksToPlan(
   }
   const inserted: Task[] = [];
   if (fresh.length > 0) {
-    const { data, error } = await db.from("tasks").insert(fresh.map((t) => newTaskRow(userId, { ...t, planId }))).select(TASK_COLUMNS);
+    const rows = fresh.map((t) => newTaskRow(userId, { ...t, planId }));
+    const { data, error } = await taskQuery(() => db.from("tasks").insert(rows.map(withoutMissingColumns)).select(taskColumns()));
     if (error) fail("addTasksToPlan", error);
-    inserted.push(...(data as TaskRow[]).map(taskFromRow));
+    inserted.push(...(data as unknown as TaskRow[]).map(taskFromRow));
   }
   const plan = planFromRow(planRow as PlanRow);
   const taskIds = [...plan.taskIds, ...inserted.map((t) => t.id)];
@@ -1392,7 +1451,7 @@ export async function deletePlan(planId: string): Promise<boolean> {
  *  and to put a plan back on undo. A blank title is ignored. */
 export async function updatePlan(
   planId: string,
-  patch: { title?: string; description?: string; taskIds?: string[]; taskCount?: number }
+  patch: { title?: string; description?: string; taskIds?: string[]; taskCount?: number; color?: string }
 ): Promise<Plan | null> {
   if (!isUuid(planId)) return null;
   const row: Record<string, unknown> = {};
@@ -1400,6 +1459,7 @@ export async function updatePlan(
   if (patch.description != null) row.description = patch.description.trim().slice(0, 1000);
   if (patch.taskIds) row.task_ids = patch.taskIds.filter(isUuid);
   if (patch.taskCount != null) row.task_count = patch.taskCount;
+  if (patch.color != null) row.color = patch.color;
   const { db, userId } = ctx();
   const query = db.from("plans");
   const { data, error } = await (Object.keys(row).length
@@ -2353,6 +2413,13 @@ async function applyUndo(record: ActionRecord): Promise<void> {
       for (const move of snap.rescheduledMany ?? []) {
         await updateTask(move.taskId, { date: move.fromDate, time: move.fromTime });
       }
+      // The Type selector, Dismiss and the project color picker record under this
+      // kind too: action_records.kind has a check constraint, so a new kind would
+      // need a migration before Undo worked.
+      for (const r of snap.restoredFields ?? []) {
+        await updateTask(r.taskId, r.fields as Partial<Omit<Task, "id">>);
+      }
+      if (snap.planColor) await updatePlan(snap.planColor.planId, { color: snap.planColor.from });
       break;
     }
     case "apply_changeset": {

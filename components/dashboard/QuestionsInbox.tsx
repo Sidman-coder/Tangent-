@@ -15,10 +15,17 @@ import { answerQuestions, dismissQuestions, type QuestionSet } from "@/lib/quest
 import { spring } from "@/lib/motion";
 import "./questions-inbox.css";
 
-type Props = { sets: QuestionSet[]; grill?: GrillItem[]; onChanged: () => void };
+type Props = {
+  sets: QuestionSet[];
+  grill?: GrillItem[];
+  onChanged: () => void;
+  defaultOpen?: boolean;
+  /** Today hides this until the slider's Answer asks for it. */
+  onClose?: () => void;
+};
 
-export default function QuestionsInbox({ sets, grill = [], onChanged }: Props) {
-  const [open, setOpen] = useState(false);
+export default function QuestionsInbox({ sets, grill = [], onChanged, defaultOpen = false, onClose }: Props) {
+  const [open, setOpen] = useState(defaultOpen);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ summary: string; actionId?: string } | null>(null);
 
@@ -44,7 +51,8 @@ export default function QuestionsInbox({ sets, grill = [], onChanged }: Props) {
         className="today-questions-head"
         aria-expanded={open}
         onClick={() => {
-          setOpen((o) => !o);
+          if (open) onClose?.();
+          setOpen(!open);
           setResult(null);
         }}
       >

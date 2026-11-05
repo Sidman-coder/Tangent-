@@ -6,6 +6,8 @@
 
 import { parseChangeSet, AddTaskOp, type ChangeOp, type ChangeSet, type Intent } from "./changeset";
 import { cleanTitle } from "../quick-add";
+import { CLASSIFY_CONFIDENCE_FLOOR, classifyTaskKind } from "../task-kind";
+import type { TaskCommitment } from "../types";
 
 /** A task as the plan generator or the single-task command returns it. */
 export type DraftTask = {
@@ -15,6 +17,8 @@ export type DraftTask = {
   calendarId?: string | null;
   notes?: string;
   kind?: string;
+  /** Fixed, reminder or flexible, when the caller already knows. */
+  commitment?: TaskCommitment;
   startAction?: string;
   resources?: ReadonlyArray<{ label: string; url: string }>;
   /** A recurring task: `date` is the first one (master fix B1). */
@@ -26,6 +30,17 @@ type AddTask = Extract<ChangeOp, { op: "add_task" }>;
 const clip = (s: string, max: number) => (s.length > max ? s.slice(0, max - 1).trimEnd() + "…" : s);
 const HM_RE = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The kind a draft shows and saves. A time here doesn't count as fixed: the
+ *  plan generator and the spacing brain pick times too. Callers that know the
+ *  student said one classify first and pass the answer. */
+function draftCommitment(t: DraftTask, link: { plan_ref?: string; plan_id?: string }): TaskCommitment {
+  if (t.commitment) return t.commitment;
+  if (link.plan_ref || link.plan_id) return "flexible";
+  if (t.kind === "commitment") return "fixed";
+  const rules = classifyTaskKind({ title: t.title, hasFixedTime: false, source: "capture" });
+  return rules.confidence >= CLASSIFY_CONFIDENCE_FLOOR ? rules.kind : "flexible";
+}
 
 /**
  * One add_task op from an AI task. Fields the schema would reject are trimmed
@@ -39,6 +54,7 @@ export function taskOp(t: DraftTask, link: { plan_ref?: string; plan_id?: string
   const notes = t.notes?.trim();
   if (notes) op.notes = clip(notes, 2000);
   if (t.kind && ["school", "academic-ec", "side-ec", "personal", "commitment"].includes(t.kind)) op.kind = t.kind as AddTask["kind"];
+  op.commitment = draftCommitment(t, link);
   const start = t.startAction?.trim();
   if (start) op.startAction = clip(start, 300);
   const resources = (t.resources ?? [])

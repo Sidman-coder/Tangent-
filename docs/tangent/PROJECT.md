@@ -1,6 +1,6 @@
 # TANGENT Project
 
-Last reconciled: 2026-11-03
+Last reconciled: 2026-11-05
 
 ## Identity
 
@@ -16,9 +16,9 @@ Last reconciled: 2026-11-03
 
 TANGENT is three screens:
 
-1. **Capture:** mic and typed input, with a to-do list sorted by project and priority.
+1. **Capture:** mic and typed input on Today, with a separate capture mode at `/capture`.
 2. **Plan:** 2–3 questions, then small 10–30 minute steps with a short "why", placed around School Blocks, Canvas deadlines, and busy days. Every plan goes through preview, confirm, and undo.
-3. **Today:** 1–3 steps a day with Done, Not today, and Too big; an automatic re-plan on a miss; and a Fresh start button.
+3. **Today:** the home screen at `/`, with Must do, Today's plan, and Coming up. Flexible steps support Done, Not today, and Too big; missed work can be re-planned or given a Fresh start.
 
 **AI surfaces after the v3 build:** AddFlow for adding or planning, and one Ask Tangent chat for questions.
 
@@ -42,7 +42,7 @@ The product is not an AI counselor, therapy product, family surveillance system,
 
 ## Current software state
 
-**v3 build status (2026-11-03, branch `v3-core-loop`, not pushed):** Phases 0–3 are built. `npm run build` passes and `npm test` has 468 passing, 0 failing. Steps only a person can do are in [MANUAL-STEPS](../MANUAL-STEPS.md). The features below haven't been run end to end with a signed-in account, a real microphone or real Canvas data.
+**v3 build status (2026-11-05, branch `v3-core-loop`, not pushed):** Phases 0–3 and Round 2 Phase A are built. Phase A adds Today's home layout, task commitments, and project colors. The current branch has 573 passing tests and a successful production build. Steps only a person can do are in [MANUAL-STEPS](../MANUAL-STEPS.md). The features below haven't been run end to end with a signed-in account, a real microphone or real Canvas data.
 
 - **Built, not yet tested signed in: Today's daily loop.** 1-3 steps with Done, Not today and Too big, the automatic re-plan on a miss, and Fresh start are in the code. Their server actions haven't run against a real account yet.
 - **Not built: anything from the December roadmap.** That covers billing, study buddy and the share card.
@@ -60,9 +60,9 @@ The repository is a Next.js 14 and TypeScript application. Current code and user
 - The application includes task, calendar, AI-console, settings, daily-brief, notification, planning, rescheduling, and voice-command surfaces.
 - Gmail and Google Calendar modules are designed for read-only access. **Google Calendar requires three env vars — `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` (`.env.local`) — and as of this review all three are unset**, so `lib/calendar.ts` throws immediately on any call and the AI chat/voice pipeline cannot read Google Calendar events until a developer completes the OAuth setup and supplies them. This is unrelated to TANGENT's own internal task calendars (`cal_work`/`cal_personal`/`cal_study`/`cal_all`, managed by `lib/store.ts`), which always work regardless of this integration's state — the AI's `get_my_tasks` tool reads from that internal store and needs no external credentials.
 - Canvas is a per-student `.ics` calendar-feed connection for assignment and deadline events (see [Persistence and accounts](#persistence-and-accounts)). The legacy token-based Canvas client is removed on `feat/supabase` but still present on `main` until that branch merges.
-- **Capture-first home (branch `feat/capture-home`, 2026-10-26).** Opening Tangent lands on `/`: the student's open to-do list plus one hold-to-talk glass mic, with a lavender takeover while they speak. Tangent saves what they said first and asks any context question after. "Open app →" leads to Today, which now lives at `/today`. The top task has a "Do it now" 25-minute focus timer. Design: `docs/superpowers/specs/2026-10-26-capture-home-design.md`.
+- **Home route (Round 2 Phase A).** Today lives at `/`, and the earlier capture home lives at `/capture`. `/today` redirects to `/`. The new home has one mic and typed input, a small slider, and Must do, Today's plan, and Coming up sections. The older capture design is recorded in `docs/superpowers/specs/2026-10-26-capture-home-design.md`.
 - **Canvas auto-clear.** The `.ics` feed carries no submission status, so a Canvas item more than 2 days past its due date counts as handled (`lib/canvas-clear.ts`). It leaves lists, urgency and the proactive overdue prompt, and stays greyed on the calendar. Syncs import only the last 2 days.
-- **Four task colors everywhere** (`lib/task-colors.ts`): Canvas, Academic (school kind, or a title that reads as schoolwork), ECs (both EC kinds) and Other (grey). Project colors no longer drive task dots.
+- **Task colors (Round 2 Phase A):** project tasks use their project's palette color; personal tasks and unmatched Canvas tasks use their own consistent colors (`lib/task-colors.ts`). The former four-category rule is superseded.
 - On `main`, application data is still stored in process memory and resets when the server process restarts. The Supabase migration below is in progress on the `feat/supabase` branch and not yet merged.
 - The application assumes one student per account. A parent or family shared-login model is outside the current scope.
 - **A real cron trigger now exists** (`vercel.json`, Vercel Cron). Two routes are wired, each once daily (UTC):

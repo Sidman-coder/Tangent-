@@ -66,7 +66,7 @@ Go to **Authentication → Emails → SMTP Settings**, turn on **Enable Custom S
 
 Dev, Preview and Production share one Supabase project, so you only run this once.
 
-This is the only new migration in v3. It needs the `plans` table. If it fails because `plans` doesn't exist, older files in `supabase/migrations/` haven't been run yet. Run those first, oldest first. I can't see from here which ones have been applied.
+This migration needs the `plans` table. If it fails because `plans` doesn't exist, older files in `supabase/migrations/` haven't been run yet. Run those first, oldest first. I can't see from here which ones have been applied.
 
 **Check it:** go to **Table Editor** and look for `grill_questions`. Then add a project in the app. **Settings → Onboarding → Grill me** should list questions about it.
 
@@ -110,3 +110,12 @@ No new migration or variable. The dev preview has no session, so these have not 
 5. Leave 1-5 steps unfinished on an earlier day, then open Today: they move once, with Undo. Undo, reload, and they should not move again that day.
 6. Leave more than 5 unfinished: nothing moves, and Today offers Fresh start.
 7. Fresh start says how many steps it will move, moves them only after you confirm, and Undo restores them. Canvas dates stay put.
+
+## Round 2: migrations and signed-in checks
+
+Dev, Preview and Production share one Supabase project. Back up the database before applying these migrations. Apply them in this order through the Supabase SQL Editor; do not run them from the app:
+
+1. `supabase/migrations/20261105000000_task_commitment_type.sql` adds the task commitment and overdue dismissal fields, then classifies unfinished tasks. Until applied, Today uses the same classification rules in code; dismissal lasts only for the current visit and a Type change cannot be saved.
+2. `supabase/migrations/20261105010000_project_color.sql` maps existing project colors to the new palette keys. The app can read old hex colors before this runs.
+
+On a test account, check the new `/` Today sections and `/capture` mic, including Undo for Done, Not today, Too big, overdue Dismiss, task Type, and project color. Check `/today` redirects to `/`. Repeat in light and dark themes on a phone, including the on-screen keyboard and bottom safe area. These checks need a real signed-in account and have not been verified against the shared Supabase project.

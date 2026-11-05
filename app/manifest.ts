@@ -24,7 +24,7 @@ export default function manifest(): MetadataRoute.Manifest {
         name: "Capture",
         short_name: "Capture",
         description: "Open Tangent listening",
-        url: "/?capture=1",
+        url: "/capture?capture=1",
         icons: [{ src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
       },
     ],

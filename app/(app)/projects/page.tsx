@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
+import { planSeriesColor } from "@/lib/task-colors";
 import Button from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
 import AddFlow from "@/components/add/AddFlow";
@@ -188,7 +189,7 @@ function ProjectCard({ project, today }: { project: ProjectSummary; today: strin
   const { plan, steps, done, next } = project;
   const pct = steps.length ? Math.round((done / steps.length) * 100) : 0;
   return (
-    <Link href={`/projects/${plan.id}`} className="project-card" style={{ "--project-color": plan.color } as React.CSSProperties}>
+    <Link href={`/projects/${plan.id}`} className="project-card" style={{ "--project-color": planSeriesColor(plan) } as React.CSSProperties}>
       <div className="project-card-top">
         <span className="project-dot" aria-hidden="true" />
         <h3>{plan.title}</h3>
