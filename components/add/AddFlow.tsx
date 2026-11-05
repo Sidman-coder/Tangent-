@@ -26,6 +26,11 @@ import { useAppState } from "@/components/AppStateProvider";
 import { planSeriesColor } from "@/lib/task-colors";
 import "@/components/console/clarify-card.css";
 import ClarifyCard, { type ClarifyAnswer, type ClarifyQuestion } from "@/components/console/ClarifyCard";
+import SlotQuestionCard from "@/components/grill/SlotQuestionCard";
+
+/** "Grill until enough" so far, sent back each turn (lib/context/grill.ts). */
+type SlotTurn = { answers: { slot: string; answer: string }[]; skipped: string[]; inARow: number; stopped: boolean };
+const NO_TURN: SlotTurn = { answers: [], skipped: [], inARow: 0, stopped: false };
 import { useVoiceCapture } from "@/hooks/useVoiceCapture";
 import { routeAsk } from "@/lib/ask-route";
 import { heardSomethingToAdd } from "@/lib/voice-intent";
@@ -55,12 +60,13 @@ type Reply = {
   pending?: { id: string; message: string };
   changeSet?: ChangeSet;
   preview?: PreviewPayload;
+  slotFlow?: { slot: string; score: number; checkIn: boolean };
 };
 
 type Phase =
   | { kind: "compose" }
   | { kind: "working"; text: string }
-  | { kind: "asking"; text: string; questions: ClarifyQuestion[]; message: string }
+  | { kind: "asking"; text: string; questions: ClarifyQuestion[]; message: string; slot?: { name: string; score: number; checkIn: boolean; turn: SlotTurn } }
   | { kind: "confirm"; id: string; message: string }
   | { kind: "preview"; changeSet: ChangeSet; preview: PreviewPayload; said: string; asked: number }
   | { kind: "done"; summary: string; actionId: string | null; where: { href: string; label: string } | null }
@@ -186,7 +192,7 @@ export default function AddFlow({
   );
 
   const send = useCallback(
-    async (said: string, followUp?: { answers: ClarifyAnswer[] | null }, source: "voice" | "typed" = "typed") => {
+    async (said: string, followUp?: { answers?: ClarifyAnswer[] | null; slotTurn?: SlotTurn }, source: "voice" | "typed" = "typed") => {
       const words = said.trim();
       if (!words) return;
       setPhase({ kind: "working", text: words });
@@ -204,15 +210,19 @@ export default function AddFlow({
             source,
             // A plain to-do is saved instantly; anything bigger is considered for questions.
             capture: !toProject && !followUp,
-            clarify: !followUp,
+            clarify: !followUp || !!followUp.slotTurn,
             answers: followUp?.answers ?? undefined,
+            // One question at a time until Tangent knows enough (lib/context).
+            slotFlow: true,
+            slotTurn: followUp?.slotTurn,
             ...(toProject ? (targetProject === "new" ? { newProject: true } : { projectId: targetProject }) : {}),
           }),
         });
         const data = (await res.json()) as Reply;
         if (!res.ok || !data.ok) throw new Error(data.error || "That didn't go through. Try again.");
         if (data.action === "clarify" && data.questions?.length) {
-          setPhase({ kind: "asking", text: words, questions: data.questions, message: data.message ?? "A few quick questions so this fits you." });
+          const slot = data.slotFlow ? { name: data.slotFlow.slot, score: data.slotFlow.score, checkIn: data.slotFlow.checkIn, turn: followUp?.slotTurn ?? NO_TURN } : undefined;
+          setPhase({ kind: "asking", text: words, questions: data.questions, message: data.message ?? "A few quick questions so this fits you.", slot });
           return;
         }
         if (data.action === "confirm_required" && data.pending) {
@@ -220,7 +230,7 @@ export default function AddFlow({
           return;
         }
         if (data.action === "preview" && data.changeSet && data.preview) {
-          setPhase({ kind: "preview", changeSet: data.changeSet, preview: data.preview, said: words, asked: followUp?.answers?.length ?? 0 });
+          setPhase({ kind: "preview", changeSet: data.changeSet, preview: data.preview, said: words, asked: followUp?.answers?.length ?? followUp?.slotTurn?.answers.length ?? 0 });
           return;
         }
         // Pipeline V2's intent router can decide mid-flight that this is
@@ -234,8 +244,8 @@ export default function AddFlow({
           return;
         }
         // Answered questions already sharpened it; otherwise ask later.
-        const answered = Boolean(followUp?.answers && followUp.answers.length > 0);
-        finish(data, words, !answered, followUp?.answers?.length ?? 0);
+        const asked = followUp?.answers?.length ?? followUp?.slotTurn?.answers.length ?? 0;
+        finish(data, words, asked === 0, asked);
       } catch (e) {
         setPhase({ kind: "error", message: e instanceof Error ? e.message : "Something went wrong." });
       }
@@ -435,11 +445,30 @@ export default function AddFlow({
               <span>{phase.message}</span>
               <span className="add-asking-said">“{phase.text}”</span>
             </p>
-            <ClarifyCard
-              questions={phase.questions}
-              skipLabel="Skip for now"
-              onSubmit={(answers) => void send(phase.text, { answers })}
-            />
+            {phase.slot ? (
+              (() => {
+                const { name, turn } = phase.slot;
+                const next = (t: SlotTurn) => void send(phase.text, { slotTurn: t });
+                return (
+                  <SlotQuestionCard
+                    key={`${name}-${turn.answers.length + turn.skipped.length}-${phase.slot.checkIn}`}
+                    card={phase.questions[0]}
+                    score={phase.slot.score}
+                    checkIn={phase.slot.checkIn}
+                    onAnswer={(answer) => next({ ...turn, answers: [...turn.answers, { slot: name, answer }], inARow: turn.inARow + 1 })}
+                    onSkip={() => next({ ...turn, skipped: [...turn.skipped, name], inARow: turn.inARow + 1 })}
+                    onStop={() => next({ ...turn, stopped: true })}
+                    onKeepGoing={() => next({ ...turn, inARow: 0 })}
+                  />
+                );
+              })()
+            ) : (
+              <ClarifyCard
+                questions={phase.questions}
+                skipLabel="Skip for now"
+                onSubmit={(answers) => void send(phase.text, { answers })}
+              />
+            )}
           </m.div>
         )}
         {phase.kind === "confirm" && (

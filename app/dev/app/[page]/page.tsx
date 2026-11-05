@@ -3,7 +3,7 @@
 // Development-only: a page of the app inside the real shell, with sample data
 // (lib/dev/sample-state.ts), for design review without an account.
 // /dev/app/today, /dev/app/calendar, /dev/app/projects, /dev/app/school, /dev/app/settings,
-// /dev/app/ai, /dev/app/preview, /dev/app/color. 404s in production. API calls fail here (no session), so
+// /dev/app/ai, /dev/app/preview, /dev/app/color, /dev/app/grill. 404s in production. API calls fail here (no session), so
 // anything loaded from the server shows its empty or error state.
 
 import { notFound, useParams } from "next/navigation";
@@ -16,6 +16,8 @@ import TaskDetail from "@/components/TaskDetail";
 import TodayHome from "@/components/today/TodayHome";
 import PlanCalendarPreview from "@/components/preview/PlanCalendarPreview";
 import ColorPicker from "@/components/projects/ColorPicker";
+import SlotQuestionCard from "@/components/grill/SlotQuestionCard";
+import { useState } from "react";
 import CalendarPage from "@/app/(app)/calendar/page";
 import ProjectsPage from "@/app/(app)/projects/page";
 import SchoolPage from "@/app/(app)/projects/school/page";
@@ -53,6 +55,23 @@ function ColorPickerSample() {
   );
 }
 
+/** "Grill until enough": the SAT example's three steps, then the check-in. */
+function GrillSample() {
+  const [step, setStep] = useState(0);
+  const steps = [
+    { card: { id: "slot:hoursPerWeek", question: "How many hours a week can you give this?", options: ["1–2", "3–5", "6–10", "10+"], assume: "about 3 hours a week" }, score: 0.4, checkIn: false },
+    { card: { id: "slot:preferredWorkTimes", question: "When do you usually like to work?", options: ["Mornings", "After school", "Evenings", "Weekends"], multi: true }, score: 0.6, checkIn: false },
+    { card: { id: "checkIn", question: "Want to keep going or plan now?", options: ["Keep going", "Plan now"] }, score: 0.6, checkIn: true },
+  ];
+  const s = steps[step % steps.length];
+  const next = () => setStep((n) => n + 1);
+  return (
+    <section className="add-asking" style={{ maxWidth: 520, margin: "24px auto", padding: "0 16px" }}>
+      <SlotQuestionCard key={step} card={s.card} score={s.score} checkIn={s.checkIn} onAnswer={next} onSkip={next} onStop={() => setStep(0)} onKeepGoing={next} />
+    </section>
+  );
+}
+
 const PAGES: Record<string, React.ComponentType> = {
   today: TodayHome,
   calendar: CalendarPage,
@@ -62,6 +81,7 @@ const PAGES: Record<string, React.ComponentType> = {
   ai: AiPage,
   preview: PreviewCalendarSample,
   color: ColorPickerSample,
+  grill: GrillSample,
 };
 
 export default function AppPreview() {

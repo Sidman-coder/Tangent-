@@ -22,13 +22,22 @@ import {
   suggestRelief,
 } from "@/lib/load";
 import { addDaysYMD, localNow } from "@/lib/time";
+import { getContextSlots } from "@/lib/context/store";
+import { preferredWindows } from "@/lib/context/flow";
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 const HHMM = /^\d{1,2}:\d{2}$/;
 
-/** The rules for this student. Preferred work times join these once known. */
+/** The rules for this student, with their preferred work times once known
+ *  (the "When do you usually like to work?" answer). Never blocks placement. */
 async function studentRules(): Promise<PlacementRules> {
-  return DEFAULT_PLACEMENT_RULES;
+  try {
+    const slots = await getContextSlots();
+    const windows = preferredWindows(slots?.global.preferredWorkTimes);
+    return windows ? { ...DEFAULT_PLACEMENT_RULES, preferredWindows: windows } : DEFAULT_PLACEMENT_RULES;
+  } catch {
+    return DEFAULT_PLACEMENT_RULES;
+  }
 }
 
 export async function studentCapacity(): Promise<{ cap: Capacity; known: boolean }> {

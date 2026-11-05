@@ -95,6 +95,9 @@ export const AI_TASKS = {
   pathIntake: { feature: "tangent", tier: "SMART", maxTokens: 900, thinking: "disabled" },
   /** The next "grill me" question, aimed at what Tangent doesn't know yet. */
   grillNext: { feature: "chat", tier: "SMART", maxTokens: 400, thinking: "disabled" },
+  /** Round 2 Phase C: what a plan request already states (lib/context/infer.ts),
+   *  only when the rules find nothing. FAST: a short extraction. */
+  inferSlots: { feature: "classify", tier: "FAST", maxTokens: 300, temperature: 0, effort: "low" },
   /** Short calendar labels for long task titles (app/api/short-titles). */
   shortTitles: { feature: "classify", tier: "FAST", maxTokens: 3000, temperature: 0, effort: "low" },
   /** Master fix Phase 4: a 3–6 word chat title from the first message, when

@@ -145,3 +145,9 @@ Cleared as measurement artifacts, not bugs: the Browser pane was hidden, which s
 - The plan preview opens to Month and supports Week, date navigation, and a mobile day sheet. Calendar and the preview use the stored week start when available.
 - Verified the seven-column sample preview at 390px and 1440px in light and dark themes without horizontal scrolling. On mobile, the day sheet showed new and existing tasks and opened the selected week. The development shell still makes unauthenticated requests that return 401.
 - `npm test` passed all 578 tests and `npm run build` passed. Signed-in confirmation and the week start migration still need the checks in `docs/MANUAL-STEPS.md`.
+
+### Phase C — Context engine, Grill until enough (2026-11-05)
+
+- `lib/context/` scores what Tangent knows per project (weighted slots, 0.7 drafts), infers slots from the request by rules (one FAST model call only for long, unclear asks), and picks one template question at a time: deadline and hours first, the once-ever work-time question next, a check-in after five in a row. Skipped deadline or hours become stated assumptions (2 weeks, 3 hours a week). Answers are saved to `context_slots` and mirrored into What Tangent knows; preferred work times feed placement windows.
+- AddFlow opts in with `slotFlow`; other surfaces keep the older clarify questions, and AddFlow falls back to them before the migration or when the request may belong to an existing project.
+- `/dev/app/grill` shows the card. At 390px and 1440px in both themes it fits without horizontal scrolling, every control is 44px tall, multi-select chips report `aria-pressed`, and the bar is a labelled progressbar. `npx tsc --noEmit` passed and `npm test` passed all 593 tests. The signed-in flow needs migration 4 and the check in `docs/MANUAL-STEPS.md`; PGlite was not available, so the migration was not run locally.

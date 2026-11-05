@@ -12,6 +12,8 @@ import { dayName } from "@/lib/load";
 import { formatTime12 } from "@/lib/dates";
 import { CAPACITY_QUESTION, PROJECT_QUESTION_PREFIX, PROJECT_YES, capacityFromAnswer, clarifyQuestions, shouldConsiderClarifying } from "@/lib/ai/clarify";
 import { buildStudentContext } from "@/lib/ai/student-context";
+import { grillTurn, parseSlotTurn } from "@/lib/context/grill";
+import { matchProject } from "@/lib/project-match";
 import { placeNewTask, reliefSuggestion } from "@/lib/spacing";
 import { addDaysYMD, localNow } from "@/lib/time";
 import { cleanTitle } from "@/lib/quick-add";
@@ -122,6 +124,10 @@ export const POST = withUser(async (req: Request) => {
       pendingQuestion?: unknown;
       /** Pipeline V2: "voice" when the text was dictated in the browser. */
       source?: unknown;
+      /** "Grill until enough" (lib/context): one question at a time. AddFlow opts in. */
+      slotFlow?: unknown;
+      /** The slot flow so far, sent back each turn (lib/context/grill.ts SlotTurn). */
+      slotTurn?: unknown;
     };
     const mode: ChatMode = body.mode === "plan" ? "plan" : "calendar";
     const raw = body.messages;
@@ -212,7 +218,45 @@ export const POST = withUser(async (req: Request) => {
     const joins = answers.find((a) => a.id.startsWith(PROJECT_QUESTION_PREFIX) && a.answer === PROJECT_YES);
     if (joins && !projectId) projectId = joins.id.slice(PROJECT_QUESTION_PREFIX.length);
     let pipelineText = userText;
-    if (answers.length > 0) {
+    let slotDrafted = false;
+    const slotTurn = parseSlotTurn(body.slotTurn);
+    if (
+      body.slotFlow === true &&
+      answers.length === 0 &&
+      body.route !== "chat" &&
+      body.clarify === true &&
+      (slotTurn !== null || body.newProject === true || !!projectId || shouldConsiderClarifying(userText))
+    ) {
+      // A request that may belong to an existing project keeps the older
+      // "Part of your … project?" question (and so the older path).
+      const plans = projectId || body.newProject === true ? [] : await getAllPlans().catch(() => []);
+      const joinsExisting = !projectId && body.newProject !== true && slotTurn === null && matchProject(userText, plans) !== null;
+      if (!joinsExisting) {
+        const title = projectId ? (await getAllPlans().catch(() => [])).find((p) => p.id === projectId)?.title : undefined;
+        const chat = messages.slice(0, -1).filter((m) => m.role === "user").map((m) => m.content).join("\n").slice(-2000);
+        const turn = await grillTurn({ text: userText, chat, projectId: projectId || null, title, turn: slotTurn }).catch(() => ({ kind: "fallback" as const }));
+        if (turn.kind === "ask") {
+          const reply = {
+            ok: true,
+            action: "clarify",
+            message: turn.checkIn ? "Tangent knows enough to make a first plan." : "One quick question so this fits you.",
+            questions: [{ id: `slot:${turn.card.slot}`, question: turn.card.question, options: turn.card.options, ...(turn.card.multi ? { multi: true } : {}), ...(turn.card.assume ? { assume: turn.card.assume } : {}) }],
+            slotFlow: { slot: turn.card.slot, score: turn.score, checkIn: turn.checkIn },
+          };
+          if (body.stream !== true) return NextResponse.json(reply);
+          return new Response(JSON.stringify({ type: "result", ...reply }) + "\n", {
+            headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" },
+          });
+        }
+        if (turn.kind === "draft") {
+          slotDrafted = true;
+          if (turn.notes) pipelineText = `${userText}\n\n${turn.notes}`;
+        }
+      }
+    }
+    if (slotDrafted) {
+      // Grilled already: straight to the plan.
+    } else if (answers.length > 0) {
       for (const a of answers) {
         if (a.id !== CAPACITY_QUESTION.id) continue;
         const weekday = capacityFromAnswer(a.answer);
@@ -267,7 +311,7 @@ export const POST = withUser(async (req: Request) => {
             onProgress,
             route: body.route === "chat" ? "chat" : undefined,
             pipelineText,
-            answered: answers.length > 0,
+            answered: answers.length > 0 || slotDrafted,
             source,
             clarify: body.clarify === true,
           })
