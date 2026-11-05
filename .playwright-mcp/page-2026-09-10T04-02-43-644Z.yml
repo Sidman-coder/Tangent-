@@ -1,0 +1,100 @@
+- generic [ref=f17e1]:
+  - generic [ref=f17e2]:
+    - complementary "Primary navigation" [ref=f17e3]:
+      - link "Tangent home" [ref=f17e4] [cursor=pointer]:
+        - /url: /
+        - text: T
+      - button "Ask TANGENT" [ref=f17e5] [cursor=pointer]
+      - navigation "Primary" [ref=f17e11]:
+        - link "Today" [ref=f17e12] [cursor=pointer]:
+          - /url: /
+        - link "Calendar" [ref=f17e17] [cursor=pointer]:
+          - /url: /calendar
+        - link "Tasks" [ref=f17e21] [cursor=pointer]:
+          - /url: /tasks
+        - link "Console" [ref=f17e26] [cursor=pointer]:
+          - /url: /ai
+      - generic [ref=f17e31]:
+        - button "Notifications" [ref=f17e32] [cursor=pointer]
+        - link "Settings" [ref=f17e36] [cursor=pointer]:
+          - /url: /settings
+    - generic [ref=f17e40]:
+      - banner [ref=f17e41]:
+        - generic [ref=f17e42]: Tasks
+        - generic [ref=f17e43]:
+          - generic [ref=f17e44]:
+            - generic [ref=f17e45]: Thu, Sep 10
+            - generic [aria-hidden] [ref=f17e46]: ·
+            - generic [ref=f17e47]: 12:02 AM EST
+          - button "Notifications" [ref=f17e49] [cursor=pointer]:
+            - generic [ref=f17e53]: "4"
+      - main [ref=f17e56]:
+        - generic [ref=f17e57]:
+          - generic [ref=f17e59]: School
+          - generic [ref=f17e60]: 7h 58m
+          - button "Done" [ref=f17e61] [cursor=pointer]
+        - generic [ref=f17e62]:
+          - generic [ref=f17e63]:
+            - generic [ref=f17e64]: M
+            - generic [ref=f17e65]: "7"
+          - generic [ref=f17e68]:
+            - generic [ref=f17e69]: T
+            - generic [ref=f17e70]: "8"
+          - generic [ref=f17e73]:
+            - generic [ref=f17e74]: W
+            - generic [ref=f17e75]: "9"
+            - generic "1 school task" [ref=f17e77]
+          - generic [ref=f17e78]:
+            - generic [ref=f17e79]: T
+            - generic [ref=f17e80]: "10"
+            - generic "1 school task" [ref=f17e82]
+          - generic [ref=f17e83]:
+            - generic [ref=f17e84]: F
+            - generic [ref=f17e85]: "11"
+            - generic "1 school task" [ref=f17e87]
+          - generic [ref=f17e88]:
+            - generic [ref=f17e89]: S
+            - generic [ref=f17e90]: "12"
+          - generic [ref=f17e93]:
+            - generic [ref=f17e94]: S
+            - generic [ref=f17e95]: "13"
+        - generic [ref=f17e99]:
+          - generic [ref=f17e100]: What To Do Now
+          - generic [ref=f17e103]:
+            - heading "School" [level=3] [ref=f17e104]
+            - generic [ref=f17e105]: Sep 9 · 8:00 AM
+          - generic [ref=f17e106]:
+            - button "View Task" [ref=f17e107] [cursor=pointer]
+            - button "Mark Complete" [ref=f17e108] [cursor=pointer]
+        - generic [ref=f17e109]:
+          - generic [ref=f17e110]:
+            - heading "Today — Thursday, September 10" [level=2] [ref=f17e111]
+            - button "Add task" [ref=f17e113] [cursor=pointer]
+          - paragraph [ref=f17e116]: 0 of 1 complete
+          - generic [ref=f17e117]: You can get ahead — School starts in 7h 58m
+          - list [ref=f17e124]:
+            - listitem [ref=f17e125]:
+              - generic [ref=f17e166]:
+                - generic [ref=f17e167] [cursor=pointer]:
+                  - button "Mark School complete" [ref=f17e168]
+                  - generic [ref=f17e169]:
+                    - generic [ref=f17e170]:
+                      - generic [ref=f17e171]: School
+                      - generic "Every weekday" [ref=f17e172]
+                    - generic [ref=f17e178]: Every weekday
+                  - generic [ref=f17e179]: 8:00 AM
+                  - button "Open AI chat for School" [ref=f17e180]
+                  - button "Delete School" [ref=f17e183]
+                  - button "Expand details for School" [ref=f17e187]
+                - generic: Until 3:00 PM
+          - button "Add another task" [ref=f17e152] [cursor=pointer]
+    - generic [ref=f17e156]:
+      - heading "Welcome to TANGENT" [level=1] [ref=f17e157]
+      - textbox "What's your name?" [ref=f17e158]: Sam
+      - generic [ref=f17e159]:
+        - paragraph [ref=f17e160]: Are you a high school student?
+        - generic [ref=f17e161]:
+          - button "Yes" [ref=f17e162] [cursor=pointer]
+          - button "No" [active] [pressed] [ref=f17e163] [cursor=pointer]
+      - button "Continue" [ref=f17e164] [cursor=pointer]
+  - alert [ref=f17e165]

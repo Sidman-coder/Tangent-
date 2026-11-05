@@ -1,0 +1,113 @@
+- generic [active] [ref=f12e1]:
+  - generic [ref=f12e2]:
+    - complementary "Primary navigation" [ref=f12e3]:
+      - link "Tangent home" [ref=f12e4] [cursor=pointer]:
+        - /url: /
+        - text: T
+      - button "Ask TANGENT" [ref=f12e5] [cursor=pointer]
+      - navigation "Primary" [ref=f12e11]:
+        - link "Today" [ref=f12e12] [cursor=pointer]:
+          - /url: /
+        - link "Calendar" [ref=f12e17] [cursor=pointer]:
+          - /url: /calendar
+        - link "Tasks" [ref=f12e21] [cursor=pointer]:
+          - /url: /tasks
+        - link "Console" [ref=f12e26] [cursor=pointer]:
+          - /url: /ai
+      - generic [ref=f12e31]:
+        - button "Notifications" [ref=f12e32] [cursor=pointer]
+        - link "Settings" [ref=f12e36] [cursor=pointer]:
+          - /url: /settings
+    - generic [ref=f12e40]:
+      - banner [ref=f12e41]:
+        - generic [ref=f12e42]: Tasks
+        - generic [ref=f12e43]:
+          - generic [ref=f12e44]:
+            - generic [ref=f12e45]: Wed, Sep 9
+            - generic [aria-hidden] [ref=f12e46]: ·
+            - generic [ref=f12e47]: 11:51 PM EST
+          - button "Notifications" [ref=f12e49] [cursor=pointer]:
+            - generic [ref=f12e53]: 9+
+      - main [ref=f12e56]:
+        - generic [ref=f12e57]:
+          - generic [ref=f12e59]: soccer practice
+          - generic [ref=f12e60]: Now
+          - button "Done" [ref=f12e61] [cursor=pointer]
+        - generic [ref=f12e62]:
+          - generic [ref=f12e63]:
+            - generic [ref=f12e64]: M
+            - generic [ref=f12e65]: "7"
+            - generic "1 other task" [ref=f12e67]
+          - generic [ref=f12e68]:
+            - generic [ref=f12e69]: T
+            - generic [ref=f12e70]: "8"
+            - generic "2 other tasks" [ref=f12e72]
+          - generic [ref=f12e73]:
+            - generic [ref=f12e74]: W
+            - generic [ref=f12e75]: "9"
+            - generic "1 other task" [ref=f12e77]
+          - generic [ref=f12e78]:
+            - generic [ref=f12e79]: T
+            - generic [ref=f12e80]: "10"
+            - generic [ref=f12e81]:
+              - generic "1 commitment task" [ref=f12e82]
+              - generic "1 other task" [ref=f12e83]
+          - generic [ref=f12e84]:
+            - generic [ref=f12e85]: F
+            - generic [ref=f12e86]: "11"
+          - generic [ref=f12e89]:
+            - generic [ref=f12e90]: S
+            - generic [ref=f12e91]: "12"
+            - generic [ref=f12e92]:
+              - generic "1 commitment task" [ref=f12e93]
+              - generic "1 other task" [ref=f12e94]
+          - generic [ref=f12e95]:
+            - generic [ref=f12e96]: S
+            - generic [ref=f12e97]: "13"
+        - generic [ref=f12e101]:
+          - generic [ref=f12e102]: What To Do Now
+          - generic [ref=f12e105]:
+            - heading "Soccer Skills Training Session" [level=3] [ref=f12e106]
+            - generic [ref=f12e107]: Sep 7 · 4:00 PM
+          - generic [ref=f12e109]: Watch the first 5 minutes of the Become Elite training video to learn proper warm-up techniques.
+          - generic [ref=f12e114]:
+            - button "View Task" [ref=f12e115] [cursor=pointer]
+            - button "Mark Complete" [ref=f12e116] [cursor=pointer]
+        - generic [ref=f12e117]:
+          - generic [ref=f12e118]:
+            - heading "Today — Wednesday, September 9" [level=2] [ref=f12e119]
+            - generic [ref=f12e120]:
+              - button "Shuffle" [ref=f12e121] [cursor=pointer]
+              - button "Add task" [ref=f12e128] [cursor=pointer]
+          - paragraph [ref=f12e131]: 0 of 2 complete
+          - generic [ref=f12e132]: Complete your soccer practice — it's overdue
+          - list [ref=f12e137]:
+            - listitem [ref=f12e138]:
+              - generic [ref=f12e139]:
+                - generic [ref=f12e140] [cursor=pointer]:
+                  - button "Mark soccer practice complete" [ref=f12e141]
+                  - generic [ref=f12e142]:
+                    - generic [ref=f12e143]:
+                      - generic [ref=f12e144]: soccer practice
+                      - generic "Every Thu, Sat" [ref=f12e145]
+                    - generic [ref=f12e151]: Every Thu, Sat
+                  - button "Open AI chat for soccer practice" [ref=f12e153]
+                  - button "Delete soccer practice" [ref=f12e156]
+                  - button "Expand details for soccer practice" [ref=f12e160]
+                - generic: "Recurring commitment added by voice: \"Add soccer practice every thursday and Saturday evening and morning respectively\""
+            - listitem [ref=f12e165]:
+              - generic [ref=f12e166]:
+                - generic [ref=f12e167] [cursor=pointer]:
+                  - button "Mark Thursday Soccer Practice Session complete" [ref=f12e168]
+                  - generic [ref=f12e169]: Thursday Soccer Practice Session
+                  - generic [ref=f12e172]: 6:00 PM
+                  - button "Open AI chat for Thursday Soccer Practice Session" [ref=f12e173]
+                  - button "Delete Thursday Soccer Practice Session" [ref=f12e176]
+                  - button "Expand details for Thursday Soccer Practice Session" [ref=f12e180]
+                - generic [ref=f12e184]:
+                  - text: "GOAL: Build endurance and improve shooting accuracy from various field positions. FOCUS: Begin with 10 minutes of dynamic stretching and light jogging to warm up properly. Spend 25 minutes on shooting drills from different angles and distances, focusing on power and placement rather than just speed. End with 15 minutes of small-sided scrimmage play to apply shooting skills in game-like scenarios. TIME: 50 mins total — 10 mins warm-up, 25 mins shooting drills, 15 mins scrimmage."
+                  - generic [ref=f12e185]:
+                    - 'button "YouTube — AllAttack: Shooting Drills for Accuracy" [ref=f12e186] [cursor=pointer]'
+                    - 'button "YouTube — The Global Goalkeeper: Dynamic Warm-up Routine" [ref=f12e187] [cursor=pointer]'
+          - button "Add another task" [ref=f12e188] [cursor=pointer]
+  - alert [ref=f12e191]

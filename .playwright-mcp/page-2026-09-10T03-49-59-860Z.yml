@@ -1,0 +1,60 @@
+- generic [ref=f11e2]:
+  - complementary "Primary navigation" [ref=f11e3]:
+    - link "Tangent home" [ref=f11e4] [cursor=pointer]:
+      - /url: /
+      - text: T
+    - button "Ask TANGENT" [ref=f11e5] [cursor=pointer]
+    - navigation "Primary" [ref=f11e11]:
+      - link "Today" [ref=f11e12] [cursor=pointer]:
+        - /url: /
+      - link "Calendar" [ref=f11e18] [cursor=pointer]:
+        - /url: /calendar
+      - link "Tasks" [ref=f11e22] [cursor=pointer]:
+        - /url: /tasks
+      - link "Console" [ref=f11e26] [cursor=pointer]:
+        - /url: /ai
+    - generic [ref=f11e31]:
+      - button "Notifications" [ref=f11e32] [cursor=pointer]
+      - link "Settings" [ref=f11e36] [cursor=pointer]:
+        - /url: /settings
+  - generic [ref=f11e40]:
+    - banner [ref=f11e41]:
+      - generic [ref=f11e42]: Today
+      - generic [ref=f11e43]:
+        - generic [ref=f11e44]: Wed, Sep 9
+        - button "Notifications" [ref=f11e47] [cursor=pointer]
+    - main [ref=f11e53]:
+      - generic [ref=f11e54]:
+        - paragraph
+        - generic [ref=f11e56]:
+          - generic [ref=f11e57]: Focus now
+          - generic [ref=f11e58]: Nothing scheduled. Add something below.
+        - generic [ref=f11e59]:
+          - generic [ref=f11e60]:
+            - generic [ref=f11e61]: M
+            - generic [ref=f11e62]: "7"
+          - generic [ref=f11e65]:
+            - generic [ref=f11e66]: T
+            - generic [ref=f11e67]: "8"
+          - generic [ref=f11e70]:
+            - generic [ref=f11e71]: W
+            - generic [ref=f11e72]: "9"
+          - generic [ref=f11e75]:
+            - generic [ref=f11e76]: T
+            - generic [ref=f11e77]: "10"
+          - generic [ref=f11e80]:
+            - generic [ref=f11e81]: F
+            - generic [ref=f11e82]: "11"
+          - generic [ref=f11e85]:
+            - generic [ref=f11e86]: S
+            - generic [ref=f11e87]: "12"
+          - generic [ref=f11e90]:
+            - generic [ref=f11e91]: S
+            - generic [ref=f11e92]: "13"
+        - generic [ref=f11e96]:
+          - generic [ref=f11e97]: Today
+          - generic [ref=f11e98]: "0"
+          - generic [ref=f11e99]: 0 complete · 0 remaining
+        - generic [ref=f11e101]:
+          - heading "Recent" [level=2] [ref=f11e102]
+          - paragraph [ref=f11e103]: No recent activity.

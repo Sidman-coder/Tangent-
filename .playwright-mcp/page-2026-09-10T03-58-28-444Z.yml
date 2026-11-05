@@ -1,0 +1,72 @@
+- generic [ref=f15e1]:
+  - generic [ref=f15e2]:
+    - complementary "Primary navigation" [ref=f15e3]:
+      - link "Tangent home" [ref=f15e4] [cursor=pointer]:
+        - /url: /
+        - text: T
+      - button "Ask TANGENT" [ref=f15e5] [cursor=pointer]
+      - navigation "Primary" [ref=f15e11]:
+        - link "Today" [ref=f15e12] [cursor=pointer]:
+          - /url: /
+        - link "Calendar" [ref=f15e17] [cursor=pointer]:
+          - /url: /calendar
+        - link "Tasks" [ref=f15e21] [cursor=pointer]:
+          - /url: /tasks
+        - link "Console" [ref=f15e26] [cursor=pointer]:
+          - /url: /ai
+      - generic [ref=f15e31]:
+        - button "Notifications" [ref=f15e32] [cursor=pointer]
+        - link "Settings" [ref=f15e36] [cursor=pointer]:
+          - /url: /settings
+    - generic [ref=f15e40]:
+      - banner [ref=f15e41]:
+        - generic [ref=f15e42]: Tasks
+        - generic [ref=f15e43]:
+          - generic [ref=f15e44]:
+            - generic [ref=f15e45]: Wed, Sep 9
+            - generic [aria-hidden] [ref=f15e102]: ·
+            - generic [ref=f15e103]: 11:57 PM EST
+          - button "Notifications" [ref=f15e47] [cursor=pointer]
+      - main [ref=f15e53]:
+        - generic [ref=f15e54]: All clear today.
+        - generic [ref=f15e56]:
+          - generic [ref=f15e57]:
+            - generic [ref=f15e58]: M
+            - generic [ref=f15e59]: "7"
+          - generic [ref=f15e62]:
+            - generic [ref=f15e63]: T
+            - generic [ref=f15e64]: "8"
+          - generic [ref=f15e67]:
+            - generic [ref=f15e68]: W
+            - generic [ref=f15e69]: "9"
+          - generic [ref=f15e72]:
+            - generic [ref=f15e73]: T
+            - generic [ref=f15e74]: "10"
+          - generic [ref=f15e77]:
+            - generic [ref=f15e78]: F
+            - generic [ref=f15e79]: "11"
+          - generic [ref=f15e82]:
+            - generic [ref=f15e83]: S
+            - generic [ref=f15e84]: "12"
+          - generic [ref=f15e87]:
+            - generic [ref=f15e88]: S
+            - generic [ref=f15e89]: "13"
+        - generic [ref=f15e93]:
+          - paragraph [ref=f15e104]: You're all caught up this month.
+          - paragraph [ref=f15e105]: Add a new task to get started.
+        - generic [ref=f15e94]:
+          - generic [ref=f15e95]:
+            - heading "Today — Wednesday, September 9" [level=2] [ref=f15e96]
+            - button "Add task" [ref=f15e98] [cursor=pointer]
+          - paragraph [ref=f15e101]: No tasks yet — add one above or use the AI assistant.
+          - list
+    - generic [ref=f15e107]:
+      - heading "Welcome to TANGENT" [level=1] [ref=f15e108]
+      - textbox "What's your name?" [ref=f15e109]: Jordan
+      - generic [ref=f15e110]:
+        - paragraph [ref=f15e111]: Are you a high school student?
+        - generic [ref=f15e112]:
+          - button "Yes" [active] [pressed] [ref=f15e113] [cursor=pointer]
+          - button "No" [ref=f15e114] [cursor=pointer]
+      - button "Continue" [ref=f15e115] [cursor=pointer]
+  - alert [ref=f15e116]
