@@ -88,7 +88,7 @@
   flex: none;
   display: none;
   place-items: center;
-  width: 32px;
+  width: 44px;
   height: 44px;
   border: 0;
   border-radius: 10px;
@@ -217,8 +217,8 @@
 .today-dots { display: flex; justify-content: center; }
 .today-dot {
   position: relative;
-  width: 24px;
-  height: 24px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -227,7 +227,7 @@
 .today-dot::after {
   content: "";
   position: absolute;
-  inset: 8px;
+  inset: 17px;
   border-radius: 50%;
   background: var(--line-strong);
 }

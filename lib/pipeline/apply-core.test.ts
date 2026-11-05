@@ -581,3 +581,14 @@ void (import("./apply-core") as Promise<Mod>).then(({ applyChangeSetWith }) => {
     assert.equal(db.tasks.get(ids.r1)?.planId, READ, "tasks are relinked to their restored plans");
   });
 });
+
+test("undo snapshots carry a task's type and overdue dismissal", async () => {
+  const { fieldValues } = (await import("./undo-core")) as typeof import("./undo-core");
+  const base: Task = { id: "a", title: "Dentist", date: "2026-11-05", time: "15:30", completed: false };
+  assert.deepEqual(fieldValues(base, ["commitment", "overdueDismissedAt"]), { commitment: null, overdueDismissedAt: null });
+  const set: Task = { ...base, commitment: "fixed", overdueDismissedAt: "2026-11-05T20:00:00.000Z" };
+  assert.deepEqual(fieldValues(set, ["commitment", "overdueDismissedAt"]), {
+    commitment: "fixed",
+    overdueDismissedAt: "2026-11-05T20:00:00.000Z",
+  });
+});
