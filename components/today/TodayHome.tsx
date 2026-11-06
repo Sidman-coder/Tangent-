@@ -450,7 +450,7 @@ export default function TodayHome() {
             timezone={tz}
             busyTaskId={busyTaskId}
             questionTaskIds={questionTaskIds}
-            planFooter={<FreshStart count={clearedSteps.length} backlog={missedCount > MAX_AUTO_MOVES} onConfirm={freshStart} />}
+            planFooter={clearedSteps.length > 0 ? <FreshStart count={clearedSteps.length} backlog={missedCount > MAX_AUTO_MOVES} onConfirm={freshStart} /> : null}
             {...rowActions}
           />
         )}

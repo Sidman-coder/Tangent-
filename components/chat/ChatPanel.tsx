@@ -104,8 +104,8 @@ function describeFailure(message: string): string {
   if (lower.includes("timeout") || lower.includes("504") || lower.includes("aborted")) {
     return "That took too long and was cut off. Calendar mode does several rounds of research before it answers — try a narrower request, or ask again.";
   }
-  if (lower.includes("anthropic_api_key") || lower.includes("401")) {
-    return "The server has no Anthropic API key configured, so it can't reach Claude.";
+  if (lower.includes("set up on the server") || lower.includes("401") || lower.includes("503")) {
+    return "Tangent's AI isn't available right now. Try again later.";
   }
   if (lower.includes("429") || lower.includes("rate")) {
     return "Claude is rate-limited right now. Wait a moment and try again.";
@@ -113,7 +113,7 @@ function describeFailure(message: string): string {
   if (lower.includes("failed to fetch") || lower.includes("networkerror")) {
     return "Couldn't reach the server. Check your connection and try again.";
   }
-  return `Something went wrong: ${message}`;
+  return "Something went wrong. Try again in a moment.";
 }
 
 const MODE_STORAGE_KEY = "tangent:ai:mode";

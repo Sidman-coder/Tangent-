@@ -566,7 +566,7 @@ export default function CalendarPage() {
 
       {activePlan && (
         <div className="plan-filter-banner" style={{ borderLeft: `3px solid ${planSeriesColor(activePlan)}` }}>
-          <span>Filtering by plan: <strong>{activePlan.title}</strong></span>
+          <span>Filtering by project: <strong>{activePlan.title}</strong></span>
           <Button variant="quiet" size="sm" onClick={() => setPlanFilter(null)} icon={<X size={14} aria-hidden="true" />}>Clear filter</Button>
         </div>
       )}
@@ -797,7 +797,7 @@ export default function CalendarPage() {
                             borderColor: `color-mix(in srgb, ${planSeriesColor(plan)} 44%, transparent)`,
                           }}
                           onClick={() => { setPlanFilter(t.planId ?? null); setSelectedDay(null); }}
-                          title={`Filter by plan: ${plan.title}`}
+                          title={`Filter by project: ${plan.title}`}
                         >
                           {plan.title}
                         </button>

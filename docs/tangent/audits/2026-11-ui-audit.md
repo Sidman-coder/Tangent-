@@ -157,3 +157,39 @@ Cleared as measurement artifacts, not bugs: the Browser pane was hidden, which s
 - Chats now open over the page they are about: Home's "Ask Tangent anything" bar (general), "Ask about this" on a task (one thread per task), and a project's Ask button (the plan's thread, reusing `chat_sessions.plan_id`). Each is a right-hand panel on a laptop and full screen on a phone, with focus moved into the composer and returned on close. `/ai` became the chat library: search, All/Projects/Tasks/General tabs, colored by project, with a two-step delete. Old `/ai?project=`, `?task=` and `?ask=1` links redirect.
 - Each scoped chat gets the task or project context; a running summary is refreshed after longer threads. General chats are capped at the 50 most recent; task and project threads are kept. Rename, pin and color of chats were not carried over; the library only lists, opens and deletes.
 - Verified on `/dev/app/today` and `/dev/app/ai` at 390px and 1440px in both themes: no horizontal scroll, header and tab targets 44px, Esc closes and focus returns to the opener. The project panel has no sample route and is covered by types only. `npx tsc --noEmit` passed and `npm test` passed all 607 tests. Signed-in threads need migration 5 and the check in `docs/MANUAL-STEPS.md`.
+
+### Phase G — Audit fixes and release check (2026-11-05)
+
+- Already fixed before Round 2's phases (commit `8ee5be9`): C1 (sign-in and invite-only follow the dark theme), H3 (muted text tokens), H4 (primary button labels use `--accent-ink`), H7 (`viewport-fit=cover`).
+- Fixed in Phase G:
+  - **H2:** `app/error.tsx` (retry and back to Today, never shows the error text), `app/global-error.tsx`, and `app/(app)/loading.tsx` with a reduced-motion-safe indicator.
+  - **H5 (rest):** the notification bell is 44px in every style (it was 34, 40 and 42 in three rules); error-page buttons are 44px.
+  - **H8:** bottom nav labels are 11px in `--text-2` (measured about 8:1 in dark at 390).
+  - **H9:** the project page shows "Loading project…" or a "this project isn't here" message instead of a blank div, shows an error if delete fails, and no longer says "Add more above".
+  - **H10:** chat and path routes no longer name `ANTHROPIC_API_KEY` to students; the chat panel's fallback no longer shows raw error text.
+  - **H11, M20:** on phones (600px and under), the feature list on sign-in and invite-only is hidden, so the card or the reason comes right after the headline.
+  - **M9:** Calendar says "Filtering by project". **M10:** the last "Tangent AI" in copy is now "Tangent". **L2:** the sign-in point about paths now describes projects. **L7:** the bell has `font: inherit`.
+  - Leftovers: Fresh start is hidden when there is nothing to move. `window.confirm` is gone from the app (H6). The task type note already resets when another task opens.
+- Release check: `npx tsc --noEmit` clean, `npm test` 621/621, `npm run build` passed. Browser check on `/signin` and `/dev/app/today` at 390 and 1440, light and dark: no horizontal scroll, bell 44×44, nav labels 11px, sign-in card in the first screen on a phone. The error boundary was checked by build and types only, not by forcing an error.
+
+## Release readiness
+
+**Ready to deploy to a preview** once the steps in `docs/MANUAL-STEPS.md` are done, in order: the seven Round 2 migrations (`20261105000000` through `20261105060000`), the email templates, and the pilot analytics check. The code works before the migrations run (each feature falls back), but Task commitment, context slots, chats, quiet hours and completion times only save once their migration is in.
+
+Not verified, and needed before students use it: a signed-in run of capture → plan → done, real email codes and password reset, an installed phone app (safe areas, keyboard over inputs), and the Round 2 evals (`npm run eval:pipeline -- --round2`, which costs money and was not run).
+
+## Known issues
+
+| # | Issue | Why it's left |
+|---|---|---|
+| M6 | Calendar at 390: two floating bars and the nav take about 200px; hour labels start at 1 AM. | Needs a calendar layout pass; larger than the Phase G budget. |
+| M13, M14 | Today fetches some APIs twice in dev, and `/api/health` on every load. | Part is React strict mode; needs a production measurement before changing. |
+| M15 | 192 `console.*` calls; a few log `e.message`, which could hold model text. | Sampled logs hold ids and counts. Needs a file-by-file pass. |
+| M17 | Too many type sizes outside Today. | Design pass, not a quick fix. |
+| L1 | `/tangents` is reachable from AddFlow but has no nav link. | Product decision (open question in PROJECT.md). |
+| L3, L4, L13 | Theme ignores the OS setting; a phone can flash desktop UI; entrance animations start invisible. | Low impact; each needs care to avoid flashes. |
+| L6, L8, L12 | `outline: none` rules, hard-coded hex in four components, a small Projects gutter asymmetry. | Polish. |
+| L11 | `events` rows can be written by students through REST, so pilot analytics aren't tamper-proof. | Acceptable for a pilot. |
+| — | `/dev/app/*` sample pages log 401s for account APIs. | Dev-only; they have no session. Mocking the APIs is more work than it saves. |
+| — | `lib/store.ts` large-function clean-up (Phase F.5). | Skipped to keep the change small; behaviour is covered by tests. |
+| — | Old `task_chat_messages` history isn't shown in the new task chats. | Open question in PROJECT.md. |

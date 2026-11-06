@@ -39,6 +39,7 @@ export default function ProjectPage() {
   const [title, setTitle] = useState("");
   const [goal, setGoal] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteError, setDeleteError] = useState(false);
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const [chatOpen, setChatOpen] = useState(false);
   const [askOnOpen, setAskOnOpen] = useState<string | null>(null);
@@ -101,7 +102,19 @@ export default function ProjectPage() {
       </div>
     );
   }
-  if (!plan) return <div className="project-page" aria-busy="true" />;
+  if (!plan) {
+    return (
+      <div className="project-page" aria-busy={state ? undefined : "true"}>
+        {state ? (
+          <p className="project-empty" role="status">
+            This project isn&apos;t here. It may have been deleted. <Link href="/projects">Back to Projects</Link>
+          </p>
+        ) : (
+          <p className="project-empty" role="status">Loading project…</p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="project-page" style={{ "--project-color": planSeriesColor(plan) } as React.CSSProperties}>
@@ -134,7 +147,7 @@ export default function ProjectPage() {
 
       <section className="project-steps" aria-labelledby="project-next">
         <h2 id="project-next">{open.length > 0 ? "Up next" : "All done"}</h2>
-        {open.length === 0 && <p className="project-empty">Every step is done. Add more above, or call it finished.</p>}
+        {open.length === 0 && <p className="project-empty">Every step is done. Add more from Today or the project chat, or call it finished.</p>}
         <div className="project-step-list">
           <AnimatePresence initial={false}>
             {open.map((task) => (
@@ -181,16 +194,22 @@ export default function ProjectPage() {
               type="button"
               className="project-delete-yes"
               onClick={async () => {
-                await post("/api/plans", { action: "delete", planId: plan.id, deleteTasks: true });
+                setDeleteError(false);
+                const ok = await post("/api/plans", { action: "delete", planId: plan.id, deleteTasks: true });
+                if (!ok) {
+                  setDeleteError(true);
+                  return;
+                }
                 await refresh();
                 router.push("/projects");
               }}
             >
               Delete
             </button>
-            <button type="button" className="project-delete-no" onClick={() => setConfirmDelete(false)}>
+            <button type="button" className="project-delete-no" onClick={() => { setConfirmDelete(false); setDeleteError(false); }}>
               Keep it
             </button>
+            {deleteError && <p role="alert">Couldn&apos;t delete the project. Try again.</p>}
           </div>
         ) : (
           <button type="button" className="project-delete" onClick={() => setConfirmDelete(true)}>

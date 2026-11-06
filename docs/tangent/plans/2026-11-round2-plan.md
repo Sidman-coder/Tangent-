@@ -660,13 +660,13 @@ function gradeRouteCase(c: RouteCase, got: AskRoute): Grade;
 
 - **Create:** `lib/analytics.ts`, `.test.ts`, `lib/analytics-rules.ts`, `.test.ts`, `app/api/app-open/route.ts`, `docs/tangent/pilot-metrics.sql`.
 - **Change:** `lib/pipeline/event-types.ts`, `app/api/events/route.ts`, `components/AppShell.tsx`, plus one call at each event's source.
-- `signup` and `week2_return` fire from the first app open, so the sign-in routes stay untouched.
+- `signup` and `week_two_return` fire from the first app open, so the sign-in routes stay untouched.
 - First-event races are handled in the SQL with `count(distinct user_id)`, so no extra migration.
 
 ```ts
 type PilotEvent = "signup" | "first_capture" | "capture" | "first_plan_confirmed" | "plan_confirmed"
   | "task_done" | "not_today" | "too_big" | "fresh_start" | "auto_replan" | "grill_answered"
-  | "grill_skipped" | "grill_stopped" | "chat_started" | "week2_return";
+  | "grill_skipped" | "grill_stopped" | "chat_started" | "week_two_return";
 type PilotProps = Partial<{
   projectId: string; taskId: string; sessionId: string; count: number;
   slotKey: SlotKey | GlobalSlotKey; kind: TaskCommitment; scope: ChatScope["type"];

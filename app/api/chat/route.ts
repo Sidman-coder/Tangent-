@@ -143,7 +143,7 @@ export const POST = withUser(async (req: Request) => {
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ ok: false, error: "Missing ANTHROPIC_API_KEY on the server." }, { status: 401 });
+      return NextResponse.json({ ok: false, error: "Tangent's AI isn't set up on the server yet, so it can't answer right now." }, { status: 503 });
     }
 
     let projectId = typeof body.projectId === "string" && body.projectId ? body.projectId : "";

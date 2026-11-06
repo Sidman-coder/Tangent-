@@ -106,6 +106,13 @@
     max-width: 440px;
   }
 }
+/* Phones: the card (or the invite-only reason) comes right after the
+   headline, not under the feature list (audit H11, M20). */
+@media (max-width: 600px) {
+  .auth-features {
+    display: none;
+  }
+}
 .auth-card h1 { font-family: var(--font-display); font-size: 22px; line-height: 1.25; margin: 0 0 6px; color: var(--text); }
 .auth-lede { margin: 0 0 24px; color: var(--muted); font-size: 14px; line-height: 1.5; }
 .auth-stack { display: grid; gap: 12px; }

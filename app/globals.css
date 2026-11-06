@@ -3245,12 +3245,13 @@ textarea:focus {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 10px;
   border: none;
   background: transparent;
   color: var(--faint);
+  font: inherit;
   font-size: 1.05rem;
   line-height: 1;
   cursor: pointer;
@@ -5160,8 +5161,8 @@ textarea:focus {
    ══════════════════════════════════════════════════════════════════════════════ */
 
 .topbar .notif-bell-btn {
-  width: 34px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
   border-radius: var(--r-sm);
   border-color: var(--line);
   box-shadow: none;
@@ -5309,10 +5310,10 @@ textarea:focus {
     gap: 3px;
     min-width: 0;
     border-radius: var(--r-sm);
-    color: var(--text-3);
-    font-size: 9px;
+    color: var(--text-2);
+    font-size: 11px;
     font-weight: 600;
-    line-height: 1;
+    line-height: 1.1;
     text-decoration: none;
     transition: background 0.14s ease, color 0.14s ease;
   }
@@ -8312,12 +8313,46 @@ textarea:focus {
   font: 450 14.5px/1.5 var(--font-body);
 }
 .not-found-home {
-  padding: 10px 18px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 20px;
+  border: none;
   border-radius: 999px;
   background: var(--accent);
   color: var(--accent-ink);
   font: 600 14px/1 var(--font-body);
   text-decoration: none;
+  cursor: pointer;
+}
+
+/* Route loading (app/(app)/loading.tsx). */
+.route-loading {
+  display: grid;
+  min-height: 40vh;
+  place-items: center;
+}
+.route-loading-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: route-loading-pulse 1.2s ease-in-out infinite;
+}
+@keyframes route-loading-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .route-loading-dot { animation: none; }
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .settings-skeleton {

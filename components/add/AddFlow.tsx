@@ -325,7 +325,7 @@ export default function AddFlow({
 
   const busy = phase.kind === "working" || transcribing;
   const hint = handoff === "question"
-    ? { icon: MessageSquareText, text: "Sounds like a question. Enter asks Tangent AI." }
+    ? { icon: MessageSquareText, text: "Sounds like a question. Enter asks Tangent." }
     : handoff === "goal"
       ? { icon: Orbit, text: "Sounds like a long-range goal. Enter starts a Tangent." }
       : null;
