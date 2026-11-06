@@ -131,6 +131,46 @@ export const AI_TASKS = {
 
 export type AiTask = keyof typeof AI_TASKS;
 
+// ─── Named routes (Round 2, F.2) ────────────────────────────────────────────
+// The model each kind of call should use, by name, so a route reads the same in
+// code reviews. The AI_TASKS tiers above follow this table (titles, summaries,
+// slot inference and the intent router on FAST; plan drafts and extensions on
+// SMART), and the FALLBACK_MODELS still apply per tier.
+
+export const MODEL_ROUTES = {
+  classify: "FAST",
+  title: "FAST",
+  summary: "FAST",
+  slot_extract: "FAST",
+  route: "FAST",
+  plan_draft: "SMART",
+  plan_extend: "SMART",
+  /** Default for chat replies; chatTier() moves planning talk to SMART. */
+  chat: "FAST",
+} as const satisfies Record<string, Tier>;
+
+export type ModelRoute = keyof typeof MODEL_ROUTES;
+
+const PLANNING_WORDS =
+  /\b(plan|planning|schedule|reschedul\w*|week|weekend|tomorrow|tonight|study|cram|prep|break (it|this) (down|up)|steps?|when should|fit (it|this) in|deadline|due|exam|test|quiz|project|essay|calendar|time ?block|session)\b/i;
+
+/** Chat runs on the FAST model unless the talk is about planning time: the
+ *  student's latest message reads like planning, or Tangent's last reply was
+ *  laying out a schedule or asking a planning question. */
+export function chatTier(messages: { role: string; content: string }[]): Tier {
+  let lastUser = "";
+  let lastAssistant = "";
+  for (let i = messages.length - 1; i >= 0 && (!lastUser || !lastAssistant); i--) {
+    const m = messages[i];
+    if (m.role === "user" && !lastUser) lastUser = m.content;
+    if (m.role === "assistant" && !lastAssistant) lastAssistant = m.content;
+  }
+  if (PLANNING_WORDS.test(lastUser)) return "SMART";
+  // A schedule line ("Mon, Nov 9 — 4:00 PM — …") or a question about it.
+  if (/—.*—/.test(lastAssistant) || (PLANNING_WORDS.test(lastAssistant) && /\?\s*$/.test(lastAssistant.trim()))) return "SMART";
+  return MODEL_ROUTES.chat;
+}
+
 // ─── Model capabilities ──────────────────────────────────────────────────────
 
 /** Sonnet 5+, Haiku 5+, Opus 4.7+ and the Fable/Mythos 5 family reject non-default temperature/top_p/top_k. */

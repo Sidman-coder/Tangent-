@@ -12,6 +12,7 @@ import { buildStudentContext } from "@/lib/ai/student-context";
 import { reliefSuggestion } from "@/lib/spacing";
 import { callClaude, messageText, streamClaude } from "@/lib/ai/call";
 import { cacheHistory, withDateLast } from "@/lib/ai/cache";
+import { chatTier } from "@/lib/ai/models";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -61,9 +62,12 @@ export async function planReply(
     messages: withDateLast(cacheHistory(messages.slice(-12)), promptDateContext(await getUserTimezone())),
   };
   const onText = opts.onText;
+  // Round 2 F.2: a quick question in a task or project chat gets the FAST
+  // model; planning talk (and every Pipeline V2 follow-up) stays on SMART.
+  const tier = opts.followUp ? "SMART" : chatTier(messages);
   const res = onText
-    ? await streamClaude("chatPlan", request, { onText: (t) => onText(cleanPlanText(t)) })
-    : await callClaude("chatPlan", request);
+    ? await streamClaude("chatPlan", request, { tier, onText: (t) => onText(cleanPlanText(t)) })
+    : await callClaude("chatPlan", request, { tier });
   if (!res.ok) throw new Error(res.budgetExceeded ? res.error : `Anthropic error ${res.status}`);
   const text = messageText(res.message);
   if (!text) throw new Error("Empty plan reply");

@@ -18,8 +18,9 @@
 ## Product guardrails
 
 - Build only what serves capture → plan → done.
-- Gather context efficiently: ask only when the answer would change the plan, at most 3 questions at a time, never what Tangent already knows or can infer, and always with a Skip that never blocks.
-- Add no new AI chat surfaces; use AddFlow or Ask Tangent.
+- Ask until enough, never what's known, always stoppable: ask only when the answer would change the plan, never what Tangent already knows or can infer, and always with a Skip and a Stop that never block.
+- No new top-level AI surfaces; start on Home, continue in task/project chats.
+- Today must be scannable in 3 seconds.
 
 ## Research discipline
 

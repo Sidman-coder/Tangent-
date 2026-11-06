@@ -15,6 +15,7 @@ import {
 import { getUserToday } from "@/lib/time";
 import type { TaskCommitment, TaskKind } from "@/lib/types";
 import { withUser } from "@/lib/request-context";
+import { trackEvent } from "@/lib/analytics";
 
 const TASK_KINDS: TaskKind[] = ["school", "academic-ec", "side-ec", "personal", "commitment"];
 const COMMITMENTS: TaskCommitment[] = ["fixed", "reminder", "flexible"];
@@ -76,6 +77,7 @@ export const POST = withUser(async (req: Request) => {
         return NextResponse.json({ ok: true, task, wasDuplicate: true, state: await getAppState() });
       }
       console.log("[api/tasks] add_task success:", task.id);
+      trackEvent("capture", { task_id: task.id, source: "manual" });
       return NextResponse.json({ ok: true, task, state: await getAppState() });
     }
 
@@ -86,6 +88,7 @@ export const POST = withUser(async (req: Request) => {
       const task = await completeTask(body.id);
       if (!task) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
       console.log("[api/tasks] complete_task success:", body.id);
+      trackEvent("task_done", { task_id: task.id });
       return NextResponse.json({ ok: true, task, state: await getAppState() });
     }
 
@@ -128,6 +131,7 @@ export const POST = withUser(async (req: Request) => {
       const task = await toggleTask(body.id);
       if (!task) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
       console.log("[api/tasks] toggle_task success:", body.id, "->", task.completed);
+      if (task.completed) trackEvent("task_done", { task_id: task.id });
       return NextResponse.json({ ok: true, task, state: await getAppState() });
     }
 
@@ -146,6 +150,7 @@ export const POST = withUser(async (req: Request) => {
       const task = await updateTask(body.id, patch);
       if (!task) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
       console.log("[api/tasks] update_task success:", body.id);
+      if (body.completed === true) trackEvent("task_done", { task_id: task.id });
       return NextResponse.json({ ok: true, task, state: await getAppState() });
     }
 

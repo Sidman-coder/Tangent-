@@ -17,6 +17,7 @@ import {
 import { parseScope } from "@/lib/chat/scope";
 import { summarizeIfDue } from "@/lib/chat/server";
 import { withUser } from "@/lib/request-context";
+import { trackEvent } from "@/lib/analytics";
 import { callClaude, messageText } from "@/lib/ai/call";
 import { cleanTitle, fallbackTitle } from "@/lib/chat-title";
 
@@ -72,6 +73,7 @@ export const POST = withUser(async (req: Request) => {
 
     if (action === "create") {
       const session = await createChatSession(body.title);
+      trackEvent("chat_started", { chat_id: session?.id, kind: "home" });
       return NextResponse.json({ ok: true, session });
     }
 

@@ -50,6 +50,17 @@ void (import("./project-stats") as Promise<typeof import("./project-stats")>).th
       assert.equal(paceOf([...needsThree, step("2026-11-01", { completed: true }), step("2026-11-02", { completed: true })], TODAY).status, "Slightly behind");
     });
 
+    test("done in the last 7 days counts by completion time, and says when it had to guess", () => {
+      const late = step("2026-10-01", { completed: true, completedAt: `${TODAY}T15:00:00.000Z` });
+      const old = step("2026-11-03", { completed: true, completedAt: "2026-10-20T15:00:00.000Z" });
+      const exact = paceOf([late, old, step("2026-11-12")], TODAY);
+      assert.equal(exact.doneLast7, 1);
+      assert.equal(exact.approximate, false);
+      const guessed = paceOf([step("2026-11-02", { completed: true }), step("2026-11-12")], TODAY);
+      assert.equal(guessed.doneLast7, 1);
+      assert.equal(guessed.approximate, true);
+    });
+
     test("finished projects and undated steps never read as behind", () => {
       assert.equal(paceOf([step("2026-10-01", { completed: true })], TODAY).status, "On track");
       const undated = paceOf([step("")], TODAY);

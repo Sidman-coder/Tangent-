@@ -119,6 +119,8 @@ type TaskRow = {
   /** Absent until migration 20261105000000 has run. */
   commitment_type?: Task["commitment"] | null;
   overdue_dismissed_at?: string | null;
+  /** Absent until migration 20261105060000 has run. */
+  completed_at?: string | null;
 };
 const BASE_TASK_COLUMNS =
   "id, title, date, time, completed, kind, calendar_id, plan_id, notes, recurring, resources, start_action, source, external_id, path_node_id";
@@ -127,7 +129,7 @@ const BASE_TASK_COLUMNS =
 // database doesn't have yet is left out of reads and writes until a re-check
 // finds it, and the app reads the missing value through the same rules
 // (commitmentOf in lib/task-kind.ts).
-const OPTIONAL_TASK_COLUMNS = ["commitment_type", "overdue_dismissed_at"] as const;
+const OPTIONAL_TASK_COLUMNS = ["commitment_type", "overdue_dismissed_at", "completed_at"] as const;
 const missingTaskColumns = createColumnMemo();
 
 function taskColumns(): string {
@@ -176,6 +178,7 @@ function taskFromRow(r: TaskRow): Task {
   if (r.path_node_id !== null) t.pathNodeId = r.path_node_id;
   if (r.commitment_type) t.commitment = r.commitment_type;
   if (r.overdue_dismissed_at) t.overdueDismissedAt = r.overdue_dismissed_at;
+  if (r.completed_at) t.completedAt = r.completed_at;
   // Old ids (Personal/Work/Study/custom) become School or No school here, so
   // nothing above the store sees them (lib/calendars.ts).
   t.calendarId = calendarGroupOf({ ...t, calendarId: r.calendar_id ?? undefined });
@@ -192,7 +195,12 @@ function taskPatchToRow(patch: Partial<Omit<Task, "id">>): Record<string, unknow
   if (has("title") && patch.title != null) row.title = patch.title;
   if (has("date") && patch.date != null) row.date = patch.date;
   if (has("time")) row.time = patch.time ?? "";
-  if (has("completed") && patch.completed != null) row.completed = patch.completed;
+  if (has("completed") && patch.completed != null) {
+    row.completed = patch.completed;
+    // Every path to Done (Today, task detail, calendar, AI changes) and every
+    // Undo or reopen comes through here.
+    row.completed_at = patch.completed ? new Date().toISOString() : null;
+  }
   if (has("kind")) row.kind = patch.kind ?? null;
   if (has("calendarId")) row.calendar_id = patch.calendarId ?? null;
   if (has("planId")) row.plan_id = isUuid(patch.planId) ? patch.planId : null;

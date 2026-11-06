@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withUser } from "@/lib/request-context";
+import { trackEvent } from "@/lib/analytics";
 import { answerGrillQuestion, getGrillQuestions, seedGrillQuestions, skipGrillQuestion } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -34,10 +35,12 @@ export const POST = withUser(async (req: Request) => {
     if (!answer) return NextResponse.json({ ok: false, error: "answer required" }, { status: 400 });
     const saved = await answerGrillQuestion(String(body.id ?? ""), answer);
     if (!saved) return NextResponse.json({ ok: false, error: "Question not found" }, { status: 404 });
+    trackEvent("grill_answered", { count: 1, source: "queue" });
     return NextResponse.json({ ok: true, ...saved });
   }
   if (body.action === "skip") {
     await skipGrillQuestion(String(body.id ?? ""));
+    trackEvent("grill_skipped", { count: 1, source: "queue" });
     return NextResponse.json({ ok: true });
   }
   return NextResponse.json({ ok: false, error: "Unknown action" }, { status: 400 });

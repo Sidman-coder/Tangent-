@@ -42,16 +42,21 @@ The product is not an AI counselor, therapy product, family surveillance system,
 
 ## Current software state
 
-**v3 build status (2026-11-05, branch `v3-core-loop`, not pushed):** Phases 0–3 and Round 2 Phase A are built. Phase A adds Today's home layout, task commitments, and project colors. The current branch has 573 passing tests and a successful production build. Steps only a person can do are in [MANUAL-STEPS](../MANUAL-STEPS.md). The features below haven't been run end to end with a signed-in account, a real microphone or real Canvas data.
+**v3 build status (2026-11-05, branch `v3-core-loop`, not pushed):** Phases 0–3 and Round 2 (Phases A–G) are built and committed locally. The current branch passes its node tests and a production build. Steps only a person can do, including seven Round 2 migrations, are in [MANUAL-STEPS](../MANUAL-STEPS.md). Nothing below has been run end to end with a signed-in account, a real microphone or real Canvas data; the UI was checked on the `/dev/app/*` sample pages.
 
-- **Built, not yet tested signed in: Today's daily loop.** 1-3 steps with Done, Not today and Too big, the automatic re-plan on a miss, and Fresh start are in the code. Their server actions haven't run against a real account yet.
+- **Today (`/`).** One capture input and three sections. **Must do** holds fixed-time items and hard overdue; **Today's plan** holds today's flexible steps with Done, Not today and Too big; **Coming up** shows the next few days. Hard overdue (a missed deadline) stays until done or dismissed; soft overdue (a missed flexible step) sits at the bottom of Today's plan, calmly, until it is done or re-planned. Past calendar imports never count as overdue. Fresh start and the automatic re-plan on a miss move work forward without penalty.
+- **Task commitment.** Each task is fixed, a reminder, or flexible (`task.commitment`); only flexible steps move. It is inferred on capture and changeable on the task.
+- **Colors.** Project tasks use their project's color; personal tasks and unmatched Canvas tasks have their own consistent colors (`lib/task-colors.ts`), and a project's color is picked from the palette.
+- **Plan preview.** A confirmed-before-saving preview defaults to the month view, starting on the student's chosen week start.
+- **Grill me (sufficiency).** Tangent keeps asking one question at a time until it knows enough to plan (context slots and a sufficiency score), never asks what it already knows, and every question has Skip and Stop. The older template queue in `grill_questions` still feeds Today and Settings.
+- **Chats.** Every chat starts on Home; a task or project gets its own chat with its context attached, and the Chats library at `/ai` lists them all with running summaries. The two-chat model and "Ask Tangent" are replaced; see [the chat-model decision](decisions/2026-11-chat-model.md).
+- **Settings.** Separate pages for Account, Security, Schedule (with quiet hours and week start), Notifications, Context, Activity and Data (export and delete).
+- **Projects.** A School card built from Canvas, plus project stats. "Done in the last 7 days" uses each task's completion time once migration `20261105060000` is run, and is marked "About" until then.
+- **AI routing.** Classification, titles, summaries and plain chat use the fast model; drafting plans and planning conversations use the smart model (`MODEL_ROUTES` in `lib/ai/models.ts`). Round 2 evals: `npm run eval:pipeline -- --round2` (costs a little; asks first).
+- **Pilot analytics.** Server-side events in the `events` table (`lib/analytics.ts`): signup, captures, confirmed plans, tasks done, Not today, Too big, Fresh start, re-plans, Grill answers/skips/stops, chats started and week-two return. Names, ids and counts only. Queries: [pilot-metrics.sql](pilot-metrics.sql).
+- **Sign-in:** email codes, optional password, and password reset by code. The codes only work once the email templates in MANUAL-STEPS are pasted in.
+- **Calendar:** dragging a task saves its new date and time, with Undo.
 - **Not built: anything from the December roadmap.** That covers billing, study buddy and the share card.
-- **Sign-in:** email codes, password reset by code, and clearer error messages. The codes only work once the email templates in MANUAL-STEPS are pasted in.
-- **Calendar:** dragging a task saves its new date and time, with Undo. Blocks are a fixed 45 minutes, and dragging a repeating task moves one occurrence.
-- **Capture:** a phone mic with live words, up to 3 question cards in a row, task filters, and a mini week in the preview.
-- **Two chats:** capture and the AI page are the only chats. An "Ask" on a project or task opens the AI page with it attached. Old task chat history stays in `task_chat_messages` but isn't shown anywhere.
-- **Grill me:** a queue of template questions in `grill_questions`, answered on Today, under a confirmed preview, or in Settings. It reads empty until the migration is run.
-- **Projects:** a School card and page built from Canvas, plus stats on each project. "Completed in the last 7 days" is approximate, because tasks have no completed-at time.
 - **Tangents:** the rail link is hidden. The route still exists.
 
 The repository is a Next.js 14 and TypeScript application. Current code and user-provided context establish the following:
@@ -197,7 +202,7 @@ The following remain assumptions or unknowns until supported by research, tests,
 ## Open questions
 
 - Price sensitivity: $4.99 versus $9.99?
-- What is week-2 retention?
+- What is week-2 retention? (Now measured: [pilot-metrics.sql](pilot-metrics.sql).)
 - Will parents buy the School-Year Pass?
 - Is iPhone web push reliable enough for daily check-ins?
 - How does a parent-bought pass with a teen-approved recap fit the "one student per account" and "not a family surveillance system" boundaries?
@@ -207,3 +212,6 @@ The following remain assumptions or unknowns until supported by research, tests,
 - Which actions may TANGENT take automatically, and which require confirmation?
 - What is the minimum privacy and consent model for classroom voice capture, if the Pen resumes?
 - Which product metric best proves value before expanding scope?
+- Is "enough context" tuned right? The pilot's Grill stop rate should show whether Tangent asks too much.
+- Should old task-chat history in `task_chat_messages` be migrated into the new task chats, or left archived?
+- Should the Tangents route be removed now that projects carry their own path?

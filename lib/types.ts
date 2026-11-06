@@ -34,6 +34,9 @@ export type Task = {
   commitment?: TaskCommitment;
   /** When the student dismissed this overdue item from Must do. It stays on the calendar. */
   overdueDismissedAt?: string | null;
+  /** When it was marked Done (ISO). Set by the store whenever `completed`
+   *  changes; absent on tasks finished before the column existed. */
+  completedAt?: string | null;
   calendarId?: string | null;
   planId?: string | null;
   notes?: string;

@@ -30,6 +30,7 @@ const MARGIN = 1.5;
 
 async function main() {
   const check = process.argv.includes("--check");
+  if (process.argv.includes("--round2")) return round2(check);
   // Drafting is gated on the flag, read when lib/pipeline/flags.ts loads.
   process.env.TANGENT_PIPELINE_V2 = "true";
 
@@ -208,6 +209,63 @@ function printTable(rows: Row[]) {
   const widths = all[0].slice(0, 5).map((_, i) => Math.max(...all.map((row) => row[i].length)));
   console.log("");
   for (const row of all) console.log(row.map((cell, i) => (i < 5 ? cell.padEnd(widths[i]) : cell)).join("  "));
+}
+
+/**
+ * Round 2 (F.2): task kind, slot inference and question/task/plan routing,
+ * from lib/pipeline/fixtures/round2.json. Each case is at most one FAST call
+ * and writes nothing to the database. `--round2 --check` is free.
+ */
+async function round2(check: boolean) {
+  const { Round2FileSchema, gradeKind, gradeSlots, gradeRoute } = await import("@/lib/pipeline/grade");
+  const { estimateCostUsd, modelFor } = await import("@/lib/ai/models");
+  const raw = (await import("@/lib/pipeline/fixtures/round2.json")).default as unknown;
+  const parsed = Round2FileSchema.safeParse(raw);
+  if (!parsed.success) {
+    console.error("round2.json is invalid:\n" + parsed.error.message);
+    process.exit(1);
+  }
+  const file = parsed.data;
+  const n = file.kinds.length + file.slots.length + file.routes.length;
+  const cost = MARGIN * n * estimateCostUsd(modelFor("FAST"), ROUTER_CALL);
+  console.log(`Round 2: ${file.kinds.length} kind, ${file.slots.length} slot, ${file.routes.length} route cases on ${modelFor("FAST")}`);
+  console.log(`Estimated cost: at most about $${cost.toFixed(2)} (×${MARGIN} margin; clear cases skip the AI)`);
+
+  const { classifyWithFallback } = await import("@/lib/task-kind-ai");
+  const { inferSlotsWithFallback } = await import("@/lib/context/infer");
+  const { classifyIntent } = await import("@/lib/pipeline/intent");
+  const { callIntentRouter } = await import("@/lib/pipeline/understand");
+  if (check) {
+    console.log("Check OK: round2 fixtures valid, modules load. No AI calls made.");
+    return;
+  }
+  if (!(await ask(`This calls the AI for up to ${n} cases (about $${cost.toFixed(2)}). Type y to continue: `))) {
+    console.log("Stopped. Nothing was spent.");
+    return;
+  }
+
+  const results: { id: string; pass: boolean; failures: string[] }[] = [];
+  const run = async (id: string, grade: () => Promise<{ pass: boolean; failures: string[] }>) => {
+    const g = await grade().catch((e: unknown) => ({ pass: false, failures: [`error: ${e instanceof Error ? e.message : String(e)}`] }));
+    results.push({ id, ...g });
+    console.log(`${g.pass ? "PASS" : "FAIL"}  ${id}${g.pass ? "" : `  (${g.failures.join("; ")})`}`);
+  };
+  for (const c of file.kinds) {
+    await run(c.id, async () => gradeKind(c.kind, (await classifyWithFallback({ title: c.title, hasFixedTime: c.hasFixedTime, source: c.source })).kind));
+  }
+  for (const c of file.slots) {
+    await run(c.id, async () => gradeSlots(c, Object.keys(await inferSlotsWithFallback(c.text, file.reference_date))));
+  }
+  for (const c of file.routes) {
+    await run(c.id, async () =>
+      gradeRoute(c.expect, await classifyIntent(c.text, { flag: true, tz: file.timezone, today: file.reference_date, planTitles: [], caller: callIntentRouter }))
+    );
+  }
+  for (const part of ["kind", "slot", "route"]) {
+    const rows = results.filter((r) => r.id.startsWith(`${part}-`));
+    console.log(`${part}: ${rows.filter((r) => r.pass).length}/${rows.length}`);
+  }
+  console.log(`\n${results.filter((r) => r.pass).length}/${results.length} passed`);
 }
 
 main().catch((e: unknown) => {

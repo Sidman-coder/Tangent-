@@ -89,7 +89,7 @@ export default function ProjectStats({ tasks, today, school = false }: { tasks: 
         <p className="pstats-note">
           {pace.remaining === 0
             ? "Nothing left to do."
-            : `${plural(pace.neededThisWeek, "step")} needed this week. ${pace.doneLast7} done in the last 7 days.`}
+            : `${plural(pace.neededThisWeek, "step")} needed this week. ${pace.approximate ? "About " : ""}${pace.doneLast7} done in the last 7 days.`}
           {pace.overdue > 0 && ` ${pace.overdue} overdue.`}
         </p>
         <p className="pstats-sentence">{sentence}</p>

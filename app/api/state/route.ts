@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getState, replaceState } from "@/lib/store";
 import type { AppState } from "@/lib/types";
 import { withUser } from "@/lib/request-context";
+import { trackAppOpen } from "@/lib/analytics";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,6 +38,7 @@ const stateShape = z
   .loose();
 
 export const GET = withUser(async () => {
+  trackAppOpen();
   return NextResponse.json(await getState());
 });
 

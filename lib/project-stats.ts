@@ -1,9 +1,9 @@
 // The numbers behind a project's stats panel and the School card. Pure, no AI:
 // everything comes from the tasks already on the calendar.
 //
-// Tasks don't record when they were completed, so "done in the last 7 days"
-// means done steps dated in that window or later. A step finished late, long
-// after its date, doesn't count toward current pace.
+// "Done in the last 7 days" counts by completedAt. Tasks finished before that
+// was recorded fall back to their date (a step finished long after its date
+// doesn't count), and the pace says so with `approximate`.
 
 import { splitCourse } from "./course";
 import { estimateMinutes } from "./load";
@@ -23,6 +23,8 @@ export type Pace = {
   /** Steps to finish in the next 7 days to stay on course. */
   neededThisWeek: number;
   doneLast7: number;
+  /** True when a finished step had no completedAt and was counted by its date. */
+  approximate: boolean;
   overdue: number;
   status: PaceStatus;
 };
@@ -63,7 +65,14 @@ export function paceOf(tasks: StatTask[], today: string): Pace {
   const daysLeft = last ? Math.max(1, daysBetweenYMD(today, last) + 1) : null;
   const neededThisWeek = daysLeft === null ? 0 : (open.length * Math.min(7, daysLeft)) / daysLeft;
   const weekAgo = addDaysYMD(today, -6);
-  const doneLast7 = tasks.filter((t) => t.completed && t.date >= weekAgo).length;
+  let approximate = false;
+  const doneLast7 = tasks.filter((t) => {
+    if (!t.completed) return false;
+    // completedAt is UTC; its calendar date is close enough for a weekly count.
+    if (t.completedAt) return t.completedAt.slice(0, 10) >= weekAgo;
+    if (t.date >= weekAgo) approximate = true;
+    return t.date >= weekAgo;
+  }).length;
   const overdue = dated.filter((t) => t.date < today).length;
   const wasDue = tasks.some((t) => t.date >= weekAgo && t.date <= today);
 
@@ -73,7 +82,7 @@ export function paceOf(tasks: StatTask[], today: string): Pace {
   if (open.length > 0 && (overdue > 0 || wasDue) && doneLast7 < neededThisWeek) {
     status = doneLast7 / neededThisWeek >= BEHIND_BELOW ? "Slightly behind" : "Behind";
   }
-  return { remaining: open.length, daysLeft, neededThisWeek, doneLast7, overdue, status };
+  return { remaining: open.length, daysLeft, neededThisWeek, doneLast7, approximate, overdue, status };
 }
 
 export function nextSteps<T extends StatTask>(tasks: T[], count = 3): T[] {

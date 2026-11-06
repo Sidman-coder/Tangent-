@@ -11,6 +11,7 @@ import { parseChangeSet, type ChangeSet } from "./changeset";
 import { editOps, parseDraftEdit, summarize } from "./draft";
 import { previewFor } from "./drafting";
 import { logEvent } from "./events";
+import { trackEvent } from "../analytics";
 import { TANGENT_PIPELINE_V2 } from "./flags";
 import { nextStep, type CardAction } from "./lifecycle";
 
@@ -99,6 +100,8 @@ export async function confirmChangeSet(req: Request): Promise<NextResponse> {
       },
       { changeSetId: cs.id, planId: result.createdPlanIds[0] ?? cs.target_plan_id }
     );
+    if (result.createdTaskIds.length > 0) trackEvent("capture", { count: result.createdTaskIds.length, source: "pipeline" });
+    trackEvent("plan_confirmed", { plan_id: result.createdPlanIds[0] ?? cs.target_plan_id ?? undefined, count: result.createdTaskIds.length });
     return json({
       ok: true,
       changeSet: result.changeSet,

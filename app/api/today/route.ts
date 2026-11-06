@@ -13,6 +13,7 @@ import {
   updateTask,
 } from "@/lib/store";
 import { withUser } from "@/lib/request-context";
+import { trackEvent } from "@/lib/analytics";
 import {
   type StepMove,
   canMoveStep,
@@ -67,12 +68,14 @@ export const POST = withUser(async (request: Request) => {
   if (action === "replan") {
     const { moves, backlog } = planMissReplan(tasks, ctx);
     const actionId = await applyMoves(moves, `Re-planned ${plural(moves.length)} from an earlier day`);
+    trackEvent("auto_replan", { count: moves.length });
     return NextResponse.json({ ok: true, moved: moves.length, actionId, backlog });
   }
 
   if (action === "fresh_start") {
     const moves = planFreshStart(tasks, ctx);
     const actionId = await applyMoves(moves, `Fresh start: moved ${plural(moves.length)}`);
+    trackEvent("fresh_start", { count: moves.length });
     return NextResponse.json({ ok: true, moved: moves.length, actionId });
   }
 
@@ -84,6 +87,7 @@ export const POST = withUser(async (request: Request) => {
     if (!canMoveStep(task)) return NextResponse.json({ ok: true, moved: 0, actionId: null });
     const moves = planNotToday(tasks, task, ctx);
     const actionId = await applyMoves(moves, `Moved "${task.title}" off today`);
+    trackEvent("not_today", { task_id: task.id, count: moves.length });
     return NextResponse.json({
       ok: true,
       moved: moves.length,
@@ -120,6 +124,7 @@ export const POST = withUser(async (request: Request) => {
       addedTaskIds: added.map((t) => t.id),
       removedTasks: keepOriginal ? [] : [task],
     });
+    trackEvent("too_big", { task_id: task.id, count: added.length });
     return NextResponse.json({ ok: true, added: added.length, keptOriginal: keepOriginal, actionId: record.id });
   }
 

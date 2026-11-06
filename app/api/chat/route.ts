@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withUser } from "@/lib/request-context";
+import { trackEvent } from "@/lib/analytics";
 import { calendarReply, lastUserMessage, pendingAnswerReply, planReply, type CalendarReplyOptions } from "@/lib/chat-reply";
 import { parsePendingQuestion, PENDING_QUESTION_ID } from "@/lib/pending-question";
 import { TANGENT_PIPELINE_V2 } from "@/lib/pipeline/flags";
@@ -50,6 +51,7 @@ async function saveQuickCapture(quick: QuickCapture): Promise<Record<string, unk
     return { ok: true, action: "add_task", message: `Already have "${task.title}" around then.` };
   }
   const record = await recordAction("add_task", `Added "${task.title}"`, { addedTaskIds: [task.id] });
+  trackEvent("capture", { task_id: task.id, source: "quick" });
   const tz = await getUserTimezone();
   const today = localNow(tz).date;
   const day =
@@ -209,6 +211,7 @@ export const POST = withUser(async (req: Request) => {
     let pipelineText = userText;
     let slotDrafted = false;
     const slotTurn = parseSlotTurn(body.slotTurn);
+    if (slotTurn?.stopped) trackEvent("grill_stopped", { count: slotTurn.answers.length, source: "slots" });
     if (
       body.slotFlow === true &&
       answers.length === 0 &&
@@ -239,6 +242,8 @@ export const POST = withUser(async (req: Request) => {
         }
         if (turn.kind === "draft") {
           slotDrafted = true;
+          if (slotTurn && slotTurn.answers.length > 0) trackEvent("grill_answered", { count: slotTurn.answers.length, source: "slots" });
+          if (slotTurn && slotTurn.skipped.length > 0) trackEvent("grill_skipped", { count: slotTurn.skipped.length, source: "slots" });
           if (turn.notes) pipelineText = `${userText}\n\n${turn.notes}`;
         }
       }
