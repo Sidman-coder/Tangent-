@@ -12,7 +12,6 @@ import { MockAppStateProvider, useUserTimezone } from "@/components/AppStateProv
 import MotionProvider from "@/components/MotionProvider";
 import { PipelineFlagProvider } from "@/components/PipelineFlag";
 import AppShell from "@/components/AppShell";
-import LiquidGlass from "@/components/LiquidGlass";
 import TaskDetail from "@/components/TaskDetail";
 import TaskChatSheet from "@/components/chat/TaskChatSheet";
 import TodayHome from "@/components/today/TodayHome";
@@ -122,7 +121,6 @@ export default function AppPreview() {
               <Page />
             </main>
           </AppShell>
-          <LiquidGlass />
           <TaskDetail />
           <TaskChatSheet />
         </MotionProvider>

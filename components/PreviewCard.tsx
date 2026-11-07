@@ -287,6 +287,7 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
                   {movable && (
                     <>
                       <input
+                        name="move-date"
                         type="date"
                         aria-label="Date"
                         defaultValue={op.date}
@@ -294,6 +295,7 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
                         onChange={(e) => e.target.value && void edit({ type: "date", index: i, date: e.target.value })}
                       />
                       <input
+                        name="move-time"
                         type="time"
                         aria-label="Time"
                         defaultValue={op.time ?? ""}
@@ -323,6 +325,7 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
       {view.planRemovals?.map((r) => (
         <label key={r.planId} className="preview-card-check">
           <input
+            name="keep-removal"
             type="checkbox"
             checked={r.checked}
             disabled={busy}

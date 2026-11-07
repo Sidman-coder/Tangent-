@@ -162,7 +162,7 @@ export default function AiActivity() {
       )}
 
       <div className="aia-filters" role="group" aria-label="Filter AI activity">
-        <select className="settings-select aia-select" aria-label="Result" value={result} onChange={(e) => (setResult(e.target.value as ActivityResult | ""), setPage(1))}>
+        <select name="activity-result" className="settings-select aia-select" aria-label="Result" value={result} onChange={(e) => (setResult(e.target.value as ActivityResult | ""), setPage(1))}>
           <option value="">Any result</option>
           {ACTIVITY_RESULTS.map((r) => (
             <option key={r} value={r}>
@@ -170,7 +170,7 @@ export default function AiActivity() {
             </option>
           ))}
         </select>
-        <select className="settings-select aia-select" aria-label="Type" value={type} onChange={(e) => (setType(e.target.value as ActivityType | ""), setPage(1))}>
+        <select name="activity-type" className="settings-select aia-select" aria-label="Type" value={type} onChange={(e) => (setType(e.target.value as ActivityType | ""), setPage(1))}>
           <option value="">Any type</option>
           {ACTIVITY_TYPES.map((t) => (
             <option key={t} value={t}>
@@ -185,7 +185,7 @@ export default function AiActivity() {
             </button>
           ))}
         </div>
-        <input type="search" className="aia-search" placeholder="Search what you asked" aria-label="Search what you asked" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input name="activity-search" type="search" className="aia-search" placeholder="Search what you asked" aria-label="Search what you asked" value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
 
       {error && (

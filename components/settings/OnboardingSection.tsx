@@ -90,7 +90,7 @@ export default function OnboardingSection({
             <span>Canvas and your calendars, so Tangent starts out knowing your week.</span>
             {canvasLoaded && <Status done={canvasConnected}>{canvasConnected ? "Canvas connected" : "Nothing connected yet"}</Status>}
           </div>
-          <Link href="/settings/schedule" className={`ui-button ui-button--sm ${canvasConnected ? "ui-button--secondary lg lg-interactive" : "ui-button--primary lg lg-tint lg-interactive"}`}>
+          <Link href="/settings/schedule" className={`ui-button ui-button--sm ${canvasConnected ? "ui-button--secondary" : "ui-button--primary"}`}>
             Open
           </Link>
         </div>

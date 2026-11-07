@@ -13,7 +13,7 @@
 
 .settings-sidenav {
   position: sticky;
-  top: calc(var(--topbar-h, 64px) + 16px);
+  top: calc(var(--shell-top, 0px) + 16px);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -230,11 +230,7 @@
     width: 100%;
   }
 }
-@media (min-width: 861px) {
-  .settings-page.is-root .settings-main .settings-list-nav {
-    display: none;
-  }
-}
+
 @media (prefers-reduced-motion: reduce) {
   .settings-sidenav-link { transition: none; }
 }

@@ -122,6 +122,7 @@ export default function ProjectPage() {
 
       <header className="project-head">
         <input
+          name="project-name"
           className="project-title-input"
           value={title}
           aria-label="Project name"
@@ -132,6 +133,7 @@ export default function ProjectPage() {
           }}
         />
         <textarea
+          name="project-goal"
           className="project-goal-input"
           value={goal}
           rows={2}

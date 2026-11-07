@@ -1,6 +1,5 @@
 "use client"
 import { useState, useEffect, useCallback, useRef } from "react"
-import { createPortal } from "react-dom"
 import { Sun, Lightbulb, AlertTriangle, Clock, Calendar, Bell, X, type LucideIcon } from "lucide-react"
 import { Notification } from "@/lib/types"
 import { notifyNewDesktopNotifications } from "@/lib/desktop-notifications"
@@ -10,17 +9,25 @@ import { useRouter } from "next/navigation"
 import { QUESTIONS_EVENT } from "@/lib/questions-client"
 import { claimPopups, getInAppPopupsEnabled, planToasts, popupCandidates, type Toast } from "@/lib/notification-popups"
 import NotificationToasts from "@/components/NotificationToasts"
+import Sheet from "@/components/ui/Sheet"
+import Button from "@/components/ui/Button"
+import EmptyState from "@/components/ui/EmptyState"
 import { humanizeTimestamps } from "@/lib/humanize"
 import { collapseDuplicates } from "@/lib/notification-dedupe"
 
 type NotificationBellProps = {
-  open?: boolean
-  onOpenChange?: (open: boolean) => void
-  /** "rail": a row in the sidebar, its panel opening beside the sidebar. */
-  placement?: "top" | "rail"
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  /** The shell draws the bell buttons; it learns the unread count from here. */
+  onUnreadChange?: (count: number) => void
 }
 
-export default function NotificationBell({ open: openProp, onOpenChange, placement = "top" }: NotificationBellProps = {}) {
+/**
+ * The one place notifications live: it polls, pops toasts and holds the inbox
+ * sheet. The shell renders it once and draws NotificationBellButton wherever
+ * the bell sits (sidebar on desktop, top bar on a phone).
+ */
+export default function NotificationBell({ open, onOpenChange, onUnreadChange }: NotificationBellProps) {
   const tz = useUserTimezone()
   const email = useAppState().state?.user.email ?? ""
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -28,18 +35,10 @@ export default function NotificationBell({ open: openProp, onOpenChange, placeme
   const askedRef = useRef<Set<string>>(new Set())
   const lastFetchRef = useRef(0)
   const [notifications, setNotifications] = useState<Notification[]>([])
-  const [unreadCount, setUnreadCount] = useState(0)
-  const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [clearing, setClearing] = useState(false)
   const router = useRouter()
-
-  const isControlled = openProp !== undefined
-  const open = isControlled ? openProp : uncontrolledOpen
-  const setOpen = useCallback((next: boolean | ((prev: boolean) => boolean)) => {
-    const resolved = typeof next === "function" ? (next as (prev: boolean) => boolean)(open) : next
-    if (onOpenChange) onOpenChange(resolved)
-    if (!isControlled) setUncontrolledOpen(resolved)
-  }, [isControlled, onOpenChange, open])
+  const setOpen = onOpenChange
 
   const fetchNotifications = useCallback(async () => {
     lastFetchRef.current = Date.now()
@@ -50,16 +49,24 @@ export default function NotificationBell({ open: openProp, onOpenChange, placeme
       // One per reminder: the reminder job can repeat itself (lib/notification-dedupe.ts).
       const list = collapseDuplicates(raw)
       setNotifications(list)
-      setUnreadCount(list.filter(n => !n.read).length)
       // Desktop notifications piggyback on this same poll — no extra fetch.
       // See lib/desktop-notifications.ts for the opt-in + anti-spam rules.
       notifyNewDesktopNotifications(list)
     } catch {}
   }, [])
 
-  // Poll every 60 seconds
+  const unreadCount = notifications.filter(n => !n.read).length
   useEffect(() => {
-    fetchNotifications()
+    onUnreadChange?.(unreadCount)
+  }, [onUnreadChange, unreadCount])
+
+  // The proactive check runs once on load, then the list polls every minute.
+  useEffect(() => {
+    fetch("/api/proactive", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ trigger: "page_load" })
+    }).catch(() => {}).finally(() => void fetchNotifications())
     const interval = setInterval(fetchNotifications, 60000)
     return () => clearInterval(interval)
   }, [fetchNotifications])
@@ -114,24 +121,6 @@ export default function NotificationBell({ open: openProp, onOpenChange, placeme
     if (open) setToasts([])
   }, [open])
 
-  // Run proactive check on mount
-  useEffect(() => {
-    fetch("/api/proactive", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ trigger: "page_load" })
-    }).then(() => fetchNotifications()).catch(() => {})
-  }, [fetchNotifications])
-
-  useEffect(() => {
-    if (!open) return
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false)
-    }
-    window.addEventListener("keydown", onKeyDown)
-    return () => window.removeEventListener("keydown", onKeyDown)
-  }, [open, setOpen])
-
   const handleDismiss = async (id: string) => {
     // Its hidden copies go with it, so an older twin doesn't take its place.
     const twins = (notifications.find(n => n.id === id) as (Notification & { duplicateIds?: string[] }) | undefined)?.duplicateIds ?? []
@@ -143,20 +132,39 @@ export default function NotificationBell({ open: openProp, onOpenChange, placeme
     fetchNotifications()
   }
 
-  const handleMarkRead = async (id: string) => {
+  const handleMarkRead = async (n: Notification) => {
+    if (n.read) return
     await fetch("/api/notifications", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "mark_read", id })
+      body: JSON.stringify({ action: "mark_read", id: n.id })
     })
     fetchNotifications()
   }
 
   const handleGenerateSummary = async () => {
     setLoading(true)
-    await fetch("/api/daily-brief", { method: "POST" })
-    await fetchNotifications()
-    setLoading(false)
+    try {
+      await fetch("/api/daily-brief", { method: "POST" })
+      await fetchNotifications()
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleClearAll = async () => {
+    setClearing(true)
+    try {
+      await fetch("/api/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "dismiss_all" })
+      })
+      await fetchNotifications()
+      setOpen(false)
+    } finally {
+      setClearing(false)
+    }
   }
 
   const handleReschedule = async (n: Notification) => {
@@ -186,133 +194,148 @@ export default function NotificationBell({ open: openProp, onOpenChange, placeme
   const renderNotif = (n: Notification, pinned = false) => {
     const Icon = getIcon(n.type)
     return (
-    <div
-      key={n.id}
-      className={`notif-item surface-record ${!n.read ? 'notif-item--unread' : ''} notif-item--${n.type}${pinned ? ' notif-item--pinned-brief' : ''}`}
-      onClick={() => handleMarkRead(n.id)}
-    >
-      <div className="notif-item-icon"><Icon size={18} strokeWidth={1.75} /></div>
-      <div className="notif-item-content">
-        <div className="notif-item-title">{humanizeTimestamps(n.title)}</div>
-        <div className="notif-item-body">{humanizeTimestamps(n.body)}</div>
-        {n.actionLabel && (
-          <button
-            className="notif-item-action"
-            onClick={e => {
-              e.stopPropagation()
-              if (n.type === 'reschedule_offer') void handleReschedule(n)
-              // Tangent's questions about a task are answered on Today.
-              if ((n.actionData as { kind?: string } | undefined)?.kind === 'questions') {
-                setOpen(false)
-                window.dispatchEvent(new Event(QUESTIONS_EVENT))
-                router.push('/#questions')
-              }
-            }}
-          >
-            {n.actionLabel}
-          </button>
-        )}
-        <div className="notif-item-time">
-          {new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-        </div>
-      </div>
-      <button
-        className="notif-item-dismiss"
-        onClick={e => { e.stopPropagation(); handleDismiss(n.id) }}
+      <li
+        key={n.id}
+        className={`notif-item${!n.read ? ' is-unread' : ''}${pinned ? ' is-pinned' : ''}`}
+        onClick={() => void handleMarkRead(n)}
       >
-        <X size={14} strokeWidth={2} />
-      </button>
-    </div>
+        <span className="notif-item-icon" aria-hidden="true"><Icon size={18} strokeWidth={1.75} /></span>
+        <div className="notif-item-content">
+          <p className="notif-item-title">
+            {!n.read && <span className="ui-visually-hidden">Unread: </span>}
+            {humanizeTimestamps(n.title)}
+          </p>
+          <p className="notif-item-body">{humanizeTimestamps(n.body)}</p>
+          <div className="notif-item-meta">
+            <time className="notif-item-time" dateTime={n.timestamp}>
+              {new Date(n.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+            </time>
+            {n.actionLabel && (
+              <Button
+                variant="secondary"
+                size="sm"
+                className="notif-item-action"
+                onClick={e => {
+                  e.stopPropagation()
+                  if (n.type === 'reschedule_offer') void handleReschedule(n)
+                  // Tangent's questions about a task are answered on Home.
+                  if ((n.actionData as { kind?: string } | undefined)?.kind === 'questions') {
+                    setOpen(false)
+                    window.dispatchEvent(new Event(QUESTIONS_EVENT))
+                    router.push('/#questions')
+                  }
+                }}
+              >
+                {n.actionLabel}
+              </Button>
+            )}
+          </div>
+        </div>
+        <button
+          type="button"
+          className="notif-item-dismiss"
+          aria-label={`Dismiss ${humanizeTimestamps(n.title)}`}
+          onClick={e => { e.stopPropagation(); void handleDismiss(n.id) }}
+        >
+          <X size={16} strokeWidth={1.75} aria-hidden="true" />
+        </button>
+      </li>
     )
   }
-
-  // Escape closes the panel, like every other panel in Tangent.
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false)
-    }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [open, setOpen])
-
-  // In the sidebar, the panel is portalled out so the sidebar's glass (which
-  // contains fixed children) can't clip it; it opens beside the sidebar.
-  const wrapPanel = (panel: React.ReactNode) =>
-    placement === "rail" && typeof document !== "undefined"
-      ? createPortal(<div className="notif-rail-layer">{panel}</div>, document.body)
-      : panel
 
   const dismissToast = (key: string) => setToasts(current => current.filter(t => t.key !== key))
 
   return (
-    <div className={`notif-bell-wrapper${placement === "rail" ? " is-rail" : ""}`}>
+    <>
       <NotificationToasts
         toasts={toasts}
         onDismiss={dismissToast}
         onAction={n => void handleReschedule(n)}
         onOpenInbox={() => setOpen(true)}
       />
-      <button
-        className={placement === "rail" ? "rail-btn notif-rail-btn" : "notif-bell-btn"}
-        onClick={() => setOpen(o => !o)}
-        aria-label="Notifications"
-      >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        {placement === "rail" && <span className="rail-btn-label">Notifications</span>}
-        {unreadCount > 0 && (
-          <span className="notif-bell-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>
+      <Sheet open={open} onClose={() => setOpen(false)} title="Notifications" className="notif-sheet">
+        <div className="notif-actions">
+          {!pinnedBrief && (
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={<Sun size={16} strokeWidth={1.75} aria-hidden="true" />}
+              loading={loading}
+              loadingLabel="Writing today's summary"
+              onClick={() => void handleGenerateSummary()}
+            >
+              Today&apos;s summary
+            </Button>
+          )}
+          {notifications.length > 0 && (
+            <Button size="sm" variant="ghost" loading={clearing} onClick={() => void handleClearAll()}>
+              Clear all
+            </Button>
+          )}
+        </div>
+        {notifications.length === 0 ? (
+          <EmptyState
+            icon={<Bell strokeWidth={1.75} aria-hidden="true" />}
+            title="Nothing new"
+          >
+            Tangent is keeping an eye on your week.
+          </EmptyState>
+        ) : (
+          <ul className="notif-list">
+            {pinnedBrief && renderNotif(pinnedBrief, true)}
+            {restNotifications.map(n => renderNotif(n))}
+          </ul>
         )}
+      </Sheet>
+    </>
+  )
+}
+
+/** The bell itself: a sidebar row on desktop, an icon in the phone top bar. */
+export function NotificationBellButton({
+  unread,
+  expanded,
+  onClick,
+  variant,
+}: {
+  unread: number
+  expanded: boolean
+  onClick: () => void
+  variant: "sidebar" | "top"
+}) {
+  const label = unread > 0 ? `Notifications, ${unread} unread` : "Notifications"
+  if (variant === "top") {
+    return (
+      <button
+        type="button"
+        className="app-topbar-bell"
+        aria-label={label}
+        aria-expanded={expanded}
+        aria-haspopup="dialog"
+        onClick={onClick}
+      >
+        <Bell size={20} strokeWidth={1.75} aria-hidden="true" />
+        {unread > 0 && <span className="app-unread-dot" aria-hidden="true" />}
       </button>
-
-      {open && wrapPanel(
-        <>
-          <div className="notif-overlay" onClick={() => setOpen(false)} />
-          <div className="notif-panel">
-            <div className="notif-panel-header">
-              <span className="notif-panel-title">Notifications</span>
-              <div className="notif-panel-actions">
-                {!pinnedBrief && (
-                  <button
-                    className="notif-summary-btn"
-                    onClick={handleGenerateSummary}
-                    disabled={loading}
-                  >
-                    {loading ? "Generating..." : (<><Sun size={14} strokeWidth={2} /> Today's Summary</>)}
-                  </button>
-                )}
-                <button
-                  className="notif-dismiss-all"
-                  onClick={async () => {
-                    await fetch("/api/notifications", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ action: "dismiss_all" })
-                    })
-                    fetchNotifications()
-                    setOpen(false)
-                  }}
-                >
-                  Clear all
-                </button>
-              </div>
-            </div>
-
-            <div className="notif-list">
-              {notifications.length === 0 && (
-                <div className="notif-empty">
-                  Nothing new. Tangent is keeping an eye on your week.
-                </div>
-              )}
-              {pinnedBrief && renderNotif(pinnedBrief, true)}
-              {restNotifications.map(n => renderNotif(n))}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
+    )
+  }
+  return (
+    <button
+      type="button"
+      className="app-nav-item"
+      aria-label={label}
+      aria-expanded={expanded}
+      aria-haspopup="dialog"
+      data-tooltip="Notifications"
+      data-tooltip-side="right"
+      onClick={onClick}
+    >
+      <span className="app-nav-icon">
+        <Bell size={20} strokeWidth={1.75} aria-hidden="true" />
+        {unread > 0 && <span className="app-unread-dot" aria-hidden="true" />}
+      </span>
+      <span className="app-nav-label">Notifications</span>
+      {unread > 0 && <span className="app-nav-count" aria-hidden="true">{unread > 99 ? "99+" : unread}</span>}
+    </button>
   )
 }

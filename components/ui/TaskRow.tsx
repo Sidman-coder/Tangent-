@@ -25,6 +25,10 @@ type TaskRowProps = {
   showDate?: boolean;
   /** A short status chip in the meta line ("2 days overdue", "Due in 5 hr"). */
   flag?: ReactNode;
+  /** A 3px stripe and a heavier title: a hard deadline, or a must-do. */
+  emphasis?: "deadline" | "must";
+  /** Desktop: hide the actions until the row is hovered or focused. */
+  revealActions?: boolean;
 };
 
 function shortDate(ymd: string): string {
@@ -44,12 +48,15 @@ export default function TaskRow({
   hasQuestions = false,
   showDate = false,
   flag,
+  emphasis,
+  revealActions = false,
 }: TaskRowProps) {
   const questionDot = hasQuestions ? <span className="task-question-dot" title="Tangent has a question about this" /> : null;
   return (
     <article
       className={`ui-task-row${task.completed ? " is-complete" : ""}${selected ? " is-selected" : ""}${expanded ? " is-expanded" : ""}`}
       aria-current={selected ? "true" : undefined}
+      data-emphasis={emphasis}
     >
       <div className="ui-task-row-main">
         {onComplete ? (
@@ -106,7 +113,7 @@ export default function TaskRow({
             )}
           </div>
         </div>
-        {actions && <div className="ui-task-actions">{actions}</div>}
+        {actions && <div className="ui-task-actions" data-reveal={revealActions ? "hover" : undefined}>{actions}</div>}
       </div>
       {expanded && children && <div className="ui-task-details">{children}</div>}
     </article>

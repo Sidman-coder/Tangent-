@@ -86,6 +86,7 @@ export function AskFirstPanel({ ask, title }: { ask: AskFirst; title: string }) 
             </div>
           )}
           <input
+            name={`ask-${i}`}
             className="path-ask-input"
             value={q.chips.includes(ask.answers[i]) ? "" : ask.answers[i]}
             placeholder={q.chips.length ? "Or say it in your words" : "Tell Tangent"}

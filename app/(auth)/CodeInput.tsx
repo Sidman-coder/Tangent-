@@ -34,6 +34,7 @@ export default function CodeInput({
     <div className="auth-code" role="group" aria-label="6-digit sign-in code">
       {digits.map((d, i) => (
         <input
+          name={`code-digit-${i + 1}`}
           key={i}
           ref={(el) => {
             refs.current[i] = el;

@@ -36,6 +36,7 @@ import { routeAsk } from "@/lib/ask-route";
 import { heardSomethingToAdd } from "@/lib/voice-intent";
 import { putAsk } from "@/lib/ask-handoff";
 import { putNewPathTitle } from "@/lib/path-handoff";
+import { HOME_INTENT_EVENT, takeHomeIntent, type HomeIntent } from "@/lib/home-intent";
 import { generateQuestions } from "@/lib/questions-client";
 import type { ChangeSet } from "@/lib/pipeline/changeset";
 import type { PreviewPayload } from "@/lib/pipeline/draft";
@@ -323,6 +324,27 @@ export default function AddFlow({
     void voice.startRecording();
   }, [listenOnOpen, voice]);
 
+  // The shell's "New" button and phone mic land here: focus the box or start listening.
+  const voiceRef = useRef(voice);
+  voiceRef.current = voice;
+  useEffect(() => {
+    // Only Home's box answers; Projects has a hero box of its own.
+    if (variant !== "hero") return;
+    const act = () => {
+      if (window.location.pathname !== "/") return;
+      const intent: HomeIntent | null = takeHomeIntent();
+      if (intent === "listen") void voiceRef.current.startRecording();
+      else if (intent === "focus") {
+        const el = inputRef.current;
+        el?.scrollIntoView({ block: "center" });
+        el?.focus({ preventScroll: true });
+      }
+    };
+    act();
+    window.addEventListener(HOME_INTENT_EVENT, act);
+    return () => window.removeEventListener(HOME_INTENT_EVENT, act);
+  }, [variant]);
+
   const busy = phase.kind === "working" || transcribing;
   const hint = handoff === "question"
     ? { icon: MessageSquareText, text: "Sounds like a question. Enter asks Tangent." }
@@ -344,6 +366,7 @@ export default function AddFlow({
           {listening ? <Square size={14} strokeWidth={0} fill="currentColor" aria-hidden="true" /> : <Mic size={variant === "hero" ? 22 : 18} aria-hidden="true" />}
         </button>
         <textarea
+          name="capture"
           ref={inputRef}
           className="add-input"
           rows={1}

@@ -1060,8 +1060,8 @@ export default function ChatPanel({ scope, openId = null, askOnOpen = null, onDo
             )}
             {err && <p className="tg-error" role="alert">{err}</p>}
             {attachedChip}
-            <div className="tg-composer-glow">{composer}</div>
-            <p className="tg-composer-hint">
+            {composer}
+            <p className="ui-composer-hint">
               <kbd>Enter</kbd> to send · <kbd>Shift</kbd> + <kbd>Enter</kbd> for a new line
             </p>
             <div className="tg-examples" aria-label="Try asking">
@@ -1190,7 +1190,7 @@ export default function ChatPanel({ scope, openId = null, askOnOpen = null, onDo
               {err && <p className="tg-error" role="alert">{err}</p>}
               {saveWarning && <p className="tg-error" role="alert">{saveWarning}</p>}
               {attachedChip}
-              <div className="tg-composer-glow">{composer}</div>
+              {composer}
               <p className="tg-dock-hint">
                 {v2
                   ? "Ask a question, add something, or start a project. You’ll see a preview before anything is added."

@@ -3,37 +3,18 @@
    island that is the mic, and a lavender takeover while you talk. */
 
 .capture-home {
-  --lav: #e4dcfb;
-  --lav-2: #cfc2f7;
-  --lav-3: #f1ecff;
-  --blob-1: #b7a4f5;
-  --blob-2: #f0c9f2;
-  --wash-ink: #2b2160;
-  --wash-hint: #6b5fae;
+  /* The talking wash reads the accent tokens, so it follows the theme. */
+  --lav: var(--accent-soft);
+  --lav-2: var(--accent-line);
+  --lav-3: var(--bg);
+  --blob-1: var(--accent-line);
+  --blob-2: color-mix(in srgb, var(--series-magenta) 30%, var(--bg));
+  --wash-ink: var(--text);
+  --wash-hint: var(--accent-text);
   min-height: 100dvh;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-body);
-}
-[data-theme="dark"] .capture-home {
-  --lav: #2a2150;
-  --lav-2: #3a2d70;
-  --lav-3: #1f1840;
-  --blob-1: #5b47c4;
-  --blob-2: #8a3f8f;
-  --wash-ink: #f1ecff;
-  --wash-hint: #c4b8f5;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .capture-home {
-    --lav: #2a2150;
-    --lav-2: #3a2d70;
-    --lav-3: #1f1840;
-    --blob-1: #5b47c4;
-    --blob-2: #8a3f8f;
-    --wash-ink: #f1ecff;
-    --wash-hint: #c4b8f5;
-  }
 }
 
 /* AppShell's bare mode on "/": no rail beside it, so <main> spans the page and
@@ -113,7 +94,7 @@
   width: 22px;
   height: 22px;
   padding: 0;
-  border: 1.8px solid var(--line-strong, #c3bdd9);
+  border: 1.8px solid var(--field-line);
   border-radius: 50%;
   background: transparent;
   color: transparent;
@@ -389,7 +370,7 @@
   width: 5px;
   height: 40px;
   border-radius: 3px;
-  background: linear-gradient(var(--accent), #9b82f0);
+  background: linear-gradient(var(--accent), var(--accent-line));
   transform: scaleY(0.2);
 }
 .capture-type-hint {

@@ -356,6 +356,7 @@ export default function GetToKnowYou() {
                 }}
               >
                 <input
+                  name="gtk-answer"
                   ref={inputRef}
                   value={text}
                   onChange={(e) => setText(e.target.value)}

@@ -79,7 +79,7 @@ export default function ConfirmSignIn({ tokenHash, type, next }: { tokenHash: st
             Try again
           </Button>
         )}
-        <a className="ui-button ui-button--secondary ui-button--md lg lg-interactive" href={codeHref}>
+        <a className="ui-button ui-button--secondary ui-button--md" href={codeHref}>
           Use a code instead
         </a>
       </div>

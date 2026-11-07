@@ -137,6 +137,7 @@ export default function WhatTangentKnows() {
         }}
       >
         <input
+          name="fact"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder="Tell Tangent something about you — “I have robotics Tue/Thu until 6”"

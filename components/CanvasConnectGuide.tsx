@@ -173,6 +173,7 @@ export default function CanvasConnectGuide({ open, onClose }: { open: boolean; o
                   <div className="canvas-guide-input-row">
                     <Link2 size={17} aria-hidden="true" />
                     <input
+                      name="canvas-ics-url"
                       type="url"
                       value={icsUrl}
                       onChange={(event) => { setIcsUrl(event.target.value); if (status === "error") setStatus("idle"); }}

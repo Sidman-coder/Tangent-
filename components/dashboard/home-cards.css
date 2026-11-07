@@ -84,27 +84,8 @@
 }
 .home-paths-bar > span { display: block; height: 100%; background: var(--highlight); border-radius: inherit; }
 
-.week-ahead-meta { display: inline-flex; align-items: center; gap: 12px; }
-.week-ahead-open { margin-top: 0; }
-
-.today-empty-action {
-  margin-left: 6px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--accent);
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-.today-empty-action:hover { text-decoration: underline; }
-
 /* When the day's timeline leads Home ("My day" view), it sizes to its content
    instead of filling the remaining height, so the sections below stay close. */
-.today-dayline.is-lead { margin-bottom: 20px; }
-@media (min-width: 901px) and (min-height: 700px) {
-  .today-page > .today-dayline.is-lead { flex: 0 0 auto; }
-}
 
 @media (max-width: 640px) {
   .home-card { padding: 16px; }

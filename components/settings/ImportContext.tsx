@@ -90,6 +90,7 @@ export default function ImportContext({ onDone }: { onDone: () => void }) {
             <strong>2.</strong> Paste it here, or add an exported file.
           </p>
           <textarea
+            name="import-text"
             className="import-ctx-text"
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -101,6 +102,7 @@ export default function ImportContext({ onDone }: { onDone: () => void }) {
             <label className="import-ctx-file">
               Add a file (.txt, .md, .json)
               <input
+                name="import-file"
                 type="file"
                 accept=".txt,.md,.markdown,.json,text/plain,application/json"
                 onChange={(e) => {
@@ -128,6 +130,7 @@ export default function ImportContext({ onDone }: { onDone: () => void }) {
               <li key={i}>
                 <label>
                   <input
+                    name="import-keep"
                     type="checkbox"
                     checked={keep.has(i)}
                     onChange={() =>

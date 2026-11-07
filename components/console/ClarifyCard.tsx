@@ -119,6 +119,7 @@ export default function ClarifyCard({ questions, disabled, onSubmit, skipLabel =
             })}
             {typing[q.id] ? (
               <input
+                name="clarify-answer"
                 className="tg-chip-input"
                 autoFocus
                 placeholder="Type your answer"
@@ -146,6 +147,7 @@ export default function ClarifyCard({ questions, disabled, onSubmit, skipLabel =
             )}
             {dating[q.id] && (
               <input
+                name="clarify-date"
                 className="tg-chip-input"
                 type="date"
                 autoFocus

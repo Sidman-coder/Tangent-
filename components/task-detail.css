@@ -241,8 +241,7 @@
   padding-top: 4px;
 }
 
-.td-primary,
-.td-secondary {
+.td-primary {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -254,12 +253,9 @@
   transition: transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
-.td-secondary {
-  color: var(--text);
-}
 
-.td-primary:active,
-.td-secondary:active {
+
+.td-primary:active {
   transform: scale(0.97);
 }
 

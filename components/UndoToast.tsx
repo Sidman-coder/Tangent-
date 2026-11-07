@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import ActionReceipt from "@/components/ActionReceipt";
 import { useAppState } from "@/components/AppStateProvider";
+import Toast, { ToastPortal } from "@/components/ui/Toast";
 import { UNDO_TOAST_EVENT, UNDO_TOAST_MS, type UndoToastDetail } from "@/lib/undo-events";
 
 /**
@@ -25,16 +26,29 @@ export default function UndoToast() {
     return () => window.removeEventListener(UNDO_TOAST_EVENT, onAnnounce);
   }, []);
 
-  useEffect(() => {
-    if (!toast) return;
-    const id = window.setTimeout(() => setToast(null), UNDO_TOAST_MS);
-    return () => window.clearTimeout(id);
-  }, [toast]);
+  const hidden = !!toast && toast.from === pathname;
 
-  if (!toast || toast.from === pathname) return null;
+  // While hidden on the page that announced it, the Toast's own timer isn't
+  // running, so expire it here.
+  useEffect(() => {
+    if (!toast || !hidden) return;
+    const left = toast.key + UNDO_TOAST_MS - Date.now();
+    const id = window.setTimeout(() => setToast(null), Math.max(0, left));
+    return () => window.clearTimeout(id);
+  }, [toast, hidden]);
+
   return (
-    <div className="command-toast" role="status">
-      <ActionReceipt key={toast.key} actionId={toast.actionId} label={toast.label} onUndone={() => void refresh()} />
-    </div>
+    <ToastPortal>
+      {toast && !hidden && (
+        <Toast
+          key={toast.key}
+          tone="success"
+          duration={Math.max(1500, toast.key + UNDO_TOAST_MS - Date.now())}
+          onDismiss={() => setToast(null)}
+        >
+          <ActionReceipt actionId={toast.actionId} label={toast.label} onUndone={() => void refresh()} />
+        </Toast>
+      )}
+    </ToastPortal>
   );
 }

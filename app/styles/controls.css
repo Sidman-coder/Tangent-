@@ -1,0 +1,172 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   Hand-built controls on the Quiet Violet recipe (TANGENT-STYLE §8 Button).
+   New code uses components/ui (Button, IconButton, Chip). These are the
+   older hand-built buttons across the app, kept on the same three kinds so
+   none looks out of place next to the kit while Phase 3 moves pages over:
+     prominent   --accent fill, --accent-ink label (the one main action)
+     regular     --surface, 1px --field-line, --text
+     destructive --red fill, --red-ink label
+   Flat: no glass, no gradients. Replaces app/liquid-glass.css.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Older glass tokens some pages still read (Tangents). Flat values now. */
+:root {
+  --lg-edge: var(--line);
+  --lg-fill-strong: var(--surface);
+  --lg-rim-top: transparent;
+  --glass-catch: none;
+}
+
+/* Prominent */
+body :is(button, a, [role="button"]):is(
+  .surface-action-primary, .neu-btn-primary,
+  .tg-clarify-btn.is-primary, .tg-btn-accent, .tg-brief-pill, .tg-send:not(:disabled), .tg-chip.is-on,
+  .knows-gtk, .knows-add-btn:not(:disabled), .gtk-primary, .gtk-send, .gtk-mic.is-on, .cmdk-mic.is-on,
+  .tour-primary, .preview-card-btn.is-primary, .not-found-home, .td-primary,
+  .add-send:not(:disabled), .add-mic.is-on, .add-projects button.is-on, .setup-nudge-go,
+  .capture-chip.is-primary
+) {
+  border: 1px solid transparent;
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  body :is(button, a, [role="button"]):is(
+    .surface-action-primary, .neu-btn-primary,
+    .tg-clarify-btn.is-primary, .tg-btn-accent, .tg-brief-pill, .tg-send, .knows-gtk, .knows-add-btn, .gtk-primary,
+    .gtk-send, .tour-primary, .preview-card-btn.is-primary, .not-found-home, .td-primary, .add-send, .setup-nudge-go
+  ):hover:not(:disabled) {
+    background: var(--accent-hover);
+  }
+}
+body .td-primary.is-done {
+  background: var(--green);
+  color: #fff;
+}
+
+/* Regular */
+body :is(button, a, [role="button"]):is(
+  .surface-action-secondary, .btn-ghost,
+  .tg-clarify-btn:not(.is-primary), .tg-btn:not(.tg-btn-accent):not(.tg-btn-danger), .tg-chip:not(.is-on), .tg-new-chat,
+  .knows-secondary, .knows-forget, .gtk-mic:not(.is-on), .cmdk-mic:not(.is-on), .tour-secondary,
+  .attention-defer, .ui-task-help, .action-receipt-undo, .calendar-task-remove, .import-ctx-prompt button,
+  .td-secondary, .resource-link, .preview-card-btn:not(.is-primary),
+  .tg-example, .tg-send:disabled,
+  .add-mic:not(.is-on), .tg-mic.is-idle, .capture-open-app, .capture-chip:not(.is-primary), .capture-start
+) {
+  border: 1px solid var(--field-line);
+  background: var(--surface);
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  body :is(button, a, [role="button"]):is(
+    .surface-action-secondary, .btn-ghost, .tg-clarify-btn:not(.is-primary), .tg-new-chat, .tg-chip:not(.is-on),
+    .knows-secondary, .knows-forget, .tour-secondary, .attention-defer, .ui-task-help, .action-receipt-undo,
+    .calendar-task-remove, .td-secondary, .resource-link, .preview-card-btn:not(.is-primary), .tg-example
+  ):hover:not(:disabled) {
+    background: var(--elev-2);
+  }
+}
+/* Mics at rest keep an accent glyph. */
+body :is(.gtk-mic:not(.is-on), .add-mic:not(.is-on), .tg-mic.is-idle, .tg-new-chat) {
+  color: var(--accent-text);
+}
+
+/* Ghost icon buttons: no fill until hovered. */
+body :is(.td-icon, .side-peek-close) {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  body :is(.td-icon, .side-peek-close):hover:not(:disabled) {
+    background: var(--elev-2);
+    color: var(--text);
+  }
+}
+
+/* Destructive */
+body :is(button, a, [role="button"]):is(.tg-btn-danger, .project-delete-yes) {
+  border: 1px solid transparent;
+  background: var(--red);
+  color: var(--red-ink);
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Shape: pills and circles that press. */
+.tg-clarify-btn,
+.knows-gtk,
+.knows-add-btn,
+.knows-secondary,
+.knows-forget,
+.gtk-primary,
+.tour-primary,
+.tour-secondary,
+.calendar-task-remove,
+.not-found-home,
+.project-delete-yes,
+.tg-btn,
+.tg-new-chat,
+.resource-link,
+.preview-card-btn {
+  border-radius: var(--r-pill);
+}
+body :is(.tg-icon-btn, .tg-mic, .tg-send, .tg-chat-more, .td-icon, .side-peek-close, .path-inspector-close, .path-zoombar-btn) {
+  border-radius: 50%;
+}
+:is(
+  .tg-clarify-btn, .knows-gtk, .knows-add-btn, .knows-secondary, .knows-forget, .gtk-primary, .tour-primary,
+  .tour-secondary, .calendar-task-remove, .project-delete-yes, .tg-btn, .td-icon, .tg-new-chat, .resource-link,
+  .preview-card-btn
+):active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* Words sit dead centre in every pill. A fixed-height pill with line-height 1
+   otherwise puts the text a pixel or two low. */
+body :is(.tg-chip, .tg-clarify-btn, .path-step-chip, .path-chip, .preview-card-btn, .add-seg button, .add-projects button, .attention-chip, .setup-nudge-go, .ui-task-help, .attention-defer, .action-receipt-undo, .cal-segment, .knows-forget) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* The Add sheet (⌘K): wide enough for Tangent's questions, and scrolls. */
+.cmdk-panel:has(.add-flow) {
+  width: 620px;
+  max-height: min(82vh, 760px);
+  padding: 10px;
+  border-radius: var(--r-lg);
+  overflow-y: auto;
+}
+.cmdk-panel:has(.add-flow) .cmdk-list {
+  padding: 4px 4px 2px;
+}
+
+/* The day panel: dots, not stripes, like every other list. */
+.day-panel-kind-pill {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.calendar-peek-content .calendar-modal-task {
+  padding-left: 0;
+  border-left-width: 0;
+}
+
+/* The calendar's floating controls: a plain raised capsule. */
+.cal-island {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+.calendar-page .calendar-toolbar {
+  background: transparent;
+}

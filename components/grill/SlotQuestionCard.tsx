@@ -89,6 +89,7 @@ export default function SlotQuestionCard({ card, score, checkIn, disabled, onAns
           })}
           {typing ? (
             <input
+              name="slot-answer"
               className="tg-chip-input"
               autoFocus
               placeholder="Type your answer"

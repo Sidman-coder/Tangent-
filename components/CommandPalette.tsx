@@ -13,6 +13,7 @@ import { generateQuestions } from "@/lib/questions-client";
 import { putAsk } from "@/lib/ask-handoff";
 import { putNewPathTitle } from "@/lib/path-handoff";
 import ActionReceipt from "@/components/ActionReceipt";
+import Toast, { ToastPortal } from "@/components/ui/Toast";
 import PreviewCard from "@/components/PreviewCard";
 import { usePipelineV2 } from "@/components/PipelineFlag";
 import { chatOnly, fetchOpenDrafts } from "@/components/console/pipeline-intake";
@@ -407,30 +408,39 @@ export default function CommandPalette() {
         />
       )}
 
-      {toast && !pendingConfirm && !draft && (
-        <div className="command-toast" role="status">
-          {receiptId ? (
-            <ActionReceipt
-              actionId={receiptId}
-              label={toast}
-              onUndone={() => {
-                setToast("Undone.");
-                setReceiptId(null);
-                void refresh();
-              }}
-            />
-          ) : (
-            <span onClick={() => setToast(null)} style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
-              {busy ? <span className="voice-pill-spinner" aria-hidden="true" /> : <Check size={18} strokeWidth={1.75} />} {toast}
-            </span>
-          )}
-          {toastLink && !busy && (
-            <Link href={toastLink.href} className="command-toast-link" onClick={() => setToast(null)}>
-              {toastLink.label} →
-            </Link>
-          )}
-        </div>
-      )}
+      <ToastPortal>
+        {toast && !pendingConfirm && !draft && (
+          <Toast
+            key="palette"
+            tone={busy ? "neutral" : "success"}
+            icon={busy ? <span className="ui-button-spinner" aria-hidden="true" /> : <Check strokeWidth={1.75} aria-hidden="true" />}
+            // showToast runs its own timers; the toast only closes them early.
+            duration={null}
+            onDismiss={busy ? undefined : () => setToast(null)}
+            action={
+              toastLink && !busy ? (
+                <Link href={toastLink.href} className="ui-button ui-button--secondary ui-button--sm" onClick={() => setToast(null)}>
+                  <span>{toastLink.label}</span>
+                </Link>
+              ) : undefined
+            }
+          >
+            {receiptId ? (
+              <ActionReceipt
+                actionId={receiptId}
+                label={toast}
+                onUndone={() => {
+                  setToast("Undone.");
+                  setReceiptId(null);
+                  void refresh();
+                }}
+              />
+            ) : (
+              toast
+            )}
+          </Toast>
+        )}
+      </ToastPortal>
     </>
   );
 }

@@ -479,6 +479,8 @@ export default function NewPathDialog({ onCancel, onCreate, initialTitle, initia
                         ))}
                       </div>
                       <input
+                        name={`sharpen-${i}`}
+                        aria-label={q.question}
                         className="tangents-intake-input"
                         value={q.chips.includes(sharpAnswers[i] ?? "") ? "" : sharpAnswers[i] ?? ""}
                         onChange={(e) => setSharpAnswers((a) => ({ ...a, [i]: e.target.value }))}
@@ -505,6 +507,7 @@ export default function NewPathDialog({ onCancel, onCreate, initialTitle, initia
                           <span>{field.label}</span>
                           {field.multiline ? (
                             <textarea
+                              name={field.key}
                               className="tangents-intake-input is-area"
                               value={String(draft[field.key])}
                               onChange={(e) => set(field.key, e.target.value)}
@@ -513,6 +516,7 @@ export default function NewPathDialog({ onCancel, onCreate, initialTitle, initia
                             />
                           ) : (
                             <input
+                              name={field.key}
                               className="tangents-intake-input"
                               value={String(draft[field.key])}
                               onChange={(e) => set(field.key, e.target.value)}
@@ -541,6 +545,8 @@ export default function NewPathDialog({ onCancel, onCreate, initialTitle, initia
                   ) : step.multiline ? (
                     <div className="tangents-intake-row">
                       <textarea
+                        name={step.key ?? "answer"}
+                        aria-label={step.question}
                         className="tangents-intake-input is-area"
                         value={String(value)}
                         onChange={(e) => step.key && set(step.key, e.target.value)}
@@ -553,6 +559,8 @@ export default function NewPathDialog({ onCancel, onCreate, initialTitle, initia
                   ) : (
                     <div className="tangents-intake-row">
                       <input
+                        name={step.key ?? "answer"}
+                        aria-label={step.question}
                         className="tangents-intake-input"
                         value={String(value)}
                         onChange={(e) => step.key && set(step.key, e.target.value)}

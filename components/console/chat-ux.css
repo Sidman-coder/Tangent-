@@ -139,20 +139,6 @@
 }
 
 /* ── Stop (the Send button while a reply is coming) ───────────────────── */
-.tg-composer .tg-send.tg-stop,
-.tg-composer:not(.has-text) .tg-send.tg-stop {
-  width: 32px;
-  opacity: 1;
-  transform: none;
-  pointer-events: auto;
-  background: var(--text);
-  color: var(--bg);
-  box-shadow: none;
-}
-
-.tg-composer .tg-send.tg-stop:hover {
-  opacity: 0.85;
-}
 
 /* ── Typing dots ──────────────────────────────────────────────────────── */
 .tg-typing {

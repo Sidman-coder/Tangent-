@@ -97,7 +97,7 @@ export default function YourDataSection() {
             <strong>Download my data</strong>
             <span>Everything Tangent stores for you, as one file. Your Canvas link is left out.</span>
           </div>
-          <a href="/api/export" download className="ui-button ui-button--secondary ui-button--sm lg lg-interactive">Download</a>
+          <a href="/api/export" download className="ui-button ui-button--secondary ui-button--sm">Download</a>
         </div>
         <div className="settings-row">
           <div className="settings-row-copy">

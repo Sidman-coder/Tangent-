@@ -98,6 +98,7 @@ export default function ChatLibraryPage() {
 
       <div className="chat-library-tools">
         <input
+          name="chat-search"
           type="search"
           className="chat-library-search"
           placeholder="Search chats"

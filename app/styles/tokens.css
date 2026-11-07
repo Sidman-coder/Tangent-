@@ -1,0 +1,192 @@
+/* Tangent design tokens: "Quiet Violet" (docs/design/TANGENT-STYLE.md §13).
+   The only place colors and base values are defined. Imported first by
+   app/layout.tsx, so every other stylesheet reads these names and none
+   redefines them. Project colors (--series-*) come from SERIES_CSS in
+   lib/task-colors.ts. */
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  /* surfaces */
+  --bg: #f7f6fb;
+  --surface: #ffffff;
+  --elev-2: #f1eff7;
+  --layer-3: #e9e6f1;
+  --line: #e6e3ee;
+  --line-strong: #c9c4d8;
+  --field-line: #8f8aa3;
+
+  /* text */
+  --text: #1c1a26;
+  --text-2: #555068;
+  --text-3: #6b667c;
+
+  /* action */
+  --accent: #5641b8;
+  --accent-hover: #47349f;
+  --accent-ink: #ffffff;
+  --accent-text: #4a37a3;
+  --accent-soft: #efecfb;
+  --accent-line: #cfc7f2;
+  --focus: #5641b8;
+
+  /* status */
+  --green: #1e7a52;
+  --green-soft: #e3f1ea;
+  --amber: #94600a;
+  --amber-soft: #f6eedf;
+  --red: #c0364a;
+  --red-soft: #f9e6e9;
+  --red-ink: #ffffff;
+  --highlight-ink: #ffffff;
+
+  /* bars */
+  --glass: rgb(255 255 255 / 0.82);
+  --glass-edge: var(--line);
+  --glass-blur: blur(16px) saturate(1.4);
+
+  /* elevation */
+  --shadow-sm: 0 1px 2px rgb(28 26 38 / 0.06);
+  --shadow-md: 0 4px 16px rgb(28 26 38 / 0.08);
+  --shadow-lg: 0 12px 40px rgb(28 26 38 / 0.14);
+  --scrim: rgb(18 17 25 / 0.32);
+  --tint-amount: 14%;
+
+  /* type */
+  --font-display: "Bricolage Grotesque Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body: "Figtree Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", monospace;
+  --t-display: 30px;
+  --t-title: 20px;
+  --t-head: 15px;
+  --t-body: 15px;
+  --t-label: 13px;
+  --t-caption: 12px;
+
+  /* shape */
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-pill: 999px;
+
+  /* spacing */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
+  --s-12: 48px;
+
+  /* layout */
+  --tap: 44px;
+  --rail-w: 232px;
+  --topbar-h: 56px;
+  --bottom-nav-h: calc(64px + env(safe-area-inset-bottom));
+  --content-max: 760px;
+  --content-wide: 1180px;
+  --page-gutter: 16px;
+
+  /* motion */
+  --dur-fast: 150ms;
+  --dur: 200ms;
+  --dur-slow: 250ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #121119;
+  --surface: #1b1a24;
+  --elev-2: #24222f;
+  --layer-3: #2e2b3a;
+  --line: #2c2a38;
+  --line-strong: #4a4659;
+  --field-line: #6f6a84;
+
+  --text: #f1eff8;
+  --text-2: #bdb9cc;
+  --text-3: #9d99ae;
+
+  --accent: #b3a5f0;
+  --accent-hover: #c4b9f5;
+  --accent-ink: #17132a;
+  --accent-text: #c4b9f5;
+  --accent-soft: #2a2540;
+  --accent-line: #463d6e;
+  --focus: #b3a5f0;
+
+  --green: #5cc8a0;
+  --green-soft: #1d3229;
+  --amber: #e0b15c;
+  --amber-soft: #3a3022;
+  --red: #f2707f;
+  --red-soft: #3a2129;
+  --red-ink: #17132a;
+  --highlight-ink: #10261d;
+
+  --glass: rgb(27 26 36 / 0.82);
+
+  --shadow-sm: none;
+  --shadow-md: 0 0 0 1px var(--line);
+  --shadow-lg: 0 0 0 1px var(--line-strong);
+  --scrim: rgb(0 0 0 / 0.55);
+  --tint-amount: 20%;
+}
+
+@media (min-width: 768px) {
+  :root { --page-gutter: 32px; }
+}
+@media (min-width: 1100px) {
+  :root { --page-gutter: 40px; }
+}
+@media (max-width: 767px) {
+  :root { --t-display: 26px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur: 0ms;
+    --dur-slow: 0ms;
+  }
+}
+
+/* Legacy aliases: names older rules still read. Each goes once grep finds no
+   callers (Phase 4). They point at tokens, so they never hold a value. */
+:root,
+[data-theme="light"],
+[data-theme="dark"] {
+  --highlight: var(--green);
+  --danger-text: var(--red);
+  --path-danger: var(--red);
+  --amber-text: var(--amber);
+  --secondary: var(--amber);
+  --bg-elevated: var(--surface);
+  --bg-sunken: var(--elev-2);
+  --surface-2: var(--elev-2);
+  --elev-1: var(--surface);
+  --elev-3: var(--layer-3);
+  --border: var(--line);
+  --muted: var(--text-2);
+  --faint: var(--text-3);
+  --purple: var(--accent);
+  --purple-deep: var(--accent-hover);
+  --purple-glow: var(--accent-soft);
+  --radius: var(--r-md);
+  --glass-thick: var(--glass);
+  /* The background wash is retired: the canvas is a flat --bg. */
+  --wash-iris: transparent;
+  --wash-teal: transparent;
+  /* Task categories (lib/task-colors.ts CATEGORY_COLOR) read the project palette. */
+  --cat-canvas: var(--series-orange);
+  --cat-academic: var(--series-violet);
+  --cat-ec: var(--series-green);
+  --cat-other: var(--series-neutral);
+}

@@ -195,6 +195,7 @@ export default function ChatSidebar({
             }}
           >
             <input
+              name="chat-name"
               autoFocus
               value={draft}
               maxLength={80}
@@ -280,6 +281,7 @@ export default function ChatSidebar({
           <label className="tg-side-search">
             <Search size={14} strokeWidth={2} aria-hidden="true" />
             <input
+              name="chat-search"
               type="search"
               value={query}
               placeholder="Search chats"

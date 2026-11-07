@@ -31,6 +31,7 @@ import WeekView from "@/components/calendar/WeekView";
 import AgendaView from "@/components/calendar/AgendaView";
 import TaskTip from "@/components/calendar/TaskTip";
 import TaskTitle from "@/components/ui/TaskTitle";
+import Toast, { ToastPortal } from "@/components/ui/Toast";
 
 type CalView = "week" | "month" | "agenda";
 const VIEWS: { id: CalView; label: string }[] = [
@@ -501,7 +502,7 @@ export default function CalendarPage() {
   // bottom centre, so the grid gets the whole page. Portalled to <body>: the
   // page's entrance transform would otherwise make "fixed" relative to it.
   const island = (
-      <div className="cal-island lg lg-interactive" role="toolbar" aria-label="Calendar controls">
+      <div className="cal-island" role="toolbar" aria-label="Calendar controls">
         <div className="cal-island-group">
               <div className="cal-view-switch" role="tablist" aria-label="Calendar view">
                 {VIEWS.map((v) => (
@@ -950,6 +951,7 @@ export default function CalendarPage() {
               )}
               <form className="chat-form" onSubmit={(e) => { e.preventDefault(); void sendDayChat(); }}>
                 <input
+                  name="day-chat"
                   value={dayChatInput}
                   onChange={(e) => setDayChatInput(e.target.value)}
                   placeholder="Ask about this day..."
@@ -977,18 +979,17 @@ export default function CalendarPage() {
             setSelectedDay(addModalDate);
           }}
           onSuccess={() => void refresh()}
-          onDuplicate={() => {
-            setDuplicateToast(true);
-            window.setTimeout(() => setDuplicateToast(false), 3000);
-          }}
+          onDuplicate={() => setDuplicateToast(true)}
         />
       )}
 
-      {duplicateToast && (
-        <div className="command-toast" role="status">
-          <span>Already on your calendar</span>
-        </div>
-      )}
+      <ToastPortal>
+        {duplicateToast && (
+          <Toast key="duplicate" tone="info" duration={3000} onDismiss={() => setDuplicateToast(false)}>
+            Already on your calendar
+          </Toast>
+        )}
+      </ToastPortal>
 
       {/* Recurring delete modal */}
       {recurDeleteTarget && (
@@ -1007,7 +1008,7 @@ export default function CalendarPage() {
                 className="btn"
                 onClick={() => void confirmRecurDelete(true)}
                 disabled={recurDeleting}
-                style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff" }}
+                style={{ background: "var(--red)", borderColor: "var(--red)", color: "var(--red-ink)" }}
               >
                 {recurDeleting ? "Deleting…" : "All occurrences"}
               </button>

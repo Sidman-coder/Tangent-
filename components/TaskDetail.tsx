@@ -170,19 +170,19 @@ export default function TaskDetail() {
               <div className="td-toolbar">
                 {task && (
                   <>
-                    <button type="button" className="td-icon lg lg-interactive" onClick={() => {
+                    <button type="button" className="td-icon" onClick={() => {
                         // One window at a time: the card steps aside for the chat.
                         setTaskId(null);
                         openTaskChat(task.id);
                       }} aria-label="Ask about this" title="Ask about this">
                       <MessageSquareText size={17} aria-hidden="true" />
                     </button>
-                    <button type="button" className="td-icon lg lg-interactive" onClick={() => void remove()} disabled={busy} aria-label="Remove task" title="Remove">
+                    <button type="button" className="td-icon" onClick={() => void remove()} disabled={busy} aria-label="Remove task" title="Remove">
                       <Trash2 size={17} aria-hidden="true" />
                     </button>
                   </>
                 )}
-                <button type="button" className="td-icon lg lg-interactive" onClick={close} aria-label="Close" title="Close">
+                <button type="button" className="td-icon" onClick={close} aria-label="Close" title="Close">
                   <X size={18} aria-hidden="true" />
                 </button>
               </div>
@@ -305,7 +305,7 @@ export default function TaskDetail() {
                     )}
 
                     <div className="td-actions">
-                      <button type="button" className={`td-primary lg lg-tint lg-interactive${task.completed ? " is-done" : ""}`} onClick={() => void toggle()} disabled={busy}>
+                      <button type="button" className={`td-primary${task.completed ? " is-done" : ""}`} onClick={() => void toggle()} disabled={busy}>
                         <Check size={15} strokeWidth={2.6} aria-hidden="true" />
                         {task.completed ? "Done — undo" : "Mark done"}
                       </button>

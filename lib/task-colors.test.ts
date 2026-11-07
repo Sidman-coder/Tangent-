@@ -43,10 +43,10 @@ void (import("./task-colors") as Promise<Mod>).then(({
 
   test("every hue is visible on its theme's surfaces", () => {
     for (const key of SERIES_KEYS) {
-      for (const surface of ["#ffffff", "#f5f4f9", "#f1eff8"]) {
+      for (const surface of ["#ffffff", "#f7f6fb", "#f1eff7"]) {
         assert.ok(contrastRatio(SERIES_PALETTE[key].light, surface) >= 3, `${key} light on ${surface}`);
       }
-      for (const surface of ["#1a1824", "#0e0d14", "#24212f"]) {
+      for (const surface of ["#1b1a24", "#121119", "#24222f"]) {
         assert.ok(contrastRatio(SERIES_PALETTE[key].dark, surface) >= 3, `${key} dark on ${surface}`);
       }
     }

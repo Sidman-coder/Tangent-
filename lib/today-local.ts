@@ -4,6 +4,8 @@
 
 const ASIDE_KEY = "tangent-today-aside";
 const REPLAN_KEY = "tangent-today-replan";
+/** Fired after Not today changes the set, so the sidebar's Home count follows. */
+export const SET_ASIDE_EVENT = "tangent:today-aside";
 
 export function readSetAside(today: string): Set<string> {
   try {
@@ -23,6 +25,7 @@ export function writeSetAside(today: string, ids: ReadonlySet<string>): void {
   } catch {
     /* storage blocked: it lasts until the page reloads */
   }
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(SET_ASIDE_EVENT));
 }
 
 export function readReplanDay(): string | null {

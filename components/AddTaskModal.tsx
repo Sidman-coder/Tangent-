@@ -170,8 +170,10 @@ export default function AddTaskModal({ initialDate, initialTime, initialCalendar
         <h3>Add Task</h3>
 
         <div className="field">
-          <label>Title</label>
+          <label htmlFor="add-task-title">Title</label>
           <input
+            id="add-task-title"
+            name="title"
             autoFocus
             placeholder="Task title"
             value={title}
@@ -181,18 +183,20 @@ export default function AddTaskModal({ initialDate, initialTime, initialCalendar
         </div>
 
         <div className="field">
-          <label>{recurringEnabled ? "Start date" : "Date"}</label>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <label htmlFor="add-task-date">{recurringEnabled ? "Start date" : "Date"}</label>
+          <input id="add-task-date" name="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </div>
 
         <div className="field">
-          <label>Time</label>
-          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+          <label htmlFor="add-task-time">Time</label>
+          <input id="add-task-time" name="time" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
         </div>
 
         <div className="field">
-          <label>Description (optional)</label>
+          <label htmlFor="add-task-notes">Description (optional)</label>
           <textarea
+            id="add-task-notes"
+            name="notes"
             rows={2}
             placeholder="Any details or guidance for this task…"
             value={notes}
@@ -220,8 +224,8 @@ export default function AddTaskModal({ initialDate, initialTime, initialCalendar
         {recurringEnabled && (
           <div className="recurring-section">
             <div className="field">
-              <label>Frequency</label>
-              <select value={frequency} onChange={(e) => setFrequency(e.target.value as Frequency)}>
+              <label htmlFor="add-task-frequency">Frequency</label>
+              <select id="add-task-frequency" name="frequency" value={frequency} onChange={(e) => setFrequency(e.target.value as Frequency)}>
                 <option value="daily">Daily</option>
                 <option value="weekly">Weekly</option>
                 <option value="monthly">Monthly</option>
@@ -231,11 +235,12 @@ export default function AddTaskModal({ initialDate, initialTime, initialCalendar
 
             {frequency === "weekly" && (
               <div className="field">
-                <label>Days of the week</label>
-                <div className="dow-checkboxes">
+                <label id="add-task-dow">Days of the week</label>
+                <div className="dow-checkboxes" role="group" aria-labelledby="add-task-dow">
                   {DOW_LABELS.map((label, i) => (
                     <label key={i} className={`dow-chip${daysOfWeek.includes(i) ? " selected" : ""}`}>
                       <input
+                        name="days-of-week"
                         type="checkbox"
                         checked={daysOfWeek.includes(i)}
                         onChange={() => toggleDow(i)}
@@ -249,8 +254,10 @@ export default function AddTaskModal({ initialDate, initialTime, initialCalendar
             )}
 
             <div className="field">
-              <label>Repeat until</label>
+              <label htmlFor="add-task-until">Repeat until</label>
               <input
+                id="add-task-until"
+                name="until"
                 type="date"
                 value={endDate}
                 min={date}

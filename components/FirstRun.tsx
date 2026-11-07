@@ -489,11 +489,11 @@ function SchoolStep({
       <div className="onb-times">
         <label className="onb-time">
           <span className="onb-label">Starts</span>
-          <input className="onb-input" type="time" value={school.start} onChange={(e) => setSchool({ start: e.target.value })} />
+          <input name="school-start" className="onb-input" type="time" value={school.start} onChange={(e) => setSchool({ start: e.target.value })} />
         </label>
         <label className="onb-time">
           <span className="onb-label">Ends</span>
-          <input className="onb-input" type="time" value={school.end} onChange={(e) => setSchool({ end: e.target.value })} />
+          <input name="school-end" className="onb-input" type="time" value={school.end} onChange={(e) => setSchool({ end: e.target.value })} />
         </label>
       </div>
       <p className="onb-error" role="status">

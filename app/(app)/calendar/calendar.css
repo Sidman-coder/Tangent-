@@ -533,8 +533,8 @@
 .cal-island {
   position: fixed;
   z-index: 60;
-  bottom: calc(22px + env(safe-area-inset-bottom));
-  left: calc(var(--rail-w) + (100vw - var(--rail-w)) / 2);
+  bottom: calc(max(var(--shell-bottom), env(safe-area-inset-bottom)) + 22px);
+  left: calc(var(--rail-current) + (100vw - var(--rail-current)) / 2);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -692,10 +692,10 @@
 /* One background across the app: the calendar is a rounded card on the
    page, like every other card, not a full-bleed white slab under a band. */
 .content-inner:has(.calendar-page) {
-  padding: 0 var(--page-gutter, 28px) 16px;
+  padding: 16px var(--page-gutter, 28px);
 }
 .calendar-page {
-  height: calc(100dvh - var(--topbar-h) - 16px);
+  height: calc(100dvh - var(--shell-top) - var(--shell-bottom) - 32px);
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
   border-radius: 22px;
@@ -703,12 +703,13 @@
   box-shadow: 0 1px 2px rgb(26 23 32 / 0.04), 0 16px 40px -24px rgb(26 23 32 / 0.18);
 }
 @media (max-width: 720px) {
+  /* Room under the last row for the mic button. */
   .content-inner:has(.calendar-page) {
-    padding: 0 10px 10px;
+    padding: 10px 10px 88px;
   }
   .calendar-page {
     height: auto;
-    min-height: calc(100dvh - var(--topbar-h) - 10px);
+    min-height: calc(100dvh - var(--shell-top) - var(--shell-bottom) - 20px);
     border-radius: 18px;
   }
 }

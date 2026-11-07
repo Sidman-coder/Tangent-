@@ -1,0 +1,1523 @@
+/* Tangent UI kit (docs/design/TANGENT-STYLE.md §8). One stylesheet for every
+   component in components/ui. Loaded after globals.css, so these rules win
+   over older page styles at equal specificity. Tokens come from
+   app/styles/tokens.css only. Every class starts with "ui-". */
+
+/* ── Shared ─────────────────────────────────────────────────────────────── */
+
+.ui-visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@keyframes ui-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes ui-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ── Button ─────────────────────────────────────────────────────────────── */
+
+.ui-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  max-width: 100%;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-weight: 500;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+
+.ui-button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ui-button svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.ui-button--md {
+  min-height: 44px;
+  padding: 0 var(--s-4);
+  font-size: 15px;
+}
+
+.ui-button--sm {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+.ui-button--sm svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* sm stays 36px to the eye and 44px to the finger. */
+.ui-button--sm::after {
+  content: "";
+  position: absolute;
+  inset: -4px 0;
+}
+
+.ui-button--primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.ui-button--primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+.ui-button--primary:active:not(:disabled),
+.ui-button--danger:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.ui-button--secondary {
+  border-color: var(--field-line);
+  background: var(--surface);
+  color: var(--text);
+}
+.ui-button--secondary:hover:not(:disabled) {
+  background: var(--elev-2);
+}
+.ui-button--secondary:active:not(:disabled) {
+  background: var(--layer-3);
+}
+
+.ui-button--ghost,
+.ui-button--quiet {
+  color: var(--text-2);
+}
+.ui-button--ghost:hover:not(:disabled),
+.ui-button--quiet:hover:not(:disabled) {
+  background: var(--elev-2);
+  color: var(--text);
+}
+.ui-button--ghost:active:not(:disabled),
+.ui-button--quiet:active:not(:disabled) {
+  background: var(--layer-3);
+}
+
+.ui-button--danger {
+  background: var(--red);
+  color: var(--red-ink);
+}
+.ui-button--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--red) 92%, #000);
+}
+
+.ui-button--danger-quiet {
+  color: var(--red);
+}
+.ui-button--danger-quiet:hover:not(:disabled) {
+  background: var(--red-soft);
+}
+
+.ui-button:disabled,
+.ui-button[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ui-button[aria-busy="true"] {
+  cursor: progress;
+}
+
+.ui-button-spinner {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: ui-spin 0.7s linear infinite;
+}
+
+.ui-button:focus-visible,
+.ui-icon-button:focus-visible,
+.ui-chip:focus-visible,
+.ui-tab:focus-visible,
+.ui-task-check:focus-visible,
+.ui-task-title-button:focus-visible,
+.ui-group-header-link:focus-visible,
+.ui-group-header-toggle:focus-visible,
+.ui-sheet-grabber:focus-visible,
+.ui-task-help:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* ── IconButton ─────────────────────────────────────────────────────────── */
+
+.ui-icon-button {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: var(--tap);
+  height: var(--tap);
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+
+.ui-icon-button::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: transparent;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+.ui-icon-button > svg,
+.ui-icon-button > span {
+  position: relative;
+  width: 18px;
+  height: 18px;
+}
+
+.ui-icon-button > span {
+  display: grid;
+  place-items: center;
+  width: auto;
+  height: auto;
+}
+
+.ui-icon-button--ghost:hover:not(:disabled) {
+  color: var(--text);
+}
+.ui-icon-button--ghost:hover:not(:disabled)::before {
+  background: var(--elev-2);
+}
+.ui-icon-button--ghost:active:not(:disabled)::before {
+  background: var(--layer-3);
+}
+
+.ui-icon-button--secondary::before {
+  border: 1px solid var(--field-line);
+  background: var(--surface);
+}
+.ui-icon-button--secondary:hover:not(:disabled)::before {
+  background: var(--elev-2);
+}
+
+.ui-icon-button--filled {
+  color: var(--accent-ink);
+}
+.ui-icon-button--filled::before {
+  inset: 0;
+  background: var(--accent);
+}
+.ui-icon-button--filled:hover:not(:disabled)::before {
+  background: var(--accent-hover);
+}
+.ui-icon-button--filled:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.ui-icon-button--sm {
+  width: 36px;
+  height: 36px;
+}
+.ui-icon-button--sm::before {
+  inset: 2px;
+}
+.ui-icon-button--sm::after {
+  /* keep a 44px hit area */
+  content: "";
+  position: absolute;
+  inset: -4px;
+}
+.ui-icon-button--sm > svg {
+  width: 16px;
+  height: 16px;
+}
+
+.ui-icon-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Tooltip: desktop only, after 500ms. The label is already the aria-label. */
+@media (hover: hover) and (pointer: fine) {
+  .ui-icon-button[data-tooltip]:not(:disabled)::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    z-index: 50;
+    top: calc(100% + 6px);
+    right: auto;
+    bottom: auto;
+    left: 50%;
+    width: max-content;
+    max-width: 220px;
+    padding: 5px 8px;
+    border-radius: var(--r-xs);
+    background: var(--text);
+    color: var(--bg);
+    font: 500 12px/1.3 var(--font-body);
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transform: translate(-50%, -2px);
+    transition: opacity var(--dur-fast) var(--ease) 0s, transform var(--dur-fast) var(--ease) 0s;
+  }
+  .ui-icon-button[data-tooltip-side="top"]:not(:disabled)::after {
+    top: auto;
+    bottom: calc(100% + 6px);
+    transform: translate(-50%, 2px);
+  }
+  .ui-icon-button[data-tooltip-side="left"]:not(:disabled)::after {
+    top: 50%;
+    left: auto;
+    right: calc(100% + 6px);
+    transform: translate(2px, -50%);
+  }
+  .ui-icon-button[data-tooltip-side="right"]:not(:disabled)::after {
+    top: 50%;
+    left: calc(100% + 6px);
+    transform: translate(-2px, -50%);
+  }
+  .ui-icon-button[data-tooltip]:hover:not(:disabled)::after {
+    opacity: 1;
+    transform: translate(-50%, 0);
+    transition-delay: 500ms;
+  }
+  .ui-icon-button[data-tooltip-side="left"]:hover:not(:disabled)::after,
+  .ui-icon-button[data-tooltip-side="right"]:hover:not(:disabled)::after {
+    transform: translate(0, -50%);
+  }
+}
+
+/* ── Chip ───────────────────────────────────────────────────────────────── */
+
+.ui-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  background: var(--elev-2);
+  color: var(--text-2);
+  font: 500 12px/1 var(--font-body);
+  white-space: nowrap;
+  text-decoration: none;
+  vertical-align: middle;
+}
+
+.ui-chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ui-chip svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+button.ui-chip,
+a.ui-chip {
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+/* Interactive chips keep a 44px hit area. */
+button.ui-chip::after,
+a.ui-chip::after {
+  content: "";
+  position: absolute;
+  inset: -10px 0;
+}
+
+.ui-chip--filter {
+  height: 32px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+button.ui-chip--filter::after {
+  inset: -6px 0;
+}
+.ui-chip--filter:hover:not([aria-pressed="true"]):not(:disabled) {
+  background: var(--layer-3);
+  color: var(--text);
+}
+.ui-chip--filter[aria-pressed="true"],
+.ui-chip--filter.is-selected {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.ui-chip--filter svg {
+  width: 16px;
+  height: 16px;
+}
+
+.ui-chip--project {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 13px;
+}
+.ui-chip--project:is(button, a):hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.ui-chip-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--chip-color, var(--series-neutral));
+}
+
+.ui-chip--status {
+  border-color: var(--line);
+  background: var(--surface);
+}
+.ui-chip--status.is-success { color: var(--green); }
+.ui-chip--status.is-warning { color: var(--amber); }
+.ui-chip--status.is-error { color: var(--red); }
+.ui-chip--status.is-info { color: var(--accent-text); }
+
+.ui-chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── SegmentedTabs ──────────────────────────────────────────────────────── */
+
+.ui-tabs {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 2px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.ui-tabs--pill {
+  height: 44px;
+  padding: 4px;
+  border-radius: var(--r-pill);
+  background: var(--elev-2);
+}
+
+.ui-tabs--full {
+  display: flex;
+  width: 100%;
+}
+.ui-tabs--full .ui-tab {
+  flex: 1 1 0;
+}
+
+.ui-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--text-2);
+  font: 500 13px/1 var(--font-body);
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color var(--dur) var(--ease);
+}
+
+.ui-tab:hover {
+  color: var(--text);
+}
+
+.ui-tab[aria-selected="true"] {
+  color: var(--text);
+}
+
+.ui-tab-label {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ui-tab-label svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.ui-tab-pill {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+[data-theme="dark"] .ui-tab-pill {
+  background: var(--layer-3);
+}
+
+.ui-tabs--underline {
+  gap: var(--s-5);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.ui-tabs--underline::-webkit-scrollbar {
+  display: none;
+}
+.ui-tabs--underline .ui-tab {
+  min-height: 44px;
+  padding: 0 2px;
+  border-radius: 0;
+  font-size: 14px;
+}
+.ui-tab-underline {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.ui-tabs--underline .ui-tab:focus-visible {
+  outline-offset: -2px;
+}
+
+/* ── Task row ───────────────────────────────────────────────────────────── */
+
+.ui-task-row {
+  position: relative;
+  border-radius: var(--r-sm);
+  background: transparent;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+/* A hairline between rows, not after the last. */
+.ui-task-row + .ui-task-row::before,
+.ui-task-row + * > .ui-task-row::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 12px;
+  left: 46px;
+  height: 1px;
+  background: var(--line);
+}
+
+@media (hover: hover) {
+  .ui-task-row:hover {
+    background: var(--elev-2);
+  }
+}
+
+.ui-task-row.is-selected {
+  background: var(--accent-soft);
+}
+
+.ui-task-row-main {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 48px;
+  padding: 10px 12px;
+}
+
+.ui-task-row.has-subline .ui-task-row-main {
+  min-height: 56px;
+}
+
+/* Must-do stripe: inside the row, never a tinted background. */
+.ui-task-row[data-emphasis] .ui-task-row-main::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 0;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.ui-task-row[data-emphasis="deadline"] .ui-task-row-main::before {
+  background: var(--red);
+}
+.ui-task-row[data-emphasis] :is(.ui-task-title, .ui-task-title-button) {
+  font-weight: 600;
+}
+
+.ui-task-check {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  padding: 0;
+  border: 1.5px solid var(--field-line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--highlight-ink);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+
+/* 44px hit area around the 22px circle. */
+.ui-task-check::after {
+  content: "";
+  position: absolute;
+  inset: -11px;
+  border-radius: 50%;
+}
+
+span.ui-task-check {
+  cursor: default;
+}
+
+.ui-task-check:hover {
+  border-color: var(--green);
+}
+
+.ui-task-check[aria-pressed="true"],
+.ui-task-row.is-complete .ui-task-check {
+  border-color: var(--green);
+  background: var(--green);
+}
+
+.ui-task-check-mark {
+  display: grid;
+  place-items: center;
+}
+
+.ui-task-kind {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+}
+
+.ui-task-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.ui-task-title,
+.ui-task-title-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text);
+  font: 500 15px/1.35 var(--font-body);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-task-title > :first-child,
+.ui-task-title-button > :first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ui-task-title-button {
+  width: fit-content;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
+  cursor: pointer;
+}
+
+.ui-task-title-button:hover {
+  color: var(--accent-text);
+}
+
+.ui-task-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  min-width: 0;
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.ui-task-meta time {
+  font-variant-numeric: tabular-nums;
+}
+
+.ui-task-kind-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-task-recurring {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ui-task-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  margin-right: -6px;
+}
+
+/* Desktop: actions wait for hover or keyboard focus, so a long day reads as a
+   list of work. Touch keeps them visible: there is no hover to reveal them. */
+@media (hover: hover) and (pointer: fine) {
+  .ui-task-row .ui-task-actions[data-reveal="hover"] {
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease);
+  }
+  .ui-task-row:hover .ui-task-actions[data-reveal="hover"],
+  .ui-task-row:focus-within .ui-task-actions[data-reveal="hover"],
+  .ui-task-row.is-selected .ui-task-actions[data-reveal="hover"] {
+    opacity: 1;
+  }
+}
+
+.ui-task-row.is-complete :is(.ui-task-title, .ui-task-title-button) {
+  color: var(--text-3);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  opacity: 0.6;
+}
+
+.ui-task-details {
+  padding: 0 12px 16px 46px;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* "Ask Tangent" on a project step: shown on hover and focus on desktop. */
+.ui-task-help {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--text-2);
+  font: 500 13px/1 var(--font-body);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: opacity var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.ui-task-help::after {
+  content: "";
+  position: absolute;
+  inset: -6px 0;
+}
+.ui-task-help svg {
+  width: 16px;
+  height: 16px;
+}
+.ui-task-help:hover {
+  border-color: var(--accent-line);
+  color: var(--accent-text);
+}
+@media (hover: hover) and (pointer: fine) {
+  .ui-task-help {
+    opacity: 0;
+  }
+  .ui-task-row:hover .ui-task-help,
+  .ui-task-row:focus-within .ui-task-help {
+    opacity: 1;
+  }
+}
+
+/* "From your X path": a task that is a Path branch's first step. */
+.path-origin-link {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--accent-text);
+  font-size: 13px;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.path-origin-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (max-width: 767px) {
+  .ui-task-row-main {
+    padding-inline: 8px;
+  }
+  .ui-task-details {
+    padding-left: 42px;
+  }
+  .ui-task-row + .ui-task-row::before {
+    left: 42px;
+  }
+}
+
+/* ── Group header ───────────────────────────────────────────────────────── */
+
+.ui-group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 36px;
+  margin: 0;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  font: 600 15px/1.3 var(--font-body);
+}
+
+.ui-group-header-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--group-color, var(--series-neutral));
+}
+
+.ui-group-header-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  color: var(--text-3);
+}
+.ui-group-header-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.ui-group-header-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-group-header-range {
+  color: var(--text-3);
+  font-size: 13px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ui-group-header-count {
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.ui-group-header-action {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+}
+.ui-group-header-count + .ui-group-header-action {
+  margin-left: 0;
+}
+
+.ui-group-header-link,
+.ui-group-header-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.ui-group-header--time {
+  border-bottom: 0;
+}
+
+.ui-group-header-chevron {
+  flex: none;
+  color: var(--text-3);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease), transform var(--dur) var(--ease);
+}
+.ui-group-header-link:hover .ui-group-header-chevron,
+.ui-group-header-link:focus-visible .ui-group-header-chevron,
+.ui-group-header-toggle .ui-group-header-chevron {
+  opacity: 1;
+}
+.ui-group-header-toggle[aria-expanded="false"] .ui-group-header-chevron {
+  transform: rotate(-90deg);
+}
+.ui-group-header-link:hover .ui-group-header-title {
+  color: var(--accent-text);
+}
+
+/* ── Card ───────────────────────────────────────────────────────────────── */
+
+.ui-card {
+  min-width: 0;
+  padding: var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.ui-card--plain {
+  border-color: transparent;
+  background: transparent;
+}
+.ui-card--muted {
+  border-color: transparent;
+  background: var(--elev-2);
+}
+@media (min-width: 1100px) {
+  .ui-card {
+    padding: var(--s-5);
+  }
+}
+
+.ui-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  min-height: 28px;
+  margin-bottom: var(--s-3);
+}
+.ui-card-title {
+  margin: 0;
+  color: var(--text);
+  font: 600 15px/1.3 var(--font-body);
+}
+
+/* ── Sheet ──────────────────────────────────────────────────────────────── */
+
+.ui-sheet-layer {
+  position: fixed;
+  z-index: 300;
+  inset: 0;
+  display: flex;
+  justify-content: flex-end;
+}
+.ui-sheet-layer.is-modal {
+  align-items: center;
+  justify-content: center;
+  padding: var(--s-4);
+}
+.ui-sheet-layer.is-bottom {
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.ui-sheet-scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+}
+
+.ui-sheet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-width: 100%;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+  outline: none;
+}
+[data-theme="dark"] .ui-sheet {
+  background: var(--elev-2);
+}
+
+.ui-sheet--side {
+  width: min(440px, 100vw);
+  height: 100%;
+  border-left: 1px solid var(--line);
+}
+
+.ui-sheet--modal {
+  width: min(560px, 100%);
+  max-height: min(720px, calc(100dvh - 32px));
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+}
+
+.ui-sheet--bottom {
+  width: 100%;
+  max-height: 92dvh;
+  border-top: 1px solid var(--line);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+}
+
+.ui-sheet-grabber {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 100%;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: grab;
+  touch-action: none;
+}
+.ui-sheet-grabber::before {
+  content: "";
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line-strong);
+}
+.ui-sheet-grabber:active {
+  cursor: grabbing;
+}
+
+.ui-sheet-header {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: none;
+  min-height: 56px;
+  padding: var(--s-2) var(--s-2) var(--s-2) var(--s-5);
+  border-bottom: 1px solid var(--line);
+}
+.ui-sheet--bottom .ui-sheet-header {
+  min-height: 48px;
+  padding-top: 0;
+}
+
+.ui-sheet-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  font: 600 var(--t-title)/1.25 var(--font-display);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-sheet-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* No header: the close button floats over the content, top right. */
+.ui-sheet-close-float {
+  position: sticky;
+  z-index: 2;
+  top: var(--s-2);
+  float: right;
+  margin: var(--s-2) var(--s-2) 0 0;
+}
+
+.ui-sheet-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-2);
+  flex: none;
+  padding: var(--s-3) var(--s-5);
+  padding-bottom: calc(var(--s-3) + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  background: inherit;
+}
+.ui-sheet--modal .ui-sheet-footer,
+.ui-sheet--side .ui-sheet-footer {
+  padding-bottom: var(--s-3);
+}
+.ui-sheet--side .ui-sheet-footer {
+  padding-bottom: calc(var(--s-3) + env(safe-area-inset-bottom));
+}
+
+/* ── Toast ──────────────────────────────────────────────────────────────── */
+
+.ui-toast-region {
+  position: fixed;
+  z-index: 400;
+  right: var(--s-4);
+  bottom: calc(var(--bottom-nav-h) + 12px);
+  left: var(--s-4);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-2);
+  pointer-events: none;
+}
+
+@media (min-width: 768px) {
+  .ui-toast-region {
+    right: auto;
+    bottom: var(--s-6);
+    left: calc(var(--rail-current) + var(--s-6));
+    align-items: flex-start;
+  }
+}
+
+/* Up to three at once; older ones wait. */
+.ui-toast-region > .ui-toast:nth-last-child(n + 4) {
+  display: none;
+}
+
+.ui-toast {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: max-content;
+  max-width: min(400px, 100%);
+  min-height: 52px;
+  padding: var(--s-2) var(--s-2) var(--s-2) var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-md);
+  font-size: 14px;
+  line-height: 1.4;
+  pointer-events: auto;
+}
+[data-theme="dark"] .ui-toast {
+  background: var(--elev-2);
+}
+
+.ui-toast-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--text-2);
+}
+.ui-toast-icon svg {
+  width: 18px;
+  height: 18px;
+}
+.ui-toast.is-success .ui-toast-icon { color: var(--green); }
+.ui-toast.is-info .ui-toast-icon { color: var(--accent-text); }
+.ui-toast.is-warning .ui-toast-icon { color: var(--amber); }
+.ui-toast.is-error .ui-toast-icon { color: var(--red); }
+
+.ui-toast-body {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  padding-block: 6px;
+}
+.ui-toast-title {
+  margin: 0;
+  color: var(--text);
+  font-weight: 600;
+}
+.ui-toast-text {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+}
+.ui-toast-message {
+  margin: 0;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.ui-toast-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+/* ActionReceipt inside a toast: label left, Undo right. */
+.ui-toast .action-receipt {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+}
+.ui-toast .action-receipt-label {
+  min-width: 0;
+}
+
+/* ── Empty state ────────────────────────────────────────────────────────── */
+
+.ui-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-2);
+  max-width: 360px;
+  margin: 0 auto;
+  padding: var(--s-8) var(--s-4);
+  text-align: center;
+}
+.ui-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: var(--s-1);
+  border-radius: var(--r-md);
+  background: var(--elev-2);
+  color: var(--text-3);
+}
+.ui-empty-icon svg {
+  width: 20px;
+  height: 20px;
+}
+.ui-empty-title {
+  margin: 0;
+  color: var(--text);
+  font: 600 15px/1.35 var(--font-body);
+}
+.ui-empty-body {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.ui-empty-action {
+  margin-top: var(--s-2);
+}
+
+/* ── Skeleton ───────────────────────────────────────────────────────────── */
+
+.ui-skeleton {
+  display: grid;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+.ui-skeleton.is-visible {
+  opacity: 1;
+}
+
+.ui-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 48px;
+  padding: 10px 12px;
+}
+
+.ui-skeleton-bone {
+  display: block;
+  height: 12px;
+  border-radius: var(--r-xs);
+  background: linear-gradient(90deg, var(--elev-2) 0%, var(--layer-3) 50%, var(--elev-2) 100%) 0 0 / 200% 100%;
+  animation: ui-shimmer 1.2s linear infinite;
+}
+.ui-skeleton-bone.is-check {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+}
+.ui-skeleton-bone.is-title {
+  flex: 0 1 60%;
+  height: 14px;
+}
+.ui-skeleton-bone.is-time {
+  width: 48px;
+  flex: none;
+  margin-left: auto;
+}
+.ui-skeleton-bone.is-block {
+  width: 100%;
+  border-radius: var(--r-md);
+}
+
+@keyframes ui-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+/* ── Progress / pace ────────────────────────────────────────────────────── */
+
+.ui-pace {
+  display: grid;
+  gap: var(--s-3);
+}
+.ui-pace-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+}
+.ui-pace-number {
+  color: var(--text);
+  font: 700 20px/1.2 var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+.ui-pace-unit {
+  color: var(--text-3);
+  font-size: 13px;
+}
+.ui-pace-bar {
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--r-pill);
+  background: var(--elev-2);
+}
+.ui-pace-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transform-origin: left center;
+  transition: width var(--dur) var(--ease), background-color var(--dur) var(--ease);
+}
+.ui-pace.is-complete .ui-pace-fill {
+  background: var(--green);
+}
+.ui-pace-week {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  color: var(--text-3);
+  font-size: 12px;
+}
+.ui-pace-dots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ui-pace-dot {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--field-line);
+  border-radius: 50%;
+}
+.ui-pace-dot.is-done {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.ui-pace-dot.is-missed {
+  border-color: var(--red);
+}
+.ui-pace-sentence {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* ── Composer ───────────────────────────────────────────────────────────── */
+
+.ui-composer {
+  position: relative;
+  display: grid;
+  gap: var(--s-1);
+  width: 100%;
+  padding: var(--s-3) var(--s-2) var(--s-2) var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+
+.ui-composer:focus-within {
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.ui-composer textarea.ui-composer-input,
+.ui-composer textarea.ui-composer-input:focus,
+.ui-composer textarea.ui-composer-input:focus-visible {
+  display: block;
+  width: 100%;
+  min-height: 26px;
+  max-height: 220px;
+  margin: 0;
+  padding: 2px var(--s-2) 0 0;
+  overflow-y: auto;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text);
+  font: 400 15px/1.5 var(--font-body);
+  resize: none;
+}
+
+.ui-composer textarea.ui-composer-input::placeholder {
+  color: var(--text-3);
+}
+
+/* While listening, words not yet final read as a draft. */
+.ui-composer.is-voice-recording textarea.ui-composer-input,
+.ui-composer.is-voice-transcribing textarea.ui-composer-input {
+  color: var(--text-3);
+}
+
+@media (max-width: 767px) {
+  /* 16px stops iOS zooming on focus. */
+  .ui-composer textarea.ui-composer-input,
+  .ui-composer textarea.ui-composer-input:focus {
+    font-size: 16px;
+  }
+}
+
+.ui-composer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  min-height: 44px;
+}
+
+.ui-composer-tools,
+.ui-composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ui-composer-actions {
+  margin-left: auto;
+}
+
+.ui-composer-mic.is-recording {
+  color: var(--red);
+}
+.ui-composer-mic.is-recording > svg {
+  animation: ui-mic-pulse 1.2s var(--ease) infinite alternate;
+}
+.ui-composer-mic.is-recording::before {
+  background: var(--red-soft);
+}
+.ui-composer-mic.is-transcribing > span {
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: ui-spin 0.7s linear infinite;
+}
+
+@keyframes ui-mic-pulse {
+  from { transform: scale(1); }
+  to { transform: scale(1.06); }
+}
+
+.ui-composer-send:disabled {
+  opacity: 0.4;
+}
+
+.ui-composer-hint {
+  margin: var(--s-2) 0 0;
+  color: var(--text-3);
+  font-size: 12px;
+  text-align: center;
+}
+.ui-composer-hint kbd {
+  display: inline-block;
+  min-width: 20px;
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--surface);
+  color: var(--text-2);
+  font: 500 11px/1.4 var(--font-body);
+  text-align: center;
+}
+@media (hover: none) {
+  .ui-composer-hint {
+    display: none;
+  }
+}
+
+/* ── Reduced motion ─────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-button-spinner,
+  .ui-composer-mic.is-transcribing > span {
+    animation-duration: 1.6s;
+  }
+  .ui-skeleton-bone,
+  .ui-composer-mic.is-recording > svg {
+    animation: none;
+  }
+  .ui-button--primary:active:not(:disabled),
+  .ui-button--danger:active:not(:disabled),
+  .ui-icon-button--filled:active:not(:disabled) {
+    transform: none;
+  }
+}
