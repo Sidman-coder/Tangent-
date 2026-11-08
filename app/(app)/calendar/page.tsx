@@ -941,7 +941,7 @@ export default function CalendarPage() {
                   name="day-chat"
                   value={dayChatInput}
                   onChange={(e) => setDayChatInput(e.target.value)}
-                  placeholder="Ask about this day..."
+                  placeholder="Ask about this day…"
                   aria-label="Ask about this day"
                   disabled={dayChatBusy}
                 />

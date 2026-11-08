@@ -101,7 +101,7 @@
   fill: none;
   stroke: var(--path-edge);
   stroke-width: 1.25;
-  transition: stroke 0.4s ease, opacity 0.4s ease;
+  transition: stroke 0.4s var(--ease), opacity 0.4s var(--ease);
 }
 .path-ring.is-dim {
   opacity: 0.3;
@@ -112,7 +112,7 @@
   stroke-width: 1;
   stroke-dasharray: 2 7;
   opacity: 0.5;
-  transition: opacity 0.4s ease;
+  transition: opacity 0.4s var(--ease);
 }
 .path-spoke.is-dim {
   opacity: 0.12;
@@ -122,7 +122,7 @@
   stroke: var(--path-idea);
   stroke-width: 1.5;
   opacity: 0.55;
-  transition: opacity 0.4s ease, stroke-width 0.3s ease;
+  transition: opacity 0.4s var(--ease), stroke-width var(--dur-slow) var(--ease);
 }
 /* A branch that is only a suggestion is drawn, not committed. */
 .path-tangent.is-suggested .path-tangent-line {
@@ -150,7 +150,7 @@
 .path-touch {
   fill: var(--path-idea);
   opacity: 0.9;
-  transition: opacity 0.4s ease;
+  transition: opacity 0.4s var(--ease);
 }
 
 .path-tangent-pulse {
@@ -202,7 +202,7 @@
   color: var(--path-ink);
   cursor: pointer;
   white-space: nowrap;
-  transition: border-color 0.3s ease, transform 0.3s ease;
+  transition: border-color var(--dur-slow) var(--ease), transform var(--dur-slow) var(--ease);
 }
 .path-goal-node:hover,
 .path-goal-node.is-focused {
@@ -237,7 +237,7 @@
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
-  transition: border-color 0.25s ease, background 0.25s ease, opacity 0.4s ease;
+  transition: border-color var(--dur-slow) var(--ease), background var(--dur-slow) var(--ease), opacity 0.4s var(--ease);
 }
 .path-work:hover {
   border-color: var(--path-work);
@@ -275,7 +275,7 @@
   background: var(--path-node-idea);
   backdrop-filter: blur(8px);
   overflow: hidden;
-  transition: border-color 0.25s ease, opacity 0.4s ease, box-shadow 0.25s ease;
+  transition: border-color var(--dur-slow) var(--ease), opacity 0.4s var(--ease), box-shadow var(--dur-slow) var(--ease);
 }
 .path-idea:hover {
   border-color: var(--path-idea);
@@ -317,7 +317,7 @@
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: background var(--dur) var(--ease);
 }
 .path-idea-grow:hover {
   background: rgba(92, 200, 189, 0.22);
@@ -369,7 +369,7 @@
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
-  transition: background 0.14s ease, color 0.14s ease;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 .path-zoombar-btn {
   width: 34px;
@@ -568,7 +568,7 @@
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease, transform 0.12s ease;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease), transform var(--dur-fast) var(--ease);
 }
 .path-btn:hover {
   background: rgba(255, 255, 255, 0.09);
@@ -977,7 +977,7 @@
   height: 2px;
   border-radius: 2px;
   background: var(--path-edge);
-  transition: background 0.3s ease;
+  transition: background var(--dur-slow) var(--ease);
 }
 .tangents-intake-progress span.is-done {
   background: var(--path-idea);
@@ -1066,7 +1066,7 @@
   color: var(--path-ink);
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.18s ease, background 0.18s ease;
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
 }
 .tangents-kind:hover {
   border-color: var(--path-edge-strong);
@@ -1088,7 +1088,7 @@
   border: 1px solid var(--path-edge);
   background: rgba(154, 136, 239, 0.1);
   color: var(--path-work);
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform var(--dur) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* One-tap answers under a question. */
@@ -1109,7 +1109,7 @@
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+  transition: border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
 .tangents-intake-chip:hover {
   color: var(--path-ink);
@@ -1297,7 +1297,7 @@
   white-space: nowrap;
   cursor: pointer;
   isolation: isolate;
-  transition: color 0.16s ease;
+  transition: color var(--dur-fast) var(--ease);
 }
 .path-filter-btn:hover,
 .path-filter-btn.is-on {
@@ -1506,7 +1506,7 @@
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: border-color 0.2s ease, background 0.2s ease, transform 0.12s ease;
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease), transform var(--dur-fast) var(--ease);
 }
 .path-step-chip small {
   color: var(--path-ink-2);
@@ -1582,7 +1582,7 @@
   background: transparent;
   color: var(--path-work);
   cursor: pointer;
-  transition: background-color 150ms ease, transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+  transition: background-color var(--dur-fast) var(--ease), transform var(--dur-fast) cubic-bezier(0.23, 1, 0.32, 1);
 }
 .tangents-intake-mic:hover {
   background: rgba(179, 165, 240, 0.12);
@@ -1906,7 +1906,7 @@
   box-shadow: 0 1px 2px rgb(26 23 32 / 0.04), 0 12px 32px -20px rgb(26 23 32 / 0.16);
   color: var(--text);
   text-decoration: none;
-  transition: transform 0.2s cubic-bezier(0.23, 1, 0.32, 1), box-shadow 0.2s ease;
+  transition: transform var(--dur) cubic-bezier(0.23, 1, 0.32, 1), box-shadow var(--dur) var(--ease);
 }
 .tg-path-card:hover {
   transform: translateY(-2px);

@@ -81,7 +81,7 @@ Cleared as measurement artifacts, not bugs: the Browser pane was hidden, which s
 | M18 | No stored week start. Calendar starts Sunday, preview Monday, `endOfWeek` treats Sunday as the end. | B |
 | M19 | Client export in `YourDataSection` assembles JSON in the browser; `/api/sessions` list may omit messages, so the export can be incomplete. | E |
 | M20 | Sign-in on a phone: marketing list pushes the card to about y=664. | G |
-| M21 | Placeholder copy varies by screen ("Add a task, a project, or ask anything", "Add anything, or ask", "Add or change something on your calendar…"). | A, D |
+| M21 | Placeholder copy varies by screen ("Add a task, a project, or ask anything", "Add anything, or ask", "Add or change something on your calendar…"). | A, D; finished in Round 3 Phase 4 |
 
 ### Low
 
@@ -171,6 +171,52 @@ Cleared as measurement artifacts, not bugs: the Browser pane was hidden, which s
   - **M9:** Calendar says "Filtering by project". **M10:** the last "Tangent AI" in copy is now "Tangent". **L2:** the sign-in point about paths now describes projects. **L7:** the bell has `font: inherit`.
   - Leftovers: Fresh start is hidden when there is nothing to move. `window.confirm` is gone from the app (H6). The task type note already resets when another task opens.
 - Release check: `npx tsc --noEmit` clean, `npm test` 621/621, `npm run build` passed. Browser check on `/signin` and `/dev/app/today` at 390 and 1440, light and dark: no horizontal scroll, bell 44×44, nav labels 11px, sign-in card in the first screen on a phone. The error boundary was checked by build and types only, not by forcing an error.
+
+### Round 3 — Design and UI pass (2026-11-07)
+
+Round 3 restyled every student-facing screen (Quiet Violet: accent `#5641b8`, dark background `#121119`, Figtree) without changing auth logic, the schema, AI planning or billing. Phase 1 recorded references, before screens and wireframes in `docs/design/`; Phase 2 added tokens, fonts, `components/ui/` and the app shell; Phase 3 rebuilt Home, Today, project, chats, calendar, settings and sign-in on them; Phase 4 is this audit.
+
+**Before and after.** Same routes, same sample data, same sizes (1440×900 viewport and a 390×844 full-page capture), light and dark. 44 screens each.
+
+| Page | Route | Before | After |
+|---|---|---|---|
+| Home (Today) | `/dev/app/today` | [1440 light](../../design/screens/before/today-1440-light.png) · [1440 dark](../../design/screens/before/today-1440-dark.png) · [390 light](../../design/screens/before/today-390-light.png) · [390 dark](../../design/screens/before/today-390-dark.png) | [1440 light](../../design/screens/after/today-1440-light.png) · [1440 dark](../../design/screens/after/today-1440-dark.png) · [390 light](../../design/screens/after/today-390-light.png) · [390 dark](../../design/screens/after/today-390-dark.png) |
+| Calendar | `/dev/app/calendar` | [1440 light](../../design/screens/before/calendar-1440-light.png) · [1440 dark](../../design/screens/before/calendar-1440-dark.png) · [390 light](../../design/screens/before/calendar-390-light.png) · [390 dark](../../design/screens/before/calendar-390-dark.png) | [1440 light](../../design/screens/after/calendar-1440-light.png) · [1440 dark](../../design/screens/after/calendar-1440-dark.png) · [390 light](../../design/screens/after/calendar-390-light.png) · [390 dark](../../design/screens/after/calendar-390-dark.png) |
+| Projects | `/dev/app/projects` | [1440 light](../../design/screens/before/projects-1440-light.png) · [1440 dark](../../design/screens/before/projects-1440-dark.png) · [390 light](../../design/screens/before/projects-390-light.png) · [390 dark](../../design/screens/before/projects-390-dark.png) | [1440 light](../../design/screens/after/projects-1440-light.png) · [1440 dark](../../design/screens/after/projects-1440-dark.png) · [390 light](../../design/screens/after/projects-390-light.png) · [390 dark](../../design/screens/after/projects-390-dark.png) |
+| School project | `/dev/app/school` | [1440 light](../../design/screens/before/school-1440-light.png) · [1440 dark](../../design/screens/before/school-1440-dark.png) · [390 light](../../design/screens/before/school-390-light.png) · [390 dark](../../design/screens/before/school-390-dark.png) | [1440 light](../../design/screens/after/school-1440-light.png) · [1440 dark](../../design/screens/after/school-1440-dark.png) · [390 light](../../design/screens/after/school-390-light.png) · [390 dark](../../design/screens/after/school-390-dark.png) |
+| Chats | `/dev/app/ai` | [1440 light](../../design/screens/before/chats-1440-light.png) · [1440 dark](../../design/screens/before/chats-1440-dark.png) · [390 light](../../design/screens/before/chats-390-light.png) · [390 dark](../../design/screens/before/chats-390-dark.png) | [1440 light](../../design/screens/after/chats-1440-light.png) · [1440 dark](../../design/screens/after/chats-1440-dark.png) · [390 light](../../design/screens/after/chats-390-light.png) · [390 dark](../../design/screens/after/chats-390-dark.png) |
+| Plan preview | `/dev/app/preview` | [1440 light](../../design/screens/before/plan-preview-1440-light.png) · [1440 dark](../../design/screens/before/plan-preview-1440-dark.png) · [390 light](../../design/screens/before/plan-preview-390-light.png) · [390 dark](../../design/screens/before/plan-preview-390-dark.png) | [1440 light](../../design/screens/after/plan-preview-1440-light.png) · [1440 dark](../../design/screens/after/plan-preview-1440-dark.png) · [390 light](../../design/screens/after/plan-preview-390-light.png) · [390 dark](../../design/screens/after/plan-preview-390-dark.png) |
+| Settings | `/dev/app/settings` | [1440 light](../../design/screens/before/settings-1440-light.png) · [1440 dark](../../design/screens/before/settings-1440-dark.png) · [390 light](../../design/screens/before/settings-390-light.png) · [390 dark](../../design/screens/before/settings-390-dark.png) | [1440 light](../../design/screens/after/settings-1440-light.png) · [1440 dark](../../design/screens/after/settings-1440-dark.png) · [390 light](../../design/screens/after/settings-390-light.png) · [390 dark](../../design/screens/after/settings-390-dark.png) |
+| Settings: AI activity | `/dev/app/settings-activity` | [1440 light](../../design/screens/before/settings-activity-1440-light.png) · [1440 dark](../../design/screens/before/settings-activity-1440-dark.png) · [390 light](../../design/screens/before/settings-activity-390-light.png) · [390 dark](../../design/screens/before/settings-activity-390-dark.png) | [1440 light](../../design/screens/after/settings-activity-1440-light.png) · [1440 dark](../../design/screens/after/settings-activity-1440-dark.png) · [390 light](../../design/screens/after/settings-activity-390-light.png) · [390 dark](../../design/screens/after/settings-activity-390-dark.png) |
+| Settings: What Tangent knows | `/dev/app/settings-context` | [1440 light](../../design/screens/before/settings-context-1440-light.png) · [1440 dark](../../design/screens/before/settings-context-1440-dark.png) · [390 light](../../design/screens/before/settings-context-390-light.png) · [390 dark](../../design/screens/before/settings-context-390-dark.png) | [1440 light](../../design/screens/after/settings-context-1440-light.png) · [1440 dark](../../design/screens/after/settings-context-1440-dark.png) · [390 light](../../design/screens/after/settings-context-390-light.png) · [390 dark](../../design/screens/after/settings-context-390-dark.png) |
+| Capture | `/dev/capture` | [1440 light](../../design/screens/before/capture-1440-light.png) · [1440 dark](../../design/screens/before/capture-1440-dark.png) · [390 light](../../design/screens/before/capture-390-light.png) · [390 dark](../../design/screens/before/capture-390-dark.png) | [1440 light](../../design/screens/after/capture-1440-light.png) · [1440 dark](../../design/screens/after/capture-1440-dark.png) · [390 light](../../design/screens/after/capture-390-light.png) · [390 dark](../../design/screens/after/capture-390-dark.png) |
+| Sign-in | `/signin` | [1440 light](../../design/screens/before/signin-1440-light.png) · [1440 dark](../../design/screens/before/signin-1440-dark.png) · [390 light](../../design/screens/before/signin-390-light.png) · [390 dark](../../design/screens/before/signin-390-dark.png) | [1440 light](../../design/screens/after/signin-1440-light.png) · [1440 dark](../../design/screens/after/signin-1440-dark.png) · [390 light](../../design/screens/after/signin-390-light.png) · [390 dark](../../design/screens/after/signin-390-dark.png) |
+
+The Chats sample shows its "couldn't load" state before and after: `/dev/app/ai` has no session, so `/api/sessions` returns 401. The signed-in list was not checked.
+
+**UI checklist, Phase 4.** Run on the 10 routes above at 390 and 1440 in a dev server.
+
+| Check | Result |
+|---|---|
+| Horizontal page scroll | None (scroll width equals client width on all 20 runs). |
+| One `h1` per page | Yes on all 20 runs. |
+| Controls without an accessible name | None. Images without `alt`: none. `lang="en"` set. |
+| Focus visible | 2px outline on sampled stops (Home, Settings, Calendar, Chats). The composer and chat search show a ring on their container (`:focus-within`, 3px), not the input. |
+| Touch targets on a phone | Settings: none under 44px. Task checks (22px drawn) and filter chips (32px drawn) have a 44px hit area through `::after`. Today's filter tabs are 36px inside a 44px pill. Below 44 but above the 24px WCAG 2.2 minimum: the Calendar view switch (30px) and "Today" button (36px), and the chat search box (38px). Left as is: a dense toolbar; raise in a later pass if students miss them. |
+| Toasts over the composer | Fixed: on a phone, toasts sit above the composer (`ui.css`, `body:has(.tg-dock)`). Measured 76px from the bottom with no composer, 204px on a page with one, 140px in the chat sheet. |
+| Theme | Every after screen checked in both themes; no unreadable text found by eye. Contrast was not re-measured with a tool in Phase 4. |
+
+**M21, placeholders.** Three short lines now, one per place: Home "Type or say anything…", chats "Ask anything, or add a task…" (was "Ask, plan, or add something…"), calendar day chat "Ask about this day…" (was three dots).
+
+**Clean-up in Phase 4.**
+
+- Motion: 97 single-line `transition` rules in 13 stylesheets now use `--dur-fast` (≤170ms), `--dur` (≤220ms), `--dur-slow` (≤320ms) and `--ease`, so reduced motion turns them off from one place. Longer timings (progress fills, capture animations, springs) and looping animations were left as they are on purpose.
+- Dead selectors: `.td-primary`, `.td-primary.is-done` and `.td-icon` removed from `app/styles/controls.css`; the old task modal they styled was replaced by the Sheet in Phase 3.
+- `StorageStatus` is still used by `AppShell`, so it stays; its pill and button now use `--r-pill` and `--r-sm`.
+- M13 note: `NotificationBell` is the only caller of `/api/notifications` and there is one bell in `AppShell`. The second request seen in dev is React strict mode running effects twice; nothing to dedupe.
+- Swipe-to-delete on task rows was not added. Done, Not today and Too big stay as buttons, so there is no hidden gesture to learn and nothing to delete by accident.
+
+**Not verified this round:** a signed-in run (sign-in is invite-only and was not used), a real phone, contrast with a tool, and the Round 2 evals (`npm run eval:pipeline -- --round2`, paid, not run). "Plan step" is kept as the glossary term; elsewhere copy says "project".
 
 ## Release readiness
 

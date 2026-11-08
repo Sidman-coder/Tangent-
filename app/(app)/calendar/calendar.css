@@ -344,7 +344,7 @@
   color: var(--text-2);
   font: 550 12px/1 var(--font-body);
   cursor: pointer;
-  transition: border-color 150ms ease, color 150ms ease;
+  transition: border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 
 @media (hover: hover) and (pointer: fine) {

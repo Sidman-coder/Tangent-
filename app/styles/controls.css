@@ -22,7 +22,7 @@ body :is(button, a, [role="button"]):is(
   .surface-action-primary, .neu-btn-primary,
   .tg-clarify-btn.is-primary, .tg-btn-accent, .tg-brief-pill, .tg-send:not(:disabled), .tg-chip.is-on,
   .knows-gtk, .knows-add-btn:not(:disabled), .gtk-primary, .gtk-send, .gtk-mic.is-on, .cmdk-mic.is-on,
-  .tour-primary, .preview-card-btn.is-primary, .not-found-home, .td-primary,
+  .tour-primary, .preview-card-btn.is-primary, .not-found-home,
   .add-send:not(:disabled), .setup-nudge-go,
   .capture-chip.is-primary
 ) {
@@ -37,14 +37,10 @@ body :is(button, a, [role="button"]):is(
   body :is(button, a, [role="button"]):is(
     .surface-action-primary, .neu-btn-primary,
     .tg-clarify-btn.is-primary, .tg-btn-accent, .tg-brief-pill, .tg-send, .knows-gtk, .knows-add-btn, .gtk-primary,
-    .gtk-send, .tour-primary, .preview-card-btn.is-primary, .not-found-home, .td-primary, .add-send, .setup-nudge-go
+    .gtk-send, .tour-primary, .preview-card-btn.is-primary, .not-found-home, .add-send, .setup-nudge-go
   ):hover:not(:disabled) {
     background: var(--accent-hover);
   }
-}
-body .td-primary.is-done {
-  background: var(--green);
-  color: #fff;
 }
 
 /* Regular */
@@ -78,13 +74,13 @@ body :is(.gtk-mic:not(.is-on), .tg-mic.is-idle, .tg-new-chat) {
 }
 
 /* Ghost icon buttons: no fill until hovered. */
-body :is(.td-icon, .side-peek-close) {
+body .side-peek-close {
   border: 0;
   background: transparent;
   box-shadow: none;
 }
 @media (hover: hover) and (pointer: fine) {
-  body :is(.td-icon, .side-peek-close):hover:not(:disabled) {
+  body .side-peek-close:hover:not(:disabled) {
     background: var(--elev-2);
     color: var(--text);
   }
@@ -118,12 +114,12 @@ body :is(button, a, [role="button"]):is(.tg-btn-danger, .project-delete-yes) {
 .preview-card-btn {
   border-radius: var(--r-pill);
 }
-body :is(.tg-icon-btn, .tg-mic, .tg-send, .tg-chat-more, .td-icon, .side-peek-close, .path-inspector-close, .path-zoombar-btn) {
+body :is(.tg-icon-btn, .tg-mic, .tg-send, .tg-chat-more, .side-peek-close, .path-inspector-close, .path-zoombar-btn) {
   border-radius: 50%;
 }
 :is(
   .tg-clarify-btn, .knows-gtk, .knows-add-btn, .knows-secondary, .knows-forget, .gtk-primary, .tour-primary,
-  .tour-secondary, .calendar-task-remove, .project-delete-yes, .tg-btn, .td-icon, .tg-new-chat, .resource-link,
+  .tour-secondary, .calendar-task-remove, .project-delete-yes, .tg-btn, .tg-new-chat, .resource-link,
   .preview-card-btn
 ):active:not(:disabled) {
   transform: scale(0.98);

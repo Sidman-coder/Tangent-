@@ -96,7 +96,7 @@
   gap: 2px;
   margin-top: 6px;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--dur-fast) var(--ease);
 }
 
 .tg-turn:hover .tg-msg-actions,
@@ -120,7 +120,7 @@
   background: transparent;
   color: var(--text-3);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 
 .tg-msg-action:hover {

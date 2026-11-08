@@ -1007,7 +1007,7 @@ export default function ChatPanel({ scope, openId = null, askOnOpen = null, onDo
       onTranscript={acceptTranscript}
       onVoiceError={setErr}
       mode={chatMode}
-      placeholder="Ask, plan, or add something…"
+      placeholder="Ask anything, or add a task…"
       onStop={stop}
     />
   );

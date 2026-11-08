@@ -1131,6 +1131,19 @@ span.ui-task-check {
   }
 }
 
+/* Phone: a chat's composer docks at the bottom (~130px with its hint), so
+   toasts sit above it instead of over the box being typed in. In the chat
+   sheet the composer is at the screen edge; on a chat page it sits on the
+   tab bar. */
+@media (max-width: 767px) {
+  body:has(.tg-dock) .ui-toast-region {
+    bottom: calc(var(--bottom-nav-h) + 140px);
+  }
+  body:has(.chat-sheet-root .tg-dock) .ui-toast-region {
+    bottom: calc(140px + env(safe-area-inset-bottom));
+  }
+}
+
 /* Up to three at once; older ones wait. */
 .ui-toast-region > .ui-toast:nth-last-child(n + 4) {
   display: none;

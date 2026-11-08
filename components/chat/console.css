@@ -145,7 +145,7 @@
   color: var(--text-2);
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.12s ease, background 0.12s ease;
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
 
 .tg-example:hover {
@@ -296,7 +296,7 @@
 }
 
 .tg-btn {
-  transition: background 0.15s ease, border-color 0.15s ease, transform 0.2s var(--tg-spring), box-shadow 0.2s ease;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), transform var(--dur) var(--tg-spring), box-shadow var(--dur) var(--ease);
 }
 
 .tg-btn:active:not(:disabled) {
@@ -523,7 +523,7 @@
   color: var(--text);
   font: 550 13px/1 var(--font-body);
   cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease, box-shadow 0.2s ease, transform 0.25s var(--tg-spring);
+  transition: border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), box-shadow var(--dur) var(--ease), transform var(--dur-slow) var(--tg-spring);
 }
 
 .tg-new-chat svg {
@@ -555,7 +555,7 @@
   border-radius: 9px;
   background: rgb(from var(--text) r g b / 0.045);
   color: var(--text-3);
-  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.2s ease;
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease), box-shadow var(--dur) var(--ease);
 }
 
 .tg-side-search:focus-within {
@@ -640,7 +640,7 @@
   align-items: center;
   max-height: 64px;
   border-radius: 9px;
-  transition: background 0.18s ease, max-height 0.24s ease, opacity 0.2s ease, transform 0.24s ease;
+  transition: background var(--dur) var(--ease), max-height var(--dur-slow) var(--ease), opacity var(--dur) var(--ease), transform var(--dur-slow) var(--ease);
   animation: tg-row-in 0.4s var(--tg-ease-out) both;
   animation-delay: calc(var(--i, 0) * 28ms);
 }
@@ -693,7 +693,7 @@
   border-radius: 2px;
   background: var(--chat-color);
   transform-origin: center;
-  transition: top 0.2s var(--tg-spring), bottom 0.2s var(--tg-spring);
+  transition: top var(--dur) var(--tg-spring), bottom var(--dur) var(--tg-spring);
 }
 
 .tg-chat-row.has-color:hover::before,
@@ -715,7 +715,7 @@
   color: var(--text-2);
   opacity: 0;
   cursor: pointer;
-  transition: opacity 0.15s ease, background 0.15s ease;
+  transition: opacity var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
 
 .tg-chat-row:hover .tg-chat-more,
@@ -787,7 +787,7 @@
   font: 500 13px/1 var(--font-body);
   text-align: left;
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 
 .tg-menu-item svg {
@@ -847,7 +847,7 @@
   background: var(--dot);
   color: var(--accent-ink);
   cursor: pointer;
-  transition: transform 0.2s var(--tg-spring), box-shadow 0.15s ease;
+  transition: transform var(--dur) var(--tg-spring), box-shadow var(--dur-fast) var(--ease);
 }
 
 .tg-color-dot:hover {
@@ -1194,7 +1194,7 @@
   border-radius: 999px;
   background: var(--surface);
   box-shadow: 0 1px 3px rgba(20, 20, 24, 0.12);
-  transition: transform 0.5s var(--tg-spring), background 0.3s ease, box-shadow 0.3s ease;
+  transition: transform 0.5s var(--tg-spring), background var(--dur-slow) var(--ease), box-shadow var(--dur-slow) var(--ease);
 }
 
 .tg-mode.is-calendar .tg-mode-thumb {
@@ -1219,7 +1219,7 @@
   font: 550 12.5px/1 var(--font-body);
   white-space: nowrap;
   cursor: pointer;
-  transition: color 0.25s ease;
+  transition: color var(--dur-slow) var(--ease);
 }
 
 .tg-mode-opt:hover:not(.is-on):not(:disabled) {
@@ -1248,7 +1248,7 @@
    its edge while you type. */
 
 .tg-icon-btn {
-  transition: background 0.15s ease, color 0.15s ease, transform 0.25s var(--tg-spring);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), transform var(--dur-slow) var(--tg-spring);
 }
 
 .tg-icon-btn:active:not(:disabled) {
@@ -1360,11 +1360,11 @@
 }
 
 .tg-example {
-  transition: border-color 0.18s ease, background 0.18s ease, transform 0.3s var(--tg-spring), box-shadow 0.25s ease;
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease), transform var(--dur-slow) var(--tg-spring), box-shadow var(--dur-slow) var(--ease);
 }
 
 .tg-example svg {
-  transition: color 0.2s ease, transform 0.35s var(--tg-spring);
+  transition: color var(--dur) var(--ease), transform 0.35s var(--tg-spring);
 }
 
 .tg-example:hover {
@@ -1617,7 +1617,7 @@
   -webkit-mask-image: radial-gradient(70% 60% at 50% 35%, #000 30%, transparent 80%);
   mask-image: radial-gradient(70% 60% at 50% 35%, #000 30%, transparent 80%);
   opacity: 0;
-  transition: opacity 0.6s ease;
+  transition: opacity 0.6s var(--ease);
 }
 .tg-main:has(.tg-hero)::before { opacity: 1; }
 
@@ -1694,7 +1694,7 @@
   color: var(--text-2);
   font: 500 12.5px/1.3 var(--font-body);
   text-decoration: none;
-  transition: border-color 0.18s ease, box-shadow 0.25s ease, transform 0.3s var(--tg-spring);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur-slow) var(--ease), transform var(--dur-slow) var(--tg-spring);
 }
 a.tg-next:hover {
   border-color: var(--accent-line);
@@ -1741,7 +1741,7 @@ a.tg-next:hover {
 .tg-next-go {
   flex: none;
   color: var(--text-3);
-  transition: transform 0.3s var(--tg-spring), color 0.2s ease;
+  transition: transform var(--dur-slow) var(--tg-spring), color var(--dur) var(--ease);
 }
 a.tg-next:hover .tg-next-go { color: var(--accent); transform: translate(2px, -2px); }
 
