@@ -106,7 +106,7 @@
     max-width: 440px;
   }
 }
-/* Phones: the card (or the invite-only reason) comes right after the
+/* Phones: the card (or the waitlist message) comes right after the
    headline, not under the feature list (audit H11, M20). */
 @media (max-width: 600px) {
   .auth-features {
@@ -139,17 +139,14 @@
 .auth-link--button:disabled { color: var(--faint); cursor: default; text-decoration: none; }
 .auth-row { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .auth-check-title { margin: 0 0 4px; font-weight: 600; font-size: 15px; color: var(--text); }
-.auth-code { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
-.auth-code-box {
-  width: 100%; box-sizing: border-box; min-width: 0;
-  height: 48px; text-align: center;
-  font: inherit; font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums;
-  color: var(--text); background: var(--surface);
-  border: 1px solid var(--line-strong); border-radius: var(--r-sm);
+.auth-field { display: grid; gap: 6px; }
+/* One field for a 6–10 digit code: wide-spaced digits, easy to check. */
+.auth-page .auth-card input.auth-code-input {
+  font-size: 22px; font-weight: 600; letter-spacing: 0.18em;
+  font-variant-numeric: tabular-nums; text-align: center;
 }
-.auth-code-box:focus { outline: 2px solid var(--accent-line); outline-offset: 1px; border-color: var(--accent); }
-.auth-code-box[aria-invalid="true"] { border-color: var(--red); }
-.auth-code-box:disabled { opacity: 0.6; }
+.auth-page .auth-card input.auth-code-input::placeholder { color: var(--line-strong); letter-spacing: 0.18em; }
+.auth-page .auth-card input.auth-code-input:disabled { opacity: 0.6; }
 .auth-spinner {
   width: 18px; height: 18px; border-radius: 50%;
   border: 2px solid var(--line-strong); border-top-color: var(--accent);
@@ -255,19 +252,12 @@
   background: var(--surface);
   font-size: 15px;
 }
-.auth-page .auth-card input.auth-code-box:not([type="checkbox"]) {
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--surface);
-}
-.auth-page .auth-card input.auth-input:not([type="checkbox"]):focus,
-.auth-page .auth-card input.auth-code-box:not([type="checkbox"]):focus {
+.auth-page .auth-card input.auth-input:not([type="checkbox"]):focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--focus);
 }
-.auth-page .auth-card input.auth-code-box[aria-invalid="true"] {
+.auth-page .auth-card input.auth-input[aria-invalid="true"] {
   border-color: var(--danger-text, var(--red));
 }
 

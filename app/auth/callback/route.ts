@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isEmailAllowed } from "@/lib/auth/access";
+import { WAITLIST_PATH } from "@/lib/auth/gate";
 import { safeNext } from "@/lib/auth/safe-next";
 
 export const runtime = "nodejs";
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
 //   * ?token_hash=…  (email link) handed to /auth/confirm, which verifies it
 //     with a POST once the page has loaded in a real browser, so link scanners
 //     that prefetch email links can't consume the token first.
-// Then enforces the invite-only allowlist before the student reaches the app.
+// Not invited yet: the session stays and the student lands on the waitlist page.
 export async function GET(request: Request) {
   const started = Date.now();
   const url = new URL(request.url);
@@ -42,8 +43,7 @@ export async function GET(request: Request) {
 
   // The exchange returns the user, so no second getUser() round-trip.
   if (!data.user || !isEmailAllowed(data.user.email)) {
-    await supabase.auth.signOut();
-    return NextResponse.redirect(new URL("/invite-only", url.origin));
+    return NextResponse.redirect(new URL(WAITLIST_PATH, url.origin));
   }
 
   return NextResponse.redirect(new URL(next, url.origin));

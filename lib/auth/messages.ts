@@ -11,8 +11,25 @@ function rateLimited(e: AuthFailure): boolean {
 
 export const SEND_RATE_LIMITED = "Too many sign-in emails. Wait a minute, then try again.";
 export const CODE_RATE_LIMITED = "Too many tries. Wait a minute, then try again.";
-// Supabase answers "Token has expired or is invalid" for both, so one message.
-export const CODE_REJECTED = "That code is wrong or has expired. Check it, or send a new one.";
+// Supabase answers otp_expired ("Token has expired or is invalid") for both a
+// wrong and an old code, so one message (Round 4, Phase 1.4).
+export const CODE_REJECTED = "That code didn't work. Check all the digits, or send a new code.";
+
+// Supabase's email OTP length is a project setting (6 to 10 digits), so every
+// code field accepts any length in that range and nothing submits on its own.
+export const CODE_MIN_LENGTH = 6;
+export const CODE_MAX_LENGTH = 10;
+export const CODE_INCOMPLETE = "Enter the full code from the email.";
+
+/** The digits of a pasted or typed code, at most CODE_MAX_LENGTH of them. */
+export function codeDigits(raw: string): string {
+  return raw.replace(/\D/g, "").slice(0, CODE_MAX_LENGTH);
+}
+
+/** True for a code of 6 to 10 digits. */
+export function isCodeLength(code: string): boolean {
+  return /^\d+$/.test(code) && code.length >= CODE_MIN_LENGTH && code.length <= CODE_MAX_LENGTH;
+}
 
 export function sendFailure(e: AuthFailure): { status: number; error: string } {
   if (rateLimited(e)) return { status: 429, error: SEND_RATE_LIMITED };

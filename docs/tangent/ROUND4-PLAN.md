@@ -6,8 +6,8 @@ Branch `v3-core-loop`. Spec: `docs/tangent/CONTEXT-ENGINE.md` (copied from Part 
 
 | Phase | Status |
 |---|---|
-| 0 Read, audit, plan | Done, awaiting approval |
-| 1 Bugs, sign-up, access | Not started |
+| 0 Read, audit, plan | Done, approved 2026-11-08 |
+| 1 Bugs, sign-up, access | Done (see Phase 1 log) |
 | 2 Context engine foundation | Not started (ends with a stop for migrations) |
 | 3 Planning flow | Not started |
 | 4 Tasks, calendar, Paths | Not started |
@@ -15,7 +15,9 @@ Branch `v3-core-loop`. Spec: `docs/tangent/CONTEXT-ENGINE.md` (copied from Part 
 | 6 Onboarding | Not started |
 | 7 Audit, screenshots, report | Not started |
 
-Baseline (start of Round 4): `git status` clean on `v3-core-loop`, head `f9d83b2`. Lint, typecheck, test and build were **not** run in Phase 0 (docs-only); Phase 1 starts by recording the baseline.
+Baseline (start of Round 4): `git status` clean on `v3-core-loop`, head `f9d83b2`. Lint, typecheck, test and build were **not** run in Phase 0 (docs-only).
+
+Baseline recorded at the start of Phase 1: build passes; lint 7 warnings (all `react-hooks/exhaustive-deps`, pre-existing); 644 tests pass. Lint had no config file, so `npm run lint` prompted; Phase 1 adds `.eslintrc.json` (`next/core-web-vitals`) and a `typecheck` script.
 
 ---
 
@@ -172,3 +174,27 @@ Each migration will have a check query in `docs/MANUAL-STEPS.md`. Code must read
 
 - Reproducing `/api/tasks` 500 shows a schema or migration issue instead of a code bug → Phase 1 becomes a manual step.
 - You choose one fact table instead of two (conflict 1) → migration 1 becomes a larger rewrite of `lib/context/store.ts`.
+
+## Phase 1 log (2026-11-08)
+
+**1.1 Errors**
+- `/api/tasks` 500: not reproduced (needs a signed-in session). Fixed the failure paths instead: request bodies go through `lib/task-input.ts` (bad input is a 400 with a reason, not a 500), store errors keep their code (`lib/store.ts` `fail()`), and the route logs through `lib/server-log.ts` (no emails, task text or tokens).
+- Toast `forwardRef` warning: fixed (`components/ui/Toast.tsx`).
+- CSS `@import` warning: not reproducible in dev or build; no stylesheet has a late `@import`.
+- Console sweep: signed-out pages and `/dev/app/*` are clean. A signed-in sweep wasn't possible (shared Supabase project; no credentials).
+
+**1.2 Accounts and access**
+- `/signin` has **Sign in** and **Create account** tabs (`?mode=create` opens the second). Create account: email → code → password (required, no Skip) → app, where onboarding starts.
+- Create account on an email that already has a finished account (password set, or created over an hour ago, such as Google) answers "You already have an account. Sign in instead." and switches tabs (`lib/auth/signup.ts`, `app/auth/signup/route.ts`). This deliberately says the account exists; Sign in still never does.
+- Access is one pure function, `lib/auth/gate.ts`, used by `middleware.ts` and `withUser`: signed out → `/signin` / 401; not on `ALLOWED_EMAILS` → `/waitlist` / 403, **session kept**; under 13 → `/not-yet` / 403; `/dev` → 404 outside development. `/invite-only` moved to `/waitlist`; the old URL redirects.
+- Age is the first onboarding screen (`components/FirstRun.tsx`, neutral list 7 or younger … 19 or older). Under 13 posts to `/api/age`, which sets `app_metadata.under_13` (service role) and nothing else; 13 and up stores nothing on the server (a per-device flag skips the question next time). Full handling is in Round 5.
+
+**1.3 Password fields:** the confirm mismatch shows only after leaving the confirm field or pressing submit. The rules (8+ characters, not a common password, not your email) are listed and turn green as they're met.
+
+**1.4 Codes:** one input that takes 6 to 10 digits, paste-friendly, never auto-submits. Copy: "We sent a sign-in code". A wrong or expired code: "That code didn't work. Check all the digits, or send a new code." Code-send failures in magic-link, signup, recover and verify are logged with the Supabase error code only.
+
+**1.5 Tests:** `lib/auth-gate.test.ts` covers the gate matrix, `/dev` 404, Create account's existing-account rule, the age answer, 6- and 8-digit codes and the password hints. `lib/auth-password.test.ts` now expects uninvited sign-ins to land on `/waitlist`. Checked against the dev server with curl: signed-out pages 307 to `/signin`, `/api/tasks` and `/api/age` 401.
+
+Checks: lint (7 warnings, same as baseline), typecheck, 659 tests, build all pass.
+
+**Not verified:** a real Create account and waitlist sign-in against Supabase, the age screen signed in, and the email's code length. They're in `docs/MANUAL-STEPS.md` → Round 4.

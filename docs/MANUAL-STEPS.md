@@ -128,3 +128,22 @@ On a test account, check the new `/` Today sections and `/capture` mic, includin
 Settings (signed in, phone and laptop, both themes): `/settings` shows the section list on a phone and opens Account on a laptop. Old `/settings#ai-activity`, `#onboarding` and `#connections` links should land on the matching page. Change your name, help focus, school hours, week start and quiet hours (after migration 6), then reload and check they stuck. Download my data should save one JSON file with no Canvas token or pen device key. Forget everything (type FORGET) should empty What Tangent knows. Do not try Delete all my data on an account you want to keep.
 
 Pilot analytics need no migration: events go to the existing `events` table. After a few signed-in actions (add a task, finish one, Not today, confirm a plan), run the queries in `docs/tangent/pilot-metrics.sql` in the SQL Editor and check rows appear with names, ids and counts only, never task titles or answers.
+
+## Round 4
+
+### Phase 1: sign-up, waitlist, codes (no migrations)
+
+Sign-up is now open: anyone can create an account, and only `ALLOWED_EMAILS` get in. Before sharing the link widely:
+
+1. **Email rate limits.** Supabase dashboard → Authentication → Rate Limits. Keep "emails sent per hour" low (the built-in email service allows only a few per hour; custom SMTP from section 2 raises it). Every Create account sends one email.
+2. **CAPTCHA.** Authentication → Attack Protection → enable CAPTCHA (hCaptcha or Turnstile). This needs a small code change to pass the token, so tell me when it's on and I'll wire it in.
+3. **Code length.** Authentication → Providers → Email → "Email OTP Length". Any value from 6 to 10 works; the form accepts all of them.
+4. **Email template copy.** The templates in section 1 say "Type this code on the sign-in page". That still fits; nothing to change unless the length changes the layout.
+
+**Check it** (signed in, phone and laptop):
+- `/signin` → **Create account** with a new address on `ALLOWED_EMAILS`: code → password (green hints, no Skip) → the age question → onboarding.
+- **Create account** with an address that already has a password: "You already have an account. Sign in instead." and the Sign in tab opens.
+- A new address **not** on the list: after the password, `/waitlist` shows "You're on the list" and the email. Try `/`, `/calendar` and `/api/tasks`: the pages come back to `/waitlist`, the API is 403. **Sign out** works.
+- On a throwaway account, choose an age under 13: `/not-yet` shows "Tangent is for students 13 and up". Undo it in the SQL Editor:
+  `update auth.users set raw_app_meta_data = raw_app_meta_data - 'under_13' where email = 'THE_TEST_EMAIL';`
+- Paste an 8-digit code with spaces: it fills in and waits for **Sign in**.

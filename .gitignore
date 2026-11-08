@@ -7,3 +7,6 @@ tsconfig.tsbuildinfo
 scripts/dev-tests/.build/
 .tangent-data
 .superpowers/
+
+# Playwright MCP screenshots and snapshots
+.playwright-mcp/

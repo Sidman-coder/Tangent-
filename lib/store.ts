@@ -79,8 +79,10 @@ function iso(ts: string): string {
   return new Date(ts).toISOString();
 }
 
-function fail(where: string, error: { message: string }): never {
-  throw new Error(`[store] ${where}: ${error.message}`);
+function fail(where: string, error: { message: string; code?: string }): never {
+  // Keep the Postgres/PostgREST code so server logs can say what failed
+  // (lib/server-log.ts) without the request's content.
+  throw Object.assign(new Error(`[store] ${where}: ${error.message}`), error.code ? { code: error.code } : {});
 }
 
 /** Supabase caps a response at 1000 rows; page through larger result sets. */

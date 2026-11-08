@@ -34,8 +34,8 @@ export default function ConfirmSignIn({ tokenHash, type, next }: { tokenHash: st
         signal: controller.signal,
       });
       const body = (await res.json().catch(() => ({ ok: false }))) as { ok: boolean; next?: string; error?: string };
-      if (body.ok || body.next === "/invite-only") {
-        window.location.replace(body.ok ? safeNext(body.next ?? dest) : "/invite-only");
+      if (body.ok) {
+        window.location.replace(safeNext(body.next ?? dest));
         return;
       }
       setState({ kind: "failed", message: "That sign-in link didn't work or has expired." });
@@ -70,8 +70,8 @@ export default function ConfirmSignIn({ tokenHash, type, next }: { tokenHash: st
       <h1>{state.kind === "slow" ? "This is taking longer than usual" : "Couldn't sign you in"}</h1>
       <p className="auth-lede" role="alert">
         {state.kind === "slow"
-          ? "Tangent didn't hear back in time. Try again, or sign in with a 6-digit code instead."
-          : `${state.message} Sign in with a 6-digit code instead.`}
+          ? "Tangent didn't hear back in time. Try again, or sign in with an email code instead."
+          : `${state.message} Sign in with an email code instead.`}
       </p>
       <div className="auth-stack">
         {state.kind === "slow" && (

@@ -1,9 +1,11 @@
 // The decisions behind /auth/password (sign in) and /auth/password/set (create,
 // reset or change), with Supabase passed in so the order of checks is tested:
-// the invite list first on every path, the limiter before Supabase, and one
-// message for a wrong password whether or not the account exists.
-import { NOT_INVITED, isEmailAllowed, normalizeEmail } from "./access";
-import { codeFailure } from "./messages";
+// the limiter before Supabase, one message for a wrong password whether or not
+// the account exists, and (Round 4) waitlisted accounts signed in but sent to
+// the waitlist page instead of refused.
+import { isEmailAllowed, normalizeEmail } from "./access";
+import { WAITLIST_PATH } from "./gate";
+import { CODE_INCOMPLETE, codeFailure, isCodeLength } from "./messages";
 import {
   AttemptLimiter,
   NO_PASSWORD_YET,
@@ -40,7 +42,6 @@ export async function passwordSignIn(
   const password = typeof input.password === "string" ? input.password : "";
   if (!EMAIL_RE.test(email)) return { status: 400, body: { ok: false, error: "Enter a valid email address." } };
   if (!password) return { status: 400, body: { ok: false, error: "Enter your password." } };
-  if (!isEmailAllowed(email)) return { status: 403, body: { ok: false, notInvited: true, error: NOT_INVITED } };
 
   const keys = attemptKeys(email, input.ip);
   if (limiter.isLimited(keys, now)) return { status: 429, body: { ok: false, tooMany: true, error: TOO_MANY_PASSWORD_TRIES } };
@@ -57,13 +58,10 @@ export async function passwordSignIn(
       : { status: 400, body: { ok: false, noPassword: true, error: NO_PASSWORD_YET } };
   }
 
-  if (!isEmailAllowed(user.email)) {
-    await deps.signOut();
-    return { status: 403, body: { ok: false, notInvited: true, next: "/invite-only", error: NOT_INVITED } };
-  }
   limiter.clear(`email:${email}`);
   if (!hasPasswordFlag(user.app_metadata)) await deps.markPasswordSet(user.id).catch(() => undefined);
-  return { status: 200, body: { ok: true, next: input.next } };
+  // Not invited yet: the session stays, and middleware keeps them on the waitlist page.
+  return { status: 200, body: { ok: true, next: isEmailAllowed(user.email) ? input.next : WAITLIST_PATH } };
 }
 
 export type SetDeps = {
@@ -79,7 +77,7 @@ export type SetDeps = {
 export const PROOF_NEEDED = "For your security, confirm with your current password or a new email code.";
 
 /** Create, reset or change the signed-in student's password. Proof is the
- *  current password, a fresh 6-digit code, or (from the sign-in page) a
+ *  current password, a fresh email code, or (from the sign-in page) a
  *  session that came from an email code moments ago. */
 export async function setPassword(
   input: { password: unknown; currentPassword?: unknown; code?: unknown; ip: string | null },
@@ -90,7 +88,6 @@ export async function setPassword(
   const user = await deps.getUser();
   if (!user?.email) return { status: 401, body: { ok: false, error: "Your session ended. Sign in again." } };
   const email = normalizeEmail(user.email);
-  if (!isEmailAllowed(email)) return { status: 403, body: { ok: false, notInvited: true, next: "/invite-only", error: NOT_INVITED } };
 
   const password = typeof input.password === "string" ? input.password : "";
   const problem = passwordProblem(password, email);
@@ -109,7 +106,7 @@ export async function setPassword(
     }
     limiter.clear(`email:${email}`);
   } else if (code) {
-    if (code.length !== 6) return { status: 400, body: { ok: false, field: "code", error: "Enter the 6-digit code from the email." } };
+    if (!isCodeLength(code)) return { status: 400, body: { ok: false, field: "code", error: CODE_INCOMPLETE } };
     const err = await deps.verifyCode(email, code);
     if (err) {
       const failure = codeFailure(err);

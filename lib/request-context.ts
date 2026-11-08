@@ -4,7 +4,8 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isEmailAllowed, isOwnerEmail } from "@/lib/auth/access";
+import { isOwnerEmail } from "@/lib/auth/access";
+import { UNDER_13_API_ERROR, WAITLIST_API_ERROR, accessOf } from "@/lib/auth/gate";
 
 // Request-scoped "who is this for" context. lib/store.ts reads it on every call
 // so store functions keep their signatures without taking a user id.
@@ -117,8 +118,14 @@ export function withUser(
     if (!user) {
       return NextResponse.json({ ok: false, error: "Not signed in" }, { status: 401 });
     }
-    if (!isEmailAllowed(user.email)) {
-      return NextResponse.json({ ok: false, error: "Tangent is invite-only right now" }, { status: 403 });
+    // Same rules as middleware.ts (lib/auth/gate.ts): waitlist and under-13
+    // accounts keep their session but reach no API.
+    const access = accessOf(user);
+    if (access !== "allowed") {
+      return NextResponse.json(
+        { ok: false, error: access === "under13" ? UNDER_13_API_ERROR : WAITLIST_API_ERROR },
+        { status: 403 }
+      );
     }
     return runIn({ userId: user.id, email: user.email ?? "", db }, () => handler(req));
   };

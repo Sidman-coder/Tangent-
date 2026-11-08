@@ -78,32 +78,31 @@ void Promise.all([
     assert.deepEqual(r.body, { ok: true, next: "/calendar" });
   });
 
-  test("allowlist on every path: password sign-in refuses an uninvited email before Supabase", async () => {
+  test("waitlist (Round 4): an uninvited email signs in and is sent to the waitlist, not refused", async () => {
     const calls: string[] = [];
     const r = await signIn("stranger@else.com", "anything123", signInDeps({ "stranger@else.com": "anything123" }, calls));
-    assert.equal(r.status, 403);
-    assert.equal(r.body.notInvited, true);
-    assert.deepEqual(calls, [], "Supabase is never asked");
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.body, { ok: true, next: "/waitlist" });
+    assert.ok(!calls.includes("signOut"), "the session is kept");
   });
 
-  test("allowlist on every path: setting a password needs an invited session", async () => {
+  test("waitlist (Round 4): an uninvited account can still set its password", async () => {
     const r = await setPassword(
       { password: "a long passphrase", ip: null },
       setDeps({ email: "stranger@else.com", fresh: true }),
       new AttemptLimiter()
     );
-    assert.equal(r.status, 403);
-    assert.equal(r.body.notInvited, true);
+    assert.equal(r.status, 200);
   });
 
-  test("allowlist on every path: a signed-in user dropped from the list is signed out", async () => {
+  test("waitlist (Round 4): a user dropped from the list keeps the session and goes to the waitlist", async () => {
     const calls: string[] = [];
     const deps = signInDeps({ [INVITED]: "correct horse" }, calls);
     deps.signIn = async () => ({ user: { id: "x", email: "someone@removed.org", app_metadata: {} }, error: null });
     const r = await signIn(INVITED, "correct horse", deps);
-    assert.equal(r.status, 403);
-    assert.equal(r.body.next, "/invite-only");
-    assert.ok(calls.includes("signOut"));
+    assert.equal(r.status, 200);
+    assert.equal(r.body.next, "/waitlist");
+    assert.ok(!calls.includes("signOut"));
   });
 
   test("a wrong password never says whether the account exists", async () => {
@@ -243,7 +242,7 @@ void Promise.all([
     assert.equal(blocked.status, 429);
   });
 
-  test("Settings first password: a fresh 6-digit code is the proof", async () => {
+  test("Settings first password: a fresh email code is the proof", async () => {
     const saved: string[] = [];
     const deps = setDeps({ code: "123456", saved });
     const bad = await setPassword({ password: "a long passphrase", code: "654321", ip: null }, deps, new AttemptLimiter());

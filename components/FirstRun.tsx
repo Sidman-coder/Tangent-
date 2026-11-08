@@ -14,6 +14,7 @@ import TangentLogo from "@/components/TangentLogo";
 import Button from "@/components/ui/Button";
 import { useAppState } from "@/components/AppStateProvider";
 import { browserTimezone } from "@/lib/time";
+import { AGE_OPTIONS, ageStorageKey } from "@/lib/auth/age";
 import {
   DAY_VIEW_OPTIONS,
   DISPLAY_NAME_MAX,
@@ -95,6 +96,11 @@ export default function FirstRun({ onComplete }: { onComplete: () => Promise<voi
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [leaving, setLeaving] = useState(false);
+
+  // The age question comes first (Round 4, 1.2). Asked once per device: a
+  // finished setup (Redo setup) or an earlier "13 or older" skips it.
+  const ageKey = ageStorageKey(user?.email || "anonymous");
+  const [ageOk, setAgeOk] = useState(() => !!user?.onboardedAt || readStorage(ageKey) === "yes");
 
   useEffect(() => {
     writeStorage(storageKey, serializeDraft(step, draft));
@@ -182,6 +188,35 @@ export default function FirstRun({ onComplete }: { onComplete: () => Promise<voi
   };
 
   const stepNumber = step === "ready" ? null : index + 1;
+
+  if (!ageOk) {
+    return (
+      <div ref={rootRef} className="onb" role="dialog" aria-modal="true" aria-label="Set up Tangent">
+        <header className="onb-top">
+          <div className="onb-top-row">
+            <span className="onb-back-spacer" aria-hidden="true" />
+            <TangentLogo size={26} />
+            <span className="onb-count" />
+          </div>
+        </header>
+        <main className="onb-main">
+          <section className="onb-step">
+            <AgeStep
+              headingRef={headingRef}
+              onDone={(under13, next) => {
+                if (under13) {
+                  window.location.replace(next ?? "/not-yet");
+                  return;
+                }
+                writeStorage(ageKey, "yes");
+                setAgeOk(true);
+              }}
+            />
+          </section>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div ref={rootRef} className={`onb${leaving ? " is-leaving" : ""}`} role="dialog" aria-modal="true" aria-label="Set up Tangent">
@@ -334,6 +369,63 @@ function StepHeading({ headingRef, title, sub }: { headingRef: HeadingRef; title
       </h1>
       {sub && <p>{sub}</p>}
     </div>
+  );
+}
+
+function AgeStep({
+  headingRef,
+  onDone,
+}: {
+  headingRef: HeadingRef;
+  onDone: (under13: boolean, next?: string) => void;
+}) {
+  const [age, setAge] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!age || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/age", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ age: Number(age) }),
+      });
+      const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; next?: string } | null;
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Couldn't save that. Try again.");
+      onDone(!!data.next, data.next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't save that. Try again.");
+      setBusy(false);
+    }
+  };
+  return (
+    <form className="onb-form" onSubmit={submit}>
+      <StepHeading headingRef={headingRef} title="How old are you?" sub="We ask everyone. It helps us keep Tangent right for you." />
+      <label className="onb-sr" htmlFor="onb-age">
+        Your age
+      </label>
+      <select id="onb-age" className="onb-input" value={age} onChange={(e) => setAge(e.target.value)}>
+        <option value="" disabled>
+          Choose your age
+        </option>
+        {AGE_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <p className="onb-error" role="alert">
+        {error ?? ""}
+      </p>
+      <div className="onb-cta">
+        <Button type="submit" variant="primary" disabled={!age || busy}>
+          {busy ? "Saving…" : "Continue"}
+        </Button>
+      </div>
+    </form>
   );
 }
 

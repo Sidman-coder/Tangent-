@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import Button from "@/components/ui/Button";
+import SegmentedTabs from "@/components/ui/SegmentedTabs";
 import NewPasswordFields, { PasswordInput, newPasswordProblem } from "@/components/auth/PasswordFields";
 import { createClient } from "@/lib/supabase/client";
 import { safeNext } from "@/lib/auth/safe-next";
+import { isCodeLength } from "@/lib/auth/messages";
 import CodeInput from "../CodeInput";
 
 const RESEND_SECONDS = 60;
@@ -13,9 +15,12 @@ const METHOD_KEY = "tangent-signin-method";
 
 type Busy = "google" | "email" | "verify" | "password" | "save" | null;
 type Method = "password" | "code";
+// Sign in, or Create account: email -> code -> password -> onboarding.
+export type Mode = "signin" | "create";
 // "signin": the code signs you in. "reset": forgot password, so the code leads
-// to "Set a new password".
-type Purpose = "signin" | "reset";
+// to "Set a new password". "create": a new account, so the code leads to
+// "Create a password" (not skippable).
+type Purpose = "signin" | "reset" | "create";
 
 function readMethod(): Method {
   try {
@@ -37,11 +42,16 @@ export default function SignInForm({
   next,
   initialError,
   initialEmail = "",
+  initialMode = "signin",
 }: {
   next: string;
   initialError: string | null;
   initialEmail?: string;
+  initialMode?: Mode;
 }) {
+  const [mode, setMode] = useState<Mode>(initialMode);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
   const [email, setEmail] = useState(initialEmail);
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(initialError);
@@ -55,6 +65,9 @@ export default function SignInForm({
   const [confirm, setConfirm] = useState("");
   const [resendIn, setResendIn] = useState(0);
   const [resent, setResent] = useState(false);
+  // Where to go once the password is saved (/waitlist for an account that
+  // isn't invited yet; middleware would send it there anyway).
+  const [afterPassword, setAfterPassword] = useState(safeNext(next));
   const tabRefs = useRef<Record<Method, HTMLButtonElement | null>>({ password: null, code: null });
   const dest = safeNext(next);
 
@@ -69,6 +82,12 @@ export default function SignInForm({
   const clearError = () => {
     setError(null);
     setNoPassword(false);
+    setNotice(null);
+  };
+
+  const pickMode = (m: Mode) => {
+    setMode(m);
+    clearError();
   };
 
   const pickMethod = (m: Method, focus = false) => {
@@ -98,12 +117,20 @@ export default function SignInForm({
     setBusy("email");
     clearError();
     try {
-      const res = await fetch(p === "reset" ? "/auth/recover" : "/auth/magic-link", {
+      const res = await fetch(p === "reset" ? "/auth/recover" : p === "create" ? "/auth/signup" : "/auth/magic-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, next: dest }),
       });
-      const data = (await res.json().catch(() => ({ ok: false }))) as { ok: boolean; error?: string };
+      const data = (await res.json().catch(() => ({ ok: false }))) as { ok: boolean; error?: string; alreadyExists?: boolean };
+      if (data.alreadyExists) {
+        // The one place an account's existence is said (lib/auth/signup.ts).
+        setMode("signin");
+        setPurpose("signin");
+        setError(null);
+        setNotice(data.error ?? "You already have an account. Sign in instead.");
+        return false;
+      }
       if (!data.ok) {
         setError(data.error ?? "Couldn't send the email. Try again.");
         return false;
@@ -129,7 +156,7 @@ export default function SignInForm({
 
   const submitEmail = async (e: React.FormEvent) => {
     e.preventDefault();
-    await startCode("signin");
+    await startCode(mode === "create" ? "create" : "signin");
   };
 
   const submitPassword = async (e: React.FormEvent) => {
@@ -147,10 +174,6 @@ export default function SignInForm({
       if (data.ok) {
         saveMethod("password");
         go(data.next ?? dest);
-        return;
-      }
-      if (data.next === "/invite-only") {
-        go("/invite-only");
         return;
       }
       setError(data.error ?? "Couldn't sign you in. Try again.");
@@ -182,19 +205,18 @@ export default function SignInForm({
         newAccount?: boolean;
       };
       if (data.ok) {
-        // Forgot password, or a brand-new account: offer a password before going in.
-        if (purpose === "reset" || (data.newAccount && !data.passwordSet)) {
+        // Forgot password, Create account, or a brand-new account from Sign in:
+        // a password before going in.
+        if (purpose === "reset" || purpose === "create" || (data.newAccount && !data.passwordSet)) {
           setNewPassword("");
           setConfirm("");
+          setSubmitted(false);
+          setAfterPassword(data.next ?? dest);
           setStep("newPassword");
           setBusy(null);
           return;
         }
         go(data.next ?? dest);
-        return;
-      }
-      if (data.next === "/invite-only") {
-        go("/invite-only");
         return;
       }
       setError(data.error ?? "That code didn't work. Try again.");
@@ -209,6 +231,7 @@ export default function SignInForm({
   const saveNewPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (busy) return;
+    setSubmitted(true);
     const problem = newPasswordProblem(newPassword, confirm, email);
     if (problem) {
       setError(problem);
@@ -225,11 +248,7 @@ export default function SignInForm({
       const data = (await res.json().catch(() => ({ ok: false }))) as { ok: boolean; error?: string; next?: string };
       if (data.ok) {
         saveMethod("password");
-        go(dest);
-        return;
-      }
-      if (data.next === "/invite-only") {
-        go("/invite-only");
+        go(afterPassword);
         return;
       }
       setError(data.error ?? "Couldn't save your password. Try again.");
@@ -242,6 +261,7 @@ export default function SignInForm({
 
   if (step === "newPassword") {
     const reset = purpose === "reset";
+    const creating = purpose === "create";
     return (
       <form className="auth-stack" onSubmit={saveNewPassword} noValidate>
         <div role="status">
@@ -249,7 +269,9 @@ export default function SignInForm({
           <p className="auth-note">
             {reset
               ? "You're signed in. Pick a new password for next time."
-              : "Optional. Next time, sign in with your email and this password instead of waiting for a code."}
+              : creating
+                ? "Last step. You'll sign in with your email and this password."
+                : "Optional. Next time, sign in with your email and this password instead of waiting for a code."}
           </p>
         </div>
         {/* Lets password managers save the pair under the right account. */}
@@ -268,17 +290,20 @@ export default function SignInForm({
             if (error) clearError();
           }}
           autoFocus
+          submitted={submitted}
           label={reset ? "New password" : "Password"}
           inputClassName="auth-input"
           labelClassName="auth-label"
         />
-        <Button type="submit" variant="primary" disabled={busy !== null || !newPassword || !confirm}>
-          {busy === "save" ? "Saving…" : reset ? "Save and continue" : "Save password"}
+        <Button type="submit" variant="primary" disabled={busy !== null || !newPassword}>
+          {busy === "save" ? "Saving…" : reset || creating ? "Save and continue" : "Save password"}
         </Button>
         {error && <p className="auth-note auth-note--error" role="alert">{error}</p>}
-        <button type="button" className="auth-link auth-link--button" disabled={busy !== null} onClick={() => go(dest)}>
-          {reset ? "Not now, keep using email codes" : "Skip, I'll use email codes"}
-        </button>
+        {!creating && (
+          <button type="button" className="auth-link auth-link--button" disabled={busy !== null} onClick={() => go(afterPassword)}>
+            {reset ? "Not now, keep using email codes" : "Skip, I'll use email codes"}
+          </button>
+        )}
       </form>
     );
   }
@@ -289,22 +314,31 @@ export default function SignInForm({
         <div role="status">
           <p className="auth-check-title">Check your email</p>
           <p className="auth-note">
-            We sent a 6-digit code to <strong>{email}</strong>. Can&apos;t find it? Check spam, or tap the link in the email.
+            We sent a sign-in code to <strong>{email}</strong>. Can&apos;t find it? Check spam, or tap the link in the email.
           </p>
         </div>
         <form
           className="auth-stack"
           onSubmit={(e) => {
             e.preventDefault();
-            if (code.length === 6) void verify(code);
+            if (isCodeLength(code)) void verify(code);
           }}
         >
-          <CodeInput value={code} onChange={setCode} onComplete={(c) => void verify(c)} disabled={busy === "verify"} invalid={!!error} />
-          <Button type="submit" variant="primary" disabled={busy !== null || code.length !== 6}>
-            {busy === "verify" ? (purpose === "reset" ? "Checking…" : "Signing you in…") : purpose === "reset" ? "Continue" : "Sign in"}
+          <CodeInput
+            value={code}
+            onChange={(c) => {
+              setCode(c);
+              if (error) clearError();
+            }}
+            disabled={busy === "verify"}
+            invalid={!!error}
+            describedBy={error ? "auth-code-error" : undefined}
+          />
+          <Button type="submit" variant="primary" disabled={busy !== null || !isCodeLength(code)}>
+            {busy === "verify" ? "Checking…" : purpose === "signin" ? "Sign in" : "Continue"}
           </Button>
         </form>
-        {error && <p className="auth-note auth-note--error" role="alert">{error}</p>}
+        {error && <p id="auth-code-error" className="auth-note auth-note--error" role="alert">{error}</p>}
         <div className="auth-row">
           <button
             type="button"
@@ -325,7 +359,7 @@ export default function SignInForm({
             disabled={busy !== null}
             onClick={() => {
               setStep("email");
-              setPurpose("signin");
+              setPurpose(mode === "create" ? "create" : "signin");
               clearError();
               setCode("");
             }}
@@ -359,11 +393,60 @@ export default function SignInForm({
     </>
   );
 
+  const modeTabs = (
+    <SegmentedTabs<Mode>
+      label="Sign in or create an account"
+      idPrefix="auth-mode"
+      full
+      value={mode}
+      onChange={pickMode}
+      options={[
+        { value: "signin", label: "Sign in", controls: "auth-mode-panel" },
+        { value: "create", label: "Create account", controls: "auth-mode-panel" },
+      ]}
+    />
+  );
+
+  const googleButton = (
+    <Button variant="primary" onClick={signInWithGoogle} disabled={busy !== null}>
+      {busy === "google" ? "Opening Google…" : "Continue with Google"}
+    </Button>
+  );
+
+  if (mode === "create") {
+    return (
+      <div className="auth-stack">
+        {modeTabs}
+        <div id="auth-mode-panel" role="tabpanel" aria-labelledby="auth-mode-tab-create" className="auth-stack">
+          {googleButton}
+          <div className="auth-divider">or create one with email</div>
+          <form className="auth-stack" onSubmit={submitEmail}>
+            {emailField}
+            <Button type="submit" disabled={busy !== null || !email.trim()}>
+              {busy === "email" ? "Sending…" : "Email me a code"}
+            </Button>
+          </form>
+          <p className="auth-note">We&apos;ll email a code to check it&apos;s you, then you&apos;ll pick a password.</p>
+          {error && (
+            <p id="auth-email-error" className="auth-note auth-note--error" role="alert">
+              {error}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="auth-stack">
-      <Button variant="primary" onClick={signInWithGoogle} disabled={busy !== null}>
-        {busy === "google" ? "Opening Google…" : "Continue with Google"}
-      </Button>
+      {modeTabs}
+      <div id="auth-mode-panel" role="tabpanel" aria-labelledby="auth-mode-tab-signin" className="auth-stack">
+      {notice && (
+        <p className="auth-note auth-note--ok" role="status">
+          {notice}
+        </p>
+      )}
+      {googleButton}
 
       <div className="auth-divider">or sign in with email</div>
 
@@ -455,6 +538,7 @@ export default function SignInForm({
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }
