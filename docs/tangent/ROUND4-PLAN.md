@@ -144,7 +144,7 @@ Each migration will have a check query in `docs/MANUAL-STEPS.md`. Code must read
 - **Fact store (conflict 1):** go with the recommendation: extend `context_entries` as the student model, keep `context_slots` for per-project slot state. The user wants the context pack (Phase 2.4) treated as a top priority: whatever makes students feel Tangent really gets them, as long as it is safe.
 - **Waitlist (conflict 4):** keep the session; uninvited emails can create an account but never reach the app. A separate marketing landing page for the waitlist will be built later; Round 4 only builds the in-app page they land on.
 - **Open sign-up (conflict 5):** accepted, with Supabase rate-limit and CAPTCHA settings listed as manual steps.
-- **Under-13 (conflict 3):** explained to the user; awaiting their answer.
+- **Under-13 (conflict 3):** keep it as the master prompt says for Round 4: age is the first onboarding question, under 13 shows the friendly stop screen and blocks everything (pages and APIs), storing only a yes/no flag, no deletion. The real fix (age check before sign-in, from the landing page) is committed for Round 5: see `docs/tangent/ROUND5-PLAN.md`, which also holds the full write-up of what can go wrong with the Round 4 version.
 
 ## Conflicts between the prompt and the code, and decisions I need
 
