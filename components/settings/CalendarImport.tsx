@@ -94,6 +94,7 @@ export default function CalendarImport() {
   return (
     <div className="cal-import">
       <input
+        name="ics-file"
         ref={fileRef}
         type="file"
         accept=".ics,text/calendar"

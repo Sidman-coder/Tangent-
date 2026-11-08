@@ -7,7 +7,9 @@
 import "server-only";
 import {
   addPlanWithTasks,
+  addRecurringTask,
   addTask,
+  deletePlan,
   deleteTask,
   getAllPlans,
   getAllTasks,
@@ -26,7 +28,9 @@ export type { ApplyResult } from "./apply-core";
 
 const store: ApplyStore = {
   addPlanWithTasks,
+  addRecurringTask,
   addTask,
+  deletePlan,
   deleteTask,
   getAllPlans,
   getAllTasks,

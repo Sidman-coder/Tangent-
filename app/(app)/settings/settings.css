@@ -12,35 +12,14 @@
   align-items: start;
 }
 
-.settings-page .settings-nav {
-  position: sticky;
-  top: calc(var(--topbar-h, 64px) + 16px);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.settings-page .settings-nav a {
-  padding: 7px 12px;
-  border-radius: 999px;
-  color: var(--text-2);
-  font-size: 13.5px;
-  font-weight: 500;
-  text-decoration: none;
-  transition: background 0.18s ease, color 0.18s ease;
-}
-.settings-page .settings-nav a:hover {
-  background: rgb(from var(--text) r g b / 0.05);
-  color: var(--text);
-}
 
-.settings-page .settings-content {
-  display: flex;
-  flex-direction: column;
-  gap: 32px;
-}
+
+
+
+
 
 .settings-group {
-  scroll-margin-top: calc(var(--topbar-h, 64px) + 16px);
+  scroll-margin-top: calc(var(--shell-top, 0px) + 16px);
 }
 .settings-group-title {
   margin: 0 0 4px;
@@ -184,15 +163,8 @@
     grid-template-columns: minmax(0, 1fr);
     gap: 20px;
   }
-  .settings-page .settings-nav {
-    position: static;
-    flex-direction: row;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .settings-page .settings-nav a {
-    white-space: nowrap;
-  }
+  
+  
   .settings-row,
   .settings-row-main {
     flex-wrap: wrap;

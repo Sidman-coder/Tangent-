@@ -2,6 +2,11 @@ import type { DayView, HelpFocus, SchoolHours, SlipPoint, WorkingToward } from "
 
 export type TaskKind = "school" | "academic-ec" | "side-ec" | "personal" | "commitment";
 
+/** What kind of promise a task is, which decides where it sits on Today.
+ *  Separate from TaskKind, which says what the work is about. Stored in
+ *  tasks.commitment_type; read it through commitmentOf (lib/task-kind.ts). */
+export type TaskCommitment = "fixed" | "reminder" | "flexible";
+
 export type RecurringConfig = {
   enabled: boolean;
   frequency: "daily" | "weekly" | "monthly" | "yearly";
@@ -26,6 +31,12 @@ export type Task = {
    * personal: default fallback
    */
   kind?: TaskKind;
+  commitment?: TaskCommitment;
+  /** When the student dismissed this overdue item from Must do. It stays on the calendar. */
+  overdueDismissedAt?: string | null;
+  /** When it was marked Done (ISO). Set by the store whenever `completed`
+   *  changes; absent on tasks finished before the column existed. */
+  completedAt?: string | null;
   calendarId?: string | null;
   planId?: string | null;
   notes?: string;
@@ -98,6 +109,8 @@ export type UserProfile = {
   onboardedAt?: string | null;
   /** IANA timezone captured from the browser at onboarding. */
   timezone?: string;
+  /** First day of the calendar week: Sunday, Monday, or Saturday. */
+  weekStart?: 0 | 1 | 6;
   /** Onboarding answers (lib/onboarding.ts). null or missing means "not
    *  answered", and lib/personalize.ts keeps the default behavior. */
   helpFocus?: HelpFocus | null;
@@ -221,6 +234,8 @@ export type RestoredTaskFields = {
   calendarId?: string | null;
   notes?: string | null;
   kind?: TaskKind | null;
+  commitment?: TaskCommitment | null;
+  overdueDismissedAt?: string | null;
 };
 
 /** One step that reverses part of an applied ChangeSet. Steps are recorded in
@@ -229,12 +244,30 @@ export type BatchUndoStep =
   | { type: "delete_tasks"; taskIds: string[] }
   | { type: "delete_plan"; planId: string }
   | { type: "restore_tasks"; tasks: Task[] }
-  | { type: "restore_task_fields"; taskId: string; fields: RestoredTaskFields }
-  | { type: "restore_plan"; planId: string; title: string; description: string; taskIds: string[]; taskCount: number };
+  /** `set` is what the change set wrote; undo restores a field only while it
+   *  still holds that value (lib/pipeline/undo-core.ts). Older steps have none. */
+  | { type: "restore_task_fields"; taskId: string; fields: RestoredTaskFields; set?: RestoredTaskFields }
+  | {
+      type: "restore_plan";
+      planId: string;
+      title: string;
+      description: string;
+      taskIds: string[];
+      taskCount: number;
+      /** What the change set wrote to the title or description. */
+      set?: { title?: string; description?: string };
+      /** Tasks the change set added to the plan; undo removes only these. */
+      addedTaskIds?: string[];
+    }
+  /** A plan the change set deleted (delete_plan op): undo puts it back and
+   *  relinks its tasks (plan.taskIds) that are back on the calendar unlinked. */
+  | { type: "restore_plan_row"; plan: Plan };
 
 export type ActionSnapshot = {
   /** Full task objects removed by delete_task / delete_all_tasks — restored on undo. */
   removedTasks?: Task[];
+  /** Plans a confirmed delete left empty and removed with it — restored on undo. */
+  removedPlans?: Plan[];
   /** Ids of tasks added by add_task / create_plan / add_recurring_task — deleted on undo. */
   addedTaskIds?: string[];
   /** Plan id added by create_plan — deleted on undo alongside its tasks. */
@@ -245,8 +278,14 @@ export type ActionSnapshot = {
   moves?: { taskId: string; fromCalendarId: string | null }[];
   /** Prior date/time for a task rescheduled by reschedule_task — restored on undo. */
   rescheduled?: { taskId: string; fromDate: string; fromTime: string };
+  /** Prior date/time of every task moved together (Today's re-plan, Not today, Fresh start). */
+  rescheduledMany?: { taskId: string; fromDate: string; fromTime: string }[];
   /** Everything an apply_changeset did, reversed step by step on undo. */
   batch?: { changeSetId: string; steps: BatchUndoStep[] };
+  /** Prior field values of tasks changed in place (Type selector, Dismiss). */
+  restoredFields?: { taskId: string; fields: RestoredTaskFields }[];
+  /** A project's color before the picker changed it. */
+  planColor?: { planId: string; from: string };
 };
 
 export interface ActionRecord {
@@ -298,6 +337,13 @@ export type ChatSession = {
   color?: string | null;
   /** Pinned chats sit in their own section at the top of the list. */
   pinned?: boolean;
+  /** Round 2 chat_scope migration: what the chat is about. Absent before it
+   *  runs; lib/chat/scope.ts scopeOfSession infers it then. */
+  scope?: "general" | "task" | "project";
+  /** The task a task chat is about (scope "task"). */
+  taskId?: string | null;
+  /** A short summary, refreshed about every 6 messages. */
+  summary?: string | null;
 };
 
 // ─── Tangents: your current work, and the lines that branch off it ───────────

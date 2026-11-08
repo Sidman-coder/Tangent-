@@ -4,8 +4,8 @@
 // (Enter sends, Shift+Enter adds a line), with the dictation mic and send
 // button on a toolbar row underneath — the Notion / v0 composer layout.
 
-import { useLayoutEffect, type ReactNode, type RefObject } from "react";
-import { ArrowUp } from "lucide-react";
+import { useId, useLayoutEffect, type ReactNode, type RefObject } from "react";
+import { ArrowUp, Square } from "lucide-react";
 import VoiceRecordButton from "@/components/VoiceRecordButton";
 import type { VoiceCaptureStatus } from "@/hooks/useVoiceCapture";
 import type { ChatMode } from "@/components/console/turns";
@@ -27,6 +27,10 @@ type Props = {
   placeholder?: string;
   /** Tints the box: Calendar mode gets the accent ring. */
   mode?: ChatMode;
+  /** Master fix Phase 4: while busy, Send becomes Stop. */
+  onStop?: () => void;
+  /** Form field name (each field has an id or name). */
+  name?: string;
 };
 
 export default function Composer({
@@ -42,7 +46,10 @@ export default function Composer({
   toolbar,
   placeholder,
   mode = "calendar",
+  onStop,
+  name = "message",
 }: Props) {
+  const inputId = `composer${useId().replace(/:/g, "")}`;
   const idlePlaceholder =
     placeholder ??
     (mode === "calendar"
@@ -74,15 +81,20 @@ export default function Composer({
 
   return (
     <form
-      className={`tg-composer is-${mode} is-voice-${voiceStatus}${value.trim() ? " has-text" : ""}`}
+      className={`ui-composer is-${mode} is-voice-${voiceStatus}${value.trim() ? " has-text" : ""}`}
       onSubmit={(e) => {
         e.preventDefault();
         if (canSend) onSubmit();
       }}
     >
+      <label htmlFor={inputId} className="ui-visually-hidden">
+        Message Tangent
+      </label>
       <textarea
         ref={inputRef}
-        className="tg-composer-input"
+        id={inputId}
+        name={name}
+        className="ui-composer-input"
         rows={1}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -99,23 +111,40 @@ export default function Composer({
               ? "Transcribing…"
               : idlePlaceholder
         }
-        aria-label="Message Tangent"
         disabled={busy}
         readOnly={voiceStatus === "transcribing"}
       />
-      <div className="tg-composer-bar">
-        <div className="tg-composer-tools">{toolbar}</div>
-        <div className="tg-composer-actions">
+      <div className="ui-composer-bar">
+        <div className="ui-composer-tools">{toolbar}</div>
+        <div className="ui-composer-actions">
           <VoiceRecordButton
-            className="tg-icon-btn tg-mic"
+            className="ui-icon-button ui-icon-button--ghost ui-composer-mic"
             onTranscript={onTranscript}
             onError={onVoiceError}
             onStatusChange={onVoiceStatus}
             disabled={busy}
           />
-          <button type="submit" className="tg-send" aria-label="Send" disabled={!canSend}>
-            <ArrowUp size={16} strokeWidth={2.2} />
-          </button>
+          {busy && onStop ? (
+            <button
+              type="button"
+              className="ui-icon-button ui-icon-button--filled ui-composer-send is-stop"
+              aria-label="Stop"
+              data-tooltip="Stop (Esc)"
+              onClick={onStop}
+            >
+              <Square size={12} strokeWidth={0} fill="currentColor" aria-hidden="true" />
+            </button>
+          ) : (
+            <button
+              type="submit"
+              className="ui-icon-button ui-icon-button--filled ui-composer-send"
+              aria-label="Send"
+              data-tooltip="Send"
+              disabled={!canSend}
+            >
+              <ArrowUp size={18} strokeWidth={2} aria-hidden="true" />
+            </button>
+          )}
         </div>
       </div>
     </form>

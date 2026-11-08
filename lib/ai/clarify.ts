@@ -10,6 +10,8 @@ import "server-only";
 import { callClaude } from "@/lib/ai/call";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import { isClearPlanRequest } from "@/lib/ai/plan";
+import { briefQuestions, goalType, knownDate, readBrief, saysWhen } from "@/lib/ai/plan-brief";
+import { IF_SKIPPED, TIMEFRAME_OPTIONS, TIMEFRAME_QUESTION } from "@/lib/timeframe";
 import { matchProject } from "@/lib/project-match";
 
 /** Id prefix of the "part of your project?" question; the chat route reads it. */
@@ -22,6 +24,8 @@ export type ClarifyQuestion = {
   question: string;
   /** 2–4 short answers to tap; the student can always type their own. */
   options: string[];
+  /** Shown under the question: what Tangent assumes if it's skipped. */
+  assume?: string;
 };
 
 /** Asked once, the first time it matters; the answer is saved to the profile. */
@@ -77,6 +81,11 @@ Use what you can see, and say so in the question, so it feels like Tangent knows
 export function shouldConsiderClarifying(text: string): boolean {
   const t = text.trim();
   if (/\b(just do it|don'?t ask|no questions)\b/i.test(t)) return false;
+  // Master fix Phase 3: a known kind of goal is considered (its brief decides
+  // whether anything is missing); a plain capture of an exam or event isn't.
+  const kind = goalType(t);
+  if (kind === "single") return false;
+  if (kind) return true;
   if (isClearPlanRequest(t)) return true;
   // Bigger efforts too ("start a robotics club", "apply to summer programs"):
   // with Pipeline V2 on there's no separate New project route to flag them.
@@ -86,12 +95,17 @@ export function shouldConsiderClarifying(text: string): boolean {
   return t.split(/\s+/).length >= 14;
 }
 
-/** Up to three questions for the request, or [] to go straight ahead. Any
- *  failure also means "go straight ahead" — asking is never required. */
+/** Questions for the request, or [] to go straight ahead. Any failure also
+ *  means "go straight ahead" — asking is never required.
+ *
+ *  Master fix Phase 3: a known kind of goal (exam, competition, skill, habit)
+ *  asks only its brief's missing slots, filled first from the request, the chat
+ *  (`opts.chat`) and the student context, with no model call
+ *  (lib/ai/plan-brief.ts). Anything else asks the model, up to three. */
 export async function clarifyQuestions(
   request: string,
   studentContext: string,
-  opts: { askCapacity: boolean; projects?: { id: string; title: string }[] }
+  opts: { askCapacity: boolean; chat?: string; projects?: { id: string; title: string }[]; newProject?: boolean }
 ): Promise<ClarifyQuestion[]> {
   // A project it plausibly belongs to is asked about first, every time, so a
   // second "robotics club" project never quietly appears beside the first.
@@ -99,6 +113,16 @@ export async function clarifyQuestions(
   const projectQuestion: ClarifyQuestion[] = match
     ? [{ id: `${PROJECT_QUESTION_PREFIX}${match.id}`, question: `Part of your “${match.title}” project?`, options: [PROJECT_YES, "Start a new one"] }]
     : [];
+
+  const brief = readBrief(request, { chat: opts.chat, studentContext, capacityKnown: !opts.askCapacity });
+  if (brief) return [...projectQuestion, ...briefQuestions(brief)].slice(0, 3);
+
+  // Not a known kind of goal, but still a plan: the one thing it can't guess.
+  const when: ClarifyQuestion[] =
+    (opts.newProject || isClearPlanRequest(request)) && !saysWhen(`${request}\n${opts.chat ?? ""}`) && !knownDate(request, studentContext)
+      ? [{ id: "brief-timeframe", question: TIMEFRAME_QUESTION, options: [...TIMEFRAME_OPTIONS], assume: IF_SKIPPED }]
+      : [];
+  const asked = [...projectQuestion, ...when];
 
   const result = await callClaude(
     "clarify",
@@ -110,26 +134,26 @@ export async function clarifyQuestions(
   );
   if (!result.ok) {
     console.warn("[clarify] model call failed:", result.status);
-    return projectQuestion;
+    return asked;
   }
   let parsed: { ask: boolean; questions: { question: string; options: string[] }[] };
   try {
     parsed = extractStructuredJson(result.message);
   } catch {
-    return projectQuestion;
+    return asked;
   }
-  if (!parsed.ask) return projectQuestion;
+  if (!parsed.ask) return asked;
   const questions: ClarifyQuestion[] = parsed.questions
-    .filter((q) => q.question?.trim())
-    .slice(0, 3 - projectQuestion.length)
+    .filter((q) => q.question?.trim() && !(when.length > 0 && /\b(?:by when|deadline|due|timeframe|how long|when)\b/i.test(q.question)))
+    .slice(0, 3 - asked.length)
     .map((q, i) => ({
       id: `q${i + 1}`,
       question: q.question.trim(),
       options: (q.options ?? []).map((o) => o.trim()).filter(Boolean).slice(0, 4),
     }));
   // Capacity only matters once there's real work to spread out.
-  if (questions.length > 0 && opts.askCapacity && questions.length + projectQuestion.length < 3) questions.push(CAPACITY_QUESTION);
-  return [...projectQuestion, ...questions];
+  if (questions.length > 0 && opts.askCapacity && questions.length + asked.length < 3) questions.push(CAPACITY_QUESTION);
+  return [...asked, ...questions];
 }
 
 const CAPTURE_SYSTEM = `You are TANGENT, a planner for high school students that knows them well. The student just captured something and Tangent ALREADY SAVED it as a task (shown below) — nothing is waiting on you. Your job is to ask 1 to 3 short follow-up questions they can answer later, whenever they want.

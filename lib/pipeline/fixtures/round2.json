@@ -1,0 +1,427 @@
+{
+  "version": 1,
+  "reference_date": "2026-11-05",
+  "timezone": "America/New_York",
+  "kinds": [
+    {
+      "id": "kind-dentist-appointment",
+      "title": "dentist appointment",
+      "hasFixedTime": true,
+      "source": "capture",
+      "kind": "fixed"
+    },
+    {
+      "id": "kind-soccer-practice",
+      "title": "soccer practice",
+      "hasFixedTime": true,
+      "source": "capture",
+      "kind": "fixed"
+    },
+    {
+      "id": "kind-chem-lab-section",
+      "title": "chem lab section",
+      "hasFixedTime": true,
+      "source": "calendar",
+      "kind": "fixed"
+    },
+    {
+      "id": "kind-parent-teacher-conference",
+      "title": "parent teacher conference",
+      "hasFixedTime": true,
+      "source": "capture",
+      "kind": "fixed"
+    },
+    {
+      "id": "kind-sat-test",
+      "title": "SAT test",
+      "hasFixedTime": true,
+      "source": "capture",
+      "kind": "fixed"
+    },
+    {
+      "id": "kind-piano-lesson",
+      "title": "piano lesson",
+      "hasFixedTime": true,
+      "source": "calendar",
+      "kind": "fixed"
+    },
+    {
+      "id": "kind-job-interview-at-the-library",
+      "title": "job interview at the library",
+      "hasFixedTime": true,
+      "source": "capture",
+      "kind": "fixed"
+    },
+    {
+      "id": "kind-call-grandma",
+      "title": "call grandma",
+      "hasFixedTime": false,
+      "source": "capture",
+      "kind": "reminder"
+    },
+    {
+      "id": "kind-bring-permission-slip",
+      "title": "bring permission slip",
+      "hasFixedTime": false,
+      "source": "capture",
+      "kind": "reminder"
+    },
+    {
+      "id": "kind-pay-club-dues",
+      "title": "pay club dues",
+      "hasFixedTime": false,
+      "source": "capture",
+      "kind": "reminder"
+    },
+    {
+      "id": "kind-email-ms-lee-about-the-extension",
+      "title": "email Ms. Lee about the extension",
+      "hasFixedTime": false,
+      "source": "capture",
+      "kind": "reminder"
+    },
+    {
+      "id": "kind-return-library-books",
+      "title": "return library books",
+      "hasFixedTime": false,
+      "source": "capture",
+      "kind": "reminder"
+    },
+    {
+      "id": "kind-pack-cleats",
+      "title": "pack cleats",
+      "hasFixedTime": false,
+      "source": "capture",
+      "kind": "reminder"
+    },
+    {
+      "id": "kind-buy-poster-board",
+      "title": "buy poster board",
+      "hasFixedTime": false,
+      "source": "capture",
+      "kind": "reminder"
+    },
+    {
+      "id": "kind-write-history-essay-draft",
+      "title": "write history essay draft",
+      "hasFixedTime": false,
+      "source": "capture",
+      "kind": "flexible"
+    },
+    {
+      "id": "kind-study-for-bio-quiz",
+      "title": "study for bio quiz",
+      "hasFixedTime": false,
+      "source": "capture",
+      "kind": "flexible"
+    },
+    {
+      "id": "kind-practice-sat-math-section",
+      "title": "practice SAT math section",
+      "hasFixedTime": false,
+      "source": "plan",
+      "kind": "flexible"
+    },
+    {
+      "id": "kind-read-chapters-4-5-of-gatsby",
+      "title": "read chapters 4-5 of Gatsby",
+      "hasFixedTime": false,
+      "source": "canvas",
+      "kind": "flexible"
+    },
+    {
+      "id": "kind-finish-calc-problem-set",
+      "title": "finish calc problem set",
+      "hasFixedTime": false,
+      "source": "canvas",
+      "kind": "flexible"
+    },
+    {
+      "id": "kind-outline-science-fair-poster",
+      "title": "outline science fair poster",
+      "hasFixedTime": false,
+      "source": "plan",
+      "kind": "flexible"
+    },
+    {
+      "id": "kind-review-flashcards-for-spanish",
+      "title": "review flashcards for Spanish",
+      "hasFixedTime": false,
+      "source": "capture",
+      "kind": "flexible"
+    },
+    {
+      "id": "kind-work-on-college-essay",
+      "title": "work on college essay",
+      "hasFixedTime": false,
+      "source": "capture",
+      "kind": "flexible"
+    }
+  ],
+  "slots": [
+    {
+      "id": "slot-i-want-to-get-a-1450-on-the-sat-by-decem",
+      "text": "I want to get a 1450 on the SAT by December 6",
+      "has": [
+        "outcome",
+        "deadline"
+      ]
+    },
+    {
+      "id": "slot-i-can-do-about-5-hours-a-week",
+      "text": "I can do about 5 hours a week",
+      "has": [
+        "hoursPerWeek"
+      ]
+    },
+    {
+      "id": "slot-30-minutes-a-day-is-all-i-ve-got",
+      "text": "30 minutes a day is all I've got",
+      "has": [
+        "hoursPerWeek"
+      ]
+    },
+    {
+      "id": "slot-i-m-a-complete-beginner-at-guitar",
+      "text": "I'm a complete beginner at guitar",
+      "has": [
+        "currentLevel"
+      ]
+    },
+    {
+      "id": "slot-i-m-pretty-advanced-already-just-need-po",
+      "text": "I'm pretty advanced already, just need polish",
+      "has": [
+        "currentLevel"
+      ]
+    },
+    {
+      "id": "slot-not-on-weekends-i-work-then",
+      "text": "not on weekends, I work then",
+      "has": [
+        "constraints"
+      ],
+      "lacks": [
+        "bestTimeForThis"
+      ]
+    },
+    {
+      "id": "slot-evenings-are-best-for-me",
+      "text": "evenings are best for me",
+      "has": [
+        "bestTimeForThis"
+      ]
+    },
+    {
+      "id": "slot-mornings-before-school-work-best",
+      "text": "mornings before school work best",
+      "has": [
+        "bestTimeForThis"
+      ]
+    },
+    {
+      "id": "slot-the-essay-is-due-next-friday",
+      "text": "the essay is due next Friday",
+      "has": [
+        "deadline"
+      ]
+    },
+    {
+      "id": "slot-i-need-to-pass-the-ap-bio-exam-in-may",
+      "text": "I need to pass the AP Bio exam in May",
+      "has": [
+        "outcome",
+        "deadline"
+      ]
+    },
+    {
+      "id": "slot-about-2-hours-per-day-after-practice",
+      "text": "about 2 hours per day after practice",
+      "has": [
+        "hoursPerWeek"
+      ]
+    },
+    {
+      "id": "slot-i-want-to-run-a-5k-by-the-end-of-the-mon",
+      "text": "I want to run a 5k by the end of the month",
+      "has": [
+        "outcome",
+        "deadline"
+      ]
+    },
+    {
+      "id": "slot-i-have-some-experience-i-took-it-last-ye",
+      "text": "I have some experience, I took it last year",
+      "has": [
+        "currentLevel"
+      ]
+    },
+    {
+      "id": "slot-can-t-do-tuesdays-because-of-robotics",
+      "text": "can't do Tuesdays because of robotics",
+      "has": [
+        "constraints"
+      ]
+    },
+    {
+      "id": "slot-thanks",
+      "text": "thanks!",
+      "has": [],
+      "lacks": [
+        "outcome",
+        "deadline",
+        "hoursPerWeek",
+        "currentLevel",
+        "constraints",
+        "bestTimeForThis"
+      ]
+    },
+    {
+      "id": "slot-ok-sounds-good",
+      "text": "ok sounds good",
+      "has": [],
+      "lacks": [
+        "outcome",
+        "deadline",
+        "hoursPerWeek"
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "id": "route-what-s-due-this-week",
+      "text": "what's due this week?",
+      "expect": "question"
+    },
+    {
+      "id": "route-how-do-i-balance-chem-equations",
+      "text": "how do I balance chem equations?",
+      "expect": "question"
+    },
+    {
+      "id": "route-what-should-i-work-on-tonight",
+      "text": "what should I work on tonight?",
+      "expect": "question"
+    },
+    {
+      "id": "route-why-did-my-essay-move-to-thursday",
+      "text": "why did my essay move to Thursday?",
+      "expect": "question"
+    },
+    {
+      "id": "route-is-my-bio-test-on-friday-or-monday",
+      "text": "is my bio test on Friday or Monday?",
+      "expect": "question"
+    },
+    {
+      "id": "route-dentist-tomorrow-at-3pm",
+      "text": "dentist tomorrow at 3pm",
+      "expect": "task"
+    },
+    {
+      "id": "route-remind-me-to-call-grandma-tonight",
+      "text": "remind me to call grandma tonight",
+      "expect": "task"
+    },
+    {
+      "id": "route-add-read-chapter-6-for-english-on-wednes",
+      "text": "add read chapter 6 for English on Wednesday",
+      "expect": "task"
+    },
+    {
+      "id": "route-finish-the-lab-report-by-thursday",
+      "text": "finish the lab report by Thursday",
+      "expect": "task"
+    },
+    {
+      "id": "route-bring-permission-slip-friday",
+      "text": "bring permission slip friday",
+      "expect": "task"
+    },
+    {
+      "id": "route-help-me-prepare-for-the-sat-in-december",
+      "text": "help me prepare for the SAT in December",
+      "expect": "plan"
+    },
+    {
+      "id": "route-make-a-plan-to-learn-guitar-this-summer",
+      "text": "make a plan to learn guitar this summer",
+      "expect": "plan"
+    },
+    {
+      "id": "route-i-have-a-science-fair-project-due-in-3-w",
+      "text": "I have a science fair project due in 3 weeks, break it down",
+      "expect": "plan"
+    },
+    {
+      "id": "route-plan-my-week-around-finals",
+      "text": "plan my week around finals",
+      "expect": "plan"
+    },
+    {
+      "id": "route-i-want-to-get-better-at-running-start-a-",
+      "text": "I want to get better at running, start a training plan",
+      "expect": "plan"
+    },
+    {
+      "id": "route-study-plan-for-the-ap-bio-exam-in-may",
+      "text": "study plan for the AP Bio exam in May",
+      "expect": "plan"
+    }
+  ],
+  "titles": [
+    {
+      "id": "title-remind-me-to-email-my-chem-teacher-about",
+      "text": "remind me to email my chem teacher about the retake tomorrow"
+    },
+    {
+      "id": "title-i-need-to-finish-the-robotics-budget-spr",
+      "text": "i need to finish the robotics budget spreadsheet by friday",
+      "project": "Robotics"
+    },
+    {
+      "id": "title-add-a-task-to-practice-the-debate-openin",
+      "text": "add a task to practice the debate opening speech tonight",
+      "project": "Debate"
+    },
+    {
+      "id": "title-i-have-to-read-chapters-4-and-5-of-gatsb",
+      "text": "I have to read chapters 4 and 5 of gatsby before thursday"
+    },
+    {
+      "id": "title-can-you-add-study-flashcards-for-the-bio",
+      "text": "can you add study flashcards for the bio quiz on monday"
+    },
+    {
+      "id": "title-put-down-that-i-need-to-fill-out-the-faf",
+      "text": "put down that I need to fill out the FAFSA this weekend"
+    },
+    {
+      "id": "title-remind-me-to-bring-my-calculator-to-the",
+      "text": "remind me to bring my calculator to the AP calc test"
+    },
+    {
+      "id": "title-add-renew-my-library-books-to-my-list",
+      "text": "add renew my library books to my list"
+    },
+    {
+      "id": "title-i-should-probably-start-the-history-essa",
+      "text": "I should probably start the history essay outline today.",
+      "project": "History essay"
+    },
+    {
+      "id": "title-add-to-my-college-apps-project-ask-ms-ri",
+      "text": "add to my college apps project: ask Ms. Rivera for a recommendation letter",
+      "project": "College apps"
+    },
+    {
+      "id": "title-oh-and-i-ve-got-to-sign-up-for-the-sat-b",
+      "text": "oh and I've got to sign up for the SAT before the deadline 🙃"
+    },
+    {
+      "id": "title-remind-me-to-pay-the-club-dues",
+      "text": "remind me to pay the club dues",
+      "project": "Robotics"
+    }
+  ]
+}

@@ -12,6 +12,16 @@ export function putAsk(target: Target, text: string): void {
   }
 }
 
+export const ASK_EVENT = "tangent:ask";
+
+/** A question for Ask Tangent. When Home is already showing, its chat sheet
+ *  takes it in place (HomeChat cancels the event); otherwise go to /?ask=1. */
+export function askOnHome(text: string, go: (href: string) => void): void {
+  putAsk("ai", text);
+  const handled = window.location.pathname === "/" && !window.dispatchEvent(new Event(ASK_EVENT, { cancelable: true }));
+  if (!handled) go("/?ask=1");
+}
+
 export function takeAsk(target: Target): string | null {
   try {
     const key = `tangent-ask-${target}`;
@@ -21,4 +31,13 @@ export function takeAsk(target: Target): string | null {
   } catch {
     return null;
   }
+}
+
+/** "Ask about this": a task opens its own chat over Home; a project opens its
+ *  chat on the project page. */
+export type AskAbout = { kind: "project" | "task"; id: string };
+
+export function askAboutHref({ kind, id }: AskAbout): string {
+  const safe = encodeURIComponent(id);
+  return kind === "project" ? `/projects/${safe}?chat=1` : `/?taskChat=${safe}`;
 }

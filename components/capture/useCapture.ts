@@ -25,6 +25,7 @@ async function chat(said: string, toProject: boolean, firstPass: boolean): Promi
       messages: [{ role: "user", content: said }],
       mode: "calendar",
       stream: false,
+      source: "voice",
       // First pass: a plain to-do saves instantly, anything bigger may ask.
       // Second pass (after a clarify): save as-is, exactly like "Skip for now".
       capture: firstPass && !toProject,

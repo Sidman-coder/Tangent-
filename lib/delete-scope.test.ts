@@ -34,7 +34,7 @@ const TASKS = [
 ];
 const PLANS = [SAT_PLAN, ICF_PLAN];
 
-void (import("./delete-scope") as Promise<Mod>).then(({ isFullClearRequest, parseDeleteScope, matchScope, planBulkDelete, bulkDeleteMessage }) => {
+void (import("./delete-scope") as Promise<Mod>).then(({ isFullClearRequest, parseDeleteScope, matchScope, planBulkDelete, bulkDeleteMessage, emptiedPlans }) => {
   test("the reported request proposes only the SAT tasks", () => {
     const plan = planBulkDelete("Actually, nevermind I dont want the SAT tasks. Take out all of the SAT tasks", TASKS, PLANS);
     assert.equal(plan?.kind, "propose");
@@ -73,6 +73,8 @@ void (import("./delete-scope") as Promise<Mod>).then(({ isFullClearRequest, pars
     const plan = planBulkDelete("delete my SAT plan", tasks, plans);
     assert.equal(plan?.kind, "ask");
     assert.match(plan && plan.kind === "ask" ? plan.message : "", /more than one plan/);
+    // The question carries both plans with ids, for the pending question's buttons.
+    assert.deepEqual(plan && plan.kind === "ask" ? plan.candidates?.map((c) => c.id) : [], ["p-sat", "p-sat2"]);
   });
 
   test("everything-ish requests without an explicit phrase ask instead of clearing", () => {
@@ -123,5 +125,39 @@ void (import("./delete-scope") as Promise<Mod>).then(({ isFullClearRequest, pars
     assert.equal(bulkDeleteMessage(titles, { label: "SAT Prep" }), 'Delete 7 tasks matching "SAT Prep"? "A", "B", "C", "D", "E" and 2 more.');
     assert.match(bulkDeleteMessage(titles, { all: true }), /^Clear ALL 7 tasks from your schedule\? This removes everything: "A", "B", "C", "D", "E" and 2 more\.$/);
     assert.equal(bulkDeleteMessage(["Only"]), 'Delete 1 task? "Only".');
+  });
+
+  test("a plan whose every task is deleted is emptied; a partly deleted one is not", () => {
+    const sat = TASKS.filter((t) => t.planId === "p-sat");
+    assert.deepEqual(emptiedPlans(sat, TASKS, PLANS).map((p) => p.id), ["p-sat"]);
+    assert.deepEqual(emptiedPlans(sat.slice(0, 2), TASKS, PLANS), []);
+    assert.deepEqual(emptiedPlans(TASKS, TASKS, PLANS).map((p) => p.id), ["p-sat", "p-icf"]);
+    // A plan with no tasks at all is not this delete's doing.
+    assert.deepEqual(emptiedPlans(sat, TASKS, [...PLANS, { id: "p-empty", title: "Empty" }]).map((p) => p.id), ["p-sat"]);
+  });
+
+  test("the confirmation says when the plan goes too", () => {
+    assert.equal(bulkDeleteMessage(["A", "B"], { label: "SAT Prep", plans: ["SAT Prep"] }), 'Delete 2 tasks matching "SAT Prep"? "A", "B". This also removes the plan "SAT Prep".');
+    assert.equal(bulkDeleteMessage(["A"], { plans: [] }), 'Delete 1 task? "A".');
+  });
+});
+
+// Pipeline V2 (B2): the plan matcher as a last resort, sure matches only.
+void (import("./delete-scope") as Promise<Mod>).then(({ planBulkDelete }) => {
+  const plans = [
+    { id: "icf", title: "ICF Prep" },
+    { id: "sat", title: "SAT Prep" },
+  ];
+  const tasks = [
+    { id: "t1", title: "Checkpoint 1", planId: "icf" },
+    { id: "t2", title: "Practice test", planId: "sat" },
+  ];
+  test("'my eye see eff prep tasks' finds ICF Prep through the matcher", () => {
+    const r = planBulkDelete("delete my eye see eff prep tasks", tasks, plans);
+    assert.equal(r?.kind, "propose");
+    assert.deepEqual(r && r.kind === "propose" ? r.tasks.map((t) => t.id) : [], ["t1"]);
+  });
+  test("a word nothing matches still asks, never guesses", () => {
+    assert.equal(planBulkDelete("delete my guitar tasks", tasks, plans)?.kind, "ask");
   });
 });

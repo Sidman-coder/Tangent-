@@ -1,32 +1,63 @@
 # TANGENT Project
 
-Last reconciled: 2026-09-27
+Last reconciled: 2026-11-05
 
 ## Identity
 
-**One-line pitch:** TANGENT is an AI-powered productivity system for high school students—a web app paired with a custom voice-recording pen—built for the moments when a phone cannot be there to capture a thought.
+**One-line pitch:** Tangent is a phone-first student app that turns anything you say into small steps on your calendar, then checks in daily until it's done.
 
-**Tagline:** Say it. Capture it. Build it.
+**Pitch line:** Chatbots answer you. Tangent follows up.
 
-**Mission:** Make capture frictionless, then use the student's real school context to turn captured thoughts into organized, actionable work.
+**Problem:** Procrastination. Students know what to do but don't start or keep going. Capture and planning are the first two steps of fixing that, not separate products.
 
-**Primary audience:** High school students balancing classes, extracurriculars, sports, and personal projects. TANGENT is intentionally not positioned as productivity software for everyone.
+**Primary audience:** High school and college students with real goals: test prep, competitions, projects, college apps, and clubs. TANGENT is intentionally not positioned as productivity software for everyone.
 
 ## Product boundary
 
-TANGENT has two connected products:
+TANGENT is three screens:
 
-1. **Web App:** receives typed or spoken captures, understands tasks and constraints, and helps the student plan and reprioritize.
-2. **Pen:** a dedicated voice-capture device for classrooms, transitions, activities, and other moments when pulling out a phone is impractical.
+1. **Capture:** mic and typed input on Today, with a separate capture mode at `/capture`.
+2. **Plan:** 2–3 questions, then small 10–30 minute steps with a short "why", placed around School Blocks, Canvas deadlines, and busy days. Every plan goes through preview, confirm, and undo.
+3. **Today:** the home screen at `/`, with Must do, Today's plan, and Coming up. Flexible steps support Done, Not today, and Too big; missed work can be re-planned or given a Fresh start.
+
+**AI surfaces after the v3 build:** AddFlow for adding or planning, and one Ask Tangent chat for questions.
+
+**Paused (hidden, not deleted):** Pen hardware, Raspberry Pi, `pi-poller`, and the 3D Tangents/Paths scene.
+
+**Pricing (planned, not built):**
+
+- **Free:** capture, to-do, Canvas import, re-plan, and 3 AI projects.
+- **Student:** $4.99/month or $39/year, with annual pre-selected.
+- **Pro:** $9.99/month or $79/year.
+- **School-Year Pass:** $69, bought by parents, with a weekly recap the teen approves.
+
+**Moat:** Follow-through data (what students finish, when, and what they skip) plus structured school context. Describe this publicly as "learns from what you tell it and connect", never as "collects student data".
 
 The product is not an AI counselor, therapy product, family surveillance system, or autonomous school decision-maker. TANGENT may help a student understand workload and priorities without adopting those categories.
 
 ## Team
 
 - **Sid:** software lead; web app, AI pipeline, integrations, and product direction.
-- **Juann:** hardware co-builder; prototype pen and production-intent hardware workstream.
+- **Juann:** co-builder; app components and design in this repository, and the hardware workstream, which is paused.
 
 ## Current software state
+
+**v3 build status (2026-11-05, branch `v3-core-loop`, not pushed):** Phases 0–3 and Round 2 (Phases A–G) are built and committed locally. The current branch passes its node tests and a production build. Steps only a person can do, including seven Round 2 migrations, are in [MANUAL-STEPS](../MANUAL-STEPS.md). Nothing below has been run end to end with a signed-in account, a real microphone or real Canvas data; the UI was checked on the `/dev/app/*` sample pages.
+
+- **Today (`/`).** One capture input and three sections. **Must do** holds fixed-time items and hard overdue; **Today's plan** holds today's flexible steps with Done, Not today and Too big; **Coming up** shows the next few days. Hard overdue (a missed deadline) stays until done or dismissed; soft overdue (a missed flexible step) sits at the bottom of Today's plan, calmly, until it is done or re-planned. Past calendar imports never count as overdue. Fresh start and the automatic re-plan on a miss move work forward without penalty.
+- **Task commitment.** Each task is fixed, a reminder, or flexible (`task.commitment`); only flexible steps move. It is inferred on capture and changeable on the task.
+- **Colors.** Project tasks use their project's color; personal tasks and unmatched Canvas tasks have their own consistent colors (`lib/task-colors.ts`), and a project's color is picked from the palette.
+- **Plan preview.** A confirmed-before-saving preview defaults to the month view, starting on the student's chosen week start.
+- **Grill me (sufficiency).** Tangent keeps asking one question at a time until it knows enough to plan (context slots and a sufficiency score), never asks what it already knows, and every question has Skip and Stop. The older template queue in `grill_questions` still feeds Today and Settings.
+- **Chats.** Every chat starts on Home; a task or project gets its own chat with its context attached, and the Chats library at `/ai` lists them all with running summaries. The two-chat model and "Ask Tangent" are replaced; see [the chat-model decision](decisions/2026-11-chat-model.md).
+- **Settings.** Separate pages for Account, Security, Schedule (with quiet hours and week start), Notifications, Context, Activity and Data (export and delete).
+- **Projects.** A School card built from Canvas, plus project stats. "Done in the last 7 days" uses each task's completion time once migration `20261105060000` is run, and is marked "About" until then.
+- **AI routing.** Classification, titles, summaries and plain chat use the fast model; drafting plans and planning conversations use the smart model (`MODEL_ROUTES` in `lib/ai/models.ts`). Round 2 evals: `npm run eval:pipeline -- --round2` (costs a little; asks first).
+- **Pilot analytics.** Server-side events in the `events` table (`lib/analytics.ts`): signup, captures, confirmed plans, tasks done, Not today, Too big, Fresh start, re-plans, Grill answers/skips/stops, chats started and week-two return. Names, ids and counts only. Queries: [pilot-metrics.sql](pilot-metrics.sql).
+- **Sign-in:** email codes, optional password, and password reset by code. The codes only work once the email templates in MANUAL-STEPS are pasted in.
+- **Calendar:** dragging a task saves its new date and time, with Undo.
+- **Not built: anything from the December roadmap.** That covers billing, study buddy and the share card.
+- **Tangents:** the rail link is hidden. The route still exists.
 
 The repository is a Next.js 14 and TypeScript application. Current code and user-provided context establish the following:
 
@@ -34,9 +65,9 @@ The repository is a Next.js 14 and TypeScript application. Current code and user
 - The application includes task, calendar, AI-console, settings, daily-brief, notification, planning, rescheduling, and voice-command surfaces.
 - Gmail and Google Calendar modules are designed for read-only access. **Google Calendar requires three env vars — `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` (`.env.local`) — and as of this review all three are unset**, so `lib/calendar.ts` throws immediately on any call and the AI chat/voice pipeline cannot read Google Calendar events until a developer completes the OAuth setup and supplies them. This is unrelated to TANGENT's own internal task calendars (`cal_work`/`cal_personal`/`cal_study`/`cal_all`, managed by `lib/store.ts`), which always work regardless of this integration's state — the AI's `get_my_tasks` tool reads from that internal store and needs no external credentials.
 - Canvas is a per-student `.ics` calendar-feed connection for assignment and deadline events (see [Persistence and accounts](#persistence-and-accounts)). The legacy token-based Canvas client is removed on `feat/supabase` but still present on `main` until that branch merges.
-- **Capture-first home (branch `feat/capture-home`, 2026-10-26).** Opening Tangent lands on `/`: the student's open to-do list plus one hold-to-talk glass mic, with a lavender takeover while they speak. Tangent saves what they said first and asks any context question after. "Open app →" leads to Today, which now lives at `/today`. The top task has a "Do it now" 25-minute focus timer. Design: `docs/superpowers/specs/2026-10-26-capture-home-design.md`.
+- **Home route (Round 2 Phase A).** Today lives at `/`, and the earlier capture home lives at `/capture`. `/today` redirects to `/`. The new home has one mic and typed input, a small slider, and Must do, Today's plan, and Coming up sections. The older capture design is recorded in `docs/superpowers/specs/2026-10-26-capture-home-design.md`.
 - **Canvas auto-clear.** The `.ics` feed carries no submission status, so a Canvas item more than 2 days past its due date counts as handled (`lib/canvas-clear.ts`). It leaves lists, urgency and the proactive overdue prompt, and stays greyed on the calendar. Syncs import only the last 2 days.
-- **Four task colors everywhere** (`lib/task-colors.ts`): Canvas, Academic (school kind, or a title that reads as schoolwork), ECs (both EC kinds) and Other (grey). Project colors no longer drive task dots.
+- **Task colors (Round 2 Phase A):** project tasks use their project's palette color; personal tasks and unmatched Canvas tasks use their own consistent colors (`lib/task-colors.ts`). The former four-category rule is superseded.
 - On `main`, application data is still stored in process memory and resets when the server process restarts. The Supabase migration below is in progress on the `feat/supabase` branch and not yet merged.
 - The application assumes one student per account. A parent or family shared-login model is outside the current scope.
 - **A real cron trigger now exists** (`vercel.json`, Vercel Cron). Two routes are wired, each once daily (UTC):
@@ -65,7 +96,7 @@ Status: in progress on `feat/supabase` (started 2026-09-26). Decisions below are
 
 - **Storage:** Supabase Postgres. The schema lives in `supabase/migrations/` and is the authority for tables and columns. Every student-owned table has `user_id` → `auth.users`, Row Level Security, and four own-rows-only policies (select/insert/update/delete). Cross-table references use composite `(id, user_id)` foreign keys so a row can never point at another student's data.
 - **Access model:** browser requests use the anon key plus the student's session, so RLS applies. Trusted server processes (cron jobs, AI usage telemetry writes; later the pen upload server) use `SUPABASE_SERVICE_ROLE_KEY`, which bypasses RLS and therefore must always set and filter `user_id` explicitly. The service role key is server-only; importing it into client code is a critical bug. Store functions refuse to run without an explicit user context — they never fall back to the service role or a default user.
-- **Auth:** Supabase Auth with Google sign-in and magic-link email. **Invite-only:** only emails in `ALLOWED_EMAILS` may use the app, enforced server-side in the auth callback and middleware.
+- **Auth:** Supabase Auth with Google sign-in, a 6-digit email code (or link), and an optional password (set after an email code; flagged in `app_metadata.password_set` via the service role). **Invite-only:** only emails in `ALLOWED_EMAILS` may use the app, enforced server-side on every sign-in route and in middleware.
 - **Timezone:** each student's IANA timezone is stored on their profile (captured at onboarding, default `America/New_York`); cron jobs loop over students and use each one's timezone.
 - **Google (Gmail / Google Calendar) is owner-only for now:** those integrations read from env credentials tied to Sid's personal account, so they only run when the signed-in email matches `OWNER_EMAIL`; everyone else gets a "Google connection coming soon" response. **Future work:** per-student Google OAuth — a "Connect Google Calendar" button that stores each student's encrypted refresh token.
 - **Canvas:** the `.ics` Canvas Feed is the only Canvas integration. The legacy token-based Canvas API client (`lib/canvas.ts` and its three agent tools) is removed on `feat/supabase`; the agent answers Canvas/assignment questions with `get_canvas_deadlines`, which reads tasks imported by the feed (`source = 'canvas'`). The feed URL embeds a private token and is never returned to the browser unmasked.
@@ -90,7 +121,7 @@ Dev and Preview share the production Supabase project, so Supabase values and `C
 | --- | --- | --- | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL` | Public | Yes | Production, Preview | Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public | Yes | Production, Preview | Browser/session client; RLS applies |
-| `SUPABASE_SERVICE_ROLE_KEY` | Secret | Yes | Production, Preview | Admin client for cron jobs (`lib/cron-users.ts`, `runAsUser`) and `ai_usage` inserts (`lib/ai/call.ts`); bypasses RLS. Without it, crons fail and AI usage isn't recorded |
+| `SUPABASE_SERVICE_ROLE_KEY` | Secret | Yes | Production, Preview | Admin client for cron jobs (`lib/cron-users.ts`, `runAsUser`) `ai_usage` inserts (`lib/ai/call.ts`), and the password flag (`lib/auth/password-server.ts`); bypasses RLS. Without it, crons fail, AI usage isn't recorded, and password sign-in can't tell "wrong password" from "no password yet" |
 | `ALLOWED_EMAILS` | Config | Yes | Production, Preview | Invite list, comma-separated; empty means nobody can sign in (fails closed) |
 | `ANTHROPIC_API_KEY` | Secret | Yes | Production, Preview | All Claude calls |
 | `AI_DAILY_BUDGET_USD` | Config | No | Production, Preview | Per-student daily AI spend cap in USD (default `0.50`) |
@@ -102,6 +133,8 @@ Dev and Preview share the production Supabase project, so Supabase values and `C
 | `DEEPGRAM_API_KEY` | Secret | No | Production, Preview | Browser voice transcription; voice capture is disabled without it |
 | `OWNER_EMAIL` | Config | No | Production, Preview | The one account allowed to use the env-based Google integrations |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN` | Secret | No | Production, Preview | Owner-only Gmail and Google Calendar access; currently unset |
+
+`TANGENT_PIPELINE_V2` (Config, optional, server only) turns on draft ChangeSets for typed AI changes. It's off unless set to `true` or `1`, and it's read once at startup.
 
 Set automatically or used only in tests (don't add these to Vercel):
 
@@ -118,6 +151,8 @@ These variables are obsolete; delete them from `.env.local` and from Vercel:
 
 ## Current hardware state
 
+Paused. The last known state below is kept for when hardware resumes.
+
 - **Prototype direction:** XIAO ESP32-S3 Sense, used to validate voice capture and end-to-end communication.
 - **Production-intent direction:** a custom PCB centered on the ESP32-S3-MINI-1U-N8 module.
 - **Sequence:** validate the software experience before investing deeply in custom hardware and manufacturing.
@@ -130,20 +165,22 @@ TANGENT narrowed from a general productivity concept to high school students. Th
 
 This shift is a central product lesson: a narrow audience becomes defensible when the roadmap is rebuilt around that audience's non-negotiable constraints.
 
+On 2026-11-03 Sid widened the audience to high school and college students, made the product phone-first around follow-through, and paused hardware. Sid confirmed this direction directly in the v3 build brief, without a Council Review.
+
 ## Roadmap order
 
-1. Finish and demonstrate the software.
-2. Deploy the web app to Vercel.
-3. Replace process-memory storage with persistent storage — Supabase (Postgres + Auth), confirmed by Sid on 2026-09-26; see [Persistence and accounts](#persistence-and-accounts).
-4. Complete an end-to-end ESP32 prototype.
-5. Design and validate the production-intent custom PCB.
-6. Expand the AI agent pipeline from capture through understanding to safe action.
+1. **Nov 2026:** Phase 1 core loop.
+2. **Late Nov 2026:** 14-day pilot with 20–30 students.
+3. **Dec 2026:** Billing, study buddy, and share card.
+4. **Jan 2027:** Relaunch at the new semester.
+5. **Aug 2027:** School-Year Pass push at back-to-school.
 
 ## Confirmed operating decisions
 
-- Focus on high school students rather than general productivity users.
+- Focus on high school and college students rather than general productivity users.
 - Keep one student per account for the first version.
-- Build software first and custom hardware second.
+- Pause hardware, including the Pen, Raspberry Pi path, and `pi-poller`.
+- Reach AI through two surfaces only: AddFlow and Ask Tangent.
 - Use read-only school and communication integrations unless the user deliberately approves broader permissions.
 - Avoid the AI-counselor category and its expectations.
 - Use Council Reviews only for consequential decisions, not routine work.
@@ -158,15 +195,23 @@ The following remain assumptions or unknowns until supported by research, tests,
 - Whether a dedicated Pen is meaningfully better than phone, watch, earbuds, or school-device capture.
 - School policy, privacy, consent, and recording constraints across target schools.
 - Final hardware form factor, battery life, microphone performance, unit cost, and manufacturing partner.
-- Pricing, buyer, distribution channel, and business model.
+- Whether the planned pricing, buyers, and business model work with real students, and which distribution channel works. See the [Research Ledger](RESEARCH-LEDGER.md).
 - Exact deployment readiness of each integration.
 - Competition, grant, funding, or fellowship eligibility and deadlines.
 
 ## Open questions
 
+- Price sensitivity: $4.99 versus $9.99?
+- What is week-2 retention? (Now measured: [pilot-metrics.sql](pilot-metrics.sql).)
+- Will parents buy the School-Year Pass?
+- Is iPhone web push reliable enough for daily check-ins?
+- How does a parent-bought pass with a teen-approved recap fit the "one student per account" and "not a family surveillance system" boundaries?
 - What single use case creates the strongest repeated demand: assignment capture, reminders, project ideas, schedule changes, or something else?
-- Is the student the buyer, or does adoption depend on parents, schools, programs, or another sponsor?
-- What evidence is required before the Pen advances from prototype to custom PCB?
+- Beyond the Student and parent buyers planned above, does adoption depend on schools, programs, or another sponsor?
+- What evidence would justify resuming the Pen?
 - Which actions may TANGENT take automatically, and which require confirmation?
-- What is the minimum privacy and consent model for classroom voice capture?
+- What is the minimum privacy and consent model for classroom voice capture, if the Pen resumes?
 - Which product metric best proves value before expanding scope?
+- Is "enough context" tuned right? The pilot's Grill stop rate should show whether Tangent asks too much.
+- Should old task-chat history in `task_chat_messages` be migrated into the new task chats, or left archived?
+- Should the Tangents route be removed now that projects carry their own path?

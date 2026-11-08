@@ -5,8 +5,8 @@
 // pages itself, waits for each control to appear, and falls back to a centred
 // card when a control isn't on screen (a phone, an empty state).
 //
-// Mounted in app/(app)/layout.tsx, outside AppShell, so it survives the
-// Tangents takeover. Starts on TOUR_EVENT: after Get to know you the first
+// Mounted in app/(app)/layout.tsx, outside AppShell, so it survives full-screen
+// pages. Starts on TOUR_EVENT: after Get to know you the first
 // time, from Today's "Take the tour", or from Settings.
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -40,46 +40,45 @@ type Step = {
 
 const STEPS: Step[] = [
   {
-    route: "/today",
+    route: "/",
     title: "Tangent in two minutes",
     body: "A quick walk through everything Tangent does. Use the arrow keys or the buttons; Esc ends it any time.",
   },
   {
-    route: "/today",
+    route: "/",
     target: [".add-flow.is-hero"],
     title: "Add anything, typed or spoken",
     body: "This is the heart of Tangent. Type it, or tap the mic and say it. Tangent works out whether it's a task or a project, asks a question or two when that helps (skip them any time), then puts it on your calendar or in the project, with Undo.",
     demo: { label: "Try it now", run: () => window.dispatchEvent(new CustomEvent("tangent:open-palette", { detail: { prefill: "prep for my chem final" } })) },
   },
   {
-    route: "/today",
+    route: "/",
     target: [".float-mic"],
     title: "Say it from anywhere",
-    body: "The mic in the bottom corner is on every page: tap it and talk, and it goes through the same Add flow. Press ⌘K to type instead. Questions go to Tangent AI and long-range goals become Tangents, from the same box.",
+    body: "The mic in the bottom corner is on every page: tap it and talk, and it goes through the same Add flow. Press ⌘K to type instead. Questions go to Ask Tangent, from the same box.",
   },
   {
-    route: "/today",
-    target: [".today-card"],
-    title: "Today, in one list",
-    body: "What needs attention sits at the top with why (overdue, starting soon, a Canvas deadline) and a Tomorrow button. The rest of your day follows. Click any task to open it in the middle.",
+    route: "/",
+    target: [".today-sections"],
+    title: "Today, in three parts",
+    body: "Must do is what can't move: appointments, reminders, Canvas deadlines. Today's plan is the flexible work, with Done, Not today and Too big. Coming up holds the next few days. Click any task to open it.",
   },
   {
-    route: "/today",
-    target: ["#questions"],
-    title: "Questions you skipped wait here",
-    body: "If you skip Tangent's questions, or capture something quickly, they wait here. Answer whenever you like; every answer sharpens the task and teaches Tangent about you.",
+    route: "/",
+    target: [".add-flow.is-hero .add-pill"],
+    title: "Choose where it goes",
+    body: "Auto lets Tangent decide whether it's a task, a project or a question. Tap it to send the next thing to your calendar or a project instead. Questions Tangent skipped wait in a quiet line under the box; answer whenever you like.",
   },
   {
-    route: "/today",
-    target: [".week-strip"],
+    route: "/",
     title: "It spaces your week",
     body: "Tangent knows how much you can handle in a day. New work lands on lighter days, and if one gets overloaded it suggests a move. Nothing moves without your tap.",
   },
   {
     route: "/calendar",
-    target: [".cal-island"],
+    target: [".cal-bar"],
     title: "One bar to steer the calendar",
-    body: "Week, Month or Agenda, back and forward, and what to show: School, Projects or Short-term. All in the floating bar, so the calendar itself stays clear.",
+    body: "Week, Month or Agenda, back and forward, and what to show: School, Projects or Short-term. All in the bar at the top.",
   },
   {
     route: "/calendar",
@@ -90,35 +89,29 @@ const STEPS: Step[] = [
   {
     route: "/projects",
     target: [".project-card", ".projects-new", ".page-header-actions"],
-    title: "Projects, each with its own Tangent AI",
-    body: "A final, a science fair, starting a club. Tangent asks a few questions, then lays the steps across your calendar. Open a project and it has its own Tangent AI that knows it: ask what's next, or have it add and change steps.",
-  },
-  {
-    route: "/projects",
-    target: ['a.rail-btn[href="/tangents"]', '.mobile-nav-link[href="/tangents"]'],
-    title: "Tangents for long-range goals",
-    body: "Where you want to be in a year or more: a college, a rating, a career. Tangent asks what it needs to know, maps paths from what you already do, and branches off ideas you can keep.",
+    title: "Projects, and how they're going",
+    body: "A final, a science fair, starting a club. Tangent asks a few questions, then lays the steps across your calendar. Open a project to see your pace and next steps, or tap Ask about this to talk it through.",
   },
   {
     route: "/ai",
-    target: [".tg-composer-glow", ".tg-composer"],
-    title: "Tangent AI knows you",
-    body: "Plan your week, think something through, or ask what fits in 30 minutes. It already knows your schedule, classes, projects and workload, so it won't ask what it can see.",
+    target: [".chat-library"],
+    title: "Every chat in one place",
+    body: "Ask Tangent from Home, or tap Ask on a task or project to talk about just that. Each keeps its own thread, and they all land here. Tangent already knows your schedule, classes and projects, so it won't ask what it can see.",
   },
   {
-    route: "/settings",
+    route: "/settings/context",
     target: ["#onboarding"],
     title: "Set Tangent up in Settings",
-    body: "Onboarding has this tour, Tangent's first questions about you, Grill me and your setup answers. Just below, Connections brings in Canvas, your Google, Apple or Outlook calendar, and notes from Notion, Docs or other AIs.",
+    body: "Getting to know you has this tour, Tangent's first questions about you, Grill me and your setup answers. Canvas and your Google, Apple or Outlook calendar live under Schedule.",
   },
   {
-    route: "/settings",
+    route: "/settings/context",
     target: ["#what-tangent-knows"],
     title: "What Tangent knows",
     body: "Everything Tangent has learned about you, in one place. Forget anything wrong, or tell it something new.",
   },
   {
-    route: "/today",
+    route: "/",
     title: "That's Tangent",
     body: "Add it, answer a question or two, and let Tangent place it. You can take this tour again from Settings → Onboarding.",
   },

@@ -15,6 +15,13 @@
 - Material decisions: read and follow `docs/tangent/COUNCIL.md` before recommending commitment.
 - Routine implementation and easily reversible choices: work directly without a Council Review.
 
+## Product guardrails
+
+- Build only what serves capture → plan → done.
+- Ask until enough, never what's known, always stoppable: ask only when the answer would change the plan, never what Tangent already knows or can infer, and always with a Skip and a Stop that never block.
+- No new top-level AI surfaces; start on Home, continue in task/project chats.
+- Today must be scannable in 3 seconds.
+
 ## Research discipline
 
 - Separate verified facts, user statements, inferences, and hypotheses.

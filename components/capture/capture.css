@@ -3,37 +3,18 @@
    island that is the mic, and a lavender takeover while you talk. */
 
 .capture-home {
-  --lav: #e4dcfb;
-  --lav-2: #cfc2f7;
-  --lav-3: #f1ecff;
-  --blob-1: #b7a4f5;
-  --blob-2: #f0c9f2;
-  --wash-ink: #2b2160;
-  --wash-hint: #6b5fae;
+  /* The talking wash reads the accent tokens, so it follows the theme. */
+  --lav: var(--accent-soft);
+  --lav-2: var(--accent-line);
+  --lav-3: var(--bg);
+  --blob-1: var(--accent-line);
+  --blob-2: color-mix(in srgb, var(--series-magenta) 30%, var(--bg));
+  --wash-ink: var(--text);
+  --wash-hint: var(--accent-text);
   min-height: 100dvh;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-body);
-}
-[data-theme="dark"] .capture-home {
-  --lav: #2a2150;
-  --lav-2: #3a2d70;
-  --lav-3: #1f1840;
-  --blob-1: #5b47c4;
-  --blob-2: #8a3f8f;
-  --wash-ink: #f1ecff;
-  --wash-hint: #c4b8f5;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .capture-home {
-    --lav: #2a2150;
-    --lav-2: #3a2d70;
-    --lav-3: #1f1840;
-    --blob-1: #5b47c4;
-    --blob-2: #8a3f8f;
-    --wash-ink: #f1ecff;
-    --wash-hint: #c4b8f5;
-  }
 }
 
 /* AppShell's bare mode on "/": no rail beside it, so <main> spans the page and
@@ -113,12 +94,12 @@
   width: 22px;
   height: 22px;
   padding: 0;
-  border: 1.8px solid var(--line-strong, #c3bdd9);
+  border: 1.8px solid var(--field-line);
   border-radius: 50%;
   background: transparent;
   color: transparent;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  transition: border-color var(--dur-fast), background var(--dur-fast), color var(--dur-fast);
 }
 .capture-check:hover {
   border-color: var(--accent);
@@ -151,7 +132,7 @@
   color: var(--text-2);
 }
 .capture-row.is-overdue .capture-row-sub {
-  color: var(--cat-canvas);
+  color: var(--danger-text);
 }
 .capture-dot {
   flex: none;
@@ -208,6 +189,12 @@
   color: var(--wash-hint);
 }
 .capture-words {
+  /* The newest words stay in view; the oldest slip off the top. */
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-end;
+  max-height: calc(100dvh - 400px - env(safe-area-inset-bottom, 0px));
+  overflow: hidden;
   margin: 0;
   font-family: var(--font-display);
   font-size: 30px;
@@ -219,6 +206,9 @@
 .capture-words > span {
   display: inline-block;
   margin-right: 0.24em;
+}
+.capture-words > .is-interim {
+  color: color-mix(in srgb, var(--wash-ink) 55%, transparent);
 }
 
 /* Behind the island: the list fades into the page so rows never sit under,
@@ -369,7 +359,7 @@
   width: 0;
   height: 40px;
   opacity: 0;
-  transition: width 0.6s cubic-bezier(0.22, 1.2, 0.36, 1), opacity 0.3s;
+  transition: width 0.6s cubic-bezier(0.22, 1.2, 0.36, 1), opacity var(--dur-slow);
 }
 .capture-island.is-listening .capture-wave {
   width: 92px;
@@ -380,7 +370,7 @@
   width: 5px;
   height: 40px;
   border-radius: 3px;
-  background: linear-gradient(var(--accent), #9b82f0);
+  background: linear-gradient(var(--accent), var(--accent-line));
   transform: scaleY(0.2);
 }
 .capture-type-hint {
@@ -388,7 +378,7 @@
   font-size: 12.5px;
   color: var(--text-2);
   text-align: center;
-  transition: opacity 0.3s;
+  transition: opacity var(--dur-slow);
 }
 .capture-island-wrap.is-listening + .capture-type-hint,
 .capture-island-wrap.is-sorting + .capture-type-hint {
@@ -459,6 +449,17 @@
 .sorted-question {
   margin: 0;
 }
+.sorted-question {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.sorted-count {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
 .sorted-question em {
   font-style: normal;
   font-weight: 650;
@@ -475,7 +476,12 @@
   font: 600 13px var(--font-body);
   color: var(--accent);
   cursor: pointer;
-  transition: transform 0.3s cubic-bezier(0.22, 1.2, 0.36, 1);
+  transition: transform var(--dur-slow) cubic-bezier(0.22, 1.2, 0.36, 1);
+}
+.sorted-question + .sorted-chips .capture-chip {
+  min-height: 44px;
+  padding: 10px 16px;
+  font-size: 15px;
 }
 .capture-chip:active {
   transform: scale(0.94);
@@ -487,7 +493,7 @@
   padding: 0;
   border: 0;
   background: none;
-  color: var(--cat-canvas);
+  color: var(--danger-text);
   font: 600 14px var(--font-body);
   text-align: left;
   cursor: pointer;

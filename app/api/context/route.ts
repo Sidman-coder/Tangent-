@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { addContextEntry, getUserContext, getContextAsString, removeContextEntry } from "@/lib/store";
+import { addContextEntry, clearContextEntries, getUserContext, getContextAsString, removeContextEntry } from "@/lib/store";
 import { extractContextFacts } from "@/lib/context-extract";
 import { factsFromText } from "@/lib/ai/import-context";
 import { withUser } from "@/lib/request-context";
@@ -52,6 +52,12 @@ export const POST = withUser(async (request: Request) => {
     if (body.action === "forget") {
       const removed = await removeContextEntry(String(body.id ?? ""));
       return NextResponse.json({ ok: removed }, { status: removed ? 200 : 404 });
+    }
+    // "Forget everything" in Settings, behind a typed confirmation word.
+    if (body.action === "forget_all") {
+      if (body.confirm !== "FORGET") return NextResponse.json({ ok: false, error: "Type FORGET to confirm" }, { status: 400 });
+      const removed = await clearContextEntries();
+      return NextResponse.json({ ok: true, removed });
     }
     if (body.action === "extract") {
       const added = await extractContextFacts(String(body.conversation ?? ""), body.source || "chat");

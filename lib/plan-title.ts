@@ -3,8 +3,8 @@
 // title falls back to a cleaned-up version of what the student asked for.
 
 const MAX_TITLE_LENGTH = 60;
-const GENERIC_TITLES = new Set(["new plan", "plan", "my plan", "untitled", "untitled plan", "study plan", "task plan"]);
-export const LAST_RESORT_PLAN_TITLE = "New Plan";
+const GENERIC_TITLES = new Set(["new plan", "new project", "project", "plan", "my plan", "untitled", "untitled plan", "study plan", "task plan"]);
+export const LAST_RESORT_PLAN_TITLE = "New project";
 
 /** Trims, collapses whitespace, strips wrapping quotes and trailing
  *  punctuation, and shortens at a word boundary. */

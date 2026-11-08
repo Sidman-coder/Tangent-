@@ -11,6 +11,7 @@ import {
   resolvePendingConfirmation,
   recordAction,
   addVoiceLog,
+  deleteEmptiedPlans,
   deleteTask,
   deleteTasks,
   updateTask,
@@ -18,6 +19,19 @@ import {
 import { withUser } from "@/lib/request-context";
 
 export const runtime = "nodejs";
+
+/** Plans the confirmation said would go too (lib/voice-handler.ts proposeDelete). */
+function planIdsOf(payload: Record<string, unknown>): string[] {
+  return Array.isArray(payload.planIds) ? payload.planIds.filter((id): id is string => typeof id === "string") : [];
+}
+
+/** " and the plan "SAT Prep"" (inline) or " Also removed the plan "SAT Prep"." */
+function plansNote(plans: { title: string }[], inline = false): string {
+  if (plans.length === 0) return "";
+  const names = plans.map((p) => `"${p.title}"`).join(", ");
+  const noun = plans.length === 1 ? "the plan" : "the plans";
+  return inline ? ` and ${noun} ${names}` : ` Also removed ${noun} ${names}.`;
+}
 export const dynamic = "force-dynamic";
 
 /** Open confirmations (id + message only) so the AI console can restore
@@ -62,12 +76,13 @@ export const POST = withUser(async (req: Request) => {
     if (pending.kind === "delete_all_tasks") {
       const removed = await getAllTasks();
       await clearAllTasks();
-      const record = await recordAction("delete_all_tasks", `Cleared ${removed.length} tasks`, { removedTasks: removed });
+      const removedPlans = await deleteEmptiedPlans(planIdsOf(pending.payload));
+      const record = await recordAction("delete_all_tasks", `Cleared ${removed.length} tasks`, { removedTasks: removed, removedPlans });
       await addVoiceLog({ text: "(confirmed) clear schedule", response: "Schedule cleared", action: "delete_all_tasks", ok: true });
       return NextResponse.json({
         ok: true,
         action: "delete_all_tasks",
-        response: `Cleared ${removed.length} tasks from your schedule.`,
+        response: `Cleared ${removed.length} tasks from your schedule.${plansNote(removedPlans)}`,
         actionId: record.id,
         state: await getAppState(),
       });
@@ -108,9 +123,10 @@ export const POST = withUser(async (req: Request) => {
         return NextResponse.json({ ok: false, error: "Those tasks no longer exist." }, { status: 422 });
       }
       await deleteTasks(found.map((t) => t.id));
+      const removedPlans = await deleteEmptiedPlans(planIdsOf(pending.payload));
       const label = typeof pending.payload.label === "string" ? ` "${pending.payload.label}"` : "";
-      const summary = `Deleted ${found.length}${label} task${found.length === 1 ? "" : "s"}`;
-      const record = await recordAction("delete_task", summary, { removedTasks: found });
+      const summary = `Deleted ${found.length}${label} task${found.length === 1 ? "" : "s"}${plansNote(removedPlans, true)}`;
+      const record = await recordAction("delete_task", summary, { removedTasks: found, removedPlans });
       await addVoiceLog({ text: "(confirmed) delete tasks", response: summary, action: "delete_task", ok: true });
       return NextResponse.json({
         ok: true,
@@ -128,12 +144,14 @@ export const POST = withUser(async (req: Request) => {
         return NextResponse.json({ ok: false, error: "That task no longer exists." }, { status: 422 });
       }
       await deleteTask(found.id);
-      const record = await recordAction("delete_task", `Deleted "${found.title}"`, { removedTasks: [found] });
-      await addVoiceLog({ text: "(confirmed) delete task", response: `Deleted "${found.title}"`, action: "delete_task", ok: true });
+      const removedPlans = await deleteEmptiedPlans(planIdsOf(pending.payload));
+      const summary = `Deleted "${found.title}"${plansNote(removedPlans, true)}`;
+      const record = await recordAction("delete_task", summary, { removedTasks: [found], removedPlans });
+      await addVoiceLog({ text: "(confirmed) delete task", response: summary, action: "delete_task", ok: true });
       return NextResponse.json({
         ok: true,
         action: "delete_task",
-        response: `Deleted "${found.title}".`,
+        response: `${summary}.`,
         actionId: record.id,
         state: await getAppState(),
       });

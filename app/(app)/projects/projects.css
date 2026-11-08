@@ -162,129 +162,12 @@
   white-space: nowrap;
 }
 
-.projects-finished h2,
-.project-steps h2 {
+.projects-finished h2 {
   margin: 0 0 10px;
   color: var(--text-3);
   font: 600 12px/1 var(--font-body);
   letter-spacing: 0.04em;
   text-transform: uppercase;
-}
-
-/* ── Ask box (ProjectAsk) ──────────────────────────────────────────────── */
-
-.project-ask {
-  display: grid;
-  gap: 10px;
-}
-
-.project-ask-box {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  padding: 10px 10px 10px 16px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-md);
-  background: var(--surface);
-  transition: border-color 160ms ease, box-shadow 160ms ease;
-}
-
-.project-ask-box:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-
-.project-ask-box.is-working {
-  opacity: 0.75;
-}
-
-.project-ask .project-ask-box .project-ask-input:is(textarea) {
-  flex: 1;
-  min-width: 0;
-  min-height: 44px;
-  max-height: 160px;
-  padding: 4px 0;
-  border: 0;
-  outline: 0;
-  resize: none;
-  background: transparent;
-  color: var(--text);
-  font: 450 15px/1.45 var(--font-body);
-  field-sizing: content;
-}
-
-.project-ask .project-ask-box .project-ask-input:is(textarea):focus {
-  box-shadow: none;
-}
-
-.project-ask-input::placeholder {
-  color: var(--text-3);
-}
-
-.project-ask-send {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  flex-shrink: 0;
-  border: 0;
-  border-radius: 999px;
-  background: var(--accent);
-  color: var(--accent-ink);
-  cursor: pointer;
-  transition: transform 140ms cubic-bezier(0.23, 1, 0.32, 1), opacity 160ms ease;
-}
-
-.project-ask-send:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-
-.project-ask-send:active:not(:disabled) {
-  transform: scale(0.94);
-}
-
-.project-ask-spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid rgb(from var(--accent-ink) r g b / 0.35);
-  border-top-color: var(--accent-ink);
-  border-radius: 999px;
-  animation: project-spin 0.6s linear infinite;
-}
-
-@keyframes project-spin {
-  to { transform: rotate(360deg); }
-}
-
-.project-ask-status,
-.project-ask-result p,
-.project-ask-error,
-.project-ask-request {
-  margin: 0;
-  font: 500 14px/1.45 var(--font-body);
-}
-
-.project-ask-status {
-  color: var(--text-2);
-}
-
-.project-ask-error {
-  color: var(--red);
-}
-
-.project-ask-request {
-  color: var(--text-2);
-}
-
-.project-ask-result {
-  display: grid;
-  gap: 10px;
-  color: var(--text);
-}
-
-.project-ask-questions .tg-clarify {
-  margin-top: 8px;
 }
 
 /* ── One project ───────────────────────────────────────────────────────── */
@@ -322,7 +205,7 @@
   border-radius: 8px;
   background: transparent;
   color: var(--text);
-  transition: border-color 150ms ease, background-color 150ms ease;
+  transition: border-color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
 }
 
 .project-page .project-head .project-title-input:is(input) {
@@ -347,26 +230,6 @@
   outline: 0;
   box-shadow: none;
   border-color: var(--line-strong);
-  background: var(--surface);
-}
-
-.project-head-progress {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  max-width: 420px;
-  color: var(--text-3);
-  font: 550 12.5px/1 var(--font-body);
-}
-
-.project-head-progress .project-progress {
-  flex: 1;
-}
-
-.project-ask-section {
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
   background: var(--surface);
 }
 
@@ -404,49 +267,14 @@
   margin-bottom: 10px;
 }
 
-.project-foot {
-  padding-top: 8px;
-}
-
-.project-delete,
-.project-delete-no {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--text-3);
-  font: 500 13px/1 var(--font-body);
-  cursor: pointer;
-}
-
-.project-delete-confirm {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  color: var(--text);
-  font: 500 13.5px/1.45 var(--font-body);
-}
-
-.project-delete-yes {
-  height: 32px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--red);
-  color: #fff;
-  font: 600 13px/1 var(--font-body);
-  cursor: pointer;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .project-card,
-  .project-ask-send,
   .project-progress span {
     transition: none;
   }
 }
 
-/* ── Project page: steps beside the project's own Tangent AI ───────────── */
+/* ── Project page: steps beside the stats ───────────── */
 
 .project-layout {
   display: grid;
@@ -462,8 +290,8 @@
 }
 
 .project-side {
-  position: sticky;
-  top: calc(var(--topbar-h) + 16px);
+  display: grid;
+  gap: 14px;
   min-width: 0;
 }
 
@@ -472,157 +300,8 @@
     grid-template-columns: minmax(0, 1fr);
   }
   .project-side {
-    position: static;
     order: -1;
   }
-}
-
-.pchat {
-  display: flex;
-  flex-direction: column;
-  height: calc(100dvh - var(--topbar-h) - 120px);
-  min-height: 420px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--surface);
-}
-
-@media (max-width: 980px) {
-  .pchat {
-    height: 460px;
-  }
-}
-
-.pchat-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--line);
-}
-
-.pchat-mark {
-  color: var(--accent);
-}
-
-.pchat-head h2 {
-  margin: 0;
-  color: var(--text);
-  font: 650 14.5px/1.2 var(--font-body);
-}
-
-.pchat-head p {
-  margin: 2px 0 0;
-  color: var(--text-3);
-  font: 450 12.5px/1.2 var(--font-body);
-}
-
-.pchat-thread {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 12px;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 16px;
-}
-
-.pchat-empty p {
-  margin: 0 0 10px;
-  color: var(--text-2);
-  font: 450 14px/1.5 var(--font-body);
-}
-
-.pchat-starters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.pchat-user {
-  align-self: flex-end;
-  max-width: 85%;
-  margin: 0;
-  padding: 8px 12px;
-  border-radius: 16px 16px 4px 16px;
-  background: var(--accent);
-  color: var(--accent-ink);
-  font: 500 14px/1.45 var(--font-body);
-  white-space: pre-wrap;
-}
-
-.pchat-assistant {
-  display: grid;
-  gap: 8px;
-  max-width: 100%;
-}
-
-.pchat-assistant > p {
-  margin: 0;
-  color: var(--text);
-  font: 450 14px/1.55 var(--font-body);
-  white-space: pre-wrap;
-}
-
-.pchat-assistant .action-receipt {
-  font-size: 13px;
-  color: var(--text-2);
-}
-
-.pchat-working {
-  margin: 0;
-  color: var(--text-3);
-  font: 500 13px/1.4 var(--font-body);
-}
-
-.pchat-composer {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  margin: 0 12px 12px;
-  padding: 6px 6px 6px 14px;
-  border: 1px solid var(--line-strong);
-  border-radius: 20px;
-  background: var(--surface);
-}
-
-.pchat-composer:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-
-/* Lifted past globals.css's textarea reset. */
-.pchat .pchat-composer textarea:is(textarea) {
-  flex: 1;
-  min-width: 0;
-  max-height: 120px;
-  padding: 6px 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  resize: none;
-  color: var(--text);
-  font: 450 14px/1.4 var(--font-body);
-  field-sizing: content;
-}
-
-.pchat-send {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  flex: none;
-  border: 0;
-  border-radius: 999px;
-  background: var(--accent);
-  color: var(--accent-ink);
-  cursor: pointer;
-}
-
-.pchat-send:disabled {
-  opacity: 0.35;
-  cursor: default;
 }
 
 /* Starting a project is the Add box (components/add), which is its own
@@ -656,4 +335,253 @@
   color: var(--text-3);
   font-size: 13px;
   margin-right: 2px;
+}
+
+/* Project color: palette swatches only. */
+.project-color-picker {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.project-color-picker legend {
+  padding: 0;
+  margin-bottom: 4px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+.project-color-swatches { display: flex; flex-wrap: wrap; }
+.project-color-swatch {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+.project-color-swatch input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.project-color-swatch span {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+}
+.project-color-swatch input:checked + span {
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--text);
+}
+.project-color-swatch input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 5px;
+}
+.project-color-note { margin: 0; color: var(--text-2); font-size: 13px; }
+
+/* Phone: room under the last project for the mic button (app/styles/shell.css). */
+@media (max-width: 767px) {
+  .projects-page { padding-bottom: 88px; }
+}
+
+/* ── Project page (docs/design/WIREFRAMES.md §3) ───────────────────────── */
+
+.project-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 36px;
+}
+
+.project-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* How much is done, as a small pie in the project's color. */
+.project-pie {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  background: conic-gradient(var(--project-color, var(--accent)) var(--pie, 0%), var(--elev-2) 0);
+  box-shadow: inset 0 0 0 1.5px rgb(from var(--project-color, var(--accent)) r g b / 0.35);
+}
+
+.project-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  /* Two lines at most; the full brief is in How this was planned. */
+  max-height: calc(2 * 28px + 6px);
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+}
+.project-chips li {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.project-planned summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  color: var(--text-2);
+  font: 550 13px/1 var(--font-body);
+  cursor: pointer;
+  list-style: none;
+}
+.project-planned summary::-webkit-details-marker {
+  display: none;
+}
+.project-planned summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--dur-fast, 150ms) var(--ease, ease);
+}
+.project-planned[open] summary::before {
+  transform: rotate(45deg);
+}
+@media (hover: hover) and (pointer: fine) {
+  .project-planned summary:hover {
+    color: var(--text);
+  }
+}
+.project-planned summary:focus-visible {
+  border-radius: 6px;
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.project-planned-card {
+  display: grid;
+  gap: 6px;
+  max-width: 640px;
+  margin-top: 6px;
+}
+.project-planned-card h3 {
+  margin: 0;
+  color: var(--text-3);
+  font: 600 12px/1.3 var(--font-body);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.project-planned-card h3:not(:first-child) {
+  margin-top: 8px;
+}
+.project-planned-card ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text);
+  font: 450 14px/1.45 var(--font-body);
+}
+.project-planned-card li span {
+  color: var(--text-2);
+}
+.project-planned-note {
+  margin: 6px 0 0;
+  color: var(--text-3);
+  font: 450 13px/1.4 var(--font-body);
+}
+
+/* Steps on the left; progress, extras and settings on the right. Phone and
+   tablet: progress first, then the steps, then the rest, Delete last. */
+.project-layout--steps {
+  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-areas:
+    "main pace"
+    "main extras"
+    "main settings"
+    "main .";
+  grid-template-rows: auto auto auto 1fr;
+  gap: 16px 40px;
+}
+.project-layout--steps .project-main {
+  grid-area: main;
+  gap: 20px;
+  max-width: 640px;
+}
+.project-pace-card {
+  grid-area: pace;
+}
+.project-extras {
+  grid-area: extras;
+  min-width: 0;
+}
+.project-settings {
+  display: grid;
+  gap: 16px;
+  grid-area: settings;
+  min-width: 0;
+  padding-top: 4px;
+}
+.project-settings .project-delete {
+  justify-self: start;
+}
+.project-delete-error {
+  margin: 6px 0 0;
+  color: var(--danger-text);
+  font: 500 13px/1.4 var(--font-body);
+}
+@media (max-width: 980px) {
+  .project-layout--steps {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "pace" "main" "extras" "settings";
+    grid-template-rows: none;
+    gap: 24px;
+  }
+  .project-layout--steps .project-main {
+    max-width: none;
+  }
+}
+
+.project-steps {
+  display: grid;
+  gap: 2px;
+}
+.project-page .project-group-header {
+  min-height: 32px;
+  padding: 0;
+  color: var(--text-3);
+  font: 600 12px/1.3 var(--font-body);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.project-page .project-group-header .ui-group-header-toggle {
+  min-height: 32px;
+}
+
+.project-page .project-add {
+  justify-self: start;
+  margin-left: -8px;
+}
+
+/* Phone: room under Delete for the mic button (app/styles/shell.css). */
+@media (max-width: 767px) {
+  .project-page { padding-bottom: 88px; }
+}
+
+/* Steps beside a side column need more room than one reading column. */
+.content-inner:has(.project-layout) {
+  max-width: 1000px;
+}
+.project-page .project-group-header .ui-group-header-toggle {
+  text-transform: inherit;
+  letter-spacing: inherit;
 }

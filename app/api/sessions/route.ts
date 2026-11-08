@@ -5,13 +5,21 @@ import {
   getChatSession,
   addChatSessionMessage,
   attachChatMessageRefs,
+  dropLastExchange,
   replaceLastAssistantMessage,
   renameChatSession,
   deleteChatSession,
   linkChatSession,
   styleChatSession,
+  findScopedChatSession,
+  getOrCreateScopedChatSession,
 } from "@/lib/store";
+import { parseScope } from "@/lib/chat/scope";
+import { summarizeIfDue } from "@/lib/chat/server";
 import { withUser } from "@/lib/request-context";
+import { trackEvent } from "@/lib/analytics";
+import { callClaude, messageText } from "@/lib/ai/call";
+import { cleanTitle, fallbackTitle } from "@/lib/chat-title";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const uuidOrUndefined = (v: unknown): string | undefined => (typeof v === "string" && UUID.test(v) ? v : undefined);
@@ -21,6 +29,14 @@ export const dynamic = "force-dynamic";
 
 export const GET = withUser(async (req: Request) => {
   const { searchParams } = new URL(req.url);
+  // The continuing thread for a task or project, or the general chat to pick
+  // back up (null: none yet; the first message starts it with "open").
+  const scopeType = searchParams.get("scope");
+  if (scopeType) {
+    const scope = parseScope({ type: scopeType, taskId: searchParams.get("taskId"), projectId: searchParams.get("projectId") });
+    if (!scope) return NextResponse.json({ ok: false, error: "Bad scope" }, { status: 400 });
+    return NextResponse.json({ ok: true, session: await findScopedChatSession(scope) });
+  }
   const sessionId = searchParams.get("sessionId");
   if (sessionId) {
     const session = await getChatSession(sessionId);
@@ -47,11 +63,24 @@ export const POST = withUser(async (req: Request) => {
       planId?: string | null;
       color?: string | null;
       pinned?: boolean;
+      /** open: { type, taskId?, projectId? } (lib/chat/scope.ts). */
+      scope?: unknown;
+      /** autotitle: the chat's first request, and the project it made (wins). */
+      text?: string;
+      projectTitle?: string;
     };
     const { action } = body;
 
     if (action === "create") {
       const session = await createChatSession(body.title);
+      trackEvent("chat_started", { chat_id: session?.id, kind: "home" });
+      return NextResponse.json({ ok: true, session });
+    }
+
+    if (action === "open") {
+      const scope = parseScope(body.scope);
+      if (!scope) return NextResponse.json({ ok: false, error: "Bad scope" }, { status: 400 });
+      const session = await getOrCreateScopedChatSession(scope, typeof body.title === "string" ? body.title.slice(0, 80) : undefined);
       return NextResponse.json({ ok: true, session });
     }
 
@@ -65,6 +94,8 @@ export const POST = withUser(async (req: Request) => {
         changeSetId: uuidOrUndefined(body.changeSetId),
       });
       if (!msg) return NextResponse.json({ ok: false, error: "Session not found" }, { status: 404 });
+      // The running summary scoped chats read back (best effort, after the save).
+      if (role === "assistant") await summarizeIfDue(sessionId).catch(() => false);
       return NextResponse.json({ ok: true, message: msg });
     }
 
@@ -97,6 +128,28 @@ export const POST = withUser(async (req: Request) => {
       }
       await renameChatSession(sessionId, title);
       return NextResponse.json({ ok: true });
+    }
+
+    // Master fix Phase 4: Retry / Edit drop the last exchange before resending.
+    if (action === "drop_last") {
+      const { sessionId, content } = body;
+      if (!sessionId || !content?.trim()) {
+        return NextResponse.json({ ok: false, error: "Missing sessionId or content" }, { status: 400 });
+      }
+      const dropped = await dropLastExchange(sessionId, content);
+      return NextResponse.json({ ok: true, dropped });
+    }
+
+    // Master fix Phase 4: the project's name, else a short topic from the request.
+    if (action === "autotitle") {
+      const { sessionId } = body;
+      const text = body.text?.trim() ?? "";
+      if (!sessionId || (!text && !body.projectTitle?.trim())) {
+        return NextResponse.json({ ok: false, error: "Missing sessionId or text" }, { status: 400 });
+      }
+      const title = cleanTitle(body.projectTitle ?? "") || (await topicTitle(text));
+      await renameChatSession(sessionId, title);
+      return NextResponse.json({ ok: true, title });
     }
 
     if (action === "link") {
@@ -133,3 +186,15 @@ export const POST = withUser(async (req: Request) => {
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 });
+
+const TITLE_SYSTEM = `Name this chat for a student's sidebar. Reply with only the title: 3 to 6 words, plain text, no quotes or end punctuation. Say what the chat is about (the subject, test or goal), e.g. "SAT math prep", "Chemistry lab report", "Training like Mike Tyson".`;
+
+/** A FAST-model topic title; the request's own first words when that fails. */
+async function topicTitle(text: string): Promise<string> {
+  const result = await callClaude("chatTitle", {
+    system: TITLE_SYSTEM,
+    messages: [{ role: "user", content: text.slice(0, 600) }],
+  }).catch(() => null);
+  const title = result?.ok ? cleanTitle(messageText(result.message)) : "";
+  return title || fallbackTitle(text);
+}

@@ -8,7 +8,9 @@ import "server-only";
 import { getAllTasks, getCapacity, getUserTimezone } from "@/lib/store";
 import {
   DEFAULT_CAPACITY,
+  DEFAULT_PLACEMENT_RULES,
   type Capacity,
+  type PlacementRules,
   type Placement,
   type ReliefSuggestion,
   capacityOn,
@@ -20,9 +22,23 @@ import {
   suggestRelief,
 } from "@/lib/load";
 import { addDaysYMD, localNow } from "@/lib/time";
+import { getContextSlots } from "@/lib/context/store";
+import { preferredWindows } from "@/lib/context/flow";
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 const HHMM = /^\d{1,2}:\d{2}$/;
+
+/** The rules for this student, with their preferred work times once known
+ *  (the "When do you usually like to work?" answer). Never blocks placement. */
+async function studentRules(): Promise<PlacementRules> {
+  try {
+    const slots = await getContextSlots();
+    const windows = preferredWindows(slots?.global.preferredWorkTimes);
+    return windows ? { ...DEFAULT_PLACEMENT_RULES, preferredWindows: windows } : DEFAULT_PLACEMENT_RULES;
+  } catch {
+    return DEFAULT_PLACEMENT_RULES;
+  }
+}
 
 export async function studentCapacity(): Promise<{ cap: Capacity; known: boolean }> {
   const saved = await getCapacity();
@@ -51,11 +67,11 @@ export async function placeNewTask(input: {
   const time = input.time && HHMM.test(input.time) ? input.time.padStart(5, "0") : null;
   if (date && time) return { date, time };
 
-  const [tasks, { cap }, now] = await Promise.all([getAllTasks(), studentCapacity(), studentNow()]);
+  const [tasks, { cap }, now, rules] = await Promise.all([getAllTasks(), studentCapacity(), studentNow(), studentRules()]);
   const minutes = minutesFromNotes(input.notes) ?? undefined;
 
   if (date) {
-    const placed = placeTask(tasks, { now, cap, minutes, earliest: date, latest: date });
+    const placed = placeTask(tasks, { now, cap, minutes, earliest: date, latest: date, rules });
     const over = dayLoad(tasks, date) + (minutes ?? 45) > capacityOn(date, cap);
     return {
       date,
@@ -68,7 +84,7 @@ export async function placeNewTask(input: {
   // Work for something due on a day is done before that day.
   const latest = deadline && deadline > now.date ? addDaysYMD(deadline, -1) : undefined;
   return (
-    placeTask(tasks, { now, cap, minutes, latest }) ?? { date: addDaysYMD(now.date, 1), time: "16:00" }
+    placeTask(tasks, { now, cap, minutes, latest, rules }) ?? { date: addDaysYMD(now.date, 1), time: "16:00" }
   );
 }
 
@@ -86,7 +102,10 @@ export async function reliefSuggestion(): Promise<ReliefSuggestion | null> {
 
 /** A plan's evenly spaced session dates, moved off heavy days and given real
  *  open times (lib/load.ts spreadSessions). Same length and order as `dates`. */
-export async function spreadPlanDates(dates: string[]): Promise<{ date: string; time: string }[]> {
-  const [tasks, { cap }, now] = await Promise.all([getAllTasks(), studentCapacity(), studentNow()]);
-  return spreadSessions(tasks, dates, { now, cap });
+export async function spreadPlanDates(
+  dates: string[],
+  projectId?: string | null
+): Promise<{ date: string; time: string; note?: string }[]> {
+  const [tasks, { cap }, now, rules] = await Promise.all([getAllTasks(), studentCapacity(), studentNow(), studentRules()]);
+  return spreadSessions(tasks, dates, { now, cap, rules, projectId });
 }

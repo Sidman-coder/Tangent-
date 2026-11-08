@@ -19,6 +19,9 @@ import { perfCount, perfSpan } from "@/lib/perf";
 import { callClaude } from "@/lib/ai/call";
 import { cacheLastMessage, layeredSystem } from "@/lib/ai/cache";
 import type Anthropic from "@anthropic-ai/sdk";
+import { cleanTitle } from "@/lib/quick-add";
+import { taskOp } from "@/lib/pipeline/draft";
+import type { ChangeOp } from "@/lib/pipeline/changeset";
 
 const MAX_TOOL_TURNS = 8;
 
@@ -26,8 +29,20 @@ const GMAIL_KEYWORDS = /\b(email|emails|gmail|inbox|unread|message|messages)\b/i
 const CANVAS_KEYWORDS = /\b(canvas|assignment|assignments|course|due|homework|class|syllabus|professor)\b/i;
 const CALENDAR_KEYWORDS = /\b(calendar|event|events|schedule|meeting|appointment|what do i have|what's on my)\b/i;
 
+/** Master fix B1: the student's own words, without what the server appends
+ *  (answers to Tangent's questions, a project's brief). Those are full of
+ *  "due", "schedule" and "class", which sent ISEF's answered questions into
+ *  the tool loop, and its create_plan saved without a preview. */
+export function ownWords(text: string): string {
+  const cut = ["\n\nMy answers to your questions:", "\n\n(This request is inside the student's project"]
+    .map((marker) => text.indexOf(marker))
+    .filter((i) => i >= 0);
+  return cut.length ? text.slice(0, Math.min(...cut)) : text;
+}
+
 /** Commands that plausibly need real Gmail/Canvas/Calendar data get routed through the tool loop. */
-export function needsAgentTools(text: string): boolean {
+export function needsAgentTools(fullText: string): boolean {
+  const text = ownWords(fullText);
   const gmailMatch = GMAIL_KEYWORDS.exec(text)?.[0];
   const canvasMatch = CANVAS_KEYWORDS.exec(text)?.[0];
   const calendarMatch = CALENDAR_KEYWORDS.exec(text)?.[0];
@@ -289,7 +304,12 @@ type ToolExecResult = {
   pending?: { id: string; kind: string; message: string };
 };
 
-async function executeTool(name: string, input: Record<string, unknown>, requestText: string): Promise<ToolExecResult> {
+/** The told-the-model reply for a drafted write (master fix B1). */
+const DRAFTED = "Drafted for the student's preview card. Nothing is saved until they confirm, so don't say it was added.";
+
+/** `draft`: Pipeline V2 with a preview. add_task, create_plan and move_tasks
+ *  push ChangeSet ops here instead of writing; the caller shows them. */
+async function executeTool(name: string, input: Record<string, unknown>, requestText: string, draft?: ChangeOp[]): Promise<ToolExecResult> {
   const today = getUserToday(await getUserTimezone());
 
   // Gmail / Google Calendar run on the owner's credentials, so only the owner
@@ -325,6 +345,10 @@ async function executeTool(name: string, input: Record<string, unknown>, request
       const matching = await getTasksMatchingFilter(filter);
       if (matching.length === 0) {
         return { data: { ok: true, moved: 0, targetCalendar: targetCalendar.name } };
+      }
+      if (draft) {
+        for (const t of matching.slice(0, 200)) draft.push({ op: "update_task", task_id: t.id, calendarId: targetCalendar.id });
+        return { data: { ok: true, drafted: true, tasks: matching.length, targetCalendar: targetCalendar.name, note: DRAFTED } };
       }
 
       // Moving tasks that already exist on the calendar is a change to existing content,
@@ -395,7 +419,7 @@ async function executeTool(name: string, input: Record<string, unknown>, request
     }
 
     case "add_task": {
-      const title = typeof input.title === "string" ? input.title.trim() : "";
+      const title = typeof input.title === "string" ? cleanTitle(input.title) : "";
       if (!title) return { data: { error: "Missing title" } };
       const notes = typeof input.notes === "string" ? input.notes.trim() || undefined : undefined;
       // Whatever the model left out, the spacing brain fills in (lib/spacing.ts)
@@ -415,6 +439,10 @@ async function executeTool(name: string, input: Record<string, unknown>, request
         : undefined;
       const resources = rawResources && rawResources.length > 0 ? rawResources : undefined;
       const calendarId = await resolveCalendarId(typeof input.calendarId === "string" ? input.calendarId : undefined, title);
+      if (draft) {
+        draft.push(taskOp({ title, date, time, calendarId, notes, startAction, resources }));
+        return { data: { ok: true, drafted: true, title, date, time, note: DRAFTED } };
+      }
       // See the note in voice-handler: task.time is rendered on its own, so
       // the title must not repeat it.
       const task = await addTask({ title, date, time, completed: false, calendarId, notes, startAction, resources });
@@ -431,8 +459,11 @@ async function executeTool(name: string, input: Record<string, unknown>, request
       const taskIds: string[] = [];
       let skippedDuplicates = 0;
       const planKind = inferPlanKind(planTitle);
+      // Drafting: a create_plan op, then its sessions (each plan its own ref).
+      const ref = draft ? `p${draft.filter((o) => o.op === "create_plan").length + 1}` : "";
+      if (draft) draft.push({ op: "create_plan", ref, title: planTitle.slice(0, 200) });
       for (const rt of rawTasks) {
-        const taskTitle = typeof rt.title === "string" ? rt.title.trim() : "";
+        const taskTitle = typeof rt.title === "string" ? cleanTitle(rt.title) : "";
         if (!taskTitle) continue;
         const taskDate = typeof rt.date === "string" ? rt.date : today;
         const taskTime = typeof rt.time === "string" ? rt.time : "09:00";
@@ -445,6 +476,15 @@ async function executeTool(name: string, input: Record<string, unknown>, request
           : undefined;
         const taskResources = rawTaskResources && rawTaskResources.length > 0 ? rawTaskResources : undefined;
         const taskCalendarId = await resolveCalendarId(typeof rt.calendarId === "string" ? rt.calendarId : undefined, taskTitle);
+        if (draft) {
+          draft.push(
+            taskOp(
+              { title: taskTitle, date: taskDate, time: taskTime, kind: planKind, calendarId: taskCalendarId, notes: typeof rt.notes === "string" ? rt.notes : "", startAction: taskStartAction, resources: taskResources },
+              { plan_ref: ref }
+            )
+          );
+          continue;
+        }
         const task = await addTask({
           title: taskTitle,
           date: taskDate,
@@ -463,6 +503,10 @@ async function executeTool(name: string, input: Record<string, unknown>, request
           continue;
         }
         taskIds.push(task.id);
+      }
+      if (draft) {
+        const sessions = draft.filter((o) => o.op === "add_task" && o.plan_ref === ref).length;
+        return { data: { ok: true, drafted: true, title: planTitle, sessions, note: DRAFTED } };
       }
       const plan = await addPlan({ title: planTitle, description: "", taskIds, taskCount: taskIds.length });
       for (const id of taskIds) await updateTask(id, { planId: plan.id });
@@ -566,6 +610,8 @@ export type ToolLoopResult = {
    *  — the loop stops immediately and the caller must surface a confirm/cancel prompt
    *  rather than letting the LLM take further turns on top of an unresolved change. */
   pending?: { id: string; kind: string; message: string };
+  /** Draft mode: the writes the loop proposed, for a preview card (master fix B1). */
+  drafted?: ChangeOp[];
 };
 
 /** Maps a data-read tool name to the friendly source label shown in the UI.
@@ -590,7 +636,7 @@ function sourceLabelForTool(name: string): string | null {
 /** Runs a genuine multi-turn Claude tool-use loop: fetch real data, then act on it. */
 /** `requestText` is the student's own words (without appended chat context),
  *  used to name a plan when the model gives no usable title. */
-export async function runVoiceAgentToolLoop(userText: string, requestText = userText): Promise<ToolLoopResult> {
+export async function runVoiceAgentToolLoop(userText: string, requestText = userText, opts: { draft?: boolean } = {}): Promise<ToolLoopResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("Missing ANTHROPIC_API_KEY");
 
@@ -605,6 +651,7 @@ export async function runVoiceAgentToolLoop(userText: string, requestText = user
   let lastCount: number | undefined;
   let lastActionId: string | undefined;
   const sourcesChecked = new Set<string>();
+  const draft: ChangeOp[] | undefined = opts.draft ? [] : undefined;
 
   // Built once: every turn re-sends the same prefix, and turn N+1 reads turn N's
   // cached prompt (breakpoint on the newest message) instead of paying for it again.
@@ -632,12 +679,12 @@ export async function runVoiceAgentToolLoop(userText: string, requestText = user
 
     const toolResults: { type: "tool_result"; tool_use_id: string; content: string }[] = [];
     for (const block of toolUseBlocks) {
-      console.log(`[voice-agent-tools] Calling tool: ${block.name}`, JSON.stringify(block.input));
+      console.log(`[voice-agent-tools] Calling tool: ${block.name}`);
       const sourceLabel = sourceLabelForTool(block.name);
       if (sourceLabel) sourcesChecked.add(sourceLabel);
       let resultPayload: unknown;
       try {
-        const exec = await perfSpan(`tool ${block.name}`, () => executeTool(block.name, block.input, requestText));
+        const exec = await perfSpan(`tool ${block.name}`, () => executeTool(block.name, block.input, requestText, draft));
         resultPayload = exec.data;
         if (exec.action) lastAction = exec.action;
         if (exec.task) lastTask = exec.task;
@@ -674,5 +721,6 @@ export async function runVoiceAgentToolLoop(userText: string, requestText = user
     count: lastCount,
     actionId: lastActionId,
     sourcesChecked: sourcesChecked.size > 0 ? Array.from(sourcesChecked) : undefined,
+    ...(draft && draft.length > 0 ? { drafted: draft } : {}),
   };
 }

@@ -1,0 +1,35 @@
+/* Grill me: the deck of questions, on Today, in Settings and under a confirmed plan. */
+
+.grill-deck { display: grid; gap: 8px; }
+
+.grill-count {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.grill-note { display: grid; gap: 10px; }
+.grill-note p { margin: 0; color: var(--text); font-size: 14px; line-height: 1.45; }
+
+.grill-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+.grill-help {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.grill-help-title { margin: 0; color: var(--text); font-size: 14px; font-weight: 600; }
+
+/* Settings: the full queue under the Grill me row. */
+.grill-queue-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0 16px 14px;
+  list-style: none;
+}
+.grill-queue-list li { color: var(--text-2); font-size: 13px; line-height: 1.4; }
+.grill-queue-deck { padding: 0 16px 16px; }

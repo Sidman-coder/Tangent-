@@ -9,7 +9,7 @@ const POINTS = [
   { icon: MessageCircleQuestion, title: "It asks before it guesses", body: "Big or vague? A couple of sharp questions first, built from what it already knows about you." },
   { icon: Scale, title: "No day gets buried", body: "It knows how much you can handle and puts new work on lighter days." },
   { icon: CalendarCheck2, title: "Canvas, handled", body: "Assignments and due dates flow in on their own, next to everything else." },
-  { icon: Orbit, title: "Built for the long game", body: "Map the path to a college, a rating or a career, and branch off ideas you can keep." },
+  { icon: Orbit, title: "Built for big goals", body: "Turn big goals into projects with steps, and see what to do next." },
 ];
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {

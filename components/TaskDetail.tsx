@@ -1,29 +1,30 @@
 "use client";
 
-// One task, opened in the middle of the screen — like an event in Google
-// Calendar. Every place a task is clicked (calendar month/week/agenda,
+// One task, in the shared Sheet: a centred card on a laptop, a bottom sheet
+// on a phone. Every place a task is clicked (calendar month/week/agenda,
 // Today, projects) opens this through openTask(); the day panel is only for
 // clicking a date.
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { AnimatePresence } from "motion/react";
-import * as m from "motion/react-m";
-import { Check, MessageSquareText, Trash2, X } from "lucide-react";
+import { Check, MessageSquareText, Trash2 } from "lucide-react";
+import Button from "@/components/ui/Button";
+import IconButton from "@/components/ui/IconButton";
+import Sheet from "@/components/ui/Sheet";
 import ActionReceipt from "@/components/ActionReceipt";
-import TaskChatModal from "@/components/TaskChatModal";
-import { useAppState } from "@/components/AppStateProvider";
+import { openTaskChat } from "@/components/chat/TaskChatSheet";
+import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { splitCourse } from "@/lib/course";
 import { generateQuestions } from "@/lib/questions-client";
-import { formatTime12 } from "@/lib/dates";
-import { categoryLabel, taskColor } from "@/lib/task-colors";
-import type { Task } from "@/lib/types";
+import { categoryLabel, seriesColor, taskSeries } from "@/lib/task-colors";
+import { COMMITMENT_OPTIONS, commitmentOf } from "@/lib/task-kind";
+import { formatTaskDay, formatTaskWhen, taskEndTime } from "@/lib/task-when";
+import type { Task, TaskCommitment } from "@/lib/types";
 import "./task-detail.css";
 
 export const OPEN_TASK_EVENT = "tangent:open-task";
 
-/** Open a task in the centred card. */
+/** Open a task in the task sheet. */
 export function openTask(taskId: string) {
   window.dispatchEvent(new CustomEvent(OPEN_TASK_EVENT, { detail: { taskId } }));
 }
@@ -45,19 +46,15 @@ function noteParts(notes: string): { label: string; text: string }[] | null {
 /** Tasks already given steps this session, so a card never asks twice. */
 const planned = new Set<string>();
 
-function longDate(ymd: string): string {
-  const [y, mo, d] = ymd.split("-").map(Number);
-  return new Date(y, mo - 1, d).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
-}
 
 export default function TaskDetail() {
   const { state, refresh } = useAppState();
+  const timezone = useUserTimezone();
   const [taskId, setTaskId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [moreNotes, setMoreNotes] = useState(false);
   const [removed, setRemoved] = useState<{ actionId: string; title: string } | null>(null);
-  const [chat, setChat] = useState<Task | null>(null);
-  const cardRef = useRef<HTMLDivElement>(null);
+  const [typeChange, setTypeChange] = useState<{ actionId: string } | { note: string } | null>(null);
 
   const task = taskId ? state?.tasks.find((t) => t.id === taskId) ?? null : null;
   const [planning, setPlanning] = useState(false);
@@ -83,6 +80,7 @@ export default function TaskDetail() {
       const id = (e as CustomEvent<{ taskId: string }>).detail?.taskId;
       if (!id) return;
       setRemoved(null);
+      setTypeChange(null);
       setMoreNotes(false);
       setTaskId(id);
     };
@@ -95,19 +93,9 @@ export default function TaskDetail() {
     setRemoved(null);
   }, []);
 
-  useEffect(() => {
-    if (!taskId) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !chat) close();
-    };
-    window.addEventListener("keydown", onKey);
-    window.setTimeout(() => cardRef.current?.focus(), 30);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [taskId, chat, close]);
-
   const post = async (body: unknown) => {
     const res = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    return (await res.json().catch(() => ({}))) as { ok?: boolean; actionId?: string };
+    return (await res.json().catch(() => ({}))) as { ok?: boolean; saved?: boolean; actionId?: string };
   };
 
   const toggle = async () => {
@@ -116,6 +104,16 @@ export default function TaskDetail() {
     await post({ action: "update_task", id: task.id, completed: !task.completed });
     await refresh();
     setBusy(false);
+  };
+
+  const changeType = async (commitment: TaskCommitment) => {
+    if (!task) return;
+    setBusy(true);
+    const data = await post({ action: "set_commitment", id: task.id, commitment });
+    setBusy(false);
+    if (data.saved && data.actionId) setTypeChange({ actionId: data.actionId });
+    else setTypeChange({ note: data.ok ? "This can't be saved yet." : "Couldn't change the type. Try again." });
+    void refresh();
   };
 
   const remove = async () => {
@@ -128,160 +126,170 @@ export default function TaskDetail() {
     void refresh();
   };
 
-  if (typeof document === "undefined") return null;
   const open = Boolean(taskId && (task || removed));
   const { title, course } = task ? splitCourse(task) : { title: removed?.title ?? "", course: null };
   const due = task ? task.source === "canvas" || task.time === "23:59" : false;
-  const color = task ? taskColor(task) : "var(--accent)";
+  const color = task ? seriesColor(taskSeries(task, state?.plans ?? [])) : "var(--accent)";
 
-  return createPortal(
-    <>
-      <AnimatePresence>
-        {open && (
-          <m.div
-            key="scrim"
-            className="td-scrim"
-            onClick={close}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1, transition: { duration: 0.18 } }}
-            exit={{ opacity: 0, transition: { duration: 0.14 } }}
+  return (
+    <Sheet
+      open={open}
+      onClose={close}
+      titleId="td-title"
+      variant="modal"
+      className="td-sheet"
+      footer={
+        task ? (
+          <Button
+            variant={task.completed ? "secondary" : "primary"}
+            icon={<Check size={16} strokeWidth={2.4} aria-hidden="true" />}
+            onClick={() => void toggle()}
+            disabled={busy}
           >
-            <m.div
-              ref={cardRef}
-              className="td-card"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="td-title"
-              tabIndex={-1}
-              onClick={(e) => e.stopPropagation()}
-              initial={{ opacity: 0, scale: 0.96, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0, transition: { type: "spring", visualDuration: 0.28, bounce: 0 } }}
-              exit={{ opacity: 0, scale: 0.97, transition: { duration: 0.12 } }}
-            >
-              <div className="td-toolbar">
-                {task && (
-                  <>
-                    <button type="button" className="td-icon lg lg-interactive" onClick={() => {
-                        // One window at a time: the card steps aside for the chat.
-                        setChat(task);
-                        setTaskId(null);
-                      }} aria-label="Get help with this" title="Help">
-                      <MessageSquareText size={17} aria-hidden="true" />
-                    </button>
-                    <button type="button" className="td-icon lg lg-interactive" onClick={() => void remove()} disabled={busy} aria-label="Remove task" title="Remove">
-                      <Trash2 size={17} aria-hidden="true" />
-                    </button>
-                  </>
-                )}
-                <button type="button" className="td-icon lg lg-interactive" onClick={close} aria-label="Close" title="Close">
-                  <X size={18} aria-hidden="true" />
-                </button>
+            {task.completed ? "Done — undo" : "Mark done"}
+          </Button>
+        ) : undefined
+      }
+    >
+      {task && (
+        <div className="td-toolbar">
+          <IconButton
+            label="Ask about this"
+            icon={<MessageSquareText strokeWidth={1.75} aria-hidden="true" />}
+            onClick={() => {
+              // One window at a time: the sheet steps aside for the chat.
+              setTaskId(null);
+              openTaskChat(task.id);
+            }}
+          />
+          <IconButton
+            label="Remove task"
+            icon={<Trash2 strokeWidth={1.75} aria-hidden="true" />}
+            onClick={() => void remove()}
+            disabled={busy}
+          />
+        </div>
+      )}
+      {removed && !task ? (
+        <div className="td-body">
+          <h2 id="td-title" className="sr-only">Task removed</h2>
+          <ActionReceipt
+            actionId={removed.actionId}
+            label={`Removed “${splitCourse({ title: removed.title, source: undefined }).title}”`}
+            onUndone={() => {
+              setRemoved(null);
+              void refresh();
+            }}
+          />
+        </div>
+      ) : (
+        task && (
+          <div className="td-body">
+            <div className="td-head">
+              <span className="td-swatch" style={{ background: color }} aria-hidden="true" />
+              <div>
+                <h2 id="td-title" className={task.completed ? "is-done" : ""}>
+                  {title}
+                </h2>
+                <p className="td-when">
+                  {due
+                    ? `Due ${formatTaskDay(task.date, new Date(), timezone)}`
+                    : formatTaskWhen({ date: task.date, time: task.time, endTime: taskEndTime(task) }, new Date(), timezone)}
+                </p>
               </div>
+            </div>
 
-              {removed && !task ? (
-                <div className="td-body">
-                  <ActionReceipt
-                    actionId={removed.actionId}
-                    label={`Removed “${splitCourse({ title: removed.title, source: undefined }).title}”`}
-                    onUndone={() => {
-                      setRemoved(null);
-                      void refresh();
-                    }}
-                  />
-                </div>
-              ) : (
-                task && (
-                  <div className="td-body">
-                    <div className="td-head">
-                      <span className="td-swatch" style={{ background: color }} aria-hidden="true" />
-                      <div>
-                        <h2 id="td-title" className={task.completed ? "is-done" : ""}>
-                          {title}
-                        </h2>
-                        <p className="td-when">
-                          {due ? `Due ${longDate(task.date)}` : `${longDate(task.date)}${task.time ? ` · ${formatTime12(task.time)}` : ""}`}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="td-meta">
-                      {course && <span className="td-chip">{course}</span>}
-                      {categoryLabel(task) && <span className="td-chip is-quiet">{categoryLabel(task)}</span>}
-                      {task.recurring?.enabled && <span className="td-chip is-quiet">Repeats</span>}
-                      {plan && (
-                        <Link href={`/projects/${plan.id}`} className="td-chip is-link" onClick={close}>
-                          {plan.title}
-                        </Link>
-                      )}
-                      {task.pathOrigin && (
-                        <Link href={`/tangents/${task.pathOrigin.pathId}`} className="td-chip is-link" onClick={close}>
-                          From {task.pathOrigin.pathTitle}
-                        </Link>
-                      )}
-                    </div>
-
-                    {task.startAction && (
-                      <div className="td-section">
-                        <h3>First step</h3>
-                        <p>{task.startAction}</p>
-                      </div>
-                    )}
-
-                    {planning && needsPlan && (
-                      <p className="td-planning" role="status">
-                        <span className="add-spinner" aria-hidden="true" /> Working out the steps…
-                      </p>
-                    )}
-
-                    {task.notes && noteParts(task.notes)?.map((part) => (
-                      <div key={part.label} className="td-section">
-                        <h3>{part.label}</h3>
-                        <p>{part.text}</p>
-                      </div>
-                    ))}
-
-                    {task.notes && !noteParts(task.notes) && (
-                      <div className="td-section">
-                        <h3>Notes</h3>
-                        <p className={`td-notes${moreNotes ? " is-open" : ""}`}>{task.notes}</p>
-                        {task.notes.length > 180 && (
-                          <button type="button" className="td-more" onClick={() => setMoreNotes((v) => !v)}>
-                            {moreNotes ? "Show less" : "Show more"}
-                          </button>
-                        )}
-                      </div>
-                    )}
-
-                    {task.resources && task.resources.length > 0 && (
-                      <div className="td-section">
-                        <h3>Links</h3>
-                        <ul className="td-links">
-                          {task.resources.map((r, i) => (
-                            <li key={`${r.url}-${i}`}>
-                              <a href={r.url} target="_blank" rel="noreferrer">
-                                {r.label}
-                              </a>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    <div className="td-actions">
-                      <button type="button" className={`td-primary lg lg-tint lg-interactive${task.completed ? " is-done" : ""}`} onClick={() => void toggle()} disabled={busy}>
-                        <Check size={15} strokeWidth={2.6} aria-hidden="true" />
-                        {task.completed ? "Done — undo" : "Mark done"}
-                      </button>
-                    </div>
-                  </div>
-                )
+            <div className="td-meta">
+              {course && <span className="td-chip">{course}</span>}
+              {categoryLabel(task) && <span className="td-chip is-quiet">{categoryLabel(task)}</span>}
+              {task.recurring?.enabled && <span className="td-chip is-quiet">Repeats</span>}
+              {plan && (
+                <Link href={`/projects/${plan.id}`} className="td-chip is-link" onClick={close}>
+                  {plan.title}
+                </Link>
               )}
-            </m.div>
-          </m.div>
-        )}
-      </AnimatePresence>
-      {chat && <TaskChatModal task={chat} onClose={() => setChat(null)} />}
-    </>,
-    document.body
+              {task.pathOrigin && (
+                <Link href={`/tangents/${task.pathOrigin.pathId}`} className="td-chip is-link" onClick={close}>
+                  From {task.pathOrigin.pathTitle}
+                </Link>
+              )}
+            </div>
+
+            <fieldset className="td-section td-type" disabled={busy}>
+              <legend>Type</legend>
+              <div className="td-type-options">
+                {COMMITMENT_OPTIONS.map((option) => (
+                  <label key={option.value} className="td-type-option">
+                    <input
+                      type="radio"
+                      name="td-type"
+                      checked={commitmentOf(task) === option.value}
+                      onChange={() => void changeType(option.value)}
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                ))}
+              </div>
+              {typeChange && "actionId" in typeChange && (
+                <ActionReceipt
+                  key={typeChange.actionId}
+                  actionId={typeChange.actionId}
+                  label="Type changed"
+                  onUndone={() => void refresh()}
+                />
+              )}
+              {typeChange && "note" in typeChange && <p role="status">{typeChange.note}</p>}
+            </fieldset>
+
+            {task.startAction && (
+              <div className="td-section">
+                <h3>First step</h3>
+                <p>{task.startAction}</p>
+              </div>
+            )}
+
+            {planning && needsPlan && (
+              <p className="td-planning" role="status">
+                <span className="add-spinner" aria-hidden="true" /> Working out the steps…
+              </p>
+            )}
+
+            {task.notes && noteParts(task.notes)?.map((part) => (
+              <div key={part.label} className="td-section">
+                <h3>{part.label}</h3>
+                <p>{part.text}</p>
+              </div>
+            ))}
+
+            {task.notes && !noteParts(task.notes) && (
+              <div className="td-section">
+                <h3>Notes</h3>
+                <p className={`td-notes${moreNotes ? " is-open" : ""}`}>{task.notes}</p>
+                {task.notes.length > 180 && (
+                  <button type="button" className="td-more" onClick={() => setMoreNotes((v) => !v)}>
+                    {moreNotes ? "Show less" : "Show more"}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {task.resources && task.resources.length > 0 && (
+              <div className="td-section">
+                <h3>Links</h3>
+                <ul className="td-links">
+                  {task.resources.map((r, i) => (
+                    <li key={`${r.url}-${i}`}>
+                      <a href={r.url} target="_blank" rel="noreferrer">
+                        {r.label}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )
+      )}
+    </Sheet>
   );
 }

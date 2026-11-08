@@ -193,6 +193,7 @@ export default function PathStepScheduler({ node, schedule, autoOpen, onChanged 
               }}
             >
               <input
+                name="step-date"
                 type="date"
                 aria-label="Day"
                 value={customDate}
@@ -200,6 +201,7 @@ export default function PathStepScheduler({ node, schedule, autoOpen, onChanged 
                 required
               />
               <input
+                name="step-time"
                 type="time"
                 aria-label="Time"
                 value={customTime}

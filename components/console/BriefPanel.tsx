@@ -191,6 +191,7 @@ export default function BriefPanel({ onSaved }: Props) {
           <span>Find sources</span>
           <div className="console-brief-find-row">
             <input
+              name="source-search"
               className="console-brief-text-input"
               value={findQuery}
               onChange={(e) => setFindQuery(e.target.value)}
@@ -238,6 +239,7 @@ export default function BriefPanel({ onSaved }: Props) {
           <label className="console-brief-field">
             <span>Label</span>
             <input
+              name="source-label"
               className="console-brief-text-input"
               value={newSourceLabel}
               onChange={(e) => setNewSourceLabel(e.target.value)}
@@ -247,6 +249,7 @@ export default function BriefPanel({ onSaved }: Props) {
           <label className="console-brief-field">
             <span>Type</span>
             <select
+              name="source-type"
               className="console-brief-text-input"
               value={newSourceType}
               onChange={(e) => setNewSourceType(e.target.value as BriefSource["type"])}
@@ -260,6 +263,7 @@ export default function BriefPanel({ onSaved }: Props) {
             <label className="console-brief-field">
               <span>URL</span>
               <input
+                name="source-url"
                 className="console-brief-text-input"
                 value={newSourceUrl}
                 onChange={(e) => setNewSourceUrl(e.target.value)}
@@ -306,8 +310,9 @@ export default function BriefPanel({ onSaved }: Props) {
       </div>
 
       <div className="console-brief-config-row">
-        <span className="console-brief-config-label">Delivery time</span>
+        <label className="console-brief-config-label" htmlFor="brief-time">Delivery time</label>
         <input
+          id="brief-time" name="brief-time"
           type="time"
           className="console-brief-time-input"
           value={briefTime}

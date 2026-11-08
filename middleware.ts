@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { isEmailAllowed } from "@/lib/auth/access";
+import { safeNext } from "@/lib/auth/safe-next";
 
 // Runs on every app route (see matcher). Refreshes the Supabase session cookie,
 // then gates access:
@@ -10,6 +11,10 @@ import { isEmailAllowed } from "@/lib/auth/access";
 //   * not invited  — signed out server-side and sent to /invite-only
 
 const PUBLIC_PATHS = ["/signin", "/invite-only", "/auth/", "/api/cron/"];
+
+// Routes that finish sign-in or run on a schedule handle the session
+// themselves, so they skip the getUser() round-trip to Supabase Auth.
+const NO_SESSION_CHECK = ["/auth/", "/api/cron/"];
 
 function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => (p.endsWith("/") ? pathname.startsWith(p) : pathname === p));
@@ -23,6 +28,8 @@ function redirectWithCookies(url: URL, from: NextResponse): NextResponse {
 }
 
 export async function middleware(request: NextRequest) {
+  if (NO_SESSION_CHECK.some((p) => request.nextUrl.pathname.startsWith(p))) return NextResponse.next({ request });
+
   // Local design previews (app/dev/*, sample data, no account). The pages
   // themselves 404 outside development too.
   if (process.env.NODE_ENV === "development" && request.nextUrl.pathname.startsWith("/dev/")) {
@@ -71,7 +78,7 @@ export async function middleware(request: NextRequest) {
 
   if (isPublic(pathname)) {
     if (user && pathname === "/signin") {
-      return redirectWithCookies(new URL("/", request.url), response);
+      return redirectWithCookies(new URL(safeNext(request.nextUrl.searchParams.get("next")), request.url), response);
     }
     return response;
   }

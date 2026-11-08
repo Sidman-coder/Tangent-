@@ -5,7 +5,7 @@
 // onTranscript so it lands in the editable composer — nothing is submitted.
 
 import { useEffect } from "react";
-import { Mic, Square } from "lucide-react";
+import { AudioLines, Mic } from "lucide-react";
 import { useVoiceCapture, type VoiceCaptureStatus } from "@/hooks/useVoiceCapture";
 
 type Props = {
@@ -30,17 +30,17 @@ export default function VoiceRecordButton({ onTranscript, onError, onStatusChang
       type="button"
       className={`${className ?? "voice-record-btn"} is-${status}`}
       aria-label={label}
-      title={label}
+      {...(className?.includes("ui-icon-button") ? { "data-tooltip": label } : { title: label })}
       aria-pressed={status === "recording"}
       disabled={disabled || status === "transcribing"}
       onClick={() => (status === "recording" ? stopRecording() : void startRecording())}
     >
       {status === "recording" ? (
-        <Square size={13} strokeWidth={0} fill="currentColor" aria-hidden="true" />
+        <AudioLines size={18} strokeWidth={1.75} aria-hidden="true" />
       ) : status === "transcribing" ? (
         <span className="voice-pill-spinner" aria-hidden="true" />
       ) : (
-        <Mic size={17} strokeWidth={1.8} aria-hidden="true" />
+        <Mic size={18} strokeWidth={1.75} aria-hidden="true" />
       )}
     </button>
   );

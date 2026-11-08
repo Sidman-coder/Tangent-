@@ -22,7 +22,7 @@ type UseVoiceCaptureOptions = {
   /** Stream to Deepgram while recording (needs /api/voice-token). */
   live?: boolean;
   /** Running transcript while recording, live mode only. */
-  onPartial?: (text: string) => void;
+  onPartial?: (text: string, interim: string) => void;
   /** Keep the mic open between recordings (released after KEEP_STREAM_MS
    *  unused, or on unmount). Each fresh getUserMedia can re-prompt for
    *  permission (Safari does), so a screen made for repeated captures holds it. */
@@ -229,7 +229,7 @@ export function useVoiceCapture(options: UseVoiceCaptureOptions = {}) {
         } else {
           interimRef.current = text;
         }
-        cb.current.onPartial?.([...finalsRef.current, interimRef.current].join(" ").trim());
+        cb.current.onPartial?.([...finalsRef.current, interimRef.current].join(" ").trim(), interimRef.current);
       } catch {
         // Non-JSON or metadata frames carry no words.
       }

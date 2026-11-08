@@ -15,7 +15,7 @@ const t = (id: string, title: string, day: number, time: string, extra: Record<s
 
 export const SAMPLE_STATE = {
   user: { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, displayName: "Juann", onboardedAt: "2026-10-01", preferences: {} },
-  plans: [{ id: "p1", title: "Robotics", description: "Intake arm for regionals", taskIds: [], color: "#2f9e6e", createdAt: "", taskCount: 3 }],
+  plans: [{ id: "p1", title: "Robotics", description: "Intake arm for regionals\nBrief — Deadline: Nov 30 · Hours per week: 4\nAssumed — 45 min sessions · After school on weekdays", taskIds: [], color: "green", createdAt: "", taskCount: 6 }],
   tasks: [
     t("1", "Physics lab writeup", 1, "23:59", { source: "canvas", kind: "school" }),
     t("2", "Study for APUSH quiz", 0, "17:00", { kind: "personal", startAction: "Open chapter 7 and skim the headings" }),
@@ -27,6 +27,9 @@ export const SAMPLE_STATE = {
     t("8", "Chem test review", 4, "19:00", { kind: "personal", calendarId: "cal_school" }),
     t("9", "Robotics: order servo motors", 1, "15:00", { kind: "academic-ec", planId: "p1" }),
     t("10", "Dentist", 8, "10:00", { kind: "personal" }),
+    t("11", "Robotics: sketch the intake arm", -2, "16:00", { kind: "academic-ec", planId: "p1", completed: true }),
+    t("12", "Test the servo travel", 9, "16:30", { kind: "academic-ec", planId: "p1" }),
+    t("13", "Practice the regionals run", 18, "16:00", { kind: "academic-ec", planId: "p1" }),
   ],
   calendars: [],
   events: [],

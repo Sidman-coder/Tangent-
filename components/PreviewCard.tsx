@@ -8,10 +8,16 @@
 //
 // Keys while the card has focus: Enter confirms, Esc discards.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { commitmentLabel } from "@/lib/task-kind";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeSet } from "@/lib/pipeline/changeset";
-import type { PreviewPayload } from "@/lib/pipeline/draft";
-import { useAppState } from "@/components/AppStateProvider";
+import type { DraftEdit, PreviewPayload } from "@/lib/pipeline/draft";
+import { receiptView } from "@/lib/pipeline/receipt";
+import PlanCalendarPreview from "@/components/preview/PlanCalendarPreview";
+import { getUserToday } from "@/lib/time";
+import HelpPlanBetter from "@/components/grill/HelpPlanBetter";
+import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 
 type Phase = "draft" | "confirmed" | "discarded" | "undone";
 
@@ -21,7 +27,7 @@ type Props = {
   /** The calendar changed (confirm or undo): reload app state. */
   onChanged?: () => void;
   /** Confirmed: the undo entry's id, so the chat can keep Undo after a reload. */
-  onConfirmed?: (actionId: string) => void;
+  onConfirmed?: (actionId: string, info?: { planId: string | null }) => void;
   /** Focus the card when it appears so Enter/Esc work straight away. */
   autoFocus?: boolean;
   className?: string;
@@ -30,6 +36,9 @@ type Props = {
   /** Shows a "Just talking, don't add" chip: discards the draft (reason
    *  just_chatting), then the caller answers conversationally. */
   onJustChatting?: () => void;
+  /** What the student said and how many questions they already answered, so
+   *  "Help Tangent plan better" doesn't ask them again. */
+  grill?: { said: string; asked: number };
 };
 
 async function post(url: string, body?: unknown, method = "POST"): Promise<{ status: number; data: Record<string, unknown> }> {
@@ -45,26 +54,35 @@ async function post(url: string, body?: unknown, method = "POST"): Promise<{ sta
 const phaseOf = (status: unknown): Phase | null =>
   status === "confirmed" || status === "discarded" || status === "undone" || status === "draft" ? status : null;
 
-export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed, autoFocus = false, className, onSettled, onJustChatting }: Props) {
+export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed, autoFocus = false, className, onSettled, onJustChatting, grill }: Props) {
   const { state } = useAppState();
+  const timezone = useUserTimezone();
   const [cs, setCs] = useState(changeSet);
   const [view, setView] = useState(preview);
   const [phase, setPhase] = useState<Phase>(phaseOf(changeSet.status) ?? "draft");
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ created: number; skipped: string[] } | null>(null);
+  const [result, setResult] = useState<{ created: number; skipped: string[]; planId: string | null } | null>(null);
+  /** Master fix Phase 4: "See all N sessions", grouped by week. */
+  const [allOpen, setAllOpen] = useState(false);
   const [chatting, setChatting] = useState(false);
   const [expired, setExpired] = useState(false);
+  const hasCalendar = useMemo(() => cs.ops.some((op) => op.op === "add_task" || op.op === "move_task"), [cs.ops]);
   const cardRef = useRef<HTMLDivElement>(null);
   const shownRef = useRef(false);
   const base = `/api/changesets/${encodeURIComponent(cs.id)}`;
   const settledRef = useRef(onSettled);
   settledRef.current = onSettled;
 
+  // A confirmed plan stays put until its "Help Tangent plan better" is through.
+  const [grillDone, setGrillDone] = useState(false);
+  const grillPlan = result && result.created !== 0 ? result.planId ?? cs.target_plan_id ?? null : null;
+  const grillWaiting = phase === "confirmed" && Boolean(grillPlan) && !grillDone;
+
   useEffect(() => {
-    if (phase !== "draft") settledRef.current?.(phase);
-  }, [phase]);
+    if (phase !== "draft" && !grillWaiting) settledRef.current?.(phase);
+  }, [phase, grillWaiting]);
 
   // preview_shown, once per card.
   useEffect(() => {
@@ -104,11 +122,12 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
       if (!data.ok) return settle(status, data);
       const skipped = (data.skipped_duplicates as { titles?: string[] } | undefined)?.titles ?? [];
       const created = typeof data.createdTaskCount === "number" ? data.createdTaskCount : -1;
-      setResult({ created, skipped });
+      const planId = typeof data.planId === "string" ? data.planId : null;
+      setResult({ created, skipped, planId });
       setPhase("confirmed");
       setEditing(false);
       onChanged?.();
-      if (typeof data.actionId === "string") onConfirmed?.(data.actionId);
+      if (typeof data.actionId === "string") onConfirmed?.(data.actionId, { planId });
     });
 
   const discard = () =>
@@ -137,7 +156,7 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
       onChanged?.();
     });
 
-  const edit = (body: { type: "remove"; index: number } | { type: "date"; index: number; date: string } | { type: "time"; index: number; time: string }) =>
+  const edit = (body: DraftEdit) =>
     act(async () => {
       const { status, data } = await post(base, body, "PATCH");
       if (!data.ok) return settle(status, data);
@@ -163,12 +182,42 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
 
   if (phase === "confirmed" || phase === "undone") {
     const nothing = result?.created === 0;
+    // Master fix Phase 4: a headline, a few of the changes, the rest by week,
+    // then one quiet row: Undo · Open project · Details.
+    const summary = receiptView(cs, view.lines, result && result.created >= 0 ? result.created : undefined);
+    const planTitle = cs.ops.flatMap((o) => (o.op === "create_plan" ? [o.title] : []))[0];
+    const projectId =
+      result?.planId ?? cs.target_plan_id ?? (planTitle ? state?.plans?.find((p) => p.title === planTitle)?.id : undefined) ?? null;
+    const lineList = (lines: string[]) => (
+      <ul className="preview-card-receipt-lines">
+        {lines.map((line, i) => (
+          <li key={`${i}-${line}`}>{line}</li>
+        ))}
+      </ul>
+    );
     return (
       <div className={`${cls} is-done`} role="status">
-        <div className="action-receipt">
-          <span className="action-receipt-label">
-            {phase === "undone" ? "Removed from your calendar" : nothing ? "Already on your calendar · nothing new added" : "Added to your calendar"}
-          </span>
+        <p className="preview-card-receipt-head">
+          {phase === "undone" ? "Removed from your calendar" : nothing ? "Already on your calendar · nothing new added" : summary.headline}
+        </p>
+        {phase === "confirmed" && !nothing && (
+          <>
+            {allOpen
+              ? summary.weeks.map((w) => (
+                  <div key={w.label} className="preview-card-receipt-week">
+                    <p className="preview-card-receipt-week-label">{w.label}</p>
+                    {lineList(w.lines)}
+                  </div>
+                ))
+              : summary.lines.length > 0 && lineList(summary.lines)}
+            {summary.total > summary.lines.length && (
+              <button type="button" className="preview-card-receipt-more" aria-expanded={allOpen} onClick={() => setAllOpen((v) => !v)}>
+                {allOpen ? "Show less" : `See all ${summary.total} ${planTitle ? "sessions" : "changes"}`}
+              </button>
+            )}
+          </>
+        )}
+        <div className="action-receipt is-quiet">
           {phase === "confirmed" && !nothing ? (
             <button type="button" className="action-receipt-undo" onClick={() => void undo()} disabled={busy}>
               {busy ? "Undoing…" : "Undo"}
@@ -176,11 +225,22 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
           ) : phase === "undone" ? (
             <span className="action-receipt-status">Undone</span>
           ) : null}
+          {phase === "confirmed" && !nothing && projectId && (
+            <Link className="action-receipt-details" href={`/projects/${projectId}`}>
+              Open project
+            </Link>
+          )}
+          <Link className="action-receipt-details" href={`/settings/activity?activity=${encodeURIComponent(`cs:${cs.id}`)}`}>
+            Details
+          </Link>
         </div>
         {phase === "confirmed" && result && result.skipped.length > 0 && !nothing && (
           <p className="preview-card-note">Skipped, already on your calendar: {result.skipped.join(", ")}</p>
         )}
         {error && <p className="preview-card-error" role="alert">{error}</p>}
+        {phase === "confirmed" && grillPlan && !grillDone && (
+          <HelpPlanBetter planId={grillPlan} said={grill?.said ?? cs.summary} asked={grill?.asked ?? 0} onDone={() => setGrillDone(true)} />
+        )}
       </div>
     );
   }
@@ -210,18 +270,24 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
       </p>
       <p className="preview-card-title">{cs.summary}</p>
 
-      <ul className="preview-card-lines">
+      {hasCalendar && !editing && <PlanCalendarPreview ops={cs.ops} tasks={state?.tasks ?? []} plans={state?.plans ?? []} weekStart={state?.user.weekStart ?? 0} today={getUserToday(timezone)} />}
+
+      <ul className="preview-card-lines" hidden={hasCalendar && !editing && cs.ops.every((op) => op.op === "add_task" || op.op === "move_task" || op.op === "create_plan")}>
         {view.lines.map((line, i) => {
           const op = cs.ops[i];
+          // A plan removal shows as its checkbox below, not as a line.
+          if (op?.op === "delete_plan" || (hasCalendar && !editing && (op?.op === "add_task" || op?.op === "move_task" || op?.op === "create_plan"))) return null;
           const movable = op && (op.op === "add_task" || op.op === "move_task");
           return (
             <li key={`${i}-${line}`}>
               <span className="preview-card-line">{line}</span>
+                {op?.op === "add_task" && op.commitment && <span className="preview-card-kind">{commitmentLabel(op.commitment)}</span>}
               {editing && (
                 <span className="preview-card-edit">
                   {movable && (
                     <>
                       <input
+                        name="move-date"
                         type="date"
                         aria-label="Date"
                         defaultValue={op.date}
@@ -229,6 +295,7 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
                         onChange={(e) => e.target.value && void edit({ type: "date", index: i, date: e.target.value })}
                       />
                       <input
+                        name="move-time"
                         type="time"
                         aria-label="Time"
                         defaultValue={op.time ?? ""}
@@ -252,6 +319,21 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
           );
         })}
       </ul>
+
+      {/* Master fix B6: several selected plans read as one group. */}
+      {view.planRemovals && view.planRemovals.length > 1 && <p className="preview-card-muted">Also remove these plans</p>}
+      {view.planRemovals?.map((r) => (
+        <label key={r.planId} className="preview-card-check">
+          <input
+            name="keep-removal"
+            type="checkbox"
+            checked={r.checked}
+            disabled={busy}
+            onChange={(e) => void edit({ type: "plan_removal", plan_id: r.planId, remove: e.target.checked })}
+          />
+          {view.planRemovals!.length > 1 ? <>&ldquo;{r.title}&rdquo;</> : <>Also remove the plan &ldquo;{r.title}&rdquo;</>}
+        </label>
+      ))}
 
       {cs.assumptions.length > 0 && (
         <ul className="preview-card-assumptions">

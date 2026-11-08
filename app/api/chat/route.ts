@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { withUser } from "@/lib/request-context";
-import { calendarReply, lastUserMessage, planReply, type CalendarReplyOptions } from "@/lib/chat-reply";
+import { trackEvent } from "@/lib/analytics";
+import { calendarReply, lastUserMessage, pendingAnswerReply, planReply, type CalendarReplyOptions } from "@/lib/chat-reply";
+import { parsePendingQuestion, PENDING_QUESTION_ID } from "@/lib/pending-question";
 import { TANGENT_PIPELINE_V2 } from "@/lib/pipeline/flags";
 import { handleRequest } from "@/lib/pipeline/intake";
+import { routeAnswerReply } from "@/lib/pipeline/understand";
 import { addTask, getAllPlans, getAllTasks, getUserTimezone, recordAction, setCapacity } from "@/lib/store";
 import { quickCapture, type QuickCapture } from "@/lib/ai/router";
 import { inferCalendarGroup } from "@/lib/calendars";
@@ -10,9 +13,13 @@ import { dayName } from "@/lib/load";
 import { formatTime12 } from "@/lib/dates";
 import { CAPACITY_QUESTION, PROJECT_QUESTION_PREFIX, PROJECT_YES, capacityFromAnswer, clarifyQuestions, shouldConsiderClarifying } from "@/lib/ai/clarify";
 import { buildStudentContext } from "@/lib/ai/student-context";
+import { grillTurn, parseSlotTurn } from "@/lib/context/grill";
+import { matchProject } from "@/lib/project-match";
 import { placeNewTask, reliefSuggestion } from "@/lib/spacing";
 import { addDaysYMD, localNow } from "@/lib/time";
 import { cleanTitle } from "@/lib/quick-add";
+import { projectContext, taskContext } from "@/lib/chat/server";
+import { getChatSession } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,17 +31,10 @@ export const maxDuration = 60;
 /** "calendar" acts on the calendar; "plan" only talks a plan through. */
 type ChatMode = "plan" | "calendar";
 
-/** What the model needs to know about the project a request was made in. */
-async function projectBrief(projectId: string): Promise<string | null> {
-  const plan = (await getAllPlans()).find((p) => p.id === projectId);
-  if (!plan) return null;
-  const steps = (await getAllTasks())
-    .filter((t) => t.planId === projectId)
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(0, 30)
-    .map((t) => `- ${t.completed ? "[done] " : ""}${t.title} (${t.date})`);
-  return `(This request is inside the student's project "${plan.title}".${plan.description ? ` Goal: ${plan.description}.` : ""} Anything you add belongs to this project. Its steps so far:\n${steps.join("\n") || "none yet"})`;
-}
+// The task and project notes live in lib/chat/server.ts (budgeted, with the
+// thread's running summary).
+const projectBrief = (projectId: string, summary?: string | null) => projectContext(projectId, summary);
+const findTaskBrief = (taskId: string, summary?: string | null) => taskContext(taskId, summary);
 
 /** Saves a quick capture: spacing brain for the when, no model. */
 async function saveQuickCapture(quick: QuickCapture): Promise<Record<string, unknown>> {
@@ -51,6 +51,7 @@ async function saveQuickCapture(quick: QuickCapture): Promise<Record<string, unk
     return { ok: true, action: "add_task", message: `Already have "${task.title}" around then.` };
   }
   const record = await recordAction("add_task", `Added "${task.title}"`, { addedTaskIds: [task.id] });
+  trackEvent("capture", { task_id: task.id, source: "quick" });
   const tz = await getUserTimezone();
   const today = localNow(tz).date;
   const day =
@@ -98,10 +99,22 @@ export const POST = withUser(async (req: Request) => {
       capture?: unknown;
       /** Asked from inside a Project: its steps join it. */
       projectId?: unknown;
+      taskId?: unknown;
+      /** The chat thread this message belongs to; its running summary joins the note. */
+      sessionId?: unknown;
       /** "New project" on the Projects page: always builds a plan. */
       newProject?: unknown;
       /** Pipeline V2: "chat" is the "Just talking, don't add" re-ask. */
       route?: unknown;
+      /** A question Tangent is waiting on ("Which one should I delete?"),
+       *  sent back with the next message (lib/pending-question.ts). */
+      pendingQuestion?: unknown;
+      /** Pipeline V2: "voice" when the text was dictated in the browser. */
+      source?: unknown;
+      /** "Grill until enough" (lib/context): one question at a time. AddFlow opts in. */
+      slotFlow?: unknown;
+      /** The slot flow so far, sent back each turn (lib/context/grill.ts SlotTurn). */
+      slotTurn?: unknown;
     };
     const mode: ChatMode = body.mode === "plan" ? "plan" : "calendar";
     const raw = body.messages;
@@ -130,21 +143,54 @@ export const POST = withUser(async (req: Request) => {
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ ok: false, error: "Missing ANTHROPIC_API_KEY on the server." }, { status: 401 });
+      return NextResponse.json({ ok: false, error: "Tangent's AI isn't set up on the server yet, so it can't answer right now." }, { status: 503 });
     }
 
-    console.log("[api/chat] User message:", userText);
-
     let projectId = typeof body.projectId === "string" && body.projectId ? body.projectId : "";
+    const threadSummary =
+      typeof body.sessionId === "string" && body.sessionId
+        ? ((await getChatSession(body.sessionId).catch(() => null))?.summary ?? null)
+        : null;
+    const aboutTask = typeof body.taskId === "string" && body.taskId ? await findTaskBrief(body.taskId, threadSummary) : null;
+    if (aboutTask?.planId && !projectId) projectId = aboutTask.planId;
+
+    // An answer to a pending question (A1), flag on and off: resolved before
+    // any other routing, so it never becomes a plan or hits a fast path. A
+    // tapped button arrives as the card's answer; a typed reply as the text.
+    // A new request instead of an answer drops the question and goes on below.
+    const source = body.source === "voice" ? "voice" : "typed";
+    const pendingQuestion = parsePendingQuestion(body.pendingQuestion, new Date());
+    // Route questions ("What did you mean?", "Which plan?") exist only with
+    // Pipeline V2 on (lib/pipeline/understand.ts); with it off one is dropped.
+    if (pendingQuestion && (pendingQuestion.action === "delete" || TANGENT_PIPELINE_V2)) {
+      const tapped = parseAnswers(body.answers).find((a) => a.id === PENDING_QUESTION_ID);
+      const resolved =
+        pendingQuestion.action === "route"
+          ? await routeAnswerReply(tapped?.answer ?? userText, pendingQuestion, messages, { source, tapped: !!tapped })
+          : await pendingAnswerReply(tapped?.answer ?? userText, pendingQuestion, { preview: !projectId || TANGENT_PIPELINE_V2, source });
+      if (resolved) {
+        if (body.stream !== true) return NextResponse.json(resolved);
+        return new Response(JSON.stringify({ type: "result", ...resolved }) + "\n", {
+          headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" },
+        });
+      }
+    }
 
     // Flag off: the Plan/Calendar switch decides, as before. Flag on there is
     // one box and no mode, except the Projects chat, which still talks a
     // project through in Plan mode.
-    if (mode === "plan" && (!TANGENT_PIPELINE_V2 || projectId)) {
+    if (mode === "plan" && (!TANGENT_PIPELINE_V2 || projectId || aboutTask)) {
       // Asked from inside a project: the talk is about that project.
-      const note = projectId ? (await projectBrief(projectId)) ?? "" : "";
-      const reply = await planReply(messages, { projectNote: note });
-      return NextResponse.json({ message: reply, action: "plan_reply", mode, ok: true });
+      const note = [projectId && !aboutTask ? await projectBrief(projectId, threadSummary) : null, aboutTask?.brief].filter(Boolean).join("\n\n");
+      if (body.stream !== true) {
+        const reply = await planReply(messages, { projectNote: note });
+        return NextResponse.json({ message: reply, action: "plan_reply", mode, ok: true });
+      }
+      // Master fix Phase 4: the reply streams as {type:"reply_text"} lines.
+      return ndjson(async (send) => {
+        const reply = await planReply(messages, { projectNote: note, onText: (text) => send({ type: "reply_text", text }) });
+        return { message: reply, action: "plan_reply", mode, ok: true };
+      });
     }
 
     // Instant capture: a plain to-do is saved straight away — no model in the
@@ -157,13 +203,54 @@ export const POST = withUser(async (req: Request) => {
 
     // Answers to Tangent's questions ride along with the original request, so
     // the pipeline sees one complete ask. A capacity answer is saved for good.
-    const answers = parseAnswers(body.answers);
+    const answers = parseAnswers(body.answers).filter((a) => a.id !== PENDING_QUESTION_ID);
     // "Part of your … project? Yes, add to it": the steps join that project
     // instead of starting a second one beside it.
     const joins = answers.find((a) => a.id.startsWith(PROJECT_QUESTION_PREFIX) && a.answer === PROJECT_YES);
     if (joins && !projectId) projectId = joins.id.slice(PROJECT_QUESTION_PREFIX.length);
     let pipelineText = userText;
-    if (answers.length > 0) {
+    let slotDrafted = false;
+    const slotTurn = parseSlotTurn(body.slotTurn);
+    if (slotTurn?.stopped) trackEvent("grill_stopped", { count: slotTurn.answers.length, source: "slots" });
+    if (
+      body.slotFlow === true &&
+      answers.length === 0 &&
+      body.route !== "chat" &&
+      body.clarify === true &&
+      (slotTurn !== null || body.newProject === true || !!projectId || shouldConsiderClarifying(userText))
+    ) {
+      // A request that may belong to an existing project keeps the older
+      // "Part of your … project?" question (and so the older path).
+      const plans = projectId || body.newProject === true ? [] : await getAllPlans().catch(() => []);
+      const joinsExisting = !projectId && body.newProject !== true && slotTurn === null && matchProject(userText, plans) !== null;
+      if (!joinsExisting) {
+        const title = projectId ? (await getAllPlans().catch(() => [])).find((p) => p.id === projectId)?.title : undefined;
+        const chat = messages.slice(0, -1).filter((m) => m.role === "user").map((m) => m.content).join("\n").slice(-2000);
+        const turn = await grillTurn({ text: userText, chat, projectId: projectId || null, title, turn: slotTurn }).catch(() => ({ kind: "fallback" as const }));
+        if (turn.kind === "ask") {
+          const reply = {
+            ok: true,
+            action: "clarify",
+            message: turn.checkIn ? "Tangent knows enough to make a first plan." : "One quick question so this fits you.",
+            questions: [{ id: `slot:${turn.card.slot}`, question: turn.card.question, options: turn.card.options, ...(turn.card.multi ? { multi: true } : {}), ...(turn.card.assume ? { assume: turn.card.assume } : {}) }],
+            slotFlow: { slot: turn.card.slot, score: turn.score, checkIn: turn.checkIn },
+          };
+          if (body.stream !== true) return NextResponse.json(reply);
+          return new Response(JSON.stringify({ type: "result", ...reply }) + "\n", {
+            headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" },
+          });
+        }
+        if (turn.kind === "draft") {
+          slotDrafted = true;
+          if (slotTurn && slotTurn.answers.length > 0) trackEvent("grill_answered", { count: slotTurn.answers.length, source: "slots" });
+          if (slotTurn && slotTurn.skipped.length > 0) trackEvent("grill_skipped", { count: slotTurn.skipped.length, source: "slots" });
+          if (turn.notes) pipelineText = `${userText}\n\n${turn.notes}`;
+        }
+      }
+    }
+    if (slotDrafted) {
+      // Grilled already: straight to the plan.
+    } else if (answers.length > 0) {
       for (const a of answers) {
         if (a.id !== CAPACITY_QUESTION.id) continue;
         const weekday = capacityFromAnswer(a.answer);
@@ -174,7 +261,12 @@ export const POST = withUser(async (req: Request) => {
       // A new project is always grilled first: it's the biggest ask there is.
       const picture = await buildStudentContext().catch(() => null);
       const questions = picture
-        ? await clarifyQuestions(userText, picture.text, { askCapacity: !picture.capacityKnown, projects: projectId ? [] : picture.projects }).catch(() => [])
+        ? await clarifyQuestions(userText, picture.text, {
+            askCapacity: !picture.capacityKnown,
+            chat: messages.slice(0, -1).filter((m) => m.role === "user").map((m) => m.content).join("\n").slice(-2000),
+            projects: projectId ? [] : picture.projects,
+            newProject: body.newProject === true,
+          }).catch(() => [])
         : [];
       if (questions.length > 0) {
         const reply = { ok: true, action: "clarify", message: "A few quick questions so this fits you.", questions };
@@ -189,11 +281,13 @@ export const POST = withUser(async (req: Request) => {
     // what it's adding to, and its steps join it; a new project always builds
     // a plan, with the student's first words as its goal.
     let project: CalendarReplyOptions["project"];
+    if (aboutTask) pipelineText = `${pipelineText}\n\n${aboutTask.brief}`;
     if (projectId) {
-      const found = await projectBrief(projectId);
-      if (found) {
+      const found = aboutTask ? "" : await projectBrief(projectId, threadSummary);
+      // A task's note already lists its project's other steps.
+      if (found !== null) {
         project = { projectId };
-        pipelineText = `${pipelineText}\n\n${found}`;
+        if (found) pipelineText = `${pipelineText}\n\n${found}`;
       }
     } else if (body.newProject === true) {
       project = { forcePlan: true, projectGoal: userText.slice(0, 300) };
@@ -201,45 +295,64 @@ export const POST = withUser(async (req: Request) => {
 
     // Pipeline V2: every message goes through the intake (lib/pipeline/intake.ts),
     // so anything the AI writes is a preview card first; route "chat" is the
-    // "Just talking" re-ask. Project requests skip it: the Projects chat has no
-    // preview card, so they save directly as on main (with Undo).
-    // Flag off: straight to the voice pipeline, as on main.
+    // "Just talking" re-ask. Project requests skip the intake but are drafted
+    // too (A6): a ChangeSet of add_task ops with plan_id, confirmed on its
+    // preview card in Tangent AI.
+    // Flag off: straight to the voice pipeline, as on main; project requests
+    // save directly (with Undo).
     const reply = (onProgress?: Parameters<typeof calendarReply>[2]) =>
       TANGENT_PIPELINE_V2 && !project
         ? handleRequest(messages, {
             onProgress,
             route: body.route === "chat" ? "chat" : undefined,
             pipelineText,
-            answered: answers.length > 0,
+            answered: answers.length > 0 || slotDrafted,
+            source,
+            clarify: body.clarify === true,
           })
-        : calendarReply(messages, pipelineText, onProgress, { project, preview: !project });
+        : calendarReply(messages, pipelineText, onProgress, { project, preview: !project || TANGENT_PIPELINE_V2 });
 
     if (body.stream !== true) return NextResponse.json(await reply());
 
     // Streamed: one JSON object per line. Plan progress ({type:"plan_outline"},
-    // {type:"plan_task"}) as it's generated, then {type:"result", ...} with the
-    // same fields as the non-streamed reply. Tasks are only saved at the end.
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream<Uint8Array>({
-      async start(controller) {
-        const send = (line: unknown) => controller.enqueue(encoder.encode(JSON.stringify(line) + "\n"));
-        try {
-          const result = await reply(send);
-          send({ type: "result", ...result });
-        } catch (e) {
-          const message = e instanceof Error ? e.message : "Unknown error";
-          console.error("[api/chat] Unhandled error:", message);
-          send({ type: "result", ok: false, error: message });
-        }
-        controller.close();
-      },
-    });
-    return new Response(stream, {
-      headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" },
-    });
+    // {type:"plan_task"}) and talked reply text ({type:"reply_text"}) as it's
+    // generated, then {type:"result", ...} with the same fields as the
+    // non-streamed reply. Tasks are only saved at the end.
+    return ndjson((send) => reply(send));
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     console.error("[api/chat] Unhandled error:", message);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 });
+
+/** One JSON object per line: whatever `run` sends, then {type:"result", ...}. */
+function ndjson(run: (send: (line: object) => void) => Promise<Record<string, unknown>>): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let open = true;
+      const send = (line: unknown) => {
+        if (!open) return;
+        try {
+          controller.enqueue(encoder.encode(JSON.stringify(line) + "\n"));
+        } catch {
+          // The student pressed Stop: the reader is gone, the work finishes quietly.
+          open = false;
+        }
+      };
+      try {
+        const result = await run(send);
+        send({ type: "result", ...result });
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Unknown error";
+        console.error("[api/chat] Unhandled error:", message);
+        send({ type: "result", ok: false, error: message });
+      }
+      if (open) controller.close();
+    },
+  });
+  return new Response(stream, {
+    headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" },
+  });
+}

@@ -16,6 +16,7 @@ import PenMark from "@/components/console/PenMark";
 import { useAppState } from "@/components/AppStateProvider";
 import { capacityFromAnswer } from "@/lib/capacity-answer";
 import { useVoiceCapture } from "@/hooks/useVoiceCapture";
+import { IN_A_ROW, SESSION_BUDGET } from "@/lib/grill-queue";
 import "./get-to-know-you.css";
 import "./console/clarify-card.css";
 
@@ -219,11 +220,15 @@ export default function GetToKnowYou() {
       setPicked([]);
       setText("");
       setIndex((i) => i + 1);
-      // Grill mode keeps going: the next question is fetched as this one closes.
-      if (mode === "grill" || step.ai) void askMore([...log.map((l) => l.ask), step.ask]);
+      // Grill mode keeps going: the next question is fetched as this one closes,
+      // until IN_A_ROW asks the student to choose to go on, and SESSION_BUDGET ends it.
+      const run = index + 1 - base.length;
+      if ((mode === "grill" || step.ai) && (run <= 0 || (run % IN_A_ROW !== 0 && run < SESSION_BUDGET))) {
+        void askMore([...log.map((l) => l.ask), step.ask]);
+      }
       window.setTimeout(() => inputRef.current?.focus(), 50);
     },
-    [step, mode, log, askMore]
+    [step, mode, log, askMore, index, base.length]
   );
 
   // Answer out loud: words fill the field as they're spoken, and the answer
@@ -282,11 +287,13 @@ export default function GetToKnowYou() {
                     Thanks. That&apos;s saved. Tangent will use it for every plan, and you can change any of it in Settings › What Tangent knows.
                   </p>
                 </div>
-                <div className="gtk-chips">
-                  <button type="button" className="tg-chip" onClick={() => void askMore(log.map((l) => l.ask))}>
-                    Keep going — ask me more
-                  </button>
-                </div>
+                {index - base.length < SESSION_BUDGET && (
+                  <div className="gtk-chips">
+                    <button type="button" className="tg-chip" onClick={() => void askMore(log.map((l) => l.ask))}>
+                      Keep going — ask me more
+                    </button>
+                  </div>
+                )}
               </m.div>
             ) : !step ? (
               <m.div key="thinking" className="gtk-turn" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
@@ -349,6 +356,7 @@ export default function GetToKnowYou() {
                 }}
               >
                 <input
+                  name="gtk-answer"
                   ref={inputRef}
                   value={text}
                   onChange={(e) => setText(e.target.value)}

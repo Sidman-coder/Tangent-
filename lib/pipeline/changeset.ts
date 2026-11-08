@@ -9,6 +9,7 @@
 
 import { z } from "zod";
 import { formatTime12 } from "../dates";
+import { commitmentLabel } from "../task-kind";
 
 // Same loose shape the store accepts (lib/store.ts isUuid).
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -20,6 +21,7 @@ const Hm = z.string().regex(/^(?:(?:[01]\d|2[0-3]):[0-5]\d)?$/, "must be HH:MM o
 const Title = z.string().trim().min(1).max(200);
 const Notes = z.string().max(2000);
 const Kind = z.enum(["school", "academic-ec", "side-ec", "personal", "commitment"]);
+const Commitment = z.enum(["fixed", "reminder", "flexible"]);
 /** A name for a plan created earlier in the same ChangeSet, e.g. "p1". */
 const Ref = z.string().regex(/^[a-z0-9_-]{1,32}$/i, "must be a short token");
 
@@ -51,6 +53,7 @@ export const AddTaskOp = z
     calendarId: z.string().min(1).max(64).optional(),
     notes: Notes.optional(),
     kind: Kind.optional(),
+    commitment: Commitment.optional(),
     /** The first concrete step, as the plan generator writes it. */
     startAction: z.string().trim().min(1).max(300).optional(),
     resources: z.array(z.strictObject({ label: z.string().trim().min(1).max(200), url: z.url().max(2000) })).max(10).optional(),
@@ -58,6 +61,15 @@ export const AddTaskOp = z
     plan_id: Id.optional(),
     /** A plan created by a create_plan op earlier in this ChangeSet. */
     plan_ref: Ref.optional(),
+    /** A recurring task (master fix B1): `date` is the first one, and the
+     *  store expands the series when the student confirms. */
+    repeat: z
+      .strictObject({
+        frequency: z.enum(["daily", "weekly", "monthly", "yearly"]),
+        daysOfWeek: z.array(z.int().min(0).max(6)).max(7).optional(),
+        endDate: Ymd.optional(),
+      })
+      .optional(),
   })
   .refine((o) => !(o.plan_id && o.plan_ref), "add_task takes plan_id or plan_ref, not both");
 
@@ -71,9 +83,10 @@ export const UpdateTaskOp = z
     calendarId: z.string().min(1).max(64).optional(),
     notes: Notes.optional(),
     kind: Kind.optional(),
+    commitment: Commitment.optional(),
   })
   .refine(
-    (o) => [o.title, o.date, o.time, o.calendarId, o.notes, o.kind].some((v) => v !== undefined),
+    (o) => [o.title, o.date, o.time, o.calendarId, o.notes, o.kind, o.commitment].some((v) => v !== undefined),
     "update_task needs at least one field to change"
   );
 
@@ -88,6 +101,11 @@ export const CompleteTaskOp = z.strictObject({ op: z.literal("complete_task"), t
 
 export const DeleteTaskOp = z.strictObject({ op: z.literal("delete_task"), task_id: Id });
 
+/** Removes a plan (or Project) itself. Its tasks are deleted by their own
+ *  delete_task ops; tasks left out stay on the calendar, unlinked. Undo puts
+ *  the plan back and relinks them. */
+export const DeletePlanOp = z.strictObject({ op: z.literal("delete_plan"), plan_id: Id });
+
 export const OpSchema = z.discriminatedUnion("op", [
   CreatePlanOp,
   UpdatePlanOp,
@@ -96,11 +114,12 @@ export const OpSchema = z.discriminatedUnion("op", [
   MoveTaskOp,
   CompleteTaskOp,
   DeleteTaskOp,
+  DeletePlanOp,
 ]);
 
 export type ChangeOp = z.infer<typeof OpSchema>;
 export type OpName = ChangeOp["op"];
-export const OP_NAMES = ["create_plan", "update_plan", "add_task", "update_task", "move_task", "complete_task", "delete_task"] as const satisfies readonly OpName[];
+export const OP_NAMES = ["create_plan", "update_plan", "add_task", "update_task", "move_task", "complete_task", "delete_task", "delete_plan"] as const satisfies readonly OpName[];
 
 // ─── The ChangeSet ──────────────────────────────────────────────────────────
 
@@ -185,6 +204,20 @@ export type DescribeContext = {
 const DAY_MS = 86_400_000;
 const utcNoon = (ymd: string) => new Date(`${ymd}T12:00:00Z`);
 
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** "every Mon, Wed", "every weekday", "every day", "every month". */
+export function repeatLabel(r: { frequency: "daily" | "weekly" | "monthly" | "yearly"; daysOfWeek?: number[] }): string {
+  if (r.frequency === "daily") return "every day";
+  if (r.frequency === "monthly") return "every month";
+  if (r.frequency === "yearly") return "every year";
+  const days = Array.from(new Set(r.daysOfWeek ?? [])).sort((a, b) => a - b);
+  if (days.length === 0) return "every week";
+  if (days.join() === "1,2,3,4,5") return "every weekday";
+  if (days.length === 7) return "every day";
+  return `every ${days.map((d) => DAY_NAMES[d]).join(", ")}`;
+}
+
 function when(date: string, time: string | undefined, today?: string): string {
   const d = utcNoon(date);
   const weekday = d.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
@@ -224,6 +257,7 @@ export function describeChangeSet(cs: Pick<ChangeSet, "ops">, known: DescribeCon
         const plan = op.plan_ref ? newPlans.get(op.plan_ref) : op.plan_id ? planTitle(op.plan_id) : undefined;
         // Tasks of a plan created in this ChangeSet are obviously in it; say so only for existing plans.
         const into = op.plan_id && plan ? ` to '${plan}'` : "";
+        if (op.repeat) return `Add '${op.title}'${into} · ${repeatLabel(op.repeat)}, from ${when(op.date, op.time, known.today)}`;
         return `Add '${op.title}'${into} · ${when(op.date, op.time, known.today)}`;
       }
       case "update_task": {
@@ -233,6 +267,7 @@ export function describeChangeSet(cs: Pick<ChangeSet, "ops">, known: DescribeCon
         else if (op.time !== undefined) parts.push(op.time ? `time ${formatTime12(op.time)}` : "clear time");
         if (op.calendarId !== undefined) parts.push("change calendar");
         if (op.kind !== undefined) parts.push(`mark as ${op.kind}`);
+        if (op.commitment !== undefined) parts.push(`make it a ${commitmentLabel(op.commitment).toLowerCase()}`);
         if (op.notes !== undefined) parts.push("edit notes");
         return `Change ${task(op.task_id)}: ${parts.join(", ")}`;
       }
@@ -242,6 +277,10 @@ export function describeChangeSet(cs: Pick<ChangeSet, "ops">, known: DescribeCon
         return `Complete ${task(op.task_id)}`;
       case "delete_task":
         return `Delete ${task(op.task_id)}`;
+      case "delete_plan": {
+        const name = planTitle(op.plan_id);
+        return `Remove the plan ${name ? `'${name}'` : ""}`.trimEnd();
+      }
     }
   });
 }

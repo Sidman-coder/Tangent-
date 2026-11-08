@@ -3,6 +3,8 @@
 // a resolve hook adds ".ts" before the modules under test are loaded.
 import * as nodeModule from "node:module";
 import { readFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+import path from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { ChangeOp } from "./changeset";
@@ -10,14 +12,18 @@ import type { ChangeOp } from "./changeset";
 type Resolve = (specifier: string, context: unknown, next: (s: string, c: unknown) => unknown) => unknown;
 (nodeModule as unknown as { registerHooks: (h: { resolve: Resolve }) => void }).registerHooks({
   resolve(specifier, context, next) {
-    if (specifier.startsWith(".") && !/\.[cm]?[jt]s$/.test(specifier)) {
+    // grade.ts reads the router's intents (lib/pipeline/intent.ts), whose
+    // imports use the app's "@/" alias.
+    let s = specifier;
+    if (s.startsWith("@/")) s = pathToFileURL(path.join(path.resolve(import.meta.dirname, "..", ".."), s.slice(2))).href;
+    if ((s.startsWith(".") || s.startsWith("file:")) && !/\.[cm]?[jt]s$/.test(s)) {
       try {
-        return next(`${specifier}.ts`, context);
+        return next(`${s}.ts`, context);
       } catch {
         /* fall through */
       }
     }
-    return next(specifier, context);
+    return next(s, context);
   },
 });
 
@@ -123,6 +129,26 @@ void (import("./grade") as Promise<Mod>).then(({ gradeCase, FixtureFileSchema })
     assert.deepEqual(gradeCase(addToIcf, null), { pass: false, failures: ["no ChangeSet was produced"] });
   });
 
+  test("must_have: the op must appear", () => {
+    const e = { intent: "delete_task" as const, target_plan: null, min_ops: 1, max_ops: 3, must_have: ["delete_task" as const] };
+    assert.equal(gradeCase(e, { intent: "delete_task", target_plan_id: null, ops: [{ op: "delete_task", task_id: TASK }] }).pass, true);
+    assert.deepEqual(gradeCase(e, { intent: "delete_task", target_plan_id: null, ops: [{ op: "complete_task", task_id: TASK }] }).failures, ["must_have: no delete_task op"]);
+  });
+
+  test("delete_from: the deletes touch exactly the picked plans (B6)", () => {
+    const T1 = "22222222-2222-4222-8222-000000000101";
+    const T2 = "22222222-2222-4222-8222-000000000102";
+    const T3 = "22222222-2222-4222-8222-000000000103";
+    const tasks = [{ id: T1, planId: ICF }, { id: T2, planId: SAT }, { id: T3, planId: null }];
+    const e = { intent: "delete_task" as const, target_plan: null, min_ops: 1, max_ops: 5, delete_from: ["ICF Prep", "SAT Prep"] };
+    const del = (...ids: string[]): ChangeOp[] => ids.map((task_id) => ({ op: "delete_task", task_id }));
+    const grade = (ops: ChangeOp[]) => gradeCase(e, { intent: "delete_task", target_plan_id: null, ops }, { ...seed, tasks });
+    assert.equal(grade(del(T1, T2)).pass, true);
+    assert.equal(grade([...del(T1), { op: "delete_plan", plan_id: SAT }]).pass, true, "a removed plan counts");
+    assert.deepEqual(grade(del(T1)).failures, ["delete_from: expected 'ICF Prep', 'SAT Prep', got 'ICF Prep'"]);
+    assert.equal(grade(del(T1, T2, T3)).pass, false, "a task outside the picks");
+  });
+
   test("grading is pure", () => {
     const cs = { intent: "add_to_plan" as const, target_plan_id: ICF, ops: [add("A"), add("B")] };
     const before = JSON.stringify(cs);
@@ -137,11 +163,11 @@ void (import("./grade") as Promise<Mod>).then(({ gradeCase, FixtureFileSchema })
   const raw = JSON.parse(readFileSync(new URL("./fixtures/requests.json", import.meta.url), "utf8"));
   const parsed = FixtureFileSchema.safeParse(raw);
 
-  test("fixtures: valid, 33 cases (30 + 3 voice-style), unique ids", () => {
+  test("fixtures: valid, 59 cases (33 + 14 for the router, matcher and titles + 12 master fix), unique ids", () => {
     assert.equal(parsed.success, true, parsed.success ? "" : JSON.stringify(parsed.error.issues.slice(0, 3)));
     if (!parsed.success) return;
     const cases = parsed.data.cases;
-    assert.equal(cases.length, 33);
+    assert.equal(cases.length, 59);
     assert.equal(new Set(cases.map((c) => c.id)).size, cases.length);
   });
 

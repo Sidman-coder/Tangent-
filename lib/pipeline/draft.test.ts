@@ -23,6 +23,15 @@ type Resolve = (specifier: string, context: unknown, next: (s: string, c: unknow
 type Mod = typeof import("./draft");
 
 void (import("./draft") as Promise<Mod>).then(({ taskOp, planOps, buildDraft, summarize, editOps, parseDraftEdit }) => {
+  test("every drafted task gets a kind", () => {
+    const base = { title: "Read ch. 3", date: "2026-11-10", time: "16:00" };
+    assert.equal(taskOp(base, {}).commitment, "flexible");
+    assert.equal(taskOp({ ...base, title: "call grandma" }, {}).commitment, "reminder");
+    assert.equal(taskOp({ ...base, kind: "commitment" }, {}).commitment, "fixed");
+    assert.equal(taskOp({ ...base, title: "call grandma", commitment: "fixed" }, {}).commitment, "fixed");
+    assert.equal(taskOp({ ...base, title: "call grandma" }, { plan_ref: "p1" }).commitment, "flexible");
+  });
+
   const USER = "33333333-3333-4333-8333-000000000001";
   const ID = "44444444-4444-4444-8444-000000000001";
   const draft = (ops: ChangeOp[], assumptions?: string[]) =>
@@ -59,6 +68,7 @@ void (import("./draft") as Promise<Mod>).then(({ taskOp, planOps, buildDraft, su
       calendarId: "cal_school",
       notes: "pages 40-60",
       kind: "school",
+      commitment: "flexible",
       startAction: "Open the book",
       resources: [{ label: "Khan", url: "https://www.khanacademy.org/" }],
     });
@@ -182,5 +192,25 @@ void (import("./draft") as Promise<Mod>).then(({ taskOp, planOps, buildDraft, su
     assert.equal(parseDraftEdit({ type: "remove", index: 1.5 }), null);
     assert.equal(parseDraftEdit({ type: "rename", index: 0 }), null);
     assert.equal(parseDraftEdit(null), null);
+  });
+
+  test("the plan-removal box adds and drops the delete_plan op", () => {
+    const P = "11111111-1111-4111-8111-111111111111";
+    const T = "22222222-2222-4222-8222-222222222222";
+    const ops = [{ op: "delete_task" as const, task_id: T }];
+    const on = editOps(ops, { type: "plan_removal", plan_id: P, remove: true });
+    assert.ok(on.ok);
+    assert.deepEqual(on.ok && on.ops, [...ops, { op: "delete_plan", plan_id: P }]);
+    const twice = editOps(on.ok ? on.ops : [], { type: "plan_removal", plan_id: P, remove: true });
+    assert.equal(twice.ok && twice.ops.filter((o) => o.op === "delete_plan").length, 1, "never added twice");
+    const off = editOps(on.ok ? on.ops : [], { type: "plan_removal", plan_id: P, remove: false });
+    assert.deepEqual(off.ok && off.ops, ops);
+    assert.equal(editOps([{ op: "add_task", title: "x", date: "2026-10-07" }], { type: "plan_removal", plan_id: P, remove: true }).ok, false, "only a delete can remove a plan");
+    assert.deepEqual(parseDraftEdit({ type: "plan_removal", plan_id: P, remove: false }), { type: "plan_removal", plan_id: P, remove: false });
+    assert.equal(parseDraftEdit({ type: "plan_removal", plan_id: "nope", remove: true }), null);
+  });
+
+  test("taskOp cleans every new task's title", () => {
+    assert.equal(taskOp({ title: "I have a soccer coaching appointment coming up", date: "2026-10-07" }).title, "Soccer coaching appointment");
   });
 });

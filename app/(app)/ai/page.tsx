@@ -1,960 +1,288 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getGreeting } from "@/lib/greetings";
-import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
-import { localNow } from "@/lib/time";
-import ChatSidebar from "@/components/console/ChatSidebar";
-import ChatThread from "@/components/console/ChatThread";
-import { routeAsk } from "@/lib/ask-route";
-import { takeAsk } from "@/lib/ask-handoff";
-import { putNewPathTitle } from "@/lib/path-handoff";
-import type { ClarifyAnswer } from "@/components/console/ClarifyCard";
-import { answerQuestions as answerLaterQuestions, generateQuestions } from "@/lib/questions-client";
-import Composer from "@/components/console/Composer";
-import {
-  actionLabel,
-  applyPlanProgress,
-  cleanMessage,
-  readChatReply,
-  toolsForAction,
-  turnsFromMessages,
-  type ChatMode,
-  type PlanProgressView,
-  type Turn,
-} from "@/components/console/turns";
-import { usePipelineV2 } from "@/components/PipelineFlag";
-import { chatOnly, draftShownPlan, fetchOpenDrafts, withOpenDrafts } from "@/components/console/pipeline-intake";
-import type { ChangeSet } from "@/lib/pipeline/changeset";
-import type { PreviewPayload } from "@/lib/pipeline/draft";
-import {
-  VOICE_TRANSCRIPT_EVENT,
-  type VoiceCaptureStatus,
-  type VoiceTranscriptDetail,
-} from "@/hooks/useVoiceCapture";
-import type { ChatMessageRefs, ChatSession } from "@/lib/types";
-import { actionIdsOf, announceUndo, withUndoStatus, type UndoRecord } from "@/lib/undo-events";
-import {
-  ArrowLeft,
-  ArrowUpRight,
-  BookOpen,
-  CalendarClock,
-  CalendarRange,
-  Flag,
-  Hammer,
-  History,
-  ListChecks,
-  MessageSquare,
-  Newspaper,
-  Repeat,
-  Sun,
-  Timer,
-  type LucideIcon,
-} from "lucide-react";
+// Chats: every task, project and Home chat in one list, most recent first.
+// Chatting happens where the chat is about (Home, a task, a project); this
+// page finds and tidies them. Old /ai links are forwarded to their new home.
+// Layout: docs/design/WIREFRAMES.md §4.
+
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import PenMark from "@/components/console/PenMark";
-import BriefPanel, { CADENCE_LABEL, type BriefSummary } from "@/components/console/BriefPanel";
-import { formatTime12 } from "@/lib/dates";
-import { tracksCompletion } from "@/lib/urgency";
-import { aiFirstSuggestion, prefsOf, type AiSuggestionKey } from "@/lib/personalize";
-import "./console.css";
+import { Home, MessagesSquare, Search, Trash2 } from "lucide-react";
+import { useAppState } from "@/components/AppStateProvider";
+import Button from "@/components/ui/Button";
+import ConfirmPanel from "@/components/ui/ConfirmPanel";
+import EmptyState from "@/components/ui/EmptyState";
+import IconButton from "@/components/ui/IconButton";
+import SegmentedTabs from "@/components/ui/SegmentedTabs";
+import Skeleton from "@/components/ui/Skeleton";
+import { openTaskChat } from "@/components/chat/TaskChatSheet";
+import { plainText } from "@/components/console/markdown-parse";
+import { filterLibrary, libraryEntries, type LibraryEntry, type LibraryTab } from "@/lib/chat/library";
+import { seriesColor } from "@/lib/task-colors";
+import type { ChatSession } from "@/lib/types";
+import "@/components/chat/chat-sheet.css";
 
-type ConsoleMode = "chat" | "brief";
+const TABS: { value: LibraryTab; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "general", label: "Home" },
+  { value: "tasks", label: "Tasks" },
+  { value: "projects", label: "Projects" },
+];
 
-function briefWhen(b: BriefSummary): string {
-  return `${CADENCE_LABEL[b.cadence]} · ${formatTime12(b.deliveryTime)}`;
-}
-
-// Linear-style starter cards: fill the composer, never send on their own.
-const SUGGESTIONS = [
-  { icon: CalendarRange, text: "Plan my week", detail: "Spread this week’s work across your free time" },
-  { icon: Sun, text: "What's on today?", detail: "Today’s tasks and events, in order" },
-  { icon: Timer, text: "What fits in 30 minutes?", detail: "Quick tasks for a short gap" },
-  { icon: CalendarClock, text: "Move overdue tasks", detail: "Find new slots for anything that slipped" },
-] as const;
-
-const SUGGESTION_ICON: Partial<Record<AiSuggestionKey, LucideIcon>> = {
-  study: BookOpen,
-  project: Hammer,
-  practice: Repeat,
-  prepare: Flag,
-  organize: ListChecks,
+const SCOPE_LABEL: Record<LibraryEntry["scope"], string> = { general: "Home chat", task: "Task chat", project: "Project chat" };
+const EMPTY_TAB: Record<LibraryTab, string> = {
+  all: "",
+  general: "No Home chats yet.",
+  tasks: "No task chats yet. Tap Ask on a task to start one.",
+  projects: "No project chats yet. Open a project and tap Chat.",
 };
 
-/** What the student said they're working toward leads the list; the rest stay
- *  as they were. Still four cards, and none of them sends on its own. */
-function suggestionsFor(workingToward: unknown): { icon: LucideIcon; text: string; detail: string }[] {
-  const first = aiFirstSuggestion(prefsOf({ workingToward }));
-  const base = SUGGESTIONS.map((s) => ({ icon: s.icon as LucideIcon, text: s.text as string, detail: s.detail as string }));
-  if (!first) return base;
-  return [{ icon: SUGGESTION_ICON[first.key] ?? Sun, text: first.text, detail: first.detail }, ...base.slice(0, 3)];
+/** Where an old /ai link goes now, or null to stay on the library. */
+function legacyTarget(search: string): string | null {
+  const params = new URLSearchParams(search);
+  const project = params.get("project");
+  if (project) return `/projects/${encodeURIComponent(project)}?chat=1${params.get("ask") === "1" ? "&ask=1" : ""}`;
+  const task = params.get("task");
+  if (task) return `/?taskChat=${encodeURIComponent(task)}`;
+  if (params.get("ask") === "1") return "/?ask=1";
+  return null;
 }
 
-function partOfDay(hour: number): string {
-  if (hour >= 5 && hour < 12) return "Good morning";
-  if (hour >= 12 && hour < 17) return "Good afternoon";
-  if (hour >= 17 && hour < 21) return "Good evening";
-  return "Still up";
+function when(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const minutes = Math.floor((Date.now() - d.getTime()) / 60_000);
+  if (minutes < 1) return "Now";
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 12 * 60) return `${Math.floor(minutes / 60)}h`;
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const days = Math.ceil((start.getTime() - d.getTime()) / 86_400_000);
+  if (days <= 0) return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  if (days === 1) return "Yesterday";
+  if (days < 7) return d.toLocaleDateString(undefined, { weekday: "short" });
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-/** Turns a fetch/route failure into something true and actionable. */
-function describeFailure(message: string): string {
-  const lower = message.toLowerCase();
-  if (lower.includes("timeout") || lower.includes("504") || lower.includes("aborted")) {
-    return "That took too long and was cut off. Calendar mode does several rounds of research before it answers — try a narrower request, or ask again.";
-  }
-  if (lower.includes("anthropic_api_key") || lower.includes("401")) {
-    return "The server has no Anthropic API key configured, so it can't reach Claude.";
-  }
-  if (lower.includes("429") || lower.includes("rate")) {
-    return "Claude is rate-limited right now. Wait a moment and try again.";
-  }
-  if (lower.includes("failed to fetch") || lower.includes("networkerror")) {
-    return "Couldn't reach the server. Check your connection and try again.";
-  }
-  return `Something went wrong: ${message}`;
-}
-
-/** Persists the active chat session id across navigation/refresh within the same
- *  browser (not the server — the in-memory store still resets on server restart,
- *  in which case the GET below 404s and we fall back to starting fresh). */
-const SESSION_STORAGE_KEY = "tangent:ai:activeSessionId";
-const MODE_STORAGE_KEY = "tangent:ai:mode";
-const CHATS_HIDDEN_KEY = "tangent:ai:chatsHidden";
-
-function readStored(key: string): string | null {
-  try {
-    return window.localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function writeStored(key: string, value: string | null) {
-  try {
-    if (value === null) window.localStorage.removeItem(key);
-    else window.localStorage.setItem(key, value);
-  } catch {}
-}
-
-export default function AiPage() {
-  const router = useRouter();
-  const { state, refresh } = useAppState();
-  const workingToward = state?.user?.workingToward;
-  const suggestions = useMemo(() => suggestionsFor(workingToward), [workingToward]);
-  const tz = useUserTimezone();
-
-  const [mode, setMode] = useState<ConsoleMode>("chat");
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [sessionsLoaded, setSessionsLoaded] = useState(false);
-  const [saveWarning, setSaveWarning] = useState<string | null>(null);
-  const [restoring, setRestoring] = useState(false);
-  const [brief, setBrief] = useState<BriefSummary | null>(null);
-  const [chatsOpen, setChatsOpen] = useState(false);
-  const [chatsHidden, setChatsHidden] = useState(false);
-  const [chatMode, setChatMode] = useState<ChatMode>("calendar");
-  const v2 = usePipelineV2();
-
-  useEffect(() => {
-    if (readStored(MODE_STORAGE_KEY) === "plan" && !v2) setChatMode("plan");
-    if (readStored(CHATS_HIDDEN_KEY) === "1") setChatsHidden(true);
-  }, [v2]);
-
-  const changeMode = useCallback((next: ChatMode) => {
-    setChatMode(next);
-    writeStored(MODE_STORAGE_KEY, next);
-  }, []);
-
-  const setHidden = useCallback((hidden: boolean) => {
-    setChatsHidden(hidden);
-    writeStored(CHATS_HIDDEN_KEY, hidden ? "1" : null);
-  }, []);
-
-  // What's next today, shown under the question so the assistant opens with
-  // the student's actual day rather than a blank box. "Today" and "now" are the
-  // student's own timezone, not the browser's or the server's.
-  const today = useMemo(() => {
-    if (!state) return null;
-    const { date: ymd, time: now } = localNow(tz);
-    // Counts what Today counts. This used to filter on `!completed` alone, so
-    // it swept in School Blocks and commitments — scheduled things that never
-    // get ticked off — and reported a bigger number than the dashboard for the
-    // same day. Canvas assignments still count: they arrive with source
-    // "canvas", which tracksCompletion lets through.
-    const open = state.tasks
-      .filter((t) => t.date === ymd && !t.completed && tracksCompletion(t))
-      .sort((a, b) => (a.time || "99").localeCompare(b.time || "99"));
-    const next = open.find((t) => t.time && t.time >= now) ?? null;
-    return { left: open.length, next };
-  }, [state, tz]);
-
-  // The name comes from the student's profile (Supabase), not localStorage.
-  const firstName = state?.user.displayName?.trim().split(/\s+/)[0] ?? "";
-  const [greeting, setGreeting] = useState("");
-  useEffect(() => {
-    // The same greeting as Today (lib/greetings.ts), so the two never disagree.
-    const hour = localNow(tz).hour;
-    setGreeting(firstName ? getGreeting(firstName, hour) : `${partOfDay(hour)}.`);
-  }, [firstName, tz]);
-
-  const [turns, setTurns] = useState<Turn[]>([]);
-  const [pendingRequest, setPendingRequest] = useState<string | null>(null);
-  const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [planProgress, setPlanProgress] = useState<PlanProgressView | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [voiceStatus, setVoiceStatus] = useState<VoiceCaptureStatus>("idle");
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-
-  /** Drops a voice transcript into the composer — visible, editable, cursor at
-   *  the end — and stops there. The student presses Enter/Send to submit. */
-  const acceptTranscript = useCallback((text: string) => {
-    setMode("chat");
-    setErr(null);
-    setInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${text}` : text));
-    window.setTimeout(() => {
-      const el = inputRef.current;
-      if (!el) return;
-      el.focus();
-      el.setSelectionRange(el.value.length, el.value.length);
-    }, 0);
-  }, []);
-
-  // Claim transcripts from the global mic / hold-Space so they land here
-  // instead of in the command palette while the console is on screen.
-  useEffect(() => {
-    const onTranscript = (e: Event) => {
-      e.preventDefault();
-      acceptTranscript((e as CustomEvent<VoiceTranscriptDetail>).detail.text);
-    };
-    window.addEventListener(VOICE_TRANSCRIPT_EVENT, onTranscript);
-    return () => window.removeEventListener(VOICE_TRANSCRIPT_EVENT, onTranscript);
-  }, [acceptTranscript]);
-
-
-  useEffect(() => {
-    fetch("/api/brief-config")
-      .then((res) => res.json())
-      .then((data: { ok?: boolean; config?: BriefSummary | null }) => {
-        if (data.ok && data.config) {
-          setBrief({ cadence: data.config.cadence ?? "daily", deliveryTime: data.config.deliveryTime ?? "07:00" });
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  const loadSessions = useCallback(async () => {
-    try {
-      const res = await fetch("/api/sessions");
-      const data = (await res.json()) as { ok?: boolean; sessions?: ChatSession[] };
-      if (data.ok) setSessions(data.sessions ?? []);
-    } catch {
-    } finally {
-      setSessionsLoaded(true);
-    }
-  }, []);
-
-  /** Pipeline V2: open drafts from the last 24 hours come back as cards. */
-  const restoreDrafts = useCallback(async () => {
-    if (!v2) return;
-    const drafts = await fetchOpenDrafts();
-    if (drafts.length) setTurns((prev) => withOpenDrafts(prev, drafts));
-  }, [v2]);
-
-  /** A reopened chat: is each saved change still undoable? (Safety hotfix.) */
-  const recheckUndo = useCallback(async (restored: Turn[]) => {
-    const ids = actionIdsOf(restored);
-    if (!ids.length) return;
-    try {
-      const res = await fetch(`/api/actions?ids=${ids.join(",")}`, { cache: "no-store" });
-      const data = (await res.json()) as { ok?: boolean; actions?: UndoRecord[] };
-      if (res.ok && data.ok) setTurns((prev) => withUndoStatus(prev, data.actions ?? []));
-    } catch {}
-  }, []);
-
-  const openSession = useCallback(async (sessionId: string) => {
-    try {
-      const [res, confirms] = await Promise.all([
-        fetch(`/api/sessions?sessionId=${encodeURIComponent(sessionId)}`),
-        fetch("/api/confirm")
-          .then((r) => r.json() as Promise<{ ok?: boolean; pending?: { id: string; message: string }[] }>)
-          .then((d) => (d.ok ? d.pending ?? [] : []))
-          .catch(() => []),
-      ]);
-      const data = (await res.json()) as { ok?: boolean; session?: ChatSession };
-      if (data.ok && data.session) {
-        setActiveSessionId(data.session.id);
-        const restored = turnsFromMessages(data.session.messages, confirms);
-        setTurns(restored);
-        void recheckUndo(restored);
-        void restoreDrafts();
-        setMode("chat");
-        setErr(null);
-        window.localStorage.setItem(SESSION_STORAGE_KEY, data.session.id);
-      } else {
-        window.localStorage.removeItem(SESSION_STORAGE_KEY);
-      }
-    } catch {}
-  }, [restoreDrafts, recheckUndo]);
-
-  const newChat = useCallback(() => {
-    if (busy) return;
-    setActiveSessionId(null);
-    setSaveWarning(null);
-    setTurns([]);
-    setInput("");
-    setErr(null);
-    setMode("chat");
-    window.localStorage.removeItem(SESSION_STORAGE_KEY);
-    void restoreDrafts();
-    window.setTimeout(() => inputRef.current?.focus(), 0);
-  }, [busy, restoreDrafts]);
-
-  // A question handed over from Cmd-K (/ai?ask=1): open a fresh chat and ask
-  // it. Two steps so send() runs with the new, empty chat in scope.
-  const [handedAsk, setHandedAsk] = useState<string | null>(null);
-  useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("ask") !== "1") return;
-    const text = takeAsk("ai");
-    router.replace("/ai");
-    if (!text) return;
-    // After the saved-chat restore has run, so it can't reopen the old chat.
-    window.setTimeout(() => {
-      newChat();
-      setHandedAsk(text);
-    }, 0);
-    // Once per arrival.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** Appends a message to the saved chat. Awaited so messages land in order;
-   *  a failure is shown instead of silently leaving the chat unsaved. */
-  const saveMessage = useCallback(async (sessionId: string | null, role: "user" | "assistant", content: string, refs: ChatMessageRefs = {}) => {
-    if (!sessionId) return;
-    try {
-      const res = await fetch("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "add_message", sessionId, role, content, ...refs }),
-      });
-      if (!res.ok) throw new Error(String(res.status));
-    } catch {
-      setSaveWarning("This chat couldn't be saved. Your calendar changes still went through.");
-    }
-  }, []);
-
-  /** Tags the chat with the tasks/plan an action touched (its task color). */
-  const linkAction = useCallback(
-    async (sessionId: string | null, actionId: string | undefined) => {
-      if (!sessionId || !actionId) return;
-      try {
-        await fetch("/api/sessions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "link", sessionId, actionId }),
-        });
-      } catch {}
-      void loadSessions();
-    },
-    [loadSessions]
-  );
-
-  useEffect(() => {
-    void loadSessions();
-    const storedId = window.localStorage.getItem(SESSION_STORAGE_KEY);
-    if (storedId) {
-      setRestoring(true);
-      void openSession(storedId).finally(() => setRestoring(false));
-    } else void restoreDrafts();
-  }, [loadSessions, openSession, restoreDrafts]);
-
-
-  const send = useCallback(async (
-    text?: string,
-    modeOverride?: ChatMode,
-    // Follow-up to Tangent's questions: `request` is the original ask the
-    // pipeline runs; `text` is what the thread shows for this turn.
-    followUp?: { request: string; answers?: ClarifyAnswer[]; skipClarify?: boolean }
-  ) => {
-    const userText = (text ?? input).trim();
-    if (!userText || busy) return;
-    // One input, routed (lib/ask-route.ts): no Plan/Calendar switch to set.
-    // A question is talked through; everything else acts. A long-range goal
-    // goes to Tangents, a multi-week effort becomes a project.
-    const route = followUp ? "do" : routeAsk(userText);
-    if (route === "goal" && !modeOverride) {
-      putNewPathTitle(userText);
-      setInput("");
-      router.push("/tangents?new=1");
-      return;
-    }
-    const sendMode: ChatMode = modeOverride ?? (route === "question" ? "plan" : "calendar");
-    setChatMode(sendMode);
-    setErr(null);
-    setBusy(true);
-    setPendingRequest(userText);
-    setInput("");
-
-    let sessionId = activeSessionId;
-    let isNewSession = false;
-    if (!sessionId) {
-      try {
-        const res = await fetch("/api/sessions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "create", title: userText.slice(0, 40) }),
-        });
-        const data = (await res.json()) as { ok: boolean; session: ChatSession };
-        if (data.ok) {
-          sessionId = data.session.id;
-          setActiveSessionId(sessionId);
-          window.localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
-          isNewSession = true;
-          void loadSessions();
-        } else {
-          throw new Error("create failed");
-        }
-      } catch {
-        setSaveWarning("This chat couldn't be saved. Your calendar changes still went through.");
-      }
-    }
-
-    await saveMessage(sessionId, "user", userText);
-
-    const history = turns.flatMap((t) => [
-      { role: "user", content: t.request },
-      { role: "assistant", content: t.response },
-    ]);
-    history.push({ role: "user", content: followUp?.request ?? userText });
-
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: history,
-          mode: sendMode,
-          stream: true,
-          // Big or vague asks get questions first; never on a follow-up.
-          clarify: !followUp,
-          answers: followUp?.answers,
-          // Flag on, a big ask is drafted by the intake (preview first) instead.
-          newProject: route === "project" && !v2 ? true : undefined,
-        }),
-      });
-      // Calendar mode streams NDJSON: plan progress lines, then {type:"result"}.
-      const data = (await readChatReply(res, (line) => setPlanProgress((v) => applyPlanProgress(v, line)))) as {
-        ok?: boolean;
-        message?: string;
-        reply?: string;
-        response?: string;
-        text?: string;
-        error?: string;
-        action?: string | null;
-        voiceAction?: string | null;
-        actionId?: string;
-        plan?: { id: string; title: string; taskCount: number; color: string } | null;
-        recurringCount?: number;
-        sourcesChecked?: string[];
-        pending?: { id: string; kind: string; message: string };
-        changeSet?: ChangeSet;
-        preview?: PreviewPayload;
-        questions?: Turn["questions"];
-        suggestion?: Turn["suggestion"];
-        taskId?: string;
-      };
-      if (!res.ok || !data.ok) throw new Error(data.error || "Request failed");
-
-      if (data.action === "clarify" && data.questions?.length) {
-        const ask = data.message ?? "A few quick questions so this fits you.";
-        setTurns((prev) => [
-          ...prev.map((t) => (t.fresh ? { ...t, fresh: false } : t)),
-          {
-            id: crypto.randomUUID(),
-            fresh: true,
-            request: userText,
-            tools: [],
-            sourcesChecked: [],
-            response: ask,
-            questions: data.questions,
-          },
-        ]);
-        await saveMessage(sessionId, "assistant", `${ask}\n${data.questions.map((q) => `- ${q.question}`).join("\n")}`);
-        return;
-      }
-
-      if (data.action === "confirm_required" && data.pending) {
-        const pendingId = data.pending.id;
-        const pendingMessage = data.pending.message;
-        setTurns((prev) => [
-          ...prev.map((t) => (t.fresh ? { ...t, fresh: false } : t)),
-          {
-            id: crypto.randomUUID(),
-            fresh: true,
-            request: userText,
-            tools: toolsForAction("confirm_required"),
-            sourcesChecked: [],
-            response: pendingMessage,
-            pendingConfirm: { id: pendingId, message: pendingMessage },
-          },
-        ]);
-        await saveMessage(sessionId, "assistant", pendingMessage);
-        return;
-      }
-
-      const rawReply = data.message ?? data.reply ?? data.response ?? data.text ?? "";
-      const reply = cleanMessage(typeof rawReply === "string" ? rawReply : "");
-      const action = data.action ?? data.voiceAction;
-      const notif = actionLabel(
-        action,
-        data.plan
-          ? { taskCount: data.plan.taskCount, planTitle: data.plan.title }
-          : data.recurringCount !== undefined
-            ? { taskCount: data.recurringCount }
-            : undefined
-      );
-
-      setTurns((prev) => [
-        ...prev.map((t) => (t.fresh ? { ...t, fresh: false } : t)),
-        {
-          id: crypto.randomUUID(),
-          fresh: true,
-          // A reply that only asks a question isn't a plan to add yet.
-          planDraft: action === "plan_reply" && !/\?\s*$/.test(reply.trim()),
-          request: userText,
-          tools: toolsForAction(action),
-          sourcesChecked: data.sourcesChecked ?? [],
-          response: reply,
-          actionId: data.actionId,
-          actionLabel: notif ?? undefined,
-          // Pipeline V2 (flag on only): nothing is saved until the card's Confirm.
-          draft: action === "preview" && data.changeSet && data.preview ? { changeSet: data.changeSet, preview: data.preview } : undefined,
-          suggestion: data.suggestion ?? null,
-          projectId: data.plan?.id ?? null,
-        },
-      ]);
-
-      await saveMessage(sessionId, "assistant", reply, { actionId: data.actionId, changeSetId: data.changeSet?.id });
-      if (data.actionId) announceUndo({ actionId: data.actionId, label: notif ?? "Change applied", from: "/ai" });
-      if (sessionId && isNewSession) {
-        void fetch("/api/sessions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "rename", sessionId, title: userText.slice(0, 45) }),
-        });
-      }
-
-      await linkAction(sessionId, data.actionId);
-      await refresh();
-
-      // Acted first; now Tangent's questions about what it saved. A follow-up
-      // to questions was already grilled, so it isn't asked again.
-      if (data.taskId && !followUp) {
-        const savedTaskId = data.taskId;
-        void generateQuestions(savedTaskId, userText).then((set) => {
-          if (!set) return;
-          setTurns((prev) =>
-            prev.map((t) => (t.actionId === data.actionId ? { ...t, later: { id: set.id, questions: set.questions } } : t))
-          );
-        });
-      }
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "Error";
-      setErr(message);
-      setTurns((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          request: userText,
-          tools: [],
-          sourcesChecked: [],
-          // Say what actually failed. This used to blame a missing API key for
-          // every error, including the timeout that is the usual cause.
-          response: describeFailure(message),
-        },
-      ]);
-    } finally {
-      setBusy(false);
-      setPendingRequest(null);
-      setPlanProgress(null);
-      void loadSessions();
-    }
-  }, [input, busy, chatMode, activeSessionId, turns, refresh, linkAction, loadSessions, saveMessage, v2]);
-
-  /** Adds an action / change set id to an already-saved assistant message:
-   *  matched by change set id, or by its text (`from`). Best effort. */
-  const attachRefs = useCallback(
-    (body: { actionId?: string; changeSetId?: string; from?: string }) => {
-      if (!activeSessionId) return;
-      void fetch("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "attach", sessionId: activeSessionId, ...body }),
-      }).catch(() => {});
-    },
-    [activeSessionId]
-  );
-
-  /** Pipeline V2: a preview card was confirmed; keep its Undo after a reload
-   *  and offer it app-wide (the card shows its own Undo here). */
-  const cardConfirmed = useCallback(
-    (_turnId: string, changeSetId: string, actionId: string) => {
-      attachRefs({ changeSetId, actionId });
-      announceUndo({ actionId, label: "Change applied", from: "/ai" });
-    },
-    [attachRefs]
-  );
-
-  /** Turns whose "Add to calendar" draft is in flight (one request each). */
-  const draftingPlans = useRef(new Set<string>());
-
-  useEffect(() => {
-    if (!handedAsk || activeSessionId || turns.length > 0 || busy) return;
-    const text = handedAsk;
-    setHandedAsk(null);
-    void send(text);
-  }, [handedAsk, activeSessionId, turns.length, busy, send]);
-
-  /** Answers to a turn's questions (or "Just do it") run the original ask. */
-  const answerQuestions = useCallback(
-    (turnId: string, answers: ClarifyAnswer[] | null) => {
-      const turn = turns.find((t) => t.id === turnId);
-      if (!turn) return;
-      setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, questions: null } : t)));
-      const shown = answers && answers.length > 0 ? answers.map((a) => a.answer).join(" · ") : "Just do it";
-      void send(shown, "calendar", { request: turn.request, answers: answers ?? undefined, skipClarify: true });
-    },
-    [turns, send]
-  );
-
-  /** Plan-mode draft → Calendar: flip the mode and ask for it to be added. */
-  const addPlanToCalendar = useCallback(
-    (turnId: string) => {
-      // Pipeline V2: draft the plan exactly as shown; saved only on Confirm.
-      // The button stays until the draft exists, so a failure can be retried.
-      const shown = turns.find((t) => t.id === turnId);
-      if (v2 && shown) {
-        if (draftingPlans.current.has(turnId)) return;
-        draftingPlans.current.add(turnId);
-        setErr(null);
-        void draftShownPlan(shown.response, shown.request)
-          .then((r) =>
-            "error" in r
-              ? setErr(r.error)
-              : (setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, planDraft: false, draft: r } : t))),
-                attachRefs({ changeSetId: r.changeSet.id, from: shown.response }))
-          )
-          .finally(() => draftingPlans.current.delete(turnId));
-        return;
-      }
-      setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, planDraft: false } : t)));
-      changeMode("calendar");
-      void send("Add this plan to my calendar", "calendar");
-    },
-    [changeMode, send, turns, v2, attachRefs]
-  );
-
-  /** Pipeline V2 "Just talking, don't add": answer the turn conversationally.
-   *  The saved preview summary is replaced by the reply (not followed by a
-   *  second assistant message), and sending waits until it is done, so a
-   *  reload pairs every request with its own reply. */
-  const justChatting = useCallback(
-    async (turnId: string) => {
-      if (busy) return;
-      const at = turns.findIndex((t) => t.id === turnId);
-      if (at < 0) return;
-      setBusy(true);
-      try {
-        const history = turns.slice(0, at).flatMap((t) => [
-          { role: "user", content: t.request },
-          { role: "assistant", content: t.response },
-        ]);
-        const reply = cleanMessage(await chatOnly([...history, { role: "user", content: turns[at].request }]));
-        const saved = turns[at].response;
-        setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, response: reply, draft: undefined } : t)));
-        if (!activeSessionId || !saved.trim()) return;
-        const res = await fetch("/api/sessions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "replace_last_assistant", sessionId: activeSessionId, from: saved, content: reply }),
-        }).catch(() => null);
-        const data = res?.ok ? ((await res.json().catch(() => ({}))) as { replaced?: boolean }) : {};
-        if (!data.replaced) setSaveWarning("This reply couldn't be saved to the chat.");
-      } finally {
-        setBusy(false);
-      }
-    },
-    [busy, turns, activeSessionId]
-  );
-
-  const postSession = useCallback(async (body: Record<string, unknown>) => {
-    try {
-      await fetch("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-    } catch {}
-  }, []);
-
-  const renameChat = useCallback(
-    async (id: string, title: string) => {
-      setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, title } : s)));
-      await postSession({ action: "rename", sessionId: id, title });
-      void loadSessions();
-    },
-    [postSession, loadSessions]
-  );
-
-  const styleChat = useCallback(
-    async (id: string, style: { color?: string | null; pinned?: boolean }) => {
-      setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, ...style } : s)));
-      await postSession({ action: "style", sessionId: id, ...style });
-      void loadSessions();
-    },
-    [postSession, loadSessions]
-  );
-
-  const deleteChat = useCallback(
-    async (id: string) => {
-      setSessions((prev) => prev.filter((s) => s.id !== id));
-      if (id === activeSessionId) newChat();
-      await postSession({ action: "delete", sessionId: id });
-      void loadSessions();
-    },
-    [activeSessionId, newChat, postSession, loadSessions]
-  );
-
-  const resolveConfirm = useCallback(async (turnId: string, pendingId: string, confirm: boolean) => {
-    setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, pendingConfirm: null } : t)));
-    try {
-      const res = await fetch("/api/confirm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: pendingId, confirm }),
-      });
-      const data = (await res.json()) as { ok?: boolean; response?: string; error?: string; actionId?: string };
-      const reply = !res.ok || !data.ok
-        ? (data.error || "Something went wrong.")
-        : (data.response || (confirm ? "Done." : "Cancelled."));
-
-      setTurns((prev) =>
-        prev.map((t) =>
-          t.id === turnId
-            ? {
-                ...t,
-                response: reply,
-                actionId: confirm && data.ok ? data.actionId : undefined,
-                actionLabel: confirm && data.ok && data.actionId ? "Change applied" : undefined,
-              }
-            : t
-        )
-      );
-
-      const applied = confirm && data.ok ? data.actionId : undefined;
-      await saveMessage(activeSessionId, "assistant", reply, { actionId: applied });
-      if (applied) announceUndo({ actionId: applied, label: "Change applied", from: "/ai" });
-
-      if (confirm && data.ok) await linkAction(activeSessionId, data.actionId);
-      await refresh();
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "Something went wrong.";
-      setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, response: message } : t)));
-    }
-  }, [activeSessionId, refresh, linkAction, saveMessage]);
-
-  // An empty history panel is a quarter of the screen saying "nothing here",
-  // so it only appears once there is a chat to go back to.
-  const sidebarHidden = chatsHidden || sessions.length === 0;
-
-  const composer = (
-    <Composer
-      value={input}
-      onChange={setInput}
-      onSubmit={() => void send()}
-      busy={busy}
-      inputRef={inputRef}
-      voiceStatus={voiceStatus}
-      onVoiceStatus={setVoiceStatus}
-      onTranscript={acceptTranscript}
-      onVoiceError={setErr}
-      mode={chatMode}
-      placeholder={v2 ? "Ask, plan, or add something…" : undefined}
+/** Home chats get the Home icon; project chats a dot and task chats a ring,
+ *  in their color. */
+function ScopeMark({ entry }: { entry: LibraryEntry }) {
+  if (entry.scope === "general") return <Home size={15} strokeWidth={1.75} aria-hidden="true" />;
+  return (
+    <span
+      className={`chat-library-dot${entry.scope === "task" ? " is-ring" : ""}`}
+      style={{ "--chat-dot": seriesColor(entry.color) } as React.CSSProperties}
+      aria-hidden="true"
     />
   );
+}
+
+export default function ChatLibraryPage() {
+  const router = useRouter();
+  const { state } = useAppState();
+  const [sessions, setSessions] = useState<ChatSession[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [tab, setTab] = useState<LibraryTab>("all");
+  const [query, setQuery] = useState("");
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteFailed, setDeleteFailed] = useState(false);
+
+  useEffect(() => {
+    const target = legacyTarget(window.location.search);
+    if (target) router.replace(target);
+  }, [router]);
+
+  const load = useCallback(async () => {
+    const res = await fetch("/api/sessions", { cache: "no-store" }).catch(() => null);
+    const data = res?.ok ? ((await res.json().catch(() => null)) as { sessions?: ChatSession[] } | null) : null;
+    if (!data?.sessions) {
+      setFailed(true);
+      setSessions((prev) => prev ?? []);
+      return;
+    }
+    setFailed(false);
+    setSessions(data.sessions);
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const entries = useMemo(
+    () => (sessions ? libraryEntries(sessions, state?.tasks ?? [], state?.plans ?? []) : []),
+    [sessions, state?.tasks, state?.plans]
+  );
+  const inTab = useMemo(() => filterLibrary(entries, tab, ""), [entries, tab]);
+  const shown = useMemo(() => filterLibrary(entries, tab, query), [entries, tab, query]);
+
+  const remove = async (id: string) => {
+    setDeletingId(id);
+    setDeleteFailed(false);
+    const res = await fetch("/api/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete", sessionId: id }),
+    }).catch(() => null);
+    setDeletingId(null);
+    if (!res?.ok) {
+      setDeleteFailed(true);
+      return;
+    }
+    setConfirmId(null);
+    setSessions((prev) => prev?.filter((s) => s.id !== id) ?? prev);
+  };
+
+  // Focus goes back to the row's trash button.
+  const cancelDelete = () => {
+    const id = confirmId;
+    setConfirmId(null);
+    setDeleteFailed(false);
+    if (id) requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-chat-delete="${CSS.escape(id)}"]`)?.focus());
+  };
+
+  let body: React.ReactNode;
+  if (sessions === null) {
+    body = <Skeleton rows={4} label="Loading chats" className="chat-library-skeleton" />;
+  } else if (failed && entries.length === 0) {
+    body = (
+      <EmptyState icon={<MessagesSquare size={20} strokeWidth={1.75} />} title="Chats couldn't load" action={<Button size="sm" onClick={() => void load()}>Try again</Button>}>
+        Check your connection, then try again.
+      </EmptyState>
+    );
+  } else if (entries.length === 0) {
+    body = (
+      <EmptyState icon={<MessagesSquare size={20} strokeWidth={1.75} />} title="No chats yet">
+        Ask Tangent anything from Home.
+      </EmptyState>
+    );
+  } else if (shown.length === 0) {
+    body = query.trim() && inTab.length > 0 ? (
+      <EmptyState
+        icon={<Search size={20} strokeWidth={1.75} />}
+        title={`No chats match “${query.trim()}”`}
+        action={<Button size="sm" onClick={() => setQuery("")}>Clear search</Button>}
+      />
+    ) : (
+      <EmptyState icon={<MessagesSquare size={20} strokeWidth={1.75} />} title={EMPTY_TAB[tab] || "No chats here yet."} />
+    );
+  } else {
+    body = (
+      <ul className="chat-library-list">
+        {shown.map((e) => {
+          const preview = e.preview ? plainText(e.preview).replace(/\s+/g, " ").trim() : "";
+          const inner = (
+            <>
+              <span className="chat-library-mark">
+                <ScopeMark entry={e} />
+              </span>
+              <span className="chat-library-title">
+                <span className="ui-visually-hidden">{SCOPE_LABEL[e.scope]}: </span>
+                {e.title}
+              </span>
+              <span className="chat-library-preview">
+                {e.orphan && <span className="chat-library-flag">Deleted · </span>}
+                {preview}
+              </span>
+              <time className="chat-library-when" dateTime={e.updatedAt}>
+                {when(e.updatedAt)}
+              </time>
+            </>
+          );
+          return (
+            <li key={e.id} className="chat-library-row">
+              <div className="chat-library-item">
+                {e.href ? (
+                  <Link className="chat-library-open" href={e.href}>
+                    {inner}
+                  </Link>
+                ) : (
+                  <button type="button" className="chat-library-open" onClick={() => e.taskId && openTaskChat(e.taskId)} aria-haspopup="dialog">
+                    {inner}
+                  </button>
+                )}
+                <IconButton
+                  size="sm"
+                  className="chat-library-delete"
+                  label={`Delete chat: ${e.title}`}
+                  tooltipSide="left"
+                  icon={<Trash2 size={16} strokeWidth={1.75} />}
+                  aria-expanded={confirmId === e.id}
+                  data-chat-delete={e.id}
+                  onClick={() => {
+                    setDeleteFailed(false);
+                    setConfirmId(confirmId === e.id ? null : e.id);
+                  }}
+                />
+              </div>
+              {confirmId === e.id && (
+                <div className="chat-library-confirm">
+                  <ConfirmPanel
+                    title="Delete this chat?"
+                    actionLabel="Delete"
+                    busyLabel="Deleting…"
+                    busy={deletingId === e.id}
+                    onConfirm={() => void remove(e.id)}
+                    onCancel={cancelDelete}
+                  >
+                    <p>The tasks and projects it added stay. The chat itself can&apos;t be brought back.</p>
+                    {deleteFailed && (
+                      <p role="alert" className="chat-library-error">
+                        Couldn&apos;t delete the chat. Try again.
+                      </p>
+                    )}
+                  </ConfirmPanel>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
 
   return (
-    <div className={`tg-console is-${chatMode}${sidebarHidden ? " chats-hidden" : ""}`}>
-      <section className="tg-main" aria-label="Tangent assistant">
-        <header className="tg-main-head">
-          {mode === "brief" ? (
-            <div className="tg-head-title">
-              <button type="button" className="tg-back" onClick={() => setMode("chat")}>
-                <ArrowLeft size={15} strokeWidth={2} aria-hidden="true" />
-                Chat
-              </button>
-              <h1 className="tg-main-title">Your Brief</h1>
-            </div>
-          ) : (
-            <div className="tg-head-title">
-              <h1 className="tg-main-title">Tangent AI</h1>
-            </div>
-          )}
-          <div className="tg-head-actions">
-            {mode === "chat" && (
-              <button
-                type="button"
-                className="tg-brief-pill"
-                onClick={() => setMode("brief")}
-                aria-label={brief ? `Your Brief, ${briefWhen(brief)}. Open brief settings` : "Set up your brief"}
-              >
-                <Newspaper size={15} strokeWidth={1.8} aria-hidden="true" />
-                <span>Your Brief</span>
-                <span className="tg-brief-pill-when">{brief ? briefWhen(brief) : "Set up"}</span>
-              </button>
-            )}
-            {sidebarHidden && sessions.length > 0 && (
-              <button
-                type="button"
-                className="tg-icon-btn tg-chats-show"
-                aria-label="Show chats"
-                title="Show chats"
-                onClick={() => setHidden(false)}
-              >
-                <History size={17} strokeWidth={1.8} />
-              </button>
-            )}
-            <button
-              type="button"
-              className="tg-icon-btn tg-chats-toggle"
-              aria-label="Show chats"
-              aria-expanded={chatsOpen}
-              onClick={() => setChatsOpen(true)}
-            >
-              <MessageSquare size={17} strokeWidth={1.8} />
-            </button>
-          </div>
-        </header>
+    <div className="chat-library">
+      <header className="chat-library-head">
+        <h1 className="page-header-title">Chats</h1>
+        <label className="chat-library-search">
+          <Search size={16} strokeWidth={1.75} aria-hidden="true" />
+          <input
+            name="chat-search"
+            type="search"
+            placeholder="Search chats"
+            aria-label="Search chats"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setQuery("");
+            }}
+          />
+        </label>
+      </header>
 
-        {mode === "brief" ? (
-          <div className="tg-brief-scroll">
-            <BriefPanel onSaved={setBrief} />
-          </div>
-        ) : restoring && turns.length === 0 ? (
-          <div className="tg-hero">
-            <p className="tg-hero-today" role="status">Loading your chat…</p>
-          </div>
-        ) : turns.length === 0 && !busy ? (
-          <div className="tg-hero">
-            <div className="tg-orb" aria-hidden="true">
-              <PenMark size={26} />
-            </div>
-            {greeting && <p className="tg-hero-greeting">{greeting}</p>}
-            <h2 className="tg-hero-title">
-              <span className="tg-hero-ask">{v2 ? "What do you need?" : "What can Tangent help with?"}</span>
-            </h2>
-            {today?.next && (
-              (
-                <Link href={`/calendar?date=${today.next.date}`} className="tg-next">
-                  <span className="tg-next-dot" aria-hidden="true" />
-                  <span className="tg-next-label">Next up</span>
-                  <span className="tg-next-title">{today.next.title}</span>
-                  <span className="tg-next-time">{formatTime12(today.next.time)}</span>
-                  {today.left > 1 && <span className="tg-next-more">+{today.left - 1} today</span>}
-                  <ArrowUpRight size={14} strokeWidth={2} aria-hidden="true" className="tg-next-go" />
-                </Link>
-              )
-            )}
-            {err && <p className="tg-error" role="alert">{err}</p>}
-            <div className="tg-composer-glow">{composer}</div>
-            <p className="tg-composer-hint">
-              <kbd>Enter</kbd> to send · <kbd>Shift</kbd> + <kbd>Enter</kbd> for a new line
-            </p>
-            <div className="tg-examples" aria-label="Try asking">
-              {suggestions.map(({ icon: Icon, text, detail }) => (
-                <button
-                  key={text}
-                  type="button"
-                  className="tg-example"
-                  title={detail}
-                  onClick={() => {
-                    setInput(text);
-                    inputRef.current?.focus();
-                  }}
-                >
-                  <Icon size={15} strokeWidth={1.8} aria-hidden="true" />
-                  <span className="tg-example-title">{text}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <>
-            <ChatThread
-              turns={turns}
-              busy={busy}
-              pendingRequest={pendingRequest}
-              planProgress={planProgress}
-              onConfirm={(turnId, pendingId, confirm) => void resolveConfirm(turnId, pendingId, confirm)}
-              onUndone={() => void refresh()}
-              mode={chatMode}
-              onAddPlan={addPlanToCalendar}
-              onJustChatting={v2 ? (id) => void justChatting(id) : undefined}
-              onCardConfirmed={v2 ? cardConfirmed : undefined}
-              onKeepTalking={(id) => {
-                setTurns((prev) => prev.map((t) => (t.id === id ? { ...t, planDraft: false } : t)));
-                inputRef.current?.focus();
-              }}
-              onAnswer={answerQuestions}
-              onScheduleChanged={() => void refresh()}
-              onAnswerLater={(turnId, setId, answers) => {
-                setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, later: null } : t)));
-                if (!answers) return; // Later: it waits on Today.
-                void answerLaterQuestions(setId, answers).then((r) => {
-                  setTurns((prev) =>
-                    prev.map((t) => (t.id === turnId ? { ...t, laterSummary: r.error ?? r.summary ?? "Saved." } : t))
-                  );
-                  void refresh();
-                });
-              }}
-            />
-            <div className="tg-dock">
-              {err && <p className="tg-error" role="alert">{err}</p>}
-              {saveWarning && <p className="tg-error" role="alert">{saveWarning}</p>}
-              <div className="tg-composer-glow">{composer}</div>
-              <p className="tg-dock-hint">
-                {v2
-                  ? "Ask a question, add something, or start a project. You’ll see a preview before anything is added."
-                  : <>Think things through with Tangent here. Whatever you decide, it can add for you, and you&apos;ll always see what changed.</>}
-              </p>
-            </div>
-          </>
+      <SegmentedTabs
+        variant="underline"
+        label="Show chats"
+        idPrefix="chat-tabs"
+        value={tab}
+        onChange={(v) => {
+          setTab(v);
+          setConfirmId(null);
+        }}
+        options={TABS.map((t) => ({ ...t, controls: "chat-library-panel" }))}
+        className="chat-library-tabs"
+      />
+
+      <div id="chat-library-panel" role="tabpanel" aria-labelledby={`chat-tabs-tab-${tab}`} className="chat-library-panel">
+        {failed && entries.length > 0 && (
+          <p className="chat-library-error" role="status">
+            Couldn&apos;t refresh your chats. These may be out of date.
+          </p>
         )}
-      </section>
-      {(!sidebarHidden || chatsOpen) && (
-        <ChatSidebar
-          sessions={sessions}
-          loading={!sessionsLoaded}
-          activeId={activeSessionId}
-          state={state}
-          open={chatsOpen}
-          onClose={() => setChatsOpen(false)}
-          onSelect={(id) => {
-            setChatsOpen(false);
-            void openSession(id);
-          }}
-          onNew={() => {
-            setChatsOpen(false);
-            newChat();
-          }}
-          onRename={(id, title) => void renameChat(id, title)}
-          onDelete={(id) => void deleteChat(id)}
-          onStyle={(id, style) => void styleChat(id, style)}
-          onCollapse={() => setHidden(true)}
-        />
-      )}
+        {body}
+      </div>
     </div>
   );
 }

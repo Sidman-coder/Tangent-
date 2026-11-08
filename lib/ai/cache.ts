@@ -9,7 +9,8 @@ import { minCacheableTokens } from "@/lib/ai/models";
 // that changes more often than the layer before it has to come after it. The
 // local date and time change every minute, so they always go last, uncached.
 //
-// TTLs (cache writes cost 1.25× input for 5 minutes, 2× for 1 hour; reads 0.1×):
+// TTLs (cache writes cost 1.25× input for 5 minutes, 2× for 1 hour; reads 0.1×,
+// 0.05× on Sonnet 5.5):
 // - Playbook: 1 hour. It's identical for every student, so one write serves
 //   all of them. Paying 0.75× extra for the hour is covered the first time a
 //   request lands more than 5 minutes after the previous one: that request
@@ -20,8 +21,8 @@ import { minCacheableTokens } from "@/lib/ai/models";
 //   with the context unchanged, which is the exception.
 // - Conversation history: 5 minutes, for the same reason.
 //
-// A breakpoint on a prefix shorter than the model's minimum (Haiku 4096,
-// Sonnet 1024 tokens) caches nothing; enforceCacheRules drops those so the
+// A breakpoint on a prefix shorter than the model's minimum (Haiku 5.5 and
+// Sonnet 5.5: 512; Sonnet 5: 1024; Haiku 4.5: 4096 tokens) caches nothing; enforceCacheRules drops those so the
 // request says what actually happens.
 
 export type CacheTtl = "5m" | "1h";

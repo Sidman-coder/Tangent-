@@ -1,0 +1,14 @@
+/* "Grill until enough" progress bar (SlotQuestionCard). */
+.slot-progress { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.slot-progress-track { height: 6px; border-radius: 999px; background: var(--accent-soft); overflow: hidden; }
+.slot-progress-fill { height: 100%; border-radius: inherit; background: var(--accent); transition: width 240ms ease; }
+.slot-progress-label { font-size: 12px; color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  .slot-progress-fill { transition: none; }
+}
+
+/* One question at a time: full-size touch targets. */
+.slot-card .tg-chip,
+.slot-card .tg-clarify-btn,
+.slot-card .tg-chip-input { min-height: 44px; }

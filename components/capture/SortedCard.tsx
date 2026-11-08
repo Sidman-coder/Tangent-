@@ -10,10 +10,12 @@ import { useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
 import ActionReceipt from "@/components/ActionReceipt";
 import PreviewCard from "@/components/PreviewCard";
-import { answerQuestions, type QuestionSet } from "@/lib/questions-client";
+import { answerQuestions, dismissQuestions, type QuestionSet } from "@/lib/questions-client";
 import type { CaptureOutcome } from "@/lib/capture-outcome";
 
 const AUTO_DISMISS_MS = 3200;
+/** Never more than this in a row, however many a set holds. */
+const MAX_IN_A_ROW = 3;
 
 type Props = {
   outcome: CaptureOutcome;
@@ -52,17 +54,26 @@ export default function SortedCard({ outcome, freshSet, questionsPending, parked
     return () => window.clearTimeout(t);
   }, [settles, thanks, outcome, onDismiss]);
 
-  const question = set?.questions[step];
-  const answer = (choice: string) => {
-    if (!set || !question) return;
-    const next = [...answers, { id: question.id, question: question.question, answer: choice }];
-    if (step + 1 < set.questions.length) {
+  const questions = set?.questions.slice(0, MAX_IN_A_ROW) ?? [];
+  const question = questions[step];
+  const advance = (next: typeof answers) => {
+    if (!set) return;
+    if (step + 1 < questions.length) {
       setAnswers(next);
       setStep(step + 1);
       return;
     }
+    if (next.length === 0) {
+      // Skipped every one: nothing to learn, so the set is done with.
+      void dismissQuestions(set.id).then(onChanged);
+      onDismiss();
+      return;
+    }
     setThanks(true);
     void answerQuestions(set.id, next).then(onChanged);
+  };
+  const answer = (choice: string) => {
+    if (question) advance([...answers, { id: question.id, question: question.question, answer: choice }]);
   };
 
   const enter = reduced
@@ -143,7 +154,7 @@ export default function SortedCard({ outcome, freshSet, questionsPending, parked
         <p className="sorted-label">{outcome.kind === "error" || outcome.kind === "unsure" ? "Not added" : "Sorted"}</p>
         {outcome.kind === "saved" && (
           <m.div className="sorted-line" {...lineIn(0)}>
-            <i style={{ background: line?.color ?? "var(--cat-other)" }} aria-hidden="true" />
+            <i style={{ background: line?.color ?? "var(--series-neutral)" }} aria-hidden="true" />
             <b>{line?.title ?? outcome.summary}</b>
             <span>→ {outcome.where}</span>
           </m.div>
@@ -155,6 +166,7 @@ export default function SortedCard({ outcome, freshSet, questionsPending, parked
               <p className="sorted-text">Got it.</p>
             ) : set && question ? (
               <>
+                {questions.length > 1 && <p className="sorted-count">{step + 1} of {questions.length}</p>}
                 <p className="sorted-question">
                   {parked && step === 0 && (
                     <>
@@ -169,8 +181,11 @@ export default function SortedCard({ outcome, freshSet, questionsPending, parked
                       {o}
                     </button>
                   ))}
+                  <button type="button" className="capture-chip is-quiet" onClick={() => advance(answers)}>
+                    Skip
+                  </button>
                   <button type="button" className="capture-chip is-quiet" onClick={onDismiss}>
-                    {parked ? "Later" : "Ask me later"}
+                    Answer later
                   </button>
                 </div>
               </>

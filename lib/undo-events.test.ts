@@ -15,11 +15,17 @@ const FAKE_CONTEXT =
       "export const forgetMemo = () => {};"
   );
 
+const NO_ADMIN =
+  "data:text/javascript," + encodeURIComponent("export const createAdminClient = () => { throw new Error('no admin client in tests'); };");
+
 type Resolve = (specifier: string, context: unknown, next: (s: string, c: unknown) => unknown) => unknown;
 (nodeModule as unknown as { registerHooks: (h: { resolve: Resolve }) => void }).registerHooks({
   resolve(specifier, context, next) {
     if (specifier === "server-only") return { url: "data:text/javascript,", shortCircuit: true };
     if (specifier === "./request-context") return { url: FAKE_CONTEXT, shortCircuit: true };
+    // Decision records (lib/store.ts → ai_decisions) use the service-role
+    // client; here it is absent, and the store carries on without a record.
+    if (specifier === "./supabase/admin") return { url: NO_ADMIN, shortCircuit: true };
     if (specifier.startsWith(".") && !/\.[cm]?[jt]s$/.test(specifier)) {
       try {
         return next(`${specifier}.ts`, context);

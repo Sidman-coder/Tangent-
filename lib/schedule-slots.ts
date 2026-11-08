@@ -5,6 +5,7 @@
 // a time" when these are wrong.
 
 import type { SuggestedSlot, Task } from "./types";
+import { commitmentOf } from "./task-kind";
 import { addDaysYMD, weekdayOf } from "./time";
 
 /** Tasks have no duration; like the week view, a step is drawn as 45 minutes. */
@@ -58,7 +59,7 @@ export function isSchoolBlock(t: Task): boolean {
   return schoolEndFromNotes(t.notes) !== null || t.title.trim().toLowerCase() === "school";
 }
 
-function dayBusy(tasks: Task[], date: string): { busy: Block[]; schoolEnd: number | null } {
+function dayBusy(tasks: Task[], date: string, bufferMinutes = 0): { busy: Block[]; schoolEnd: number | null } {
   const busy: Block[] = [];
   let schoolEnd: number | null = null;
   for (const t of tasks) {
@@ -72,7 +73,8 @@ function dayBusy(tasks: Task[], date: string): { busy: Block[]; schoolEnd: numbe
       busy.push([start, end]);
       schoolEnd = Math.max(schoolEnd ?? 0, end);
     } else if (!t.completed) {
-      busy.push([start, start + STEP_BLOCK_MIN]);
+      const buffer = bufferMinutes > 0 && commitmentOf(t) === "fixed" ? bufferMinutes : 0;
+      busy.push([start - buffer, start + STEP_BLOCK_MIN + buffer]);
     }
   }
   return { busy, schoolEnd };
@@ -143,9 +145,23 @@ export function suggestSlots(
  *  (or in a weekend window), not before `earliest` minutes; null when the day
  *  has no room. Used by the spacing brain (lib/load.ts) to time a task once it
  *  has picked the day. */
-export function firstOpenTime(tasks: Task[], date: string, earliest = 0, length = STEP_BLOCK_MIN): string | null {
-  const { busy, schoolEnd } = dayBusy(tasks, date);
-  const start = firstFree(dayWindows(date, schoolEnd), busy, earliest, Math.min(length, 120));
+export function firstOpenTime(
+  tasks: Task[],
+  date: string,
+  earliest = 0,
+  length = STEP_BLOCK_MIN,
+  rules: { bufferMinutes?: number; preferredWindows?: { start: number; end: number }[] } = {}
+): string | null {
+  const { busy, schoolEnd } = dayBusy(tasks, date, rules.bufferMinutes ?? 0);
+  const size = Math.min(length, 120);
+  const windows = dayWindows(date, schoolEnd);
+  // The student's preferred hours first, inside the hours the day has open.
+  const preferred = (rules.preferredWindows ?? []).flatMap(({ start, end }) =>
+    windows
+      .map(([from, to]): Block => [Math.max(from, start), Math.min(to, end)])
+      .filter(([from, to]) => from < to)
+  );
+  const start = firstFree(preferred, busy, earliest, size) ?? firstFree(windows, busy, earliest, size);
   return start === null ? null : hhmm(start);
 }
 

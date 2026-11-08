@@ -7,6 +7,7 @@ import type { OnboardingPreferences, OnboardingSubmission, PreferencesPatch, Sch
 import { SCHOOL_SERIES_WEEKS, planSchoolReplace, schoolHoursFromTasks } from "./school-block";
 import { CALENDARS, calendarGroupOf } from "./calendars";
 import { DEFAULT_CAPACITY, type Capacity } from "./load";
+import { changesPlan, factCategory, factFromAnswer, isStale, pickGrillQuestions, rankQueue, type GrillItem, type GrillStatus } from "./grill-queue";
 import { decryptFeedUrl, encryptFeedUrl, maskCanvasFeedUrl as maskFeedUrl } from "./canvas-feed-security";
 import type {
   Task,
@@ -36,8 +37,18 @@ import type {
   TangentStatus,
   BatchUndoStep,
 } from "./types";
+import { commitmentOf } from "./task-kind";
+import { createColumnMemo, schemaErrorKind, warnSchemaOnce } from "./schema-compat";
+import { parseNotificationPrefs, type NotificationPrefs } from "./settings/notification-prefs";
+import { EXPORT_TABLES, redactExportRow } from "./settings/data-export";
+import { assignProjectColor, projectSeries, type SeriesKey } from "./task-colors";
 import { parseChangeSet } from "./pipeline/changeset";
+import { undoStepsWith } from "./pipeline/undo-core";
 import type { ChangeSet, ChangeSetStatus } from "./pipeline/changeset";
+import { canTransition, decisionColumns, isOutcome, type DecisionInput, type Outcome } from "./pipeline/decisions";
+import { aliasFor } from "./pipeline/match";
+import { createAdminClient } from "./supabase/admin";
+import { canContinueGeneral, sameScope, scopeOfSession, type ChatScope } from "./chat/scope";
 
 export type { ChatMessage, ChatSession } from "./types";
 
@@ -105,10 +116,54 @@ type TaskRow = {
   source: Task["source"] | null;
   external_id: string | null;
   path_node_id: string | null;
+  /** Absent until migration 20261105000000 has run. */
+  commitment_type?: Task["commitment"] | null;
+  overdue_dismissed_at?: string | null;
+  /** Absent until migration 20261105060000 has run. */
+  completed_at?: string | null;
 };
-
-const TASK_COLUMNS =
+const BASE_TASK_COLUMNS =
   "id, title, date, time, completed, kind, calendar_id, plan_id, notes, recurring, resources, start_action, source, external_id, path_node_id";
+
+// New code ships before its migration runs. A column named here that the
+// database doesn't have yet is left out of reads and writes until a re-check
+// finds it, and the app reads the missing value through the same rules
+// (commitmentOf in lib/task-kind.ts).
+const OPTIONAL_TASK_COLUMNS = ["commitment_type", "overdue_dismissed_at", "completed_at"] as const;
+const missingTaskColumns = createColumnMemo();
+
+function taskColumns(): string {
+  const present = OPTIONAL_TASK_COLUMNS.filter((c) => !missingTaskColumns.isMissing(c));
+  return present.length ? `${BASE_TASK_COLUMNS}, ${present.join(", ")}` : BASE_TASK_COLUMNS;
+}
+
+function withoutMissingColumns(row: Record<string, unknown>): Record<string, unknown> {
+  const kept = { ...row };
+  for (const c of OPTIONAL_TASK_COLUMNS) if (missingTaskColumns.isMissing(c)) delete kept[c];
+  return kept;
+}
+
+/** True when the error names an optional column, now remembered as missing. */
+function noteMissingTaskColumn(error: { code?: string; message?: string }): boolean {
+  if (schemaErrorKind(error) !== "missing_column") return false;
+  const named = OPTIONAL_TASK_COLUMNS.filter((c) => error.message?.includes(c) && !missingTaskColumns.isMissing(c));
+  for (const c of named) {
+    missingTaskColumns.markMissing(c);
+    warnSchemaOnce(`tasks.${c}`, `tasks.${c} is missing; apply the migrations in docs/MANUAL-STEPS.md`);
+  }
+  return named.length > 0;
+}
+
+/** Runs a tasks query, again without any optional column the database turns out
+ *  not to have. `run` must build its query afresh, from taskColumns() and
+ *  withoutMissingColumns(), every time it's called. */
+async function taskQuery<R extends { error: { code?: string; message: string } | null }>(run: () => PromiseLike<R>): Promise<R> {
+  let result = await run();
+  for (let i = 0; i < OPTIONAL_TASK_COLUMNS.length && result.error && noteMissingTaskColumn(result.error); i++) {
+    result = await run();
+  }
+  return result;
+}
 
 function taskFromRow(r: TaskRow): Task {
   const t: Task = { id: r.id, title: r.title, date: r.date, time: r.time, completed: r.completed };
@@ -121,6 +176,9 @@ function taskFromRow(r: TaskRow): Task {
   if (r.source) t.source = r.source;
   if (r.external_id !== null) t.externalId = r.external_id;
   if (r.path_node_id !== null) t.pathNodeId = r.path_node_id;
+  if (r.commitment_type) t.commitment = r.commitment_type;
+  if (r.overdue_dismissed_at) t.overdueDismissedAt = r.overdue_dismissed_at;
+  if (r.completed_at) t.completedAt = r.completed_at;
   // Old ids (Personal/Work/Study/custom) become School or No school here, so
   // nothing above the store sees them (lib/calendars.ts).
   t.calendarId = calendarGroupOf({ ...t, calendarId: r.calendar_id ?? undefined });
@@ -137,7 +195,12 @@ function taskPatchToRow(patch: Partial<Omit<Task, "id">>): Record<string, unknow
   if (has("title") && patch.title != null) row.title = patch.title;
   if (has("date") && patch.date != null) row.date = patch.date;
   if (has("time")) row.time = patch.time ?? "";
-  if (has("completed") && patch.completed != null) row.completed = patch.completed;
+  if (has("completed") && patch.completed != null) {
+    row.completed = patch.completed;
+    // Every path to Done (Today, task detail, calendar, AI changes) and every
+    // Undo or reopen comes through here.
+    row.completed_at = patch.completed ? new Date().toISOString() : null;
+  }
   if (has("kind")) row.kind = patch.kind ?? null;
   if (has("calendarId")) row.calendar_id = patch.calendarId ?? null;
   if (has("planId")) row.plan_id = isUuid(patch.planId) ? patch.planId : null;
@@ -147,29 +210,36 @@ function taskPatchToRow(patch: Partial<Omit<Task, "id">>): Record<string, unknow
   if (has("startAction")) row.start_action = patch.startAction ?? null;
   if (has("source")) row.source = patch.source ?? null;
   if (has("externalId")) row.external_id = patch.externalId ?? null;
+  if (has("commitment")) row.commitment_type = patch.commitment ?? null;
+  if (has("overdueDismissedAt")) row.overdue_dismissed_at = patch.overdueDismissedAt ?? null;
   return row;
 }
 
 function newTaskRow(userId: string, task: Omit<Task, "id">): Record<string, unknown> {
-  return { user_id: userId, completed: false, ...taskPatchToRow({ ...task, time: task.time ?? "" }) };
+  // Every new task gets a kind here, so voice, AI, Canvas, calendar import and
+  // manual adds can't miss it. Capture may have already asked Haiku (lib/task-kind-ai.ts).
+  const commitment = commitmentOf({ ...task, id: "", time: task.time ?? "" } as Task);
+  return { user_id: userId, completed: false, ...taskPatchToRow({ ...task, time: task.time ?? "", commitment }) };
 }
 
 async function selectTasks(where: string, filter?: (q: any) => any): Promise<Task[]> {
   const { db, userId } = ctx();
-  const rows = await selectAll<TaskRow>(where, (from, to) => {
-    let q = db.from("tasks").select(TASK_COLUMNS).eq("user_id", userId);
-    if (filter) q = filter(q);
-    return q.order("date").order("time").order("created_at").order("id").range(from, to);
-  });
+  const rows = await selectAll<TaskRow>(where, (from, to) =>
+    taskQuery(() => {
+      let q = db.from("tasks").select(taskColumns()).eq("user_id", userId);
+      if (filter) q = filter(q);
+      return q.order("date").order("time").order("created_at").order("id").range(from, to);
+    }) as PromiseLike<{ data: TaskRow[] | null; error: { message: string } | null }>
+  );
   return rows.map(taskFromRow);
 }
 
 async function getTask(id: string): Promise<Task | null> {
   if (!isUuid(id)) return null;
   const { db, userId } = ctx();
-  const { data, error } = await db.from("tasks").select(TASK_COLUMNS).eq("user_id", userId).eq("id", id).maybeSingle();
+  const { data, error } = await taskQuery(() => db.from("tasks").select(taskColumns()).eq("user_id", userId).eq("id", id).maybeSingle());
   if (error) fail("getTask", error);
-  return data ? taskFromRow(data as TaskRow) : null;
+  return data ? taskFromRow(data as unknown as TaskRow) : null;
 }
 
 /** Deletes tasks by id (chunked) and returns how many were removed. */
@@ -233,7 +303,10 @@ async function restoreTasks(tasks: Task[]): Promise<void> {
     path_node_id: pathNodeFor(rest),
   }));
   for (let i = 0; i < rows.length; i += 500) {
-    const { error } = await db.from("tasks").upsert(rows.slice(i, i + 500), { onConflict: "id", ignoreDuplicates: true });
+    const chunk = rows.slice(i, i + 500);
+    const { error } = await taskQuery(() =>
+      db.from("tasks").upsert(chunk.map(withoutMissingColumns), { onConflict: "id", ignoreDuplicates: true })
+    );
     if (error) fail("restoreTasks", error);
   }
 }
@@ -299,13 +372,14 @@ export async function addTask(task: Omit<Task, "id">): Promise<Task & { wasDupli
   const sameDay = await selectTasks("addTask", (q) => q.eq("date", task.date).eq("completed", false));
   const duplicate = findDuplicateIn(sameDay, task);
   if (duplicate) {
-    console.log("[store] addTask: skipped duplicate of", duplicate.id, duplicate.title);
+    console.log("[store] addTask: skipped duplicate of", duplicate.id);
     return { ...duplicate, wasDuplicate: true };
   }
-  const { data, error } = await db.from("tasks").insert(newTaskRow(userId, task)).select(TASK_COLUMNS).single();
+  const row = newTaskRow(userId, task);
+  const { data, error } = await taskQuery(() => db.from("tasks").insert(withoutMissingColumns(row)).select(taskColumns()).single());
   if (error) fail("addTask", error);
-  const created = taskFromRow(data as TaskRow);
-  console.log("[store] addTask:", created.id, created.title, created.date, created.time, created.kind);
+  const created = taskFromRow(data as unknown as TaskRow);
+  console.log("[store] addTask:", created.id, created.kind);
   return created;
 }
 
@@ -327,19 +401,18 @@ export async function addPathTask(
 ): Promise<{ task: Task } | { error: "already_scheduled" | "no_node" }> {
   if (!isUuid(pathNodeId)) return { error: "no_node" };
   const { db, userId } = ctx();
-  const { data, error } = await db
-    .from("tasks")
-    .insert({ ...newTaskRow(userId, task), path_node_id: pathNodeId })
-    .select(TASK_COLUMNS)
-    .single();
+  const row = { ...newTaskRow(userId, task), path_node_id: pathNodeId };
+  const { data, error } = await taskQuery(() =>
+    db.from("tasks").insert(withoutMissingColumns(row)).select(taskColumns()).single()
+  );
   if (error) {
     if (isActivePathStepConflict(error)) return { error: "already_scheduled" };
     // Foreign key: the node is gone (or was never this student's).
     if ((error as DbError).code === "23503") return { error: "no_node" };
     fail("addPathTask", error);
   }
-  const created = taskFromRow(data as TaskRow);
-  console.log("[store] addPathTask:", created.id, created.title, created.date, created.time, "node", pathNodeId);
+  const created = taskFromRow(data as unknown as TaskRow);
+  console.log("[store] addPathTask:", created.id, "node", pathNodeId);
   return { task: created };
 }
 
@@ -401,7 +474,12 @@ export async function updateTask(id: string, patch: Partial<Omit<Task, "id">>): 
   if (Object.keys(row).length === 0) return getTask(id);
   const { db, userId } = ctx();
   const run = (r: Record<string, unknown>) =>
-    db.from("tasks").update(r).eq("user_id", userId).eq("id", id).select(TASK_COLUMNS).maybeSingle();
+    taskQuery(() => {
+      const kept = withoutMissingColumns(r);
+      // Only an optional column was changing and the database doesn't have it yet.
+      if (Object.keys(kept).length === 0) return db.from("tasks").select(taskColumns()).eq("user_id", userId).eq("id", id).maybeSingle();
+      return db.from("tasks").update(kept).eq("user_id", userId).eq("id", id).select(taskColumns()).maybeSingle();
+    });
   let { data, error } = await run(row);
   // Reopening an old path step while its node already has another open step
   // would break the one-open-step rule. The reopened task stays, as an
@@ -415,7 +493,7 @@ export async function updateTask(id: string, patch: Partial<Omit<Task, "id">>): 
     console.log("[store] updateTask: not found", id);
     return null;
   }
-  return taskFromRow(data as TaskRow);
+  return taskFromRow(data as unknown as TaskRow);
 }
 
 // ─── Recurring task functions ─────────────────────────────────────────────────
@@ -466,10 +544,12 @@ export async function addRecurringTask(
   }
   for (let i = 0; i < toInsert.length; i += 500) {
     const chunk = toInsert.slice(i, i + 500);
-    const { data, error } = await db.from("tasks").insert(chunk.map((c) => c.row)).select(TASK_COLUMNS);
+    const { data, error } = await taskQuery(() =>
+      db.from("tasks").insert(chunk.map((c) => withoutMissingColumns(c.row))).select(taskColumns())
+    );
     if (error) fail("addRecurringTask", error);
     // Inserted rows come back in insert order.
-    (data as TaskRow[]).forEach((r, k) => {
+    (data as unknown as TaskRow[]).forEach((r, k) => {
       results[chunk[k].index] = taskFromRow(r);
     });
   }
@@ -572,7 +652,7 @@ export async function addVoiceLog(entry: Omit<VoiceLogEntry, "at">): Promise<voi
     const { error: delError } = await db.from("voice_logs").delete().eq("user_id", userId).in("id", oldIds);
     if (delError) fail("addVoiceLog", delError);
   }
-  console.log("[store] addVoiceLog action:", entry.action, "| ok:", entry.ok, "| text:", entry.text);
+  console.log("[store] addVoiceLog action:", entry.action, "| ok:", entry.ok);
 }
 
 // ─── Calendar functions ───────────────────────────────────────────────────────
@@ -670,11 +750,13 @@ type ProfileRow = {
   day_view?: string | null;
   working_toward?: string | null;
   starting_intent?: string | null;
+  week_start?: number;
 };
 
 const LEGACY_PROFILE_COLUMNS =
   "display_name, email, is_high_school, onboarded_at, timezone, weekly_plan, last_voice_command, last_voice_response, context_summary, context_interactions, context_updated_at";
 const PROFILE_COLUMNS = `${LEGACY_PROFILE_COLUMNS}, help_focus, slip_point, day_view, working_toward, starting_intent`;
+const missingWeekStart = createColumnMemo();
 
 /** Postgres "undefined_column": the onboarding migration isn't applied yet. */
 function isMissingColumn(error: { code?: string; message: string }): boolean {
@@ -683,7 +765,16 @@ function isMissingColumn(error: { code?: string; message: string }): boolean {
 
 async function getProfileRow(where: string): Promise<ProfileRow> {
   const { db, userId } = ctx();
-  let { data, error } = await db.from("profiles").select(PROFILE_COLUMNS).eq("user_id", userId).maybeSingle();
+  const query = (columns: string) => db.from("profiles").select(columns).eq("user_id", userId).maybeSingle().overrideTypes<ProfileRow, { merge: false }>();
+  const includeWeekStart = !missingWeekStart.isMissing("week_start");
+  let { data, error } = await query(includeWeekStart ? `${PROFILE_COLUMNS}, week_start` : PROFILE_COLUMNS);
+  if (includeWeekStart && schemaErrorKind(error) === "missing_column") {
+    ({ data, error } = await query(PROFILE_COLUMNS));
+    if (!error) {
+      missingWeekStart.markMissing("week_start");
+      warnSchemaOnce("profiles.week_start", "profiles.week_start is missing; using Sunday as the first day of the week");
+    }
+  }
   // The migration must ship before this code, but if it hasn't, reading the
   // profile should not take the whole app down: answers read as unanswered
   // (default behavior) and only saving them fails.
@@ -693,7 +784,7 @@ async function getProfileRow(where: string): Promise<ProfileRow> {
   }
   if (error) fail(where, error);
   if (!data) throw new Error(`[store] ${where}: no profile for this student`);
-  return data as ProfileRow;
+  return data;
 }
 
 async function updateProfile(where: string, row: Record<string, unknown>): Promise<void> {
@@ -743,6 +834,59 @@ export async function setCapacity(cap: Capacity): Promise<boolean> {
   return true;
 }
 
+/** Updates profile columns that a newer migration adds; false (and no error)
+ *  when a column isn't there yet. Columns are tried one at a time so one
+ *  missing column doesn't block the others. */
+async function updateProfileOptional(where: string, row: Record<string, unknown>): Promise<boolean> {
+  const { db, userId } = ctx();
+  let all = true;
+  for (const [column, value] of Object.entries(row)) {
+    const { error } = await db.from("profiles").update({ [column]: value }).eq("user_id", userId);
+    if (!error) continue;
+    if (schemaErrorKind(error) === "missing_column") {
+      warnSchemaOnce(`profiles.${column}`, `profiles.${column} is missing; apply the latest migrations`);
+      all = false;
+      continue;
+    }
+    fail(where, error);
+  }
+  return all;
+}
+
+/** First day of the week: 0 Sunday, 1 Monday, 6 Saturday. */
+export async function setWeekStart(day: 0 | 1 | 6): Promise<boolean> {
+  return updateProfileOptional("setWeekStart", { week_start: day });
+}
+
+/** Nudge times and quiet hours (migration 20261105050000); empty when the
+ *  column isn't there yet. */
+export async function getNotificationPrefs(): Promise<NotificationPrefs> {
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("profiles").select("notification_prefs").eq("user_id", userId).maybeSingle();
+  if (error || !data) return {};
+  return parseNotificationPrefs((data as { notification_prefs?: unknown }).notification_prefs);
+}
+
+export async function setNotificationPrefs(prefs: NotificationPrefs): Promise<boolean> {
+  return updateProfileOptional("setNotificationPrefs", { notification_prefs: parseNotificationPrefs(prefs) });
+}
+
+/** Every row the student owns, for "Export my data". Secrets are dropped
+ *  (redactExportRow); a table the database doesn't have yet is skipped. */
+export async function exportUserData(): Promise<Record<string, Record<string, unknown>[]>> {
+  const { db, userId } = ctx();
+  const out: Record<string, Record<string, unknown>[]> = {};
+  for (const table of EXPORT_TABLES) {
+    const { data, error } = await db.from(table).select("*").eq("user_id", userId).limit(5000);
+    if (error) {
+      if (schemaErrorKind(error) === "missing_table") continue;
+      fail(`exportUserData ${table}`, error);
+    }
+    out[table] = ((data ?? []) as Record<string, unknown>[]).map((row) => redactExportRow(table, row));
+  }
+  return out;
+}
+
 function userFromRow(r: ProfileRow): UserProfile {
   return {
     displayName: r.display_name,
@@ -750,6 +894,7 @@ function userFromRow(r: ProfileRow): UserProfile {
     isHighSchool: r.is_high_school,
     onboardedAt: r.onboarded_at ? iso(r.onboarded_at) : null,
     timezone: isValidTimezone(r.timezone) ? r.timezone : DEFAULT_TIMEZONE,
+    weekStart: r.week_start === 1 || r.week_start === 6 ? r.week_start : 0,
     ...preferencesFrom({
       helpFocus: r.help_focus,
       slipPoint: r.slip_point,
@@ -842,18 +987,6 @@ export async function restartOnboarding(): Promise<void> {
 
 // ─── Plan functions ───────────────────────────────────────────────────────────
 
-// Tangent's palette, not stock Tailwind hues: iris, teal, lilac, mauve,
-// deep teal-blue and their mid tones. Plans made before this carry an old
-// colour in the database; planFromRow maps those onto this set.
-const PLAN_COLORS = ["#4b3a8c", "#1f8f86", "#8a78e0", "#b06a9a", "#3d6f8a", "#6b5bc4", "#3aa89f"];
-
-function brandColor(color: string, id: string): string {
-  if (PLAN_COLORS.includes(color.toLowerCase())) return color;
-  let h = 0;
-  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return PLAN_COLORS[h % PLAN_COLORS.length];
-}
-
 type PlanRow = {
   id: string;
   title: string;
@@ -870,7 +1003,8 @@ function planFromRow(r: PlanRow): Plan {
     title: r.title,
     description: r.description,
     taskIds: [...(r.task_ids ?? [])],
-    color: brandColor(r.color ?? "", r.id),
+    // A key into the series palette. Old rows hold a hex until the migration runs.
+    color: projectSeries(r.color, r.id),
     createdAt: r.created_at,
     taskCount: r.task_count,
   };
@@ -886,11 +1020,16 @@ export async function getAllPlans(): Promise<Plan[]> {
 
 export async function addPlan(plan: Omit<Plan, "id" | "createdAt" | "color">): Promise<Plan> {
   const { db, userId } = ctx();
-  const { count, error: countError } = await db
+  const { data: existing, error: colorError } = await db
     .from("plans")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId);
-  if (countError) fail("addPlan", countError);
+    .select("id, color")
+    .eq("user_id", userId)
+    .order("created_at")
+    .order("id");
+  if (colorError) fail("addPlan", colorError);
+  const usedColors: SeriesKey[] = ((existing ?? []) as { id: string; color: string | null }[]).map((p) =>
+    projectSeries(p.color, p.id)
+  );
   const { data, error } = await db
     .from("plans")
     .insert({
@@ -899,13 +1038,13 @@ export async function addPlan(plan: Omit<Plan, "id" | "createdAt" | "color">): P
       description: plan.description ?? "",
       task_ids: plan.taskIds.filter(isUuid),
       task_count: plan.taskCount,
-      color: PLAN_COLORS[(count ?? 0) % PLAN_COLORS.length],
+      color: assignProjectColor(usedColors),
     })
     .select("*")
     .single();
   if (error) fail("addPlan", error);
   const newPlan = planFromRow(data as PlanRow);
-  console.log("[store] addPlan:", newPlan.id, newPlan.title, "tasks:", newPlan.taskIds.length);
+  console.log("[store] addPlan:", newPlan.id, "tasks:", newPlan.taskIds.length);
   return newPlan;
 }
 
@@ -940,13 +1079,13 @@ export async function addPlanWithTasks(
   const inserted: Task[] = [];
   for (let i = 0; i < fresh.length; i += 500) {
     const rows = fresh.slice(i, i + 500).map((t) => newTaskRow(userId, { ...t, planId: created.id }));
-    const { data, error } = await db.from("tasks").insert(rows).select(TASK_COLUMNS);
+    const { data, error } = await taskQuery(() => db.from("tasks").insert(rows.map(withoutMissingColumns)).select(taskColumns()));
     if (error) {
       // A failed insert writes nothing; don't leave an empty plan behind.
       await deletePlan(created.id).catch(() => {});
       fail("addPlanWithTasks", error);
     }
-    const batch = (data as TaskRow[]).map(taskFromRow);
+    const batch = (data as unknown as TaskRow[]).map(taskFromRow);
     inserted.push(...batch);
     hooks.onTasksInserted?.(batch);
   }
@@ -957,7 +1096,7 @@ export async function addPlanWithTasks(
     .eq("user_id", userId)
     .eq("id", created.id);
   if (linkError) fail("addPlanWithTasks", linkError);
-  console.log("[store] addPlanWithTasks:", created.id, created.title, "tasks:", taskIds.length, "| duplicates skipped:", skippedDuplicates);
+  console.log("[store] addPlanWithTasks:", created.id, "tasks:", taskIds.length, "| duplicates skipped:", skippedDuplicates);
   return { plan: { ...created, taskIds, taskCount: taskIds.length }, tasks: inserted, skippedDuplicates };
 }
 
@@ -983,9 +1122,10 @@ export async function addTasksToPlan(
   }
   const inserted: Task[] = [];
   if (fresh.length > 0) {
-    const { data, error } = await db.from("tasks").insert(fresh.map((t) => newTaskRow(userId, { ...t, planId }))).select(TASK_COLUMNS);
+    const rows = fresh.map((t) => newTaskRow(userId, { ...t, planId }));
+    const { data, error } = await taskQuery(() => db.from("tasks").insert(rows.map(withoutMissingColumns)).select(taskColumns()));
     if (error) fail("addTasksToPlan", error);
-    inserted.push(...(data as TaskRow[]).map(taskFromRow));
+    inserted.push(...(data as unknown as TaskRow[]).map(taskFromRow));
   }
   const plan = planFromRow(planRow as PlanRow);
   const taskIds = [...plan.taskIds, ...inserted.map((t) => t.id)];
@@ -996,6 +1136,379 @@ export async function addTasksToPlan(
     .eq("id", planId);
   if (linkError) fail("addTasksToPlan", linkError);
   return { tasks: inserted, skippedDuplicates };
+}
+
+export async function getPlanById(planId: string): Promise<Plan | null> {
+  if (!isUuid(planId)) return null;
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("plans").select("*").eq("user_id", userId).eq("id", planId).maybeSingle();
+  if (error) fail("getPlanById", error);
+  return data ? planFromRow(data as PlanRow) : null;
+}
+
+// ─── Plan nicknames (Pipeline V2, B3) ───────────────────────────────────────
+// The student's own words for a plan ("eye see eff prep" → ICF Prep), saved
+// when they confirm or tap a match, so the next request is sure at once.
+// Owner-only RLS; at most PLAN_ALIAS_CAP per plan (also a trigger).
+
+export const PLAN_ALIAS_CAP = 10;
+let warnedNoAliases = false;
+
+/** Saved nicknames by plan id. Empty (and a single warning) when the table
+ *  isn't there yet, so matching works before the migration is applied. */
+export async function getPlanAliases(): Promise<Map<string, string[]>> {
+  const { db, userId } = ctx();
+  const out = new Map<string, string[]>();
+  const { data, error } = await db.from("plan_aliases").select("plan_id, alias_normalized").eq("user_id", userId).limit(1000);
+  if (error) {
+    if (!warnedNoAliases) console.warn("[store] getPlanAliases: skipped:", error.message);
+    warnedNoAliases = true;
+    return out;
+  }
+  for (const r of (data ?? []) as { plan_id: string; alias_normalized: string }[]) {
+    out.set(r.plan_id, [...(out.get(r.plan_id) ?? []), r.alias_normalized]);
+  }
+  return out;
+}
+
+/** Saves the student's words as a nickname for their plan. Skips words that
+ *  are only filler or the plan's own title, a nickname already saved, and a
+ *  plan at the cap. Never throws: a nickname is a convenience. */
+export async function savePlanAlias(planId: string, words: string): Promise<boolean> {
+  try {
+    if (!isUuid(planId)) return false;
+    const alias = aliasFor(words);
+    if (!alias || alias.length > 120) return false;
+    const plan = await getPlanById(planId);
+    if (!plan || aliasFor(plan.title) === alias) return false;
+    const { db, userId } = ctx();
+    const { count, error: countError } = await db
+      .from("plan_aliases")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("plan_id", planId);
+    if (countError || (count ?? 0) >= PLAN_ALIAS_CAP) return false;
+    const { error } = await db.from("plan_aliases").insert({ user_id: userId, plan_id: planId, alias_normalized: alias });
+    if (error && (error as DbError).code !== "23505") console.warn("[store] savePlanAlias:", error.message);
+    return !error;
+  } catch (e) {
+    console.warn("[store] savePlanAlias:", e instanceof Error ? e.message : e);
+    return false;
+  }
+}
+
+// ─── AI decision records (Pipeline V2, B9) ──────────────────────────────────
+// One ai_decisions row per intake request: what Tangent understood and how it
+// ended (lib/pipeline/decisions.ts). Students can read and delete their rows
+// (RLS); only the server writes them, so inserts and updates use the
+// service-role client with user_id set explicitly. Deleting a row never
+// touches calendar data. Never throws: the record must not break a request.
+
+/**
+ * The pipeline's only use of the service-role client: ai_decisions writes
+ * (students may read and delete their own rows, but not write them) and the
+ * retention purge. user_id always comes from the request context (withUser's
+ * signed-in student, or runAsUser for cron), never from a request body.
+ * plan_aliases, change_sets and events use the session client.
+ */
+const decisionsAdmin = {
+  forStudent() {
+    const { userId } = ctx();
+    const db = createAdminClient();
+    return { userId, table: () => db.from("ai_decisions") };
+  },
+  purge: () => createAdminClient().rpc("purge_old_ai_decisions"),
+};
+
+let warnedNoDecisions = false;
+function warnDecisions(where: string, e: unknown) {
+  if (warnedNoDecisions) return;
+  warnedNoDecisions = true;
+  const message = e instanceof Error ? e.message : (e as { message?: string } | null)?.message ?? String(e);
+  console.warn(`[store] ${where}: decision not recorded:`, message);
+}
+
+/** Deletes every student's decision rows older than RETENTION_DAYS (the
+ *  migration's purge_old_ai_decisions). Daily, from /api/cron/proactive.
+ *  Needs no request context. Returns rows removed, or null if it couldn't. */
+export async function purgeOldDecisions(): Promise<number | null> {
+  try {
+    const { data, error } = await decisionsAdmin.purge();
+    if (error) {
+      warnDecisions("purgeOldDecisions", error);
+      return null;
+    }
+    return typeof data === "number" ? data : 0;
+  } catch (e) {
+    warnDecisions("purgeOldDecisions", e);
+    return null;
+  }
+}
+
+/** Inserts the request's decision row; its id, or null if it couldn't. */
+export async function recordDecision(input: DecisionInput): Promise<string | null> {
+  try {
+    const { userId, table } = decisionsAdmin.forStudent();
+    // user_id goes last: nothing in the input can name another student.
+    const { data, error } = await table()
+      .insert({ ...decisionColumns(input), user_id: userId })
+      .select("id")
+      .single();
+    if (error) {
+      warnDecisions("recordDecision", error);
+      return null;
+    }
+    return (data as { id: string }).id;
+  } catch (e) {
+    warnDecisions("recordDecision", e);
+    return null;
+  }
+}
+
+/**
+ * Moves the student's decision row (found by its id, ChangeSet or undo entry)
+ * to `outcome` when OUTCOME_TRANSITIONS allows it; otherwise leaves it. The
+ * update is conditional on the outcome read, so racing writers can't skip a
+ * step. `link` fills in the ChangeSet, undo entry or chosen plan.
+ */
+export async function setDecisionOutcome(
+  where: { id?: string | null; changeSetId?: string | null; actionId?: string | null },
+  outcome: Outcome,
+  link: { changeSetId?: string | null; actionId?: string | null; chosenPlanId?: string | null } = {}
+): Promise<boolean> {
+  try {
+    const key: [string, string] | null = isUuid(where.id)
+      ? ["id", where.id]
+      : isUuid(where.changeSetId)
+        ? ["change_set_id", where.changeSetId]
+        : isUuid(where.actionId)
+          ? ["action_id", where.actionId]
+          : null;
+    if (!key) return false;
+    const { userId, table } = decisionsAdmin.forStudent();
+    const { data: row, error } = await table()
+      .select("id, outcome")
+      .eq("user_id", userId)
+      .eq(key[0], key[1])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      warnDecisions("setDecisionOutcome", error);
+      return false;
+    }
+    const found = row as { id: string; outcome: unknown } | null;
+    if (!found || !isOutcome(found.outcome) || !canTransition(found.outcome, outcome)) return false;
+    const patch: Record<string, unknown> = { outcome, updated_at: new Date().toISOString() };
+    if (isUuid(link.changeSetId)) patch.change_set_id = link.changeSetId;
+    if (isUuid(link.actionId)) patch.action_id = link.actionId;
+    if (isUuid(link.chosenPlanId)) patch.chosen_plan_id = link.chosenPlanId;
+    const { data: moved, error: updateError } = await table()
+      .update(patch)
+      .eq("user_id", userId)
+      .eq("id", found.id)
+      .eq("outcome", found.outcome)
+      .select("id");
+    if (updateError) warnDecisions("setDecisionOutcome", updateError);
+    return (moved?.length ?? 0) > 0;
+  } catch (e) {
+    warnDecisions("setDecisionOutcome", e);
+    return false;
+  }
+}
+
+// Settings › AI Activity (step 3B) reads and deletes decision rows as the
+// student (session client: RLS plus an explicit user_id filter). Deleting a
+// row only ever touches ai_decisions, never tasks, plans, projects or
+// change_sets.
+
+const DECISION_COLUMNS =
+  "id, created_at, updated_at, source, request_text, route, intent, confidence, via, plan_match, chosen_plan_id, pending_question, change_set_id, action_id, models, outcome";
+
+export type DecisionRecord = {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  source: "typed" | "voice";
+  requestText: string;
+  route: string;
+  intent: string | null;
+  confidence: number | null;
+  via: string;
+  planMatch: { decision?: string; candidates?: { id: string; score: number }[] } | null;
+  chosenPlanId: string | null;
+  pendingQuestion: { action?: string; kind?: string; candidates?: number } | null;
+  changeSetId: string | null;
+  actionId: string | null;
+  models: string[];
+  outcome: string;
+};
+
+type DecisionRow = {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  source: "typed" | "voice";
+  request_text: string | null;
+  route: string;
+  intent: string | null;
+  confidence: number | null;
+  via: string;
+  plan_match: DecisionRecord["planMatch"];
+  chosen_plan_id: string | null;
+  pending_question: DecisionRecord["pendingQuestion"];
+  change_set_id: string | null;
+  action_id: string | null;
+  models: unknown;
+  outcome: string;
+};
+
+function decisionFromRow(r: DecisionRow): DecisionRecord {
+  return {
+    id: r.id,
+    createdAt: iso(r.created_at),
+    updatedAt: iso(r.updated_at),
+    source: r.source,
+    requestText: r.request_text ?? "",
+    route: r.route,
+    intent: r.intent,
+    confidence: r.confidence,
+    via: r.via,
+    planMatch: r.plan_match,
+    chosenPlanId: r.chosen_plan_id,
+    pendingQuestion: r.pending_question,
+    changeSetId: r.change_set_id,
+    actionId: r.action_id,
+    models: Array.isArray(r.models) ? r.models.filter((m): m is string => typeof m === "string") : [],
+    outcome: r.outcome,
+  };
+}
+
+/** The student's decision rows since `sinceIso`, newest first (at most 1000).
+ *  `pattern` is an ILIKE pattern on the request text. Empty when the table
+ *  isn't there yet (migration not applied). */
+export async function listDecisions(sinceIso: string, pattern?: string): Promise<DecisionRecord[]> {
+  const { db, userId } = ctx();
+  let q = db.from("ai_decisions").select(DECISION_COLUMNS).eq("user_id", userId).gte("created_at", sinceIso);
+  if (pattern) q = q.ilike("request_text", pattern);
+  const { data, error } = await q.order("created_at", { ascending: false }).limit(PAGE);
+  if (error) {
+    warnDecisions("listDecisions", error);
+    return [];
+  }
+  return ((data ?? []) as DecisionRow[]).map(decisionFromRow);
+}
+
+/** Deletes one of the student's decision rows. True when it was theirs and is gone. */
+export async function deleteDecision(id: string): Promise<boolean> {
+  if (!isUuid(id)) return false;
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("ai_decisions").delete().eq("user_id", userId).eq("id", id).select("id");
+  if (error) fail("deleteDecision", error);
+  return (data?.length ?? 0) > 0;
+}
+
+/** Deletes all of the student's decision rows. Returns how many. */
+export async function clearDecisions(): Promise<number> {
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("ai_decisions").delete().eq("user_id", userId).select("id");
+  if (error) fail("clearDecisions", error);
+  return data?.length ?? 0;
+}
+
+/** The student's own ai_usage rows in [fromIso, toIso] (owner columns). */
+export async function getUsageBetween(
+  fromIso: string,
+  toIso: string
+): Promise<{ createdAt: string; model: string; inputTokens: number; outputTokens: number; costUsd: number }[]> {
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("ai_usage")
+    .select("created_at, model, input_tokens, output_tokens, est_cost_usd")
+    .eq("user_id", userId)
+    .gte("created_at", fromIso)
+    .lte("created_at", toIso)
+    .limit(PAGE);
+  if (error) {
+    console.warn("[store] getUsageBetween:", error.message);
+    return [];
+  }
+  return (
+    (data ?? []) as { created_at: string; model: string; input_tokens: number | null; output_tokens: number | null; est_cost_usd: number | string | null }[]
+  ).map((r) => ({
+    createdAt: iso(r.created_at),
+    model: r.model,
+    inputTokens: r.input_tokens ?? 0,
+    outputTokens: r.output_tokens ?? 0,
+    costUsd: Number(r.est_cost_usd ?? 0),
+  }));
+}
+
+/** Duplicates skipped when each of these ChangeSets was confirmed (the
+ *  changeset_confirmed event's duplicates_skipped). */
+export async function getSkippedDuplicates(changeSetIds: string[]): Promise<Map<string, number>> {
+  const ids = changeSetIds.filter(isUuid);
+  const out = new Map<string, number>();
+  if (ids.length === 0) return out;
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("events")
+    .select("change_set_id, props")
+    .eq("user_id", userId)
+    .eq("type", "changeset_confirmed")
+    .in("change_set_id", ids.slice(0, 100));
+  if (error) {
+    console.warn("[store] getSkippedDuplicates:", error.message);
+    return out;
+  }
+  for (const r of (data ?? []) as { change_set_id: string | null; props: Record<string, unknown> | null }[]) {
+    const n = r.props?.duplicates_skipped;
+    if (r.change_set_id && typeof n === "number") out.set(r.change_set_id, n);
+  }
+  return out;
+}
+
+/** Puts a deleted plan back with its original id, title, colour and task list
+ *  (undo of a delete_plan op). Its tasks are relinked by the caller. */
+async function restorePlanRow(plan: Plan): Promise<void> {
+  if (!isUuid(plan.id)) return;
+  const { db, userId } = ctx();
+  const { error } = await db.from("plans").upsert(
+    {
+      id: plan.id,
+      user_id: userId,
+      title: plan.title,
+      description: plan.description ?? "",
+      task_ids: plan.taskIds.filter(isUuid),
+      task_count: plan.taskCount,
+      color: plan.color,
+      created_at: plan.createdAt,
+    },
+    { onConflict: "id", ignoreDuplicates: true }
+  );
+  if (error) fail("restorePlanRow", error);
+}
+
+/** Deletes the plans in `planIds` that no task links to any more (a confirmed
+ *  delete that emptied them, A2) and returns them for the undo snapshot. A
+ *  plan that gained a task since the confirmation was shown stays. */
+export async function deleteEmptiedPlans(planIds: readonly string[]): Promise<Plan[]> {
+  const ids = planIds.filter(isUuid);
+  if (ids.length === 0) return [];
+  const { db, userId } = ctx();
+  const [plans, linked] = await Promise.all([
+    db.from("plans").select("*").eq("user_id", userId).in("id", ids),
+    db.from("tasks").select("plan_id").eq("user_id", userId).in("plan_id", ids),
+  ]);
+  if (plans.error) fail("deleteEmptiedPlans", plans.error);
+  if (linked.error) fail("deleteEmptiedPlans", linked.error);
+  const stillUsed = new Set((linked.data ?? []).map((r: { plan_id: string }) => r.plan_id));
+  const removed: Plan[] = [];
+  for (const row of (plans.data ?? []) as PlanRow[]) {
+    if (stillUsed.has(row.id)) continue;
+    if (await deletePlan(row.id)) removed.push(planFromRow(row));
+  }
+  return removed;
 }
 
 export async function deletePlan(planId: string): Promise<boolean> {
@@ -1014,7 +1527,7 @@ export async function deletePlan(planId: string): Promise<boolean> {
  *  and to put a plan back on undo. A blank title is ignored. */
 export async function updatePlan(
   planId: string,
-  patch: { title?: string; description?: string; taskIds?: string[]; taskCount?: number }
+  patch: { title?: string; description?: string; taskIds?: string[]; taskCount?: number; color?: string }
 ): Promise<Plan | null> {
   if (!isUuid(planId)) return null;
   const row: Record<string, unknown> = {};
@@ -1022,6 +1535,7 @@ export async function updatePlan(
   if (patch.description != null) row.description = patch.description.trim().slice(0, 1000);
   if (patch.taskIds) row.task_ids = patch.taskIds.filter(isUuid);
   if (patch.taskCount != null) row.task_count = patch.taskCount;
+  if (patch.color != null) row.color = patch.color;
   const { db, userId } = ctx();
   const query = db.from("plans");
   const { data, error } = await (Object.keys(row).length
@@ -1068,7 +1582,7 @@ function messageRefsMissing(error: { code?: string; message: string }): boolean 
 }
 
 /** Deletes the oldest rows of a message thread beyond the cap. */
-async function trimThread(table: "chat_messages" | "task_chat_messages", column: "session_id" | "task_id", key: string) {
+async function trimThread(table: "chat_messages", column: "session_id", key: string) {
   const { db, userId } = ctx();
   const { data, error } = await db
     .from(table)
@@ -1084,35 +1598,6 @@ async function trimThread(table: "chat_messages" | "task_chat_messages", column:
   if (delError) fail(`trim ${table}`, delError);
 }
 
-export async function getTaskChat(taskId: string): Promise<ChatMessage[]> {
-  if (!isUuid(taskId)) return [];
-  const { db, userId } = ctx();
-  const rows = await selectAll<MessageRow>("getTaskChat", (from, to) =>
-    db
-      .from("task_chat_messages")
-      .select("id, role, content, created_at")
-      .eq("user_id", userId)
-      .eq("task_id", taskId)
-      .order("id")
-      .range(from, to)
-  );
-  return rows.map(messageFromRow);
-}
-
-export async function addTaskChatMessage(taskId: string, role: "user" | "assistant", content: string): Promise<ChatMessage> {
-  if (!isUuid(taskId)) throw new Error("[store] addTaskChatMessage: task not found");
-  const { db, userId } = ctx();
-  const { data, error } = await db
-    .from("task_chat_messages")
-    .insert({ user_id: userId, task_id: taskId, role, content })
-    .select("id, role, content, created_at")
-    .single();
-  if (error) fail("addTaskChatMessage", error);
-  await trimThread("task_chat_messages", "task_id", taskId);
-  console.log("[store] addTaskChatMessage:", taskId, role, content.slice(0, 60));
-  return messageFromRow(data as MessageRow);
-}
-
 // ─── Chat session functions ───────────────────────────────────────────────────
 
 type SessionRow = {
@@ -1124,9 +1609,40 @@ type SessionRow = {
   pinned: boolean;
   created_at: string;
   updated_at: string;
+  // Round 2 Phase D (chat_scope migration); absent before it runs.
+  scope?: "general" | "task" | "project" | null;
+  task_id?: string | null;
+  summary?: string | null;
 };
 
-const SESSION_COLUMNS = "id, title, task_ids, plan_id, color, pinned, created_at, updated_at";
+const SESSION_COLUMNS_V1 = "id, title, task_ids, plan_id, color, pinned, created_at, updated_at";
+const SESSION_COLUMNS_V2 = `${SESSION_COLUMNS_V1}, scope, task_id, summary`;
+const missingChatScope = createColumnMemo();
+const CHAT_SCOPE_KEY = "chat_sessions.scope";
+const chatScopeReady = () => !missingChatScope.isMissing(CHAT_SCOPE_KEY);
+type SessionDbError = { code?: string; message: string } | null;
+
+/** Runs a chat_sessions query with the scope columns, and again without them
+ *  when the chat_scope migration hasn't run yet. */
+async function withSessionColumns(
+  run: (columns: string) => PromiseLike<{ data: unknown; error: SessionDbError }>
+): Promise<{ data: unknown; error: SessionDbError }> {
+  if (!chatScopeReady()) return run(SESSION_COLUMNS_V1);
+  const first = await run(SESSION_COLUMNS_V2);
+  if (schemaErrorKind(first.error) === "missing_column") {
+    missingChatScope.markMissing(CHAT_SCOPE_KEY);
+    warnSchemaOnce(CHAT_SCOPE_KEY, "chat_sessions.scope is missing; run 20261105040000_chat_scope.sql. Chat scope is inferred meanwhile.");
+    return run(SESSION_COLUMNS_V1);
+  }
+  return first;
+}
+
+const scopeInput = (r: Pick<SessionRow, "scope" | "task_id" | "plan_id" | "task_ids">) => ({
+  scope: r.scope ?? undefined,
+  taskId: r.task_id,
+  planId: r.plan_id ?? undefined,
+  taskIds: r.task_ids ?? undefined,
+});
 
 function sessionFromRow(r: SessionRow, messages: ChatMessage[]): ChatSession {
   const s: ChatSession = {
@@ -1140,18 +1656,18 @@ function sessionFromRow(r: SessionRow, messages: ChatMessage[]): ChatSession {
   if (r.task_ids?.length) s.taskIds = [...r.task_ids];
   if (r.plan_id) s.planId = r.plan_id;
   if (r.color) s.color = r.color;
+  if (r.scope) s.scope = r.scope;
+  if (r.task_id) s.taskId = r.task_id;
+  if (r.summary) s.summary = r.summary;
   return s;
 }
 
 async function getSessionRow(sessionId: string): Promise<SessionRow | null> {
   if (!isUuid(sessionId)) return null;
   const { db, userId } = ctx();
-  const { data, error } = await db
-    .from("chat_sessions")
-    .select(SESSION_COLUMNS)
-    .eq("user_id", userId)
-    .eq("id", sessionId)
-    .maybeSingle();
+  const { data, error } = await withSessionColumns((columns) =>
+    db.from("chat_sessions").select(columns).eq("user_id", userId).eq("id", sessionId).maybeSingle()
+  );
   if (error) fail("getChatSession", error);
   return (data as SessionRow | null) ?? null;
 }
@@ -1159,13 +1675,9 @@ async function getSessionRow(sessionId: string): Promise<SessionRow | null> {
 async function updateSessionRow(where: string, sessionId: string, row: Record<string, unknown>): Promise<SessionRow | null> {
   if (!isUuid(sessionId)) return null;
   const { db, userId } = ctx();
-  const { data, error } = await db
-    .from("chat_sessions")
-    .update(row)
-    .eq("user_id", userId)
-    .eq("id", sessionId)
-    .select(SESSION_COLUMNS)
-    .maybeSingle();
+  const { data, error } = await withSessionColumns((columns) =>
+    db.from("chat_sessions").update(row).eq("user_id", userId).eq("id", sessionId).select(columns).maybeSingle()
+  );
   if (error) fail(where, error);
   return (data as SessionRow | null) ?? null;
 }
@@ -1200,52 +1712,157 @@ async function sessionMessages(sessionIds: string[]): Promise<Map<string, ChatMe
   return bySession;
 }
 
-/** Newest chat first, each with its messages (the chat list searches them). */
+/** Most recently used chat first, each with its messages (the library searches
+ *  them). Task and project threads don't count toward MAX_CHATS, so the list
+ *  reads up to twice that. */
 export async function getAllChatSessions(): Promise<ChatSession[]> {
   const { db, userId } = ctx();
-  const { data, error } = await db
-    .from("chat_sessions")
-    .select(SESSION_COLUMNS)
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .order("id")
-    .limit(MAX_CHATS);
+  const { data, error } = await withSessionColumns((columns) =>
+    db
+      .from("chat_sessions")
+      .select(columns)
+      .eq("user_id", userId)
+      .order("updated_at", { ascending: false })
+      .order("id")
+      .limit(MAX_CHATS * 2)
+  );
   if (error) fail("getAllChatSessions", error);
   const rows = (data ?? []) as SessionRow[];
   const messages = await sessionMessages(rows.map((r) => r.id));
   return rows.map((r) => sessionFromRow(r, messages.get(r.id) ?? []));
 }
 
-export async function createChatSession(title?: string): Promise<ChatSession> {
+export async function createChatSession(title?: string, scope: ChatScope = { type: "general" }): Promise<ChatSession> {
   const { db, userId } = ctx();
-  const { data, error } = await db
-    .from("chat_sessions")
-    .insert({
-      user_id: userId,
-      title: title ?? `Chat ${new Date().toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`,
-    })
-    .select(SESSION_COLUMNS)
-    .single();
+  const base: Record<string, unknown> = {
+    user_id: userId,
+    title: title ?? `Chat ${new Date().toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`,
+  };
+  // Before the migration a scoped thread is marked the old way (plan_id, or
+  // task_ids with one task), which scopeOfSession reads back.
+  if (scope.type === "project") base.plan_id = scope.projectId;
+  if (scope.type === "task") base.task_ids = [scope.taskId];
+  const { data, error } = await withSessionColumns((columns) => {
+    const row =
+      columns === SESSION_COLUMNS_V2 ? { ...base, scope: scope.type, task_id: scope.type === "task" ? scope.taskId : null } : base;
+    return db.from("chat_sessions").insert(row).select(columns).single();
+  });
   if (error) fail("createChatSession", error);
   const session = sessionFromRow(data as SessionRow, []);
+  await trimGeneralChats();
+  console.log("[store] createChatSession:", session.id, scope.type);
+  return session;
+}
 
-  // Keep the newest MAX_CHATS chats; their messages cascade.
-  const { data: old, error: oldError } = await db
-    .from("chat_sessions")
-    .select("id")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .order("id")
-    .range(MAX_CHATS, MAX_CHATS + PAGE - 1);
-  if (oldError) fail("createChatSession", oldError);
-  const oldIds = (old ?? []).map((r: { id: string }) => r.id);
+/** Keeps the newest MAX_CHATS general chats; their messages cascade. Task and
+ *  project threads are never trimmed: they live as long as their task or project. */
+async function trimGeneralChats(): Promise<void> {
+  const { db, userId } = ctx();
+  const { data, error } = await withSessionColumns((columns) =>
+    db
+      .from("chat_sessions")
+      .select(columns === SESSION_COLUMNS_V2 ? "id, plan_id, task_ids, scope, task_id" : "id, plan_id, task_ids")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .order("id")
+      .limit(PAGE)
+  );
+  if (error) fail("createChatSession", error);
+  const rows = (data ?? []) as unknown as (Pick<SessionRow, "id" | "plan_id" | "task_ids" | "scope" | "task_id">)[];
+  const oldIds = rows
+    .filter((r) => scopeOfSession(scopeInput(r)).type === "general")
+    .slice(MAX_CHATS)
+    .map((r) => r.id);
   if (oldIds.length) {
     const { error: delError } = await db.from("chat_sessions").delete().eq("user_id", userId).in("id", oldIds);
     if (delError) fail("createChatSession", delError);
   }
+}
 
-  console.log("[store] createChatSession:", session.id, session.title);
+/**
+ * The one continuing thread for a task or project, or the last general chat
+ * used within two hours. Null when there is none yet (the first message
+ * creates it with getOrCreateScopedChatSession). After the migration, a
+ * project with no tagged thread adopts its newest linked chat (how the old
+ * project chat found its thread).
+ */
+export async function findScopedChatSession(scope: ChatScope): Promise<ChatSession | null> {
+  if (scope.type === "task" && !isUuid(scope.taskId)) return null;
+  if (scope.type === "project" && !isUuid(scope.projectId)) return null;
+  const { db, userId } = ctx();
+  const { data, error } = await withSessionColumns((columns) => {
+    let q = db.from("chat_sessions").select(columns).eq("user_id", userId);
+    if (scope.type === "project") q = q.eq("plan_id", scope.projectId);
+    else if (scope.type === "task" && columns === SESSION_COLUMNS_V2) q = q.or(`task_id.eq.${scope.taskId},task_ids.cs.{${scope.taskId}}`);
+    else if (scope.type === "task") q = q.contains("task_ids", [scope.taskId]);
+    return q.order("updated_at", { ascending: false }).order("id").limit(20);
+  });
+  if (error) fail("findScopedChatSession", error);
+  const rows = (data ?? []) as unknown as SessionRow[];
+  let row: SessionRow | null = rows.find((r) => sameScope(scopeOfSession(scopeInput(r)), scope)) ?? null;
+  if (scope.type === "project" && !row) row = rows[0] ?? null;
+  if (scope.type === "project" && row && chatScopeReady() && row.scope !== "project") {
+    row = (await updateSessionRow("findScopedChatSession", row.id, { scope: "project" })) ?? row;
+  }
+  if (scope.type === "task" && row && chatScopeReady() && row.scope !== "task") {
+    row = (await updateSessionRow("findScopedChatSession", row.id, { scope: "task", task_id: scope.taskId })) ?? row;
+  }
+  if (scope.type === "general" && row && !canContinueGeneral(iso(row.updated_at), new Date())) row = null;
+  if (!row) return null;
+  const messages = await sessionMessages([row.id]);
+  return sessionFromRow(row, messages.get(row.id) ?? []);
+}
+
+/** Finds the scope's thread or starts it. A new task thread copies that task's
+ *  old task_chat_messages, so earlier task chats carry over (the old rows stay). */
+export async function getOrCreateScopedChatSession(scope: ChatScope, title?: string): Promise<ChatSession> {
+  if (scope.type !== "general") {
+    const existing = await findScopedChatSession(scope);
+    if (existing) return existing;
+  }
+  const session = await createChatSession(title, scope);
+  if (scope.type === "task") {
+    const copied = await copyTaskChatMessages(session.id, scope.taskId);
+    if (copied) return (await getChatSession(session.id)) ?? session;
+  }
   return session;
+}
+
+async function copyTaskChatMessages(sessionId: string, taskId: string): Promise<number> {
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("task_chat_messages")
+    .select("role, content, created_at")
+    .eq("user_id", userId)
+    .eq("task_id", taskId)
+    .order("id")
+    .limit(200);
+  if (error) {
+    if (schemaErrorKind(error)) return 0;
+    fail("copyTaskChatMessages", error);
+  }
+  const rows = (data ?? []) as { role: string; content: string; created_at: string }[];
+  if (!rows.length) return 0;
+  const { error: insertError } = await db
+    .from("chat_messages")
+    .insert(rows.map((r) => ({ user_id: userId, session_id: sessionId, role: r.role, content: r.content, created_at: r.created_at })));
+  if (insertError) fail("copyTaskChatMessages", insertError);
+  return rows.length;
+}
+
+/** Saves the thread's running summary. A no-op before the migration. */
+export async function setChatSessionSummary(sessionId: string, summary: string): Promise<boolean> {
+  if (!chatScopeReady() || !isUuid(sessionId)) return false;
+  const { db, userId } = ctx();
+  const { error } = await db.from("chat_sessions").update({ summary: summary.slice(0, 1200) }).eq("user_id", userId).eq("id", sessionId);
+  if (error) {
+    if (schemaErrorKind(error) === "missing_column") {
+      missingChatScope.markMissing(CHAT_SCOPE_KEY);
+      return false;
+    }
+    fail("setChatSessionSummary", error);
+  }
+  return true;
 }
 
 export async function getChatSession(sessionId: string): Promise<ChatSession | null> {
@@ -1310,6 +1927,47 @@ export async function replaceLastAssistantMessage(sessionId: string, from: strin
     .select("id");
   if (updateError) fail("replaceLastAssistantMessage", updateError);
   return (updated?.length ?? 0) > 0;
+}
+
+/**
+ * Master fix Phase 4 (Retry / Edit): removes the session's last exchange, the
+ * newest user message (which must be `request`) and any replies after it, so
+ * the resent message doesn't leave the old one behind. Refuses (false) when a
+ * reply after it made a calendar change: that turn stays, with its Undo.
+ */
+export async function dropLastExchange(sessionId: string, request: string): Promise<boolean> {
+  if (!(await getSessionRow(sessionId))) return false;
+  const { db, userId } = ctx();
+  type Row = { id: number; role: string; content: string; action_id?: string | null };
+  const recent = (columns: string) =>
+    db
+      .from("chat_messages")
+      .select(columns)
+      .eq("user_id", userId)
+      .eq("session_id", sessionId)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(6);
+  let res = (await recent("id, role, content, action_id")) as unknown as { data: Row[] | null; error: { code?: string; message: string } | null };
+  if (res.error && messageRefsMissing(res.error)) {
+    res = (await recent("id, role, content")) as unknown as typeof res;
+  }
+  if (res.error) fail("dropLastExchange", res.error);
+  const rows = res.data ?? [];
+  const userAt = rows.findIndex((r) => r.role === "user");
+  if (userAt < 0 || rows[userAt].content.trim() !== request.trim()) return false;
+  const drop = rows.slice(0, userAt + 1);
+  if (drop.some((r) => r.action_id)) return false;
+  const { error } = await db
+    .from("chat_messages")
+    .delete()
+    .eq("user_id", userId)
+    .in(
+      "id",
+      drop.map((r) => r.id)
+    );
+  if (error) fail("dropLastExchange", error);
+  return true;
 }
 
 /**
@@ -1516,7 +2174,7 @@ export async function addContextEntry(entry: Omit<ContextEntry, "id" | "timestam
     context_updated_at: new Date().toISOString(),
   });
   const full = contextFromRow(data as ContextRow);
-  console.log("[store] Context entry added:", full.category, full.fact.slice(0, 60));
+  console.log("[store] Context entry added:", full.category);
   return full;
 }
 
@@ -1527,6 +2185,15 @@ export async function removeContextEntry(id: string): Promise<boolean> {
   const { data, error } = await db.from("context_entries").delete().eq("user_id", userId).eq("id", id).select("id");
   if (error) fail("removeContextEntry", error);
   return (data?.length ?? 0) > 0;
+}
+
+/** "Forget everything" in Settings: every remembered fact goes. Returns how
+ *  many were removed. */
+export async function clearContextEntries(): Promise<number> {
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("context_entries").delete().eq("user_id", userId).select("id");
+  if (error) fail("clearContextEntries", error);
+  return data?.length ?? 0;
 }
 
 export async function getContextAsString(): Promise<string> {
@@ -1717,7 +2384,7 @@ export async function addNotification(notif: Omit<Notification, "id" | "timestam
     if (delError) fail("addNotification", delError);
   }
 
-  console.log("[store] Notification added:", full.type, full.title);
+  console.log("[store] Notification added:", full.type);
   return full;
 }
 
@@ -1846,7 +2513,7 @@ export async function recordAction(
   if (error) fail("recordAction", error);
   await trimNewest("action_records", MAX_ACTIONS);
   const record = actionFromRow(data as ActionRow);
-  console.log("[store] recordAction:", record.id, kind, "-", summary);
+  console.log("[store] recordAction:", record.id, kind);
   return record;
 }
 
@@ -1923,6 +2590,8 @@ export async function undoAction(id: string): Promise<{ ok: boolean; message: st
     throw e;
   }
   console.log("[store] undoAction:", id, record.kind);
+  // An instant change's decision record (B9); a ChangeSet's follows markChangeSet.
+  await setDecisionOutcome({ actionId: id }, "undone");
   return { ok: true, message: "Undone." };
 }
 
@@ -1938,6 +2607,10 @@ async function applyUndo(record: ActionRecord): Promise<void> {
     }
     case "delete_task":
     case "delete_all_tasks": {
+      // A Too big split: its smaller steps leave as the original comes back.
+      await deleteTaskIds("undoAction", snap.addedTaskIds ?? []);
+      // Plans first, so the tasks come back linked to them.
+      for (const plan of snap.removedPlans ?? []) await restorePlanRow(plan);
       await restoreTasks(snap.removedTasks ?? []);
       break;
     }
@@ -1954,6 +2627,16 @@ async function applyUndo(record: ActionRecord): Promise<void> {
     case "reschedule_task": {
       const r = snap.rescheduled;
       if (r) await updateTask(r.taskId, { date: r.fromDate, time: r.fromTime });
+      for (const move of snap.rescheduledMany ?? []) {
+        await updateTask(move.taskId, { date: move.fromDate, time: move.fromTime });
+      }
+      // The Type selector, Dismiss and the project color picker record under this
+      // kind too: action_records.kind has a check constraint, so a new kind would
+      // need a migration before Undo worked.
+      for (const r of snap.restoredFields ?? []) {
+        await updateTask(r.taskId, r.fields as Partial<Omit<Task, "id">>);
+      }
+      if (snap.planColor) await updatePlan(snap.planColor.planId, { color: snap.planColor.from });
       break;
     }
     case "apply_changeset": {
@@ -1965,34 +2648,29 @@ async function applyUndo(record: ActionRecord): Promise<void> {
   }
 }
 
-/** Reverses a Pipeline V2 batch: the steps run last-first. Also used by
- *  lib/pipeline/apply.ts to roll back a ChangeSet that failed partway. */
+/** Reverses a Pipeline V2 batch: the steps run last-first, and each field
+ *  goes back only if it still holds what the batch wrote (compare-and-restore,
+ *  lib/pipeline/undo-core.ts). Also used by lib/pipeline/apply.ts to roll back
+ *  a ChangeSet that failed partway. */
 export async function undoBatchSteps(steps: BatchUndoStep[]): Promise<void> {
-  for (const step of [...steps].reverse()) {
-    switch (step.type) {
-      case "delete_tasks":
-        await deleteTaskIds("undoBatchSteps", step.taskIds);
-        break;
-      case "delete_plan":
-        await deletePlan(step.planId);
-        break;
-      case "restore_tasks":
-        await restoreTasks(step.tasks);
-        break;
-      case "restore_task_fields":
-        // null clears a column (taskPatchToRow maps null and undefined alike).
-        await updateTask(step.taskId, step.fields as Partial<Omit<Task, "id">>);
-        break;
-      case "restore_plan":
-        await updatePlan(step.planId, {
-          title: step.title,
-          description: step.description,
-          taskIds: step.taskIds,
-          taskCount: step.taskCount,
-        });
-        break;
-    }
-  }
+  await undoStepsWith(
+    {
+      getTasksByIds: async (ids) => {
+        const valid = ids.filter(isUuid);
+        return valid.length ? selectTasks("undoBatchSteps", (q) => q.in("id", valid)) : [];
+      },
+      getPlan: getPlanById,
+      deleteTasks: async (ids) => {
+        await deleteTaskIds("undoBatchSteps", ids);
+      },
+      deletePlan,
+      restoreTasks,
+      restorePlan: restorePlanRow,
+      updateTask,
+      updatePlan,
+    },
+    steps
+  );
 }
 
 // ─── Confirm-tier gating (delete_all_tasks, large move_tasks) ────────────────
@@ -2025,7 +2703,7 @@ export async function addPendingConfirmation(
   if (error) fail("addPendingConfirmation", error);
   await trimNewest("pending_confirmations", MAX_PENDING);
   const pending = pendingFromRow(data as PendingRow);
-  console.log("[store] addPendingConfirmation:", pending.id, kind, "-", message);
+  console.log("[store] addPendingConfirmation:", pending.id, kind);
   return pending;
 }
 
@@ -2200,7 +2878,23 @@ export async function markChangeSet(
   if (error) fail("markChangeSet", error);
   const changed = (data?.length ?? 0) > 0;
   if (changed) console.log("[store] markChangeSet:", id, "→", status);
+  // The request's decision record follows its ChangeSet (B9).
+  if (changed) {
+    const outcome: Outcome | null =
+      status === "discarded" ? "discarded" : status === "undone" ? "undone" : status === "confirmed" && opts.applied ? "confirmed" : null;
+    if (outcome) await setDecisionOutcome({ changeSetId: id }, outcome, { actionId: opts.actionId ?? null });
+  }
   return changed;
+}
+
+/** The student's ChangeSets with these ids (any status). */
+export async function getChangeSetsByIds(ids: string[]): Promise<ChangeSet[]> {
+  const wanted = ids.filter(isUuid).slice(0, 100);
+  if (wanted.length === 0) return [];
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("change_sets").select(CHANGE_SET_COLUMNS).eq("user_id", userId).in("id", wanted);
+  if (error) fail("getChangeSetsByIds", error);
+  return ((data ?? []) as ChangeSetRow[]).map(changeSetFromRow);
 }
 
 /** The student's drafts created at or after `sinceIso`, newest first (at most 20). */
@@ -2401,6 +3095,11 @@ export async function resetUserData(): Promise<void> {
     const { error } = await db.from(table).delete().eq("user_id", userId);
     if (error) fail(`resetUserData ${table}`, error);
   }
+  // Newer tables: skipped quietly on a database that doesn't have them yet.
+  for (const table of ["change_sets", "ai_decisions", "context_slots", "grill_questions"]) {
+    const { error } = await db.from(table).delete().eq("user_id", userId);
+    if (error && schemaErrorKind(error) !== "missing_table") fail(`resetUserData ${table}`, error);
+  }
   const { error: calError } = await db
     .from("calendars")
     .delete()
@@ -2424,6 +3123,7 @@ export async function resetUserData(): Promise<void> {
     context_interactions: 0,
     context_updated_at: new Date().toISOString(),
   });
+  await updateProfileOptional("resetUserData prefs", { notification_prefs: {}, week_start: 0 });
   console.log("[store] resetUserData: done");
 }
 
@@ -2726,4 +3426,153 @@ export async function clearSuggestions(parentId: string): Promise<void> {
     .eq("parent_id", parentId)
     .eq("status", "suggested");
   if (error) fail("clearSuggestions", error);
+}
+
+// ---- Grill me queue ----------------------------------------------------------
+
+function isMissingTable(error: { code?: string; message: string }): boolean {
+  return error.code === "42P01" || error.code === "PGRST205" || /relation .* does not exist|Could not find the table/i.test(error.message);
+}
+
+let warnedGrillMissing = false;
+function warnGrillMissing() {
+  if (warnedGrillMissing) return;
+  warnedGrillMissing = true;
+  console.warn("[grill] grill_questions table missing: run the migration in docs/MANUAL-STEPS.md. The queue reads empty until then.");
+}
+
+type GrillRow = {
+  id: string;
+  project_id: string | null;
+  question: string;
+  kind: string;
+  choices: unknown;
+  priority: number;
+  status: GrillStatus;
+  answer: string | null;
+  created_at: string;
+  answered_at: string | null;
+};
+
+function grillFromRow(row: GrillRow): GrillItem {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    question: row.question,
+    kind: row.kind,
+    choices: Array.isArray(row.choices) ? row.choices.map(String) : [],
+    priority: row.priority,
+    status: row.status,
+    answer: row.answer,
+    createdAt: iso(row.created_at),
+    answeredAt: row.answered_at ? iso(row.answered_at) : null,
+  };
+}
+
+/** The student's queue, newest first. Questions left too long quietly expire. */
+export async function getGrillQuestions(): Promise<GrillItem[]> {
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("grill_questions")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) {
+    if (isMissingTable(error)) {
+      warnGrillMissing();
+      return [];
+    }
+    fail("getGrillQuestions", error);
+  }
+  const items = (data as GrillRow[]).map(grillFromRow);
+  const now = new Date();
+  const stale = items.filter((i) => isStale(i, now)).map((i) => i.id);
+  if (stale.length) {
+    const { error: expireError } = await db.from("grill_questions").update({ status: "expired" }).eq("user_id", userId).in("id", stale);
+    if (expireError) console.warn("[grill] could not expire stale questions:", expireError.code ?? "unknown");
+  }
+  return items.map((i) => (stale.includes(i.id) ? { ...i, status: "expired" as const } : i));
+}
+
+/** Queues the questions a just-confirmed plan earns, and returns them. Empty
+ *  whenever there's nothing to ask or nothing to ask about: never an error. */
+export async function seedGrillQuestions(planId: string, said: string, askedJustNow: number): Promise<GrillItem[]> {
+  if (!isUuid(planId)) return [];
+  const { db, userId } = ctx();
+  const { data: plan } = await db.from("plans").select("id,title").eq("id", planId).eq("user_id", userId).maybeSingle();
+  if (!plan) return [];
+
+  const { data: existing, error } = await db
+    .from("grill_questions")
+    .select("kind,status")
+    .eq("user_id", userId)
+    .eq("project_id", planId);
+  if (error) {
+    if (isMissingTable(error)) {
+      warnGrillMissing();
+      return [];
+    }
+    fail("seedGrillQuestions", error);
+  }
+  const asked = (existing as { kind: string; status: GrillStatus }[]).filter((r) => r.status !== "expired").map((r) => r.kind);
+
+  const { entries } = await getUserContext();
+  const drafts = pickGrillQuestions({
+    title: plan.title as string,
+    facts: entries.map((e) => e.fact),
+    said,
+    asked,
+    // A plan already asked some of its budget counts those too.
+    askedJustNow: askedJustNow + asked.length,
+  });
+  if (drafts.length === 0) return [];
+
+  const { data: inserted, error: insertError } = await db
+    .from("grill_questions")
+    .insert(drafts.map((d) => ({ user_id: userId, project_id: planId, question: d.question, kind: d.kind, choices: d.choices, priority: d.priority })))
+    .select("*");
+  if (insertError) fail("seedGrillQuestions", insertError);
+  return rankQueue((inserted as GrillRow[]).map(grillFromRow));
+}
+
+/** Saves the answer and files it under What Tangent knows, naming the project.
+ *  Says whether it could change the plan; moving anything is the student's call. */
+export async function answerGrillQuestion(
+  id: string,
+  answer: string,
+): Promise<{ replan: boolean; projectId: string | null; question: string } | null> {
+  if (!isUuid(id)) return null;
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("grill_questions")
+    .update({ status: "answered", answer, answered_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("user_id", userId)
+    .eq("status", "open")
+    .select("*")
+    .maybeSingle();
+  if (error) fail("answerGrillQuestion", error);
+  if (!data) return null;
+  const item = grillFromRow(data as GrillRow);
+
+  let title: string | null = null;
+  if (item.projectId) {
+    const { data: plan } = await db.from("plans").select("title").eq("id", item.projectId).eq("user_id", userId).maybeSingle();
+    title = (plan?.title as string | undefined) ?? null;
+  }
+  await addContextEntry({ category: factCategory(item.kind), fact: factFromAnswer(item, answer, title), source: "manual" });
+  return { replan: changesPlan(item.kind) && Boolean(item.projectId), projectId: item.projectId, question: item.question };
+}
+
+export async function skipGrillQuestion(id: string): Promise<void> {
+  if (!isUuid(id)) return;
+  const { db, userId } = ctx();
+  const { error } = await db
+    .from("grill_questions")
+    .update({ status: "skipped", answered_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("user_id", userId)
+    .eq("status", "open");
+  if (error) fail("skipGrillQuestion", error);
 }

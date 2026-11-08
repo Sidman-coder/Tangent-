@@ -3,14 +3,16 @@
 // a Next route file can only export route handlers.
 
 import "server-only";
-import { handleVoiceText, type PlanProgress, type VoiceOptions } from "@/lib/voice-handler";
+import { handlePendingAnswer, handleVoiceText, type PlanProgress, type VoiceOptions } from "@/lib/voice-handler";
+import type { PendingQuestion } from "@/lib/pending-question";
 import { extractContextFacts } from "@/lib/context-extract";
 import { getUserTimezone } from "@/lib/store";
 import { promptDateContext } from "@/lib/time";
 import { buildStudentContext } from "@/lib/ai/student-context";
 import { reliefSuggestion } from "@/lib/spacing";
-import { callClaude, messageText } from "@/lib/ai/call";
+import { callClaude, messageText, streamClaude } from "@/lib/ai/call";
 import { cacheHistory, withDateLast } from "@/lib/ai/cache";
+import { chatTier } from "@/lib/ai/models";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -39,7 +41,7 @@ export function conversationContext(messages: { role: string; content: string }[
 
 export async function planReply(
   messages: { role: "user" | "assistant"; content: string }[],
-  opts: { followUp?: boolean; projectNote?: string } = {}
+  opts: { followUp?: boolean; projectNote?: string; onText?: (textSoFar: string) => void } = {}
 ): Promise<string> {
   // Static system, settled history cached, date last (lib/ai/cache.ts). The
   // history breakpoint only takes effect once a long talk passes the minimum.
@@ -49,7 +51,8 @@ export async function planReply(
   const picture = await buildStudentContext().then((c) => c.text).catch(() => "");
   const base = opts.followUp ? PLAN_SYSTEM + PLAN_FOLLOWUP : PLAN_SYSTEM;
   const projectNote = opts.projectNote ?? "";
-  const res = await callClaude("chatPlan", {
+  // Master fix Phase 4: streamed to the chat as it's written when asked.
+  const request = {
     system: picture
       ? [
           { type: "text" as const, text: base },
@@ -57,10 +60,23 @@ export async function planReply(
         ]
       : base,
     messages: withDateLast(cacheHistory(messages.slice(-12)), promptDateContext(await getUserTimezone())),
-  });
+  };
+  const onText = opts.onText;
+  // Round 2 F.2: a quick question in a task or project chat gets the FAST
+  // model; planning talk (and every Pipeline V2 follow-up) stays on SMART.
+  const tier = opts.followUp ? "SMART" : chatTier(messages);
+  const res = onText
+    ? await streamClaude("chatPlan", request, { tier, onText: (t) => onText(cleanPlanText(t)) })
+    : await callClaude("chatPlan", request, { tier });
   if (!res.ok) throw new Error(res.budgetExceeded ? res.error : `Anthropic error ${res.status}`);
   const text = messageText(res.message);
   if (!text) throw new Error("Empty plan reply");
+  return cleanPlanText(text);
+}
+
+/** Code fences and bold are dropped: schedule lines must stay parseable
+ *  (lib/pipeline/plan-text.ts). The chat renders the rest as Markdown. */
+function cleanPlanText(text: string): string {
   return text.replace(/```[\s\S]*?```/g, "").replace(/\*\*(.+?)\*\*/g, "$1").trim();
 }
 
@@ -89,6 +105,9 @@ export type CalendarReplyOptions = {
   /** Offer a preview card (Pipeline V2, flag on only). Off for surfaces that
    *  can't show one, like the Projects chat. Default on. */
   preview?: boolean;
+  /** Pipeline V2 (B1): one task, never a plan ("Just add one task", or the
+   *  router's add_task). */
+  forceTask?: boolean;
 };
 
 /** Calendar mode: run the command through the voice pipeline and describe the result. */
@@ -98,7 +117,37 @@ export async function calendarReply(
   onProgress?: (event: PlanProgress) => void,
   opts: CalendarReplyOptions = {}
 ): Promise<Record<string, unknown>> {
-  const { source, project, preview = true } = opts;
+  const { source, project, preview = true, forceTask } = opts;
+  let voiceRes: Response | null = null;
+  try {
+    voiceRes = await handleVoiceText(userText, { context: conversationContext(messages), onProgress, preview, source, forceTask, ...project });
+  } catch (err) {
+    console.error("[api/chat] Voice pipeline error:", err);
+  }
+  return replyFromVoice(voiceRes, userText, project);
+}
+
+/**
+ * The reply to an answer to a pending question (lib/pending-question.ts, A1),
+ * or null when the answer is a new request: the caller then routes it as
+ * usual and the question is dropped.
+ */
+export async function pendingAnswerReply(
+  answer: string,
+  question: PendingQuestion,
+  opts: CalendarReplyOptions = {}
+): Promise<Record<string, unknown> | null> {
+  const { source, preview = true } = opts;
+  const res = await handlePendingAnswer(answer, question, { preview, source });
+  return res ? replyFromVoice(res, answer, undefined) : null;
+}
+
+/** Describes a voice-pipeline result in the chat reply's shape. */
+async function replyFromVoice(
+  voiceRes: Response | null,
+  userText: string,
+  project: CalendarReplyOptions["project"]
+): Promise<Record<string, unknown>> {
   // Step 1 — Execute command via voice pipeline. Called in-process: the old
   // HTTP self-call to NEXT_PUBLIC_BASE_URL failed whenever the app wasn't on
   // localhost:3000 (Vercel, another port), silently degrading to plain chat.
@@ -115,9 +164,10 @@ export async function calendarReply(
   let voiceTaskDate: string | undefined;
   let voiceChangeSet: unknown;
   let voicePreview: unknown;
+  let voiceQuestions: unknown;
+  let voicePendingQuestion: unknown;
   try {
-    console.log("[api/chat] Calling voice pipeline:", userText);
-    const voiceRes = await handleVoiceText(userText, { context: conversationContext(messages), onProgress, preview, source, ...project });
+    if (!voiceRes) throw new Error("no response");
     const voiceData = (await voiceRes.json()) as {
       response?: string;
       action?: string;
@@ -131,8 +181,9 @@ export async function calendarReply(
       task?: { id?: string; date?: string };
       changeSet?: unknown;
       preview?: unknown;
+      questions?: unknown;
+      pendingQuestion?: unknown;
     };
-    console.log("[api/chat] Voice pipeline result:", JSON.stringify(voiceData).slice(0, 300));
     voiceResponse = voiceData.response ?? "";
     voiceAction = voiceData.action ?? "";
     voiceOk = voiceData.ok === true;
@@ -146,6 +197,8 @@ export async function calendarReply(
     voiceSourcesChecked = voiceData.sourcesChecked;
     voiceChangeSet = voiceData.changeSet;
     voicePreview = voiceData.preview;
+    voiceQuestions = voiceData.questions;
+    voicePendingQuestion = voiceData.pendingQuestion;
   } catch (err) {
     console.error("[api/chat] Voice pipeline error:", err);
   }
@@ -170,8 +223,19 @@ export async function calendarReply(
     };
   }
 
+  // "Which one?" (A1): Juann's question card with a button per choice; the
+  // client sends pendingQuestion back with the next message.
+  if (voiceOk && voiceAction === "clarify" && voicePendingQuestion) {
+    return {
+      message: voiceResponse.trim(),
+      action: "clarify",
+      questions: voiceQuestions,
+      pendingQuestion: voicePendingQuestion,
+      ok: true,
+    };
+  }
+
   if (voiceOk && voiceResponse.trim()) {
-    console.log("[api/chat] Voice pipeline succeeded, skipping Anthropic rephrase:", voiceResponse.slice(0, 100));
     extractContextFireAndForget(userText, voiceResponse.trim());
     // New work can tip a day over the student's load: offer one move, never
     // make it (the student taps to accept; /api/reschedule records Undo).
@@ -199,7 +263,7 @@ export async function calendarReply(
   const reason = voiceError || voiceResponse || "the task pipeline did not respond";
   console.error("[api/chat] Voice pipeline did not act:", reason);
   return {
-    message: `I couldn't add that to your calendar — ${reason}.`,
+    message: `I couldn't do that — ${reason}.`,
     action: "error",
     ok: true,
   };

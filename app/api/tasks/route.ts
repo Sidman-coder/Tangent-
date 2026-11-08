@@ -13,10 +13,12 @@ import {
   recordAction,
 } from "@/lib/store";
 import { getUserToday } from "@/lib/time";
-import type { TaskKind } from "@/lib/types";
+import type { TaskCommitment, TaskKind } from "@/lib/types";
 import { withUser } from "@/lib/request-context";
+import { trackEvent } from "@/lib/analytics";
 
 const TASK_KINDS: TaskKind[] = ["school", "academic-ec", "side-ec", "personal", "commitment"];
+const COMMITMENTS: TaskCommitment[] = ["fixed", "reminder", "flexible"];
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,6 +40,7 @@ export const POST = withUser(async (req: Request) => {
       date?: string;
       time?: string;
       kind?: string;
+      commitment?: string;
       completed?: boolean;
       calendarId?: string | null;
       // recurring
@@ -49,9 +52,10 @@ export const POST = withUser(async (req: Request) => {
       updateAll?: boolean;
       patch?: Record<string, unknown>;
       notes?: string;
+      ids?: unknown;
     };
 
-    console.log("[api/tasks] POST action:", body.action, "| title:", body.title, "| date:", body.date);
+    console.log("[api/tasks] POST action:", body.action);
 
     const action = body.action;
 
@@ -73,6 +77,7 @@ export const POST = withUser(async (req: Request) => {
         return NextResponse.json({ ok: true, task, wasDuplicate: true, state: await getAppState() });
       }
       console.log("[api/tasks] add_task success:", task.id);
+      trackEvent("capture", { task_id: task.id, source: "manual" });
       return NextResponse.json({ ok: true, task, state: await getAppState() });
     }
 
@@ -83,6 +88,7 @@ export const POST = withUser(async (req: Request) => {
       const task = await completeTask(body.id);
       if (!task) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
       console.log("[api/tasks] complete_task success:", body.id);
+      trackEvent("task_done", { task_id: task.id });
       return NextResponse.json({ ok: true, task, state: await getAppState() });
     }
 
@@ -100,6 +106,24 @@ export const POST = withUser(async (req: Request) => {
       return NextResponse.json({ ok: true, actionId: record?.id, state: await getAppState() });
     }
 
+    // Master fix Phase 5: the calendar's Remove with several tasks picked.
+    // One undo record restores them all.
+    if (action === "delete_tasks") {
+      const ids: string[] = Array.isArray(body.ids) ? body.ids.filter((x: unknown): x is string => typeof x === "string") : [];
+      if (ids.length === 0) {
+        return NextResponse.json({ ok: false, error: "ids are required" }, { status: 400 });
+      }
+      const removedTasks = [];
+      for (const id of ids.slice(0, 100)) {
+        const before = await updateTask(id, {});
+        if (before && (await deleteTask(id))) removedTasks.push(before);
+      }
+      if (removedTasks.length === 0) return NextResponse.json({ ok: false, error: "Tasks not found" }, { status: 404 });
+      const label = removedTasks.length === 1 ? `Removed "${removedTasks[0].title}"` : `Removed ${removedTasks.length} tasks`;
+      const record = await recordAction("delete_task", label, { removedTasks });
+      return NextResponse.json({ ok: true, actionId: record?.id, removed: removedTasks.length, state: await getAppState() });
+    }
+
     if (action === "toggle_task") {
       if (!body.id) {
         return NextResponse.json({ ok: false, error: "id is required" }, { status: 400 });
@@ -107,6 +131,7 @@ export const POST = withUser(async (req: Request) => {
       const task = await toggleTask(body.id);
       if (!task) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
       console.log("[api/tasks] toggle_task success:", body.id, "->", task.completed);
+      if (task.completed) trackEvent("task_done", { task_id: task.id });
       return NextResponse.json({ ok: true, task, state: await getAppState() });
     }
 
@@ -125,7 +150,44 @@ export const POST = withUser(async (req: Request) => {
       const task = await updateTask(body.id, patch);
       if (!task) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
       console.log("[api/tasks] update_task success:", body.id);
+      if (body.completed === true) trackEvent("task_done", { task_id: task.id });
       return NextResponse.json({ ok: true, task, state: await getAppState() });
+    }
+
+    // The Type selector in task detail. `saved` is false until the column exists.
+    if (action === "set_commitment") {
+      if (!body.id) return NextResponse.json({ ok: false, error: "id is required" }, { status: 400 });
+      if (!COMMITMENTS.includes(body.commitment as TaskCommitment)) {
+        return NextResponse.json({ ok: false, error: "commitment must be fixed|reminder|flexible" }, { status: 400 });
+      }
+      const commitment = body.commitment as TaskCommitment;
+      const before = await updateTask(body.id, {});
+      if (!before) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
+      const task = await updateTask(body.id, { commitment });
+      if (!task) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
+      const saved = task.commitment === commitment;
+      const record = saved
+        ? await recordAction("reschedule_task", `Changed the type of "${task.title}"`, {
+            restoredFields: [{ taskId: task.id, fields: { commitment: before.commitment ?? null } }],
+          })
+        : null;
+      return NextResponse.json({ ok: true, task, saved, actionId: record?.id ?? null, state: await getAppState() });
+    }
+
+    // Dismiss on an overdue row: hides it, without completing or deleting it.
+    if (action === "dismiss_overdue") {
+      if (!body.id) return NextResponse.json({ ok: false, error: "id is required" }, { status: 400 });
+      const before = await updateTask(body.id, {});
+      if (!before) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
+      const task = await updateTask(body.id, { overdueDismissedAt: new Date().toISOString() });
+      if (!task) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
+      const saved = Boolean(task.overdueDismissedAt);
+      const record = saved
+        ? await recordAction("reschedule_task", `Dismissed "${task.title}"`, {
+            restoredFields: [{ taskId: task.id, fields: { overdueDismissedAt: before.overdueDismissedAt ?? null } }],
+          })
+        : null;
+      return NextResponse.json({ ok: true, task, saved, actionId: record?.id ?? null, state: await getAppState() });
     }
 
     if (action === "add_recurring_task") {

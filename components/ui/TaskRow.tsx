@@ -25,6 +25,13 @@ type TaskRowProps = {
   showDate?: boolean;
   /** A short status chip in the meta line ("2 days overdue", "Due in 5 hr"). */
   flag?: ReactNode;
+  /** A 3px stripe and a heavier title: a hard deadline, or a must-do. */
+  emphasis?: "deadline" | "must";
+  /** Desktop: hide the actions until the row is hovered or focused. */
+  revealActions?: boolean;
+  /** The project this row is listed under: its name is dropped from the title,
+   *  and the project dot and category tag go (every row here shares them). */
+  projectName?: string | null;
 };
 
 function shortDate(ymd: string): string {
@@ -34,7 +41,7 @@ function shortDate(ymd: string): string {
 
 export default function TaskRow({
   task,
-  kindColor = "var(--cat-other)",
+  kindColor = "var(--series-neutral)",
   selected = false,
   expanded = false,
   onComplete,
@@ -44,12 +51,16 @@ export default function TaskRow({
   hasQuestions = false,
   showDate = false,
   flag,
+  emphasis,
+  revealActions = false,
+  projectName,
 }: TaskRowProps) {
   const questionDot = hasQuestions ? <span className="task-question-dot" title="Tangent has a question about this" /> : null;
   return (
     <article
       className={`ui-task-row${task.completed ? " is-complete" : ""}${selected ? " is-selected" : ""}${expanded ? " is-expanded" : ""}`}
       aria-current={selected ? "true" : undefined}
+      data-emphasis={emphasis}
     >
       <div className="ui-task-row-main">
         {onComplete ? (
@@ -78,15 +89,15 @@ export default function TaskRow({
         ) : (
           <span className="ui-task-check" aria-hidden="true" />
         )}
-        <span className="ui-task-kind" style={{ background: kindColor }} aria-hidden="true" />
+        {!projectName && <span className="ui-task-kind" style={{ background: kindColor }} aria-hidden="true" />}
         <div className="ui-task-copy">
           {onOpen ? (
             <button type="button" className="ui-task-title-button" onClick={onOpen}>
-              <TaskTitle task={task} />
+              <TaskTitle task={task} projectName={projectName} />
               {questionDot}
             </button>
           ) : (
-            <span className="ui-task-title"><TaskTitle task={task} />{questionDot}</span>
+            <span className="ui-task-title"><TaskTitle task={task} projectName={projectName} />{questionDot}</span>
           )}
           <div className="ui-task-meta">
             <time dateTime={`${task.date}T${task.time}`}>
@@ -95,7 +106,7 @@ export default function TaskRow({
               {isDueOnly(task) ? "Due" : formatTime12(task.time)}
             </time>
             {flag}
-            {categoryLabel(task) && <span className="ui-task-kind-label">{categoryLabel(task)}</span>}
+            {!projectName && categoryLabel(task) && <span className="ui-task-kind-label">{categoryLabel(task)}</span>}
             {task.recurring?.enabled && (
               <span className="ui-task-recurring"><Repeat2 size={12} aria-hidden="true" /> Recurring</span>
             )}
@@ -106,7 +117,7 @@ export default function TaskRow({
             )}
           </div>
         </div>
-        {actions && <div className="ui-task-actions">{actions}</div>}
+        {actions && <div className="ui-task-actions" data-reveal={revealActions ? "hover" : undefined}>{actions}</div>}
       </div>
       {expanded && children && <div className="ui-task-details">{children}</div>}
     </article>

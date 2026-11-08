@@ -21,6 +21,7 @@ type Graded = Pick<ChangeSet, "intent" | "target_plan_id" | "ops">;
 type Row = { id: string; pass: boolean; intent: string; target: string; ops: string; reason: string };
 
 // Rough per-call token budgets for the estimate (input / output).
+const ROUTER_CALL = { input_tokens: 1200, output_tokens: 120 };
 const VOICE_CALL = { input_tokens: 4000, output_tokens: 400 };
 const PLAN_OUTLINE = { input_tokens: 3000, output_tokens: 300 };
 const PLAN_DETAIL = { input_tokens: 3000, output_tokens: 2048 };
@@ -29,11 +30,12 @@ const MARGIN = 1.5;
 
 async function main() {
   const check = process.argv.includes("--check");
+  if (process.argv.includes("--round2")) return round2(check);
   // Drafting is gated on the flag, read when lib/pipeline/flags.ts loads.
   process.env.TANGENT_PIPELINE_V2 = "true";
 
   const { FixtureFileSchema, gradeCase } = await import("@/lib/pipeline/grade");
-  const { estimateCostUsd, modelFor } = await import("@/lib/ai/models");
+  const { estimateCostUsd, modelFor, FALLBACK_MODELS } = await import("@/lib/ai/models");
   const { routeCommand } = await import("@/lib/ai/router");
   const raw = (await import("@/lib/pipeline/fixtures/requests.json")).default as unknown;
 
@@ -47,14 +49,23 @@ async function main() {
   const ai = cases.filter((c) => !c.no_ai);
   const plans = ai.filter((c) => c.expected.intent === "new_plan");
 
+  // Per request: a quick command is the router + one voice call; a new plan
+  // adds the SMART outline and the parallel FAST detail calls.
+  const perRequest = (fast: string, smart: string) => {
+    const command = estimateCostUsd(fast, ROUTER_CALL) + estimateCostUsd(fast, VOICE_CALL);
+    const plan = command + estimateCostUsd(smart, PLAN_OUTLINE) + PLAN_DETAIL_CALLS * estimateCostUsd(fast, PLAN_DETAIL);
+    return { command, plan };
+  };
   const fast = modelFor("FAST");
   const smart = modelFor("SMART");
-  const voice = estimateCostUsd(fast, VOICE_CALL);
-  const plan = voice + estimateCostUsd(smart, PLAN_OUTLINE) + PLAN_DETAIL_CALLS * estimateCostUsd(fast, PLAN_DETAIL);
+  const { command: voice, plan } = perRequest(fast, smart);
   const cost = MARGIN * ((ai.length - plans.length) * voice + plans.length * plan);
+  const before = perRequest(FALLBACK_MODELS.FAST, FALLBACK_MODELS.SMART);
+  const usd = (n: number) => `$${n.toFixed(4)}`;
 
   console.log(`Fixtures: ${cases.length} cases (${ai.length} call the AI, ${plans.length} plan, ${cases.length - ai.length} fast path)`);
   console.log(`Models: FAST ${fast}, SMART ${smart}`);
+  console.log(`Per request: command ${usd(voice)}, new plan ${usd(plan)} (on ${FALLBACK_MODELS.FAST} / ${FALLBACK_MODELS.SMART}: ${usd(before.command)}, ${usd(before.plan)})`);
   console.log(`Estimated cost: about $${cost.toFixed(2)} (×${MARGIN} margin)`);
 
   // Load the pipeline itself so --check also proves the modules resolve.
@@ -112,6 +123,7 @@ async function main() {
       const tasks = c.seed.tasks.filter((t) => t.planId === p.id).map(seedTask);
       const made = await store.addPlanWithTasks({ title: p.title }, tasks);
       ids[p.id] = made.plan.id;
+      for (const alias of p.aliases ?? []) await store.savePlanAlias(made.plan.id, alias);
     }
     for (const t of c.seed.tasks.filter((t) => !t.planId)) await store.addTask(seedTask(t));
     const seedPlans = c.seed.plans.map((p) => ({ id: ids[p.id], title: p.title }));
@@ -128,8 +140,12 @@ async function main() {
       await store.markChangeSet(cs.id, "discarded", { from: "draft" });
     } else if (action === "chat_reply" || action === "plan_reply") {
       graded = { intent: "question", target_plan_id: null, ops: [] };
-    } else if (action === "confirm_required") {
+    } else if (action === "confirm_required" || action === "clarify") {
+      // A question back (A1 "Which plan?", B1 "What did you mean?").
       graded = { intent: "clarify", target_plan_id: null, ops: [] };
+    } else if (action === "route_tangent") {
+      // Handed to Tangents: nothing changes here.
+      graded = { intent: "question", target_plan_id: null, ops: [] };
     } else {
       const route = routeCommand(c.text, tz);
       if (route && data.actionId) graded = fastStandIn(route);
@@ -137,7 +153,8 @@ async function main() {
       else reason = `wrote directly (action=${action || "none"}), not drafted`;
     }
 
-    const grade = graded ? gradeCase(c.expected, graded, { plans: seedPlans }) : { pass: false, failures: [reason] };
+    const seedTasks = c.expected.delete_from ? (await store.getAllTasks()).map((t) => ({ id: t.id, planId: t.planId })) : undefined;
+    const grade = graded ? gradeCase(c.expected, graded, { plans: seedPlans, tasks: seedTasks }) : { pass: false, failures: [reason] };
     const target = graded?.target_plan_id ? seedPlans.find((p) => p.id === graded!.target_plan_id)?.title ?? "other plan" : graded?.ops.some((o) => o.op === "create_plan") ? "NEW" : "none";
     return {
       id: c.id,
@@ -192,6 +209,68 @@ function printTable(rows: Row[]) {
   const widths = all[0].slice(0, 5).map((_, i) => Math.max(...all.map((row) => row[i].length)));
   console.log("");
   for (const row of all) console.log(row.map((cell, i) => (i < 5 ? cell.padEnd(widths[i]) : cell)).join("  "));
+}
+
+/**
+ * Round 2 (F.2): task kind, slot inference and question/task/plan routing,
+ * from lib/pipeline/fixtures/round2.json. Each case is at most one FAST call
+ * and writes nothing to the database. `--round2 --check` is free.
+ */
+async function round2(check: boolean) {
+  const { Round2FileSchema, gradeKind, gradeSlots, gradeRoute, gradeTitle } = await import("@/lib/pipeline/grade");
+  const { estimateCostUsd, modelFor } = await import("@/lib/ai/models");
+  const raw = (await import("@/lib/pipeline/fixtures/round2.json")).default as unknown;
+  const parsed = Round2FileSchema.safeParse(raw);
+  if (!parsed.success) {
+    console.error("round2.json is invalid:\n" + parsed.error.message);
+    process.exit(1);
+  }
+  const file = parsed.data;
+  const n = file.kinds.length + file.slots.length + file.routes.length + file.titles.length;
+  const cost = MARGIN * n * estimateCostUsd(modelFor("FAST"), ROUTER_CALL);
+  console.log(`Round 2: ${file.kinds.length} kind, ${file.slots.length} slot, ${file.routes.length} route, ${file.titles.length} title cases on ${modelFor("FAST")}`);
+  console.log(`Estimated cost: at most about $${cost.toFixed(2)} (×${MARGIN} margin; clear cases skip the AI)`);
+
+  const { classifyWithFallback } = await import("@/lib/task-kind-ai");
+  const { inferSlotsWithFallback } = await import("@/lib/context/infer");
+  const { classifyIntent } = await import("@/lib/pipeline/intent");
+  const { callIntentRouter } = await import("@/lib/pipeline/understand");
+  if (check) {
+    console.log("Check OK: round2 fixtures valid, modules load. No AI calls made.");
+    return;
+  }
+  if (!(await ask(`This calls the AI for up to ${n} cases (about $${cost.toFixed(2)}). Type y to continue: `))) {
+    console.log("Stopped. Nothing was spent.");
+    return;
+  }
+
+  const results: { id: string; pass: boolean; failures: string[] }[] = [];
+  const run = async (id: string, grade: () => Promise<{ pass: boolean; failures: string[] }>) => {
+    const g = await grade().catch((e: unknown) => ({ pass: false, failures: [`error: ${e instanceof Error ? e.message : String(e)}`] }));
+    results.push({ id, ...g });
+    console.log(`${g.pass ? "PASS" : "FAIL"}  ${id}${g.pass ? "" : `  (${g.failures.join("; ")})`}`);
+  };
+  for (const c of file.kinds) {
+    await run(c.id, async () => gradeKind(c.kind, (await classifyWithFallback({ title: c.title, hasFixedTime: c.hasFixedTime, source: c.source })).kind));
+  }
+  for (const c of file.slots) {
+    await run(c.id, async () => gradeSlots(c, Object.keys(await inferSlotsWithFallback(c.text, file.reference_date))));
+  }
+  for (const c of file.routes) {
+    await run(c.id, async () =>
+      gradeRoute(c.expect, await classifyIntent(c.text, { flag: true, tz: file.timezone, today: file.reference_date, planTitles: [], caller: callIntentRouter }))
+    );
+  }
+  for (const c of file.titles) {
+    await run(c.id, async () =>
+      gradeTitle(c, (await classifyIntent(c.text, { flag: true, tz: file.timezone, today: file.reference_date, planTitles: c.project ? [c.project] : [], caller: callIntentRouter })).cleanTitle)
+    );
+  }
+  for (const part of ["kind", "slot", "route", "title"]) {
+    const rows = results.filter((r) => r.id.startsWith(`${part}-`));
+    console.log(`${part}: ${rows.filter((r) => r.pass).length}/${rows.length}`);
+  }
+  console.log(`\n${results.filter((r) => r.pass).length}/${results.length} passed`);
 }
 
 main().catch((e: unknown) => {

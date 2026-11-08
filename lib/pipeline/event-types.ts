@@ -13,7 +13,30 @@ export const EVENT_TYPES = [
   "changeset_discarded",
   "changeset_undone",
   "preview_edited",
+  // Step 3: understanding (lib/pipeline/intent.ts, match.ts, lib/pending-question.ts).
+  // The events table checks only the name's shape (^[a-z_]{1,64}$), so new
+  // types need no migration.
+  "intent_classified",
+  "match_proposed",
+  "match_confirmed",
+  "match_corrected",
+  "clarify_shown",
+  "clarify_answered",
+  "pending_question_resolved",
+  // Step 3B: Settings › AI Activity (lib/pipeline/activity.ts).
+  "activity_viewed",
+  "activity_row_expanded",
+  "activity_cleared",
+  // Master fix Phase 4: chat actions (POST /api/events, client allowlist).
+  "chat_feedback",
+  "chat_retried",
+  "chat_edited",
+  "chat_stopped",
+  "chat_new_topic",
 ] as const;
+
+/** The events a browser may log itself (app/api/events). */
+export const CLIENT_EVENT_TYPES = ["chat_feedback", "chat_retried", "chat_edited", "chat_stopped", "chat_new_topic"] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
 export type EventPropValue = number | boolean | string | null;

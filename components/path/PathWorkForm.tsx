@@ -71,6 +71,7 @@ export default function PathWorkForm({ parentId, onCancel, onSubmit }: Props) {
       <label className="path-form-wide">
         <span>Name</span>
         <input
+          name="work-title"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="FRC Robotics"
@@ -82,6 +83,7 @@ export default function PathWorkForm({ parentId, onCancel, onSubmit }: Props) {
       <label className="path-form-wide">
         <span>What it is, and your part in it (so Tangent doesn&apos;t guess)</span>
         <input
+          name="work-detail"
           value={detail}
           onChange={(e) => setDetail(e.target.value)}
           placeholder="Robotics competition team, I'm programming lead, two seasons"
@@ -93,7 +95,7 @@ export default function PathWorkForm({ parentId, onCancel, onSubmit }: Props) {
         <>
           <label>
             <span>Kind</span>
-            <select value={category} onChange={(e) => setCategory(e.target.value as AnchorKind)}>
+            <select name="work-category" value={category} onChange={(e) => setCategory(e.target.value as AnchorKind)}>
               {CATEGORIES.map((c) => (
                 <option key={c.value} value={c.value}>
                   {c.label}
@@ -103,11 +105,11 @@ export default function PathWorkForm({ parentId, onCancel, onSubmit }: Props) {
           </label>
           <label>
             <span>Hours a week</span>
-            <input value={hours} onChange={(e) => setHours(e.target.value)} placeholder="6" inputMode="numeric" />
+            <input name="work-hours" value={hours} onChange={(e) => setHours(e.target.value)} placeholder="6" inputMode="numeric" />
           </label>
           <label>
             <span>Years</span>
-            <input value={years} onChange={(e) => setYears(e.target.value)} placeholder="2" inputMode="numeric" />
+            <input name="work-years" value={years} onChange={(e) => setYears(e.target.value)} placeholder="2" inputMode="numeric" />
           </label>
         </>
       )}

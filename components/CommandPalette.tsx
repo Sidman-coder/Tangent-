@@ -10,7 +10,10 @@ import { useUserTimezone } from "@/components/AppStateProvider";
 import { localNow } from "@/lib/time";
 import AddFlow from "@/components/add/AddFlow";
 import { generateQuestions } from "@/lib/questions-client";
+import { askOnHome } from "@/lib/ask-handoff";
+import { putNewPathTitle } from "@/lib/path-handoff";
 import ActionReceipt from "@/components/ActionReceipt";
+import Toast, { ToastPortal } from "@/components/ui/Toast";
 import PreviewCard from "@/components/PreviewCard";
 import { usePipelineV2 } from "@/components/PipelineFlag";
 import { chatOnly, fetchOpenDrafts } from "@/components/console/pipeline-intake";
@@ -29,6 +32,7 @@ import { UNDO_TOAST_MS, openRecentChanges } from "@/lib/undo-events";
 /** Context actions (lib/context-actions.ts) plus "Undo recent change", which opens Recent changes. */
 type QuickAction = ContextAction | { label: string; detail?: string; kind: "recent"; value: string };
 const UNDO_RECENT: QuickAction = { label: "Undo recent change", kind: "recent", value: "" };
+const OPEN_AI_ACTIVITY: QuickAction = { label: "Open AI activity", kind: "navigate", value: "/settings/activity" };
 
 function cleanReply(text: string): string {
   if (!text) return "Done! Your request has been processed.";
@@ -57,6 +61,7 @@ export default function CommandPalette() {
   // (lib/context-actions.ts) rather than a generic list.
   const { sets: questionSets } = useQuestionSets();
   const tz = useUserTimezone();
+  const v2 = usePipelineV2();
   const QUICK_ACTIONS: QuickAction[] = useMemo(() => {
     const now = localNow(tz);
     const ctx = contextActions({
@@ -66,8 +71,8 @@ export default function CommandPalette() {
       now: { date: now.date, minutes: now.minutes },
       capacity: state?.user.capacity ?? null,
     });
-    return [...ctx, { label: "What's on today?", kind: "ask", value: "What's on today?" }, UNDO_RECENT];
-  }, [state, questionSets, tz]);
+    return [...ctx, { label: "What's on today?", kind: "ask", value: "What's on today?" }, UNDO_RECENT, ...(v2 ? [OPEN_AI_ACTIVITY] : [])];
+  }, [state, questionSets, tz, v2]);
 
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
@@ -132,7 +137,6 @@ export default function CommandPalette() {
   }, [open, closePalette]);
 
   // Pipeline V2: on open, bring back the newest draft still waiting for Confirm.
-  const v2 = usePipelineV2();
   useEffect(() => {
     if (open && v2) void fetchOpenDrafts().then((d) => d[0] && setDraft((cur) => cur ?? d[0]));
   }, [open, v2]);
@@ -177,6 +181,16 @@ export default function CommandPalette() {
           preview?: PreviewPayload;
         };
         if (!res.ok || !data.ok) throw new Error(data.error || "Request failed");
+        // Pipeline V2: the router heard a long-range goal, or needs a tap to
+        // tell what was meant; the Tangents page and the AI page's card take it.
+        if (data.action === "route_tangent" || data.action === "clarify") {
+          setToast(null);
+          if (data.action === "route_tangent") {
+            putNewPathTitle(trimmed);
+            router.push("/tangents?new=1");
+          } else askOnHome(trimmed, router.push);
+          return;
+        }
         if (data.action === "preview" && data.changeSet && data.preview) {
           if (draftTimer.current !== null) clearTimeout(draftTimer.current);
           setReceiptId(null);
@@ -202,7 +216,7 @@ export default function CommandPalette() {
         setBusy(false);
       }
     },
-    [busy, closePalette, refresh, showToast]
+    [busy, closePalette, refresh, router, showToast]
   );
 
   const resolveConfirm = useCallback(
@@ -395,30 +409,39 @@ export default function CommandPalette() {
         />
       )}
 
-      {toast && !pendingConfirm && !draft && (
-        <div className="command-toast" role="status">
-          {receiptId ? (
-            <ActionReceipt
-              actionId={receiptId}
-              label={toast}
-              onUndone={() => {
-                setToast("Undone.");
-                setReceiptId(null);
-                void refresh();
-              }}
-            />
-          ) : (
-            <span onClick={() => setToast(null)} style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
-              {busy ? <span className="voice-pill-spinner" aria-hidden="true" /> : <Check size={18} strokeWidth={1.75} />} {toast}
-            </span>
-          )}
-          {toastLink && !busy && (
-            <Link href={toastLink.href} className="command-toast-link" onClick={() => setToast(null)}>
-              {toastLink.label} →
-            </Link>
-          )}
-        </div>
-      )}
+      <ToastPortal>
+        {toast && !pendingConfirm && !draft && (
+          <Toast
+            key="palette"
+            tone={busy ? "neutral" : "success"}
+            icon={busy ? <span className="ui-button-spinner" aria-hidden="true" /> : <Check strokeWidth={1.75} aria-hidden="true" />}
+            // showToast runs its own timers; the toast only closes them early.
+            duration={null}
+            onDismiss={busy ? undefined : () => setToast(null)}
+            action={
+              toastLink && !busy ? (
+                <Link href={toastLink.href} className="ui-button ui-button--secondary ui-button--sm" onClick={() => setToast(null)}>
+                  <span>{toastLink.label}</span>
+                </Link>
+              ) : undefined
+            }
+          >
+            {receiptId ? (
+              <ActionReceipt
+                actionId={receiptId}
+                label={toast}
+                onUndone={() => {
+                  setToast("Undone.");
+                  setReceiptId(null);
+                  void refresh();
+                }}
+              />
+            ) : (
+              toast
+            )}
+          </Toast>
+        )}
+      </ToastPortal>
     </>
   );
 }

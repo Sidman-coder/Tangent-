@@ -2,29 +2,38 @@
 
 import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
-import { createPortal } from "react-dom";
 import { m, useReducedMotion } from "motion/react";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { wallClockNow } from "@/lib/time";
 import AddTaskModal from "@/components/AddTaskModal";
 import ActionReceipt from "@/components/ActionReceipt";
+import ClarifyCard, { type ClarifyAnswer, type ClarifyQuestion } from "@/components/console/ClarifyCard";
+import PreviewCard from "@/components/PreviewCard";
+import type { ChangeSet } from "@/lib/pipeline/changeset";
+import type { PreviewPayload } from "@/lib/pipeline/draft";
+import { PENDING_QUESTION_ID, type PendingQuestion } from "@/lib/pending-question";
 import { openTask } from "@/components/TaskDetail";
 import Button from "@/components/ui/Button";
+import Chip from "@/components/ui/Chip";
+import IconButton from "@/components/ui/IconButton";
+import SegmentedTabs from "@/components/ui/SegmentedTabs";
 import SidePeek from "@/components/ui/SidePeek";
 import { handleResourceClick } from "@/lib/task-utils";
 import { toYMD, formatTime12 } from "@/lib/dates";
 import { isCanvasCleared } from "@/lib/canvas-clear";
-import { CATEGORY_COLOR, CATEGORY_LABEL, TASK_GROUPS, groupByCategory, taskColor, taskGroup, type TaskGroup } from "@/lib/task-colors";
+import { CATEGORY_COLOR, CATEGORY_LABEL, TASK_GROUPS, groupByCategory, planSeriesColor, seriesColor, taskGroup, taskSeries, type TaskGroup } from "@/lib/task-colors";
 import { isOnboardingSchoolTask } from "@/lib/school-block";
 import { baseTitle, useShortTitles } from "@/lib/short-titles";
 import "./calendar.css";
 import { initialCalendarView, prefsOf } from "@/lib/personalize";
-import { openRecentChanges } from "@/lib/undo-events";
+import { announceUndo, openRecentChanges } from "@/lib/undo-events";
 import type { Plan, Task } from "@/lib/types";
 import { X, Check, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil, Undo2 } from "lucide-react";
 import WeekView from "@/components/calendar/WeekView";
 import AgendaView from "@/components/calendar/AgendaView";
+import TaskTip from "@/components/calendar/TaskTip";
 import TaskTitle from "@/components/ui/TaskTitle";
+import Toast, { ToastPortal } from "@/components/ui/Toast";
 
 type CalView = "week" | "month" | "agenda";
 const VIEWS: { id: CalView; label: string }[] = [
@@ -33,10 +42,12 @@ const VIEWS: { id: CalView; label: string }[] = [
   { id: "agenda", label: "Agenda" },
 ];
 const VIEW_KEY = "tangent-cal-view";
+/** On a phone the week grid shows this many days. */
+const PHONE_DAYS = 3;
 const AGENDA_DAYS = 21;
 
-function startOfWeek(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - d.getDay());
+function startOfWeek(d: Date, firstDay: number): Date {
+  return addDays(d, -((d.getDay() - firstDay + 7) % 7));
 }
 
 function addDays(d: Date, n: number): Date {
@@ -46,9 +57,9 @@ function addDays(d: Date, n: number): Date {
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-function getMonthGrid(year: number, monthIndex: number): Date[] {
+function getMonthGrid(year: number, monthIndex: number, firstDay: number): Date[] {
   const first = new Date(year, monthIndex, 1);
-  const startPad = first.getDay();
+  const startPad = (first.getDay() - firstDay + 7) % 7;
   const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
   const cells: Date[] = [];
   for (let i = 0; i < startPad; i++) {
@@ -85,22 +96,53 @@ type RecurDeleteTarget = { taskId: string; parentId: string; title: string };
 type RecurEditTarget = { taskId: string; parentId: string; task: Task };
 
 
+/** One day-chat message, with the cards a reply can carry (master fix B3). */
+type DayChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+  questions?: ClarifyQuestion[];
+  pendingQuestion?: PendingQuestion | null;
+  /** The ask a card's answers run (its context included). */
+  request?: string;
+  draft?: { changeSet: ChangeSet; preview: PreviewPayload };
+  actionId?: string;
+  pendingConfirm?: { id: string; message: string };
+};
+
 export default function CalendarPage() {
   const { state, refresh } = useAppState();
   const now = wallClockNow(useUserTimezone());
   const todayYmd = toYMD(now);
+  const firstDay = state?.user.weekStart ?? 0;
 
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
   const [group, setGroup] = useState<TaskGroup | "all">("all");
   const [view, setView] = useState<CalView>("month");
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(now));
+  // A phone gets three days in the time grid instead of seven.
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 720px)");
+    const sync = () => setNarrow(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+  const [weekAnchor, setWeekAnchor] = useState(now);
+  const weekStart = narrow ? addDays(weekAnchor, 0) : startOfWeek(weekAnchor, firstDay);
+  const weekLength = narrow ? PHONE_DAYS : 7;
   const [agendaStart, setAgendaStart] = useState(() => new Date(now.getFullYear(), now.getMonth(), now.getDate()));
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   // Clicking one event opens just that event; clicking the date opens the day.
-  const [removed, setRemoved] = useState<{ actionId: string; title: string } | null>(null);
+  const [removed, setRemoved] = useState<{ actionId: string; title: string; label?: string } | null>(null);
+  /** A dragged block stays where it was dropped while the save is in flight. */
+  const [moving, setMoving] = useState<{ id: string; date: string; time: string } | null>(null);
+  const [moveError, setMoveError] = useState<string | null>(null);
+  /** Master fix Phase 5: Remove on a busy day picks tasks with the B6 chips;
+   *  this is the task that was clicked (chosen to start with). */
+  const [removePick, setRemovePick] = useState<string | null>(null);
+  /** Month cells show this many tasks before "+N more" (at least 3; 4 on desktop). */
+  const [perCell, setPerCell] = useState(3);
   const [openNotes, setOpenNotes] = useState<Set<string>>(new Set());
   const [showAddModal, setShowAddModal] = useState(false);
   const [addModalDate, setAddModalDate] = useState(todayYmd);
@@ -110,7 +152,7 @@ export default function CalendarPage() {
   const [recurDeleteTarget, setRecurDeleteTarget] = useState<RecurDeleteTarget | null>(null);
   const [recurEditTarget, setRecurEditTarget] = useState<RecurEditTarget | null>(null);
   const [recurDeleting, setRecurDeleting] = useState(false);
-  const [dayChatMessages, setDayChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const [dayChatMessages, setDayChatMessages] = useState<DayChatMessage[]>([]);
   const [dayChatInput, setDayChatInput] = useState("");
   const [dayChatBusy, setDayChatBusy] = useState(false);
 
@@ -123,8 +165,8 @@ export default function CalendarPage() {
 
   const getTaskCategoryColor = useCallback(
     // Handled Canvas work (lib/canvas-clear) stays to look back on, in grey.
-    (t: Task): string => (isCanvasCleared(t, todayYmd) ? "var(--cat-other)" : taskColor(t)),
-    [todayYmd]
+    (t: Task): string => (isCanvasCleared(t, todayYmd) ? seriesColor("neutral") : seriesColor(taskSeries(t, plans))),
+    [todayYmd, plans]
   );
 
   const tasksForDay = useCallback((ymd: string): Task[] => {
@@ -133,8 +175,33 @@ export default function CalendarPage() {
     let tasks = (state?.tasks ?? []).filter((t) => !isOnboardingSchoolTask(t));
     if (group !== "all") tasks = tasks.filter((t) => taskGroup(t) === group);
     if (planFilter) tasks = tasks.filter((t) => t.planId === planFilter);
+    if (moving) tasks = tasks.map((t) => (t.id === moving.id ? { ...t, date: moving.date, time: moving.time } : t));
     return tasks.filter((t) => t.date === ymd);
-  }, [state, group, planFilter]);
+  }, [state, group, planFilter, moving]);
+
+  // Same record as any reschedule, so the Undo toast and Recent changes revert it.
+  const moveTask = useCallback(async (t: Task, date: string, time: string) => {
+    setMoveError(null);
+    setMoving({ id: t.id, date, time });
+    try {
+      const res = await fetch("/api/reschedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId: t.id, suggestedDate: date, suggestedTime: time }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; actionId?: string };
+      if (!res.ok || !data.ok) throw new Error("move failed");
+      await refresh();
+      if (data.actionId) {
+        const day = new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: "short" });
+        announceUndo({ actionId: data.actionId, label: `Moved “${t.title}” to ${day} ${formatTime12(time)}` });
+      }
+    } catch {
+      setMoveError(`Couldn't move “${t.title}”. It's back where it was.`);
+    } finally {
+      setMoving(null);
+    }
+  }, [refresh]);
 
   const wholeDayTasks = selectedDay
     ? tasksForDay(selectedDay).slice().sort((a, b) => a.time.localeCompare(b.time))
@@ -165,13 +232,32 @@ export default function CalendarPage() {
   useEffect(() => {
     setDayChatMessages([]);
     setDayChatInput("");
+    setRemovePick(null);
   }, [selectedDay]);
 
-  const sendDayChat = useCallback(async () => {
-    const text = dayChatInput.trim();
+  // Master fix Phase 5: as many tasks per month cell as the viewport's row
+  // height fits, never fewer than 3 (4 on desktop). From the window size, not
+  // the cells, so showing more never makes the cells grow into showing more.
+  useEffect(() => {
+    const fit = () => {
+      const floor = window.matchMedia("(min-width: 1024px)").matches ? 4 : 3;
+      const rowHeight = (window.innerHeight - 190) / 6; // toolbar, weekday row; six week rows
+      const rows = Math.floor((rowHeight - 58) / 22); // date number and "+N more"; one task line
+      setPerCell(Math.min(8, Math.max(floor, rows)));
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, []);
+
+  // Master fix B3: the day chat shows Tangent's questions and previews as the
+  // same cards as the AI page, and answers them the same way (app/(app)/ai).
+  // `followUp`: a card's answers; `request` is the ask they answer.
+  const sendDayChat = useCallback(async (followUp?: { shown: string; request?: string; answers?: ClarifyAnswer[]; tapped?: boolean }) => {
+    const text = (followUp?.shown ?? dayChatInput).trim();
     if (!text || !selectedDay || dayChatBusy) return;
     setDayChatBusy(true);
-    setDayChatInput("");
+    if (!followUp) setDayChatInput("");
 
     const dateLabel = new Date(selectedDay + "T12:00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
     const taskSummary = selectedDayTasks.length
@@ -179,28 +265,96 @@ export default function CalendarPage() {
       : "No tasks scheduled.";
     const contextualMessage = `Context: the user is looking at ${dateLabel}. Tasks for that day:\n${taskSummary}\n\nQuestion: ${text}`;
 
-    const nextMessages = [...dayChatMessages, { role: "user" as const, content: text }];
-    setDayChatMessages(nextMessages);
+    // A question Tangent is waiting on (the last reply's, until it expires).
+    const last = dayChatMessages[dayChatMessages.length - 1];
+    const waiting = last?.pendingQuestion && Date.parse(last.pendingQuestion.expiresAt) > Date.now() ? last.pendingQuestion : null;
+    const asked = waiting ? text : followUp?.request ?? contextualMessage;
+    const history = dayChatMessages.map((m) => ({ role: m.role, content: m.content }));
+    // Answered or dropped either way: only the newest reply's card stays live.
+    setDayChatMessages([...dayChatMessages.map((m) => (m.questions ? { ...m, questions: undefined, pendingQuestion: null } : m)), { role: "user", content: text }]);
 
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: [...dayChatMessages, { role: "user", content: contextualMessage }],
+          messages: [...history, { role: "user", content: asked }],
+          mode: "calendar",
+          clarify: !followUp?.request,
+          pendingQuestion: waiting ?? undefined,
+          answers: followUp?.answers ?? (followUp?.tapped && waiting ? [{ id: PENDING_QUESTION_ID, question: "", answer: text }] : undefined),
         }),
       });
-      const data = (await res.json()) as { ok?: boolean; message?: string; error?: string };
-      const reply = data.ok && data.message ? data.message : (data.error || "Something went wrong.");
-      setDayChatMessages((m) => [...m, { role: "assistant", content: reply }]);
+      const data = (await res.json()) as {
+        ok?: boolean;
+        message?: string;
+        error?: string;
+        action?: string | null;
+        actionId?: string;
+        questions?: ClarifyQuestion[];
+        pendingQuestion?: PendingQuestion | null;
+        changeSet?: ChangeSet;
+        preview?: PreviewPayload;
+        pending?: { id: string; message: string };
+      };
+      const reply = data.ok ? data.message || data.pending?.message || "Done." : (data.error || "Something went wrong.");
+      const draft = data.action === "preview" && data.changeSet && data.preview ? { changeSet: data.changeSet, preview: data.preview } : undefined;
+      setDayChatMessages((m) => [
+        ...m,
+        {
+          role: "assistant",
+          content: reply,
+          questions: data.questions?.length ? data.questions : undefined,
+          pendingQuestion: data.pendingQuestion ?? null,
+          request: data.questions?.length ? asked : undefined,
+          draft,
+          actionId: data.actionId,
+          pendingConfirm: data.action === "confirm_required" && data.pending ? data.pending : undefined,
+        },
+      ]);
+      if (data.actionId) await refresh();
     } catch {
       setDayChatMessages((m) => [...m, { role: "assistant", content: "Something went wrong reaching the assistant." }]);
     } finally {
       setDayChatBusy(false);
     }
-  }, [dayChatInput, dayChatBusy, selectedDay, dayChatMessages, selectedDayTasks]);
+  }, [dayChatInput, dayChatBusy, selectedDay, dayChatMessages, selectedDayTasks, refresh]);
 
-  const cells = getMonthGrid(year, month);
+  /** A card's answers: a "Which one?" tap is the next message; a plan's
+   *  questions run the original ask with them (or "Just do it"). */
+  const answerDayChat = useCallback(
+    (index: number, answers: ClarifyAnswer[] | null) => {
+      const m = dayChatMessages[index];
+      if (!m) return;
+      if (m.pendingQuestion) return void sendDayChat({ shown: answers?.[0]?.answer ?? "Cancel", tapped: true });
+      const shown = answers && answers.length > 0 ? answers.map((a) => a.answer).join(" · ") : "Just do it";
+      void sendDayChat({ shown, request: m.request, answers: answers ?? undefined });
+    },
+    [dayChatMessages, sendDayChat]
+  );
+
+  /** The older Confirm/Cancel (flag off, or a very large delete). */
+  const confirmDayChat = useCallback(
+    async (index: number, id: string, confirm: boolean) => {
+      setDayChatMessages((ms) => ms.map((m, i) => (i === index ? { ...m, pendingConfirm: undefined } : m)));
+      try {
+        const res = await fetch("/api/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, confirm }),
+        });
+        const data = (await res.json()) as { ok?: boolean; response?: string; error?: string; actionId?: string };
+        const reply = !res.ok || !data.ok ? data.error || "Something went wrong." : data.response || (confirm ? "Done." : "Cancelled.");
+        setDayChatMessages((ms) => [...ms, { role: "assistant", content: reply, actionId: data.actionId }]);
+        if (data.actionId) await refresh();
+      } catch {
+        setDayChatMessages((ms) => [...ms, { role: "assistant", content: "Something went wrong reaching the assistant." }]);
+      }
+    },
+    [refresh]
+  );
+
+  const cells = getMonthGrid(year, month, firstDay);
 
   // Which way the last month change went, so the new month slides in from
   // the side you are travelling toward.
@@ -209,13 +363,13 @@ export default function CalendarPage() {
   const goToday = () => {
     const here = year * 12 + month; const there = now.getFullYear() * 12 + now.getMonth();
     setMonthDir(Math.sign(there - here)); setYear(now.getFullYear()); setMonth(now.getMonth());
-    setWeekStart(startOfWeek(now));
+    setWeekAnchor(now);
     setAgendaStart(new Date(now.getFullYear(), now.getMonth(), now.getDate()));
   };
   const step = (dir: -1 | 1) => {
     if (view === "month") { if (dir < 0) prevMonth(); else nextMonth(); return; }
     setMonthDir(dir);
-    if (view === "week") setWeekStart((w) => addDays(w, dir * 7));
+    if (view === "week") setWeekAnchor((w) => addDays(w, dir * weekLength));
     else setAgendaStart((a) => addDays(a, dir * AGENDA_DAYS));
   };
   const prevMonth = () => { setMonthDir(-1); if (month === 0) { setYear((y) => y - 1); setMonth(11); } else setMonth((mo) => mo - 1); };
@@ -230,7 +384,46 @@ export default function CalendarPage() {
     await refresh();
   };
 
+  // Master fix Phase 5: on a day with other tasks, Remove asks which ones with
+  // the same multi-select chips as the chat (B6), the clicked one chosen.
   const handleDeleteTask = (t: Task) => {
+    if (selectedDay && selectedDayTasks.length > 1) setRemovePick(t.id);
+    else removeTask(t);
+  };
+
+  /** The tasks the Remove chips name, by label ("All of these" is every one). */
+  const removeLabels = (tasks: Task[]) => {
+    const seen = new Map<string, number>();
+    return tasks.map((t) => {
+      const base = t.time && t.time !== "23:59" ? `${t.title} · ${formatTime12(t.time)}` : t.title;
+      const n = (seen.get(base) ?? 0) + 1;
+      seen.set(base, n);
+      return { task: t, label: n > 1 ? `${base} (${n})` : base };
+    });
+  };
+
+  const removePicked = async (answers: ClarifyAnswer[] | null) => {
+    setRemovePick(null);
+    const answer = answers?.[0]?.answer ?? "";
+    if (!answer) return;
+    const labelled = removeLabels(selectedDayTasks);
+    const picked = answer === "All of these"
+      ? labelled.map((l) => l.task)
+      : labelled.filter((l) => `, ${answer}, `.includes(`, ${l.label}, `)).map((l) => l.task);
+    if (picked.length === 0) return;
+    if (picked.length === 1) return removeTask(picked[0]);
+    // One change, one Undo: a recurring task loses just this day's occurrence.
+    const res = await fetch("/api/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete_tasks", ids: picked.map((t) => t.id) }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { actionId?: string };
+    if (data.actionId) setRemoved({ actionId: data.actionId, title: picked[0].title, label: `Removed ${picked.length} tasks` });
+    await refresh();
+  };
+
+  const removeTask = (t: Task) => {
     if (t.recurring?.enabled && t.recurring.parentId) {
       setRecurDeleteTarget({ taskId: t.id, parentId: t.recurring.parentId, title: t.title });
     } else {
@@ -274,7 +467,7 @@ export default function CalendarPage() {
     const d = new Date(`${ymd}T00:00:00`);
     setYear(d.getFullYear());
     setMonth(d.getMonth());
-    setWeekStart(startOfWeek(d));
+    setWeekAnchor(d);
     setSelectedDay(ymd);
   }, []);
 
@@ -296,7 +489,7 @@ export default function CalendarPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const weekDays = Array.from({ length: weekLength }, (_, i) => addDays(weekStart, i));
   const agendaDays = Array.from({ length: AGENDA_DAYS }, (_, i) => addDays(agendaStart, i));
 
   // Concise labels for what's on screen (lib/short-titles.ts): narrow cells
@@ -309,91 +502,66 @@ export default function CalendarPage() {
   const headingDate = view === "month" ? new Date(year, month, 1) : view === "week" ? weekStart : agendaStart;
   const headingMonth = headingDate.toLocaleString(undefined, { month: "long" });
   const headingYear = String(headingDate.getFullYear());
-  const spanEnd = view === "week" ? weekDays[6] : agendaDays[agendaDays.length - 1];
+  const spanEnd = view === "week" ? weekDays[weekDays.length - 1] : agendaDays[agendaDays.length - 1];
   const headingSpan = view === "month"
     ? null
     : `${headingDate.toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${spanEnd.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
-  const unitLabel = view === "month" ? "month" : view === "week" ? "week" : "three weeks";
+  const unitLabel = view === "month" ? "month" : view === "week" ? (narrow ? "three days" : "week") : "three weeks";
+  // The time grid opens at the start of the school day, or 7 AM.
+  const schoolStart = Number.parseInt(state?.user.schoolHours?.start ?? "", 10);
+  const startHour = Number.isFinite(schoolStart) ? Math.min(20, Math.max(0, schoolStart)) : 7;
+  const viewPanel = { id: "calendar-view-panel", role: "tabpanel", "aria-labelledby": `cal-view-tab-${view}` } as const;
   const openAddAt = (ymd: string, time?: string) => { setAddModalDate(ymd); setAddModalTime(time); setShowAddModal(true); };
   const activePlan = planFilter ? getPlan(planFilter) : null;
 
-  // The island: every calendar control on one floating glass capsule at the
-  // bottom centre, so the grid gets the whole page. Portalled to <body>: the
-  // page's entrance transform would otherwise make "fixed" relative to it.
-  const island = (
-      <div className="cal-island lg lg-interactive" role="toolbar" aria-label="Calendar controls">
-        <div className="cal-island-group">
-              <div className="cal-view-switch" role="tablist" aria-label="Calendar view">
-                {VIEWS.map((v) => (
-                  <button
-                    key={v.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={view === v.id}
-                    className={`cal-view-tab${view === v.id ? " is-active" : ""}`}
-                    onClick={() => chooseView(v.id)}
-                  >
-                    {view === v.id && (
-                      <m.span layoutId="cal-view-pill" className="cal-view-pill" transition={{ type: "spring", visualDuration: 0.28, bounce: 0 }} />
-                    )}
-                    <span className="cal-view-label">{v.label}</span>
-                  </button>
-                ))}
-              </div>
-              <div className="cal-arrows">
-                <button type="button" className="cal-arrow" onClick={() => step(-1)} aria-label={`Previous ${unitLabel}`}>
-                  <ChevronLeft size={16} aria-hidden="true" />
-                </button>
-                <button type="button" className="cal-today" onClick={goToday}>Today</button>
-                <button type="button" className="cal-arrow" onClick={() => step(1)} aria-label={`Next ${unitLabel}`}>
-                  <ChevronRight size={16} aria-hidden="true" />
-                </button>
-                <button type="button" className="cal-arrow" onClick={openRecentChanges} aria-label="Recent changes" title="Recent changes">
-                  <Undo2 size={16} aria-hidden="true" />
-                </button>
-              </div>
-        </div>
-          <div className="cal-segment-bar" role="tablist" aria-label="Show">
-            {[{ id: "all" as const, label: "All" }, ...TASK_GROUPS].map((g) => (
-              <button
-                key={g.id}
-                type="button"
-                role="tab"
-                aria-selected={group === g.id}
-                className={`cal-segment${group === g.id ? " is-active" : ""}`}
-                onClick={() => setGroup(g.id)}
-              >
-                {g.label}
-              </button>
-            ))}
-          </div>
-      </div>
-  );
-
   return (
     <>
-      {mounted && createPortal(island, document.body)}
+      <TaskTip tasks={state?.tasks ?? []} plans={plans} colorFor={getTaskCategoryColor} />
       <div className="calendar-page">
-        <section className="calendar-toolbar" aria-label="Calendar controls">
-          <div className="calendar-toolbar-primary">
-            <h1 className="cal-month-heading">
-              <span>{headingMonth}</span> <span className="cal-heading-year">{headingYear}</span>
-              {headingSpan && <span className="cal-heading-span">{headingSpan}</span>}
-            </h1>
+        <header className="cal-bar">
+          <h1 className="cal-title">
+            <span className="cal-title-month">{headingMonth}</span> <span className="cal-title-year">{headingYear}</span>
+            {headingSpan && <span className="cal-title-span">{headingSpan}</span>}
+          </h1>
+          <div className="cal-bar-nav" role="group" aria-label="Move through the calendar">
+            <Button variant="secondary" size="sm" onClick={goToday}>
+              Today
+            </Button>
+            <IconButton label={`Previous ${unitLabel}`} icon={<ChevronLeft size={18} strokeWidth={1.75} />} onClick={() => step(-1)} />
+            <IconButton label={`Next ${unitLabel}`} icon={<ChevronRight size={18} strokeWidth={1.75} />} onClick={() => step(1)} />
           </div>
-      </section>
+          <div className="cal-bar-views">
+            <SegmentedTabs
+              label="Calendar view"
+              idPrefix="cal-view"
+              value={view}
+              onChange={chooseView}
+              options={VIEWS.map((v) => ({ value: v.id, label: v.id === "week" && narrow ? "3 days" : v.label, controls: "calendar-view-panel" }))}
+              className="cal-bar-tabs"
+            />
+            <IconButton label="Recent changes" icon={<Undo2 size={18} strokeWidth={1.75} />} onClick={openRecentChanges} tooltipSide="left" />
+          </div>
+          <div className="cal-bar-filters" role="group" aria-label="Show">
+            {[{ id: "all" as const, label: "All" }, ...TASK_GROUPS].map((g) => (
+              <Chip key={g.id} variant="filter" selected={group === g.id} onClick={() => setGroup(g.id)}>
+                {g.label}
+              </Chip>
+            ))}
+          </div>
+        </header>
 
       {activePlan && (
-        <div className="plan-filter-banner" style={{ borderLeft: `3px solid ${activePlan.color}` }}>
-          <span>Filtering by plan: <strong>{activePlan.title}</strong></span>
+        <div className="plan-filter-banner" style={{ borderLeft: `3px solid ${planSeriesColor(activePlan)}` }}>
+          <span>Filtering by project: <strong>{activePlan.title}</strong></span>
           <Button variant="quiet" size="sm" onClick={() => setPlanFilter(null)} icon={<X size={14} aria-hidden="true" />}>Clear filter</Button>
         </div>
       )}
 
       {view === "week" && (
         <m.section
-          key={`wk-${toYMD(weekStart)}`}
+          key={`wk-${toYMD(weekStart)}-${weekLength}`}
           className="calendar-week-shell"
+          {...viewPanel}
           initial={reduced || monthDir === 0 ? false : { opacity: 0, x: monthDir * 28 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ type: "spring", visualDuration: 0.38, bounce: 0.08 }}
@@ -407,13 +575,16 @@ export default function CalendarPage() {
             colorFor={getTaskCategoryColor}
             onOpenDay={setSelectedDay}
             onAddAt={(ymd, time) => openAddAt(ymd, time)}
+            onMoveTask={(t, ymd, time) => void moveTask(t, ymd, time)}
             toYMD={toYMD}
+            startHour={startHour}
           />
+          {moveError && <p className="calendar-move-error" role="alert">{moveError}</p>}
         </m.section>
       )}
 
       {view === "agenda" && (
-        <section className="calendar-agenda-shell" key={`ag-${toYMD(agendaStart)}`}>
+        <section className="calendar-agenda-shell" key={`ag-${toYMD(agendaStart)}`} {...viewPanel}>
           <AgendaView
             onOpenTask={(_ymd, id) => openTask(id)}
             days={agendaDays}
@@ -429,9 +600,9 @@ export default function CalendarPage() {
       )}
 
       {view === "month" && (
-      <section className="calendar-grid-shell">
+      <section className="calendar-grid-shell" {...viewPanel}>
           <div className="cal-weekday-row" aria-hidden="true">
-            {WEEKDAY_LABELS.map((d) => (
+            {[...WEEKDAY_LABELS.slice(firstDay), ...WEEKDAY_LABELS.slice(0, firstDay)].map((d) => (
               <div key={d} className="cal-weekday-label">
                 {d}
               </div>
@@ -453,8 +624,9 @@ export default function CalendarPage() {
               // The day's own tasks, in time order, shown as chips: the grid
               // answers "what's on" without opening every day.
               const ordered = [...dayTasks].sort((a, b) => (a.time || "").localeCompare(b.time || ""));
-              // Two per day keeps the month readable; the rest is "N more".
-              const shown = ordered.slice(0, 2);
+              // As many as the cell fits (at least 3, 4 on desktop); the rest
+              // is "+N more", which opens the day.
+              const shown = ordered.slice(0, ordered.length > perCell ? perCell - 1 : perCell);
               const more = ordered.length - shown.length;
               let className = "cal-cell";
               if (!inMonth) className += " is-outside";
@@ -489,6 +661,7 @@ export default function CalendarPage() {
                               key={t.id}
                               className={`cal-event${t.completed ? " is-done" : ""}${isCanvasCleared(t, todayYmd) ? " is-cleared" : ""}${deadline ? " is-deadline" : ""}`}
                               style={{ "--chip": getTaskCategoryColor(t) } as React.CSSProperties}
+                              data-task-tip={t.id}
                               onClick={(e) => {
                                 // The event opens in the middle, like Google
                                 // Calendar; the date opens the day.
@@ -497,11 +670,21 @@ export default function CalendarPage() {
                               }}
                             >
                               <span className="cal-event-dot" aria-hidden="true" />
-                              <span className="cal-event-title" title={t.title}>{labelFor(t)}</span>
+                              <span className="cal-event-title">{labelFor(t)}</span>
                             </span>
                           );
                         })}
-                        {more > 0 && <span className="cal-event-more">{more} more</span>}
+                        {more > 0 && (
+                          <span
+                            className="cal-event-more"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedDay(ymd);
+                            }}
+                          >
+                            +{more} more
+                          </span>
+                        )}
                       </span>
                     )}
                   </button>
@@ -528,8 +711,8 @@ export default function CalendarPage() {
       )}
       </div>
 
-      {selectedDay && (
-        <SidePeek open titleId="calendar-day-title" onClose={() => { setSelectedDay(null); setRemoved(null); }}>
+      <SidePeek open={!!selectedDay} titleId="calendar-day-title" onClose={() => { setSelectedDay(null); setRemoved(null); }}>
+        {selectedDay && (
           <div className="calendar-peek-content">
             <div className="calendar-modal-header">
               <span className="calendar-peek-kicker">Selected day</span>
@@ -548,7 +731,7 @@ export default function CalendarPage() {
                 <div className="calendar-removed">
                   <ActionReceipt
                     actionId={removed.actionId}
-                    label={`Removed “${removed.title}”`}
+                    label={removed.label ?? `Removed “${removed.title}”`}
                     onUndone={() => {
                       setRemoved(null);
                       void refresh();
@@ -585,7 +768,7 @@ export default function CalendarPage() {
                           >
                             {t.completed && <Check size={12} strokeWidth={2.8} aria-hidden="true" />}
                           </button>
-                          <span className={`calendar-modal-task-title${t.completed ? " done" : ""}`}><TaskTitle task={t} /></span>
+                          <span className={`calendar-modal-task-title${t.completed ? " done" : ""}`} data-task-tip={t.id}><TaskTitle task={t} /></span>
                           {t.recurring?.enabled && (
                             <span className="recurring-badge" title={freq || "Recurring"}><Repeat size={12} strokeWidth={1.75} /></span>
                           )}
@@ -596,9 +779,13 @@ export default function CalendarPage() {
                       {plan && (
                         <button
                           className="plan-tag"
-                          style={{ background: plan.color + "22", color: plan.color, borderColor: plan.color + "44" }}
+                          style={{
+                            background: `color-mix(in srgb, ${planSeriesColor(plan)} 14%, transparent)`,
+                            color: "var(--text)",
+                            borderColor: `color-mix(in srgb, ${planSeriesColor(plan)} 44%, transparent)`,
+                          }}
                           onClick={() => { setPlanFilter(t.planId ?? null); setSelectedDay(null); }}
-                          title={`Filter by plan: ${plan.title}`}
+                          title={`Filter by project: ${plan.title}`}
                         >
                           {plan.title}
                         </button>
@@ -658,10 +845,31 @@ export default function CalendarPage() {
                           className="calendar-task-remove"
                           onClick={() => handleDeleteTask(t)}
                           aria-label={`Remove ${t.title}`}
+                          aria-expanded={removePick === t.id}
                         >
                           Remove
                         </button>
                       </div>
+                      {removePick === t.id && (
+                        <div className="calendar-remove-pick">
+                          <ClarifyCard
+                            key={t.id}
+                            questions={[
+                              {
+                                id: "remove",
+                                question: "Remove which tasks?",
+                                options: [...removeLabels(selectedDayTasks).map((l) => l.label), "All of these"],
+                                multi: true,
+                                submitLabel: "Delete selected",
+                              },
+                            ]}
+                            initial={{ remove: removeLabels(selectedDayTasks).filter((l) => l.task.id === t.id).map((l) => l.label) }}
+                            other={false}
+                            skipLabel="Cancel"
+                            onSubmit={(answers) => void removePicked(answers)}
+                          />
+                        </div>
+                      )}
                     </div>
                   );
                   })}
@@ -689,7 +897,30 @@ export default function CalendarPage() {
                 <div className="calendar-modal-chat-log">
                   {dayChatMessages.map((m, i) => (
                     <div key={i} className={`chat-row ${m.role === "user" ? "user-row" : "assistant-row"}`}>
-                      <div className={`bubble ${m.role}`}>{m.content}</div>
+                      {!(m.draft && m.content.trim() === m.draft.changeSet.summary.trim()) && (
+                        <div className={`bubble ${m.role}`}>{m.content}</div>
+                      )}
+                      {m.questions && m.questions.length > 0 && (
+                        <ClarifyCard
+                          questions={m.questions}
+                          disabled={dayChatBusy}
+                          skipLabel={m.pendingQuestion ? "Cancel" : undefined}
+                          echo={m.content}
+                          onSubmit={(answers) => answerDayChat(i, answers)}
+                        />
+                      )}
+                      {m.draft && <PreviewCard changeSet={m.draft.changeSet} preview={m.draft.preview} onChanged={() => void refresh()} />}
+                      {m.pendingConfirm && (
+                        <div className="tg-confirm">
+                          <Button size="sm" variant="primary" onClick={() => void confirmDayChat(i, m.pendingConfirm!.id, true)}>
+                            Confirm
+                          </Button>
+                          <Button size="sm" onClick={() => void confirmDayChat(i, m.pendingConfirm!.id, false)}>
+                            Cancel
+                          </Button>
+                        </div>
+                      )}
+                      {m.actionId && !m.draft && <ActionReceipt actionId={m.actionId} label="Change applied" onUndone={() => void refresh()} />}
                     </div>
                   ))}
                   {dayChatBusy && (
@@ -707,9 +938,10 @@ export default function CalendarPage() {
               )}
               <form className="chat-form" onSubmit={(e) => { e.preventDefault(); void sendDayChat(); }}>
                 <input
+                  name="day-chat"
                   value={dayChatInput}
                   onChange={(e) => setDayChatInput(e.target.value)}
-                  placeholder="Ask about this day..."
+                  placeholder="Ask about this day…"
                   aria-label="Ask about this day"
                   disabled={dayChatBusy}
                 />
@@ -719,8 +951,8 @@ export default function CalendarPage() {
               </form>
             </details>
           </div>
-        </SidePeek>
-      )}
+        )}
+      </SidePeek>
 
       {/* Add Task Modal */}
       {showAddModal && (
@@ -734,18 +966,17 @@ export default function CalendarPage() {
             setSelectedDay(addModalDate);
           }}
           onSuccess={() => void refresh()}
-          onDuplicate={() => {
-            setDuplicateToast(true);
-            window.setTimeout(() => setDuplicateToast(false), 3000);
-          }}
+          onDuplicate={() => setDuplicateToast(true)}
         />
       )}
 
-      {duplicateToast && (
-        <div className="command-toast" role="status">
-          <span>Already on your calendar</span>
-        </div>
-      )}
+      <ToastPortal>
+        {duplicateToast && (
+          <Toast key="duplicate" tone="info" duration={3000} onDismiss={() => setDuplicateToast(false)}>
+            Already on your calendar
+          </Toast>
+        )}
+      </ToastPortal>
 
       {/* Recurring delete modal */}
       {recurDeleteTarget && (
@@ -764,7 +995,7 @@ export default function CalendarPage() {
                 className="btn"
                 onClick={() => void confirmRecurDelete(true)}
                 disabled={recurDeleting}
-                style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff" }}
+                style={{ background: "var(--red)", borderColor: "var(--red)", color: "var(--red-ink)" }}
               >
                 {recurDeleting ? "Deleting…" : "All occurrences"}
               </button>

@@ -5,6 +5,24 @@
 
 import type { Transition, Variants } from "motion/react";
 
+/** Seconds, matching the CSS motion tokens in app/styles/tokens.css
+ *  (--dur-fast, --dur, --dur-slow). Nothing in the app runs longer. */
+export const duration = {
+  fast: 0.15,
+  base: 0.2,
+  slow: 0.25,
+} as const;
+
+/** --ease (everything that enters) and --ease-in (exits). */
+export const ease = {
+  out: [0.2, 0.8, 0.2, 1],
+  in: [0.4, 0, 1, 1],
+} as const satisfies Record<string, [number, number, number, number]>;
+
+/** What anything animates with when it names no transition of its own
+ *  (MotionConfig in components/MotionProvider). */
+export const defaultTransition: Transition = { duration: duration.base, ease: ease.out };
+
 // Apple's default for UI that wasn't thrown is critically damped (no
 // overshoot): bounce 0 everywhere here. Bounce belongs only to things the
 // student flicks, and those set their own.
@@ -32,7 +50,7 @@ export const riseIn: Variants = {
   show: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.28, ease: [0.23, 1, 0.32, 1] },
+    transition: { duration: duration.slow, ease: ease.out },
     // A lingering transform makes the element the containing block for
     // position:fixed children (modals). Clear it once the entrance is over.
     transitionEnd: { transform: "none" },
@@ -46,7 +64,7 @@ export const pageEnter = {
   animate: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.2, ease: [0.23, 1, 0.32, 1] },
+    transition: { duration: duration.base, ease: ease.out },
     transitionEnd: { transform: "none" },
   },
 } as const;

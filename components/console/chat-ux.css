@@ -1,0 +1,392 @@
+/* Master fix Phase 4: chat UX. Markdown replies, hover actions, Stop,
+   typing dots, new-topic chips, and the quiet receipt row. Builds on the
+   tokens in app/globals.css and the console styles in app/(app)/ai/console.css. */
+
+/* ── Markdown ─────────────────────────────────────────────────────────── */
+.tg-msg-text:has(> .tg-md) {
+  white-space: normal;
+}
+
+.tg-md > * + * {
+  margin-top: 8px;
+}
+
+.tg-md p {
+  margin: 0;
+}
+
+.tg-md ul,
+.tg-md ol {
+  margin: 0;
+  padding-left: 1.3em;
+}
+
+.tg-md li + li {
+  margin-top: 4px;
+}
+
+.tg-md h3,
+.tg-md h4,
+.tg-md h5 {
+  margin: 0;
+  font-size: 1em;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.tg-md h3 {
+  font-size: 1.08em;
+}
+
+.tg-md-code {
+  padding: 0.08em 0.35em;
+  border-radius: 5px;
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+}
+
+.tg-md-pre {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.tg-md-pre .tg-md-code {
+  padding: 0;
+  background: none;
+  font-size: inherit;
+}
+
+/* While it streams: a soft caret after the text so far. */
+.tg-msg-text.is-streaming .tg-md > :last-child::after {
+  content: "";
+  display: inline-block;
+  width: 0.45em;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.12em;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0.55;
+  animation: tg-caret 1s steps(2, start) infinite;
+}
+
+@keyframes tg-caret {
+  to {
+    visibility: hidden;
+  }
+}
+
+.tg-msg-stopped {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+/* ── Hover actions: Copy / Retry / Edit / thumbs ──────────────────────── */
+.tg-msg-actions {
+  display: flex;
+  gap: 2px;
+  margin-top: 6px;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+
+.tg-turn:hover .tg-msg-actions,
+.tg-msg-actions:focus-within {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .tg-msg-actions {
+    opacity: 1;
+  }
+}
+
+.tg-msg-action {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.tg-msg-action:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.tg-msg-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.tg-msg-action[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* ── Stop (the Send button while a reply is coming) ───────────────────── */
+
+/* ── Typing dots ──────────────────────────────────────────────────────── */
+.tg-typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 2px;
+}
+
+.tg-typing > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-3);
+  animation: tg-typing 1.1s ease-in-out infinite;
+}
+
+.tg-typing > span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.tg-typing > span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes tg-typing {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+/* ── Empty state, new-topic chips, editing note ───────────────────────── */
+.tg-hero-sub {
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.tg-topic-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.tg-editing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.tg-editing button {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tg-editing button:hover {
+  text-decoration: underline;
+}
+
+/* ── Confirmed card: summary, weeks, quiet receipt row ────────────────── */
+.preview-card-receipt-head {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.preview-card-receipt-lines {
+  margin: 6px 0 0;
+  padding-left: 1.2em;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.preview-card-receipt-lines li + li {
+  margin-top: 2px;
+}
+
+.preview-card-receipt-week {
+  margin-top: 8px;
+}
+
+.preview-card-receipt-week-label {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.preview-card-receipt-more {
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.preview-card-receipt-more:hover {
+  text-decoration: underline;
+}
+
+/* The receipt is a quiet inline row: Undo · Open project · Details. */
+.preview-card .action-receipt.is-quiet,
+.tg-msg-body .action-receipt {
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.preview-card .action-receipt.is-quiet .action-receipt-undo,
+.tg-msg-body .action-receipt .action-receipt-undo {
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.preview-card .action-receipt.is-quiet .action-receipt-undo:hover:not(:disabled),
+.tg-msg-body .action-receipt .action-receipt-undo:hover:not(:disabled) {
+  background: none;
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-typing > span,
+  .tg-msg-text.is-streaming .tg-md > :last-child::after {
+    animation: none;
+  }
+}
+
+/* ── Round 3: thread rhythm ──────────────────────────────────────────────
+   Tighter turns, your messages in a soft accent bubble (85% max), Tangent's
+   replies plain and full width, preview cards never wider than the column. */
+.tg-console .tg-thread-inner {
+  gap: 20px;
+}
+.tg-console .tg-turn {
+  gap: 12px;
+}
+.tg-console .tg-msg-user {
+  max-width: 85%;
+  background: var(--accent-soft);
+}
+.tg-console .tg-msg-body > * {
+  max-width: 100%;
+  min-width: 0;
+}
+.tg-console .tg-msg-actions {
+  margin-top: 2px;
+}
+
+/* Header: room for the title; the icons and Done sit on one line. */
+.tg-console .tg-main-head {
+  padding: 8px 12px 8px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.tg-console .tg-main-title {
+  overflow: hidden;
+  font: 650 16px/1.3 var(--font-body);
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tg-console .tg-head-title {
+  flex: 1;
+}
+.tg-console .tg-head-actions {
+  flex: none;
+  gap: 2px;
+}
+.tg-console .tg-head-actions .tg-done {
+  margin-left: 6px;
+}
+
+/* Jump to latest: a round button just above the composer. */
+.tg-below.is-round {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  color: var(--text-2);
+}
+.tg-below.is-round:hover {
+  color: var(--text);
+}
+.tg-below:focus-visible {
+  outline: 2px solid var(--focus, var(--accent));
+  outline-offset: 2px;
+}
+
+/* Typing: three dots, or a still "Thinking…" when motion is reduced. */
+.tg-typing-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+.tg-typing-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tg-typing {
+    display: none;
+  }
+  .tg-typing-text {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+    color: var(--text-2);
+    font: 450 14px/22px var(--font-body);
+  }
+}
+
+.tg-console .tg-dock-hint {
+  margin-top: 6px;
+  font-size: 12px;
+}

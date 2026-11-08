@@ -1,0 +1,667 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   App shell — components/AppShell.tsx
+   docs/design/TANGENT-STYLE.md §8 "Nav: desktop sidebar + phone bottom bar".
+
+   Phone   < 768px    glass top bar + glass bottom tab bar, no sidebar
+   Tablet  768–1099   72px icon rail with tooltips
+   Desktop ≥ 1100px   232px sidebar with labels, counts and projects
+
+   Pages size themselves against three variables instead of guessing what
+   chrome is on screen:
+     --rail-current   width of the sidebar on the left
+     --shell-top      height of the fixed bar on top
+     --shell-bottom   height of the fixed bar at the bottom
+   ══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --rail-tablet: 72px;
+  --rail-current: 0px;
+  --shell-top: calc(var(--topbar-h) + env(safe-area-inset-top));
+  --shell-bottom: var(--bottom-nav-h);
+}
+@media (min-width: 768px) {
+  :root {
+    --rail-current: var(--rail-tablet);
+    --shell-top: 0px;
+    --shell-bottom: 0px;
+  }
+}
+@media (min-width: 1100px) {
+  :root { --rail-current: var(--rail-w); }
+}
+
+/* ── Frame ───────────────────────────────────────────────────────────────── */
+
+.shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  background: var(--bg);
+}
+
+.shell-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  margin-left: var(--rail-current);
+  padding-top: var(--shell-top);
+  padding-bottom: var(--shell-bottom);
+}
+
+.shell-content {
+  flex: 1;
+  width: 100%;
+  padding: var(--s-8) 0 var(--s-12);
+}
+@media (max-width: 767px) {
+  .shell-content { padding: var(--s-5) 0 var(--s-8); }
+}
+
+.content-inner {
+  width: 100%;
+  max-width: var(--content-max);
+  margin-inline: auto;
+  padding-inline: var(--page-gutter);
+}
+
+/* Storage warning: only renders when something is wrong. */
+.app-status {
+  position: fixed;
+  z-index: 45;
+  top: calc(var(--shell-top) + var(--s-3));
+  right: var(--s-4);
+  pointer-events: none;
+}
+.app-status > * { pointer-events: auto; }
+
+/* ── Brand ───────────────────────────────────────────────────────────────── */
+
+.app-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--tap);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  text-decoration: none;
+}
+.app-brand-word {
+  font: 600 18px/1 var(--font-display);
+  letter-spacing: -0.01em;
+}
+.app-brand:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* ── Sidebar (tablet + desktop) ──────────────────────────────────────────── */
+
+.app-sidebar {
+  position: fixed;
+  z-index: 40;
+  inset: 0 auto 0 0;
+  display: none;
+  flex-direction: column;
+  width: var(--rail-current);
+  padding: var(--s-3) var(--s-3) var(--s-4);
+  border-right: 1px solid var(--line);
+  background: var(--bg);
+}
+@media (min-width: 768px) {
+  .app-sidebar { display: flex; }
+}
+
+.app-sidebar > .app-brand {
+  align-self: flex-start;
+  margin: 0 0 var(--s-3);
+  padding: 0 var(--s-2);
+}
+
+/* Rows: New, the places, Notifications, Settings. 40px tall on a 44px pitch. */
+.app-new,
+.app-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  min-height: 40px;
+  padding: 0 var(--s-3);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  font: 500 14px/1.2 var(--font-body);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+/* Fills the 4px between rows so the hit area is 44px. */
+.app-new::before,
+.app-nav-item::before {
+  content: "";
+  position: absolute;
+  inset: -2px 0;
+}
+.app-new:hover,
+.app-nav-item:hover {
+  background: var(--elev-2);
+  color: var(--text);
+}
+.app-new:active,
+.app-nav-item:active {
+  background: var(--layer-3);
+}
+.app-new:focus-visible,
+.app-nav-item:focus-visible,
+.app-project-item:focus-visible,
+.app-project-all:focus-visible,
+.app-user:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.app-nav-item[aria-current="page"] {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.app-new {
+  margin-bottom: var(--s-3);
+  color: var(--text);
+}
+.app-new svg { color: var(--accent-text); }
+
+.app-sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.app-nav-icon {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+.app-nav-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-nav-count {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  font: 500 12px/1 var(--font-body);
+  font-variant-numeric: tabular-nums;
+}
+.app-nav-item[aria-current="page"] .app-nav-count { color: var(--accent-text); }
+
+.app-unread-dot {
+  position: absolute;
+  top: -1px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--bg);
+  border-radius: 50%;
+  background: var(--red);
+  box-sizing: content-box;
+}
+
+/* Projects */
+.app-sidebar-projects {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  margin-top: var(--s-6);
+}
+.app-sidebar-heading {
+  margin: 0 0 var(--s-1);
+  padding: 0 var(--s-3);
+  color: var(--text-3);
+  font: 600 11px/1.6 var(--font-body);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.app-sidebar-projects ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  scrollbar-width: thin;
+}
+.app-project-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 0 var(--s-3);
+  border-radius: var(--r-sm);
+  color: var(--text-2);
+  font: 500 13px/1.2 var(--font-body);
+  text-decoration: none;
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.app-project-item:hover { background: var(--elev-2); color: var(--text); }
+.app-project-item[aria-current="page"] { background: var(--accent-soft); color: var(--accent-text); }
+.app-project-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dot, var(--accent));
+}
+.app-project-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-project-pie {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: conic-gradient(var(--accent) calc(var(--pct, 0) * 1%), var(--layer-3) 0);
+  -webkit-mask: radial-gradient(circle, transparent 3px, #000 3.5px);
+  mask: radial-gradient(circle, transparent 3px, #000 3.5px);
+}
+.app-project-all {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  margin-top: 2px;
+  padding: 0 var(--s-3);
+  border-radius: var(--r-sm);
+  color: var(--text-3);
+  font: 500 13px/1.2 var(--font-body);
+  text-decoration: none;
+}
+.app-project-all:hover { background: var(--elev-2); color: var(--text); }
+
+/* Bottom: Notifications, Settings, the account. */
+.app-sidebar-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: auto;
+  padding-top: var(--s-4);
+}
+.app-sidebar-projects + .app-sidebar-bottom { margin-top: 0; }
+
+.app-user {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--tap);
+  margin-top: var(--s-2);
+  padding: var(--s-2) var(--s-2) 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  color: var(--text);
+  font: 500 14px/1.2 var(--font-body);
+  text-decoration: none;
+}
+.app-user:hover .app-user-name { color: var(--accent-text); }
+.app-user-avatar {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font: 600 13px/1 var(--font-body);
+}
+.app-user-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Tablet: the 72px icon rail ──────────────────────────────────────────── */
+
+@media (min-width: 768px) and (max-width: 1099px) {
+  .app-sidebar {
+    align-items: center;
+    padding-inline: var(--s-3);
+  }
+  .app-sidebar > .app-brand { align-self: center; padding: 0; }
+  .app-brand-word,
+  .app-sidebar .app-nav-label,
+  .app-user-name,
+  .app-sidebar-projects { display: none; }
+
+  .app-new,
+  .app-nav-item {
+    justify-content: center;
+    width: var(--tap);
+    min-height: var(--tap);
+    padding: 0;
+  }
+  .app-new::before,
+  .app-nav-item::before { display: none; }
+  .app-sidebar-nav { gap: var(--s-1); }
+  .app-sidebar-bottom { gap: var(--s-1); align-items: center; }
+
+  /* Home's open count becomes a small badge on the icon. */
+  .app-sidebar .app-nav-count {
+    position: absolute;
+    top: 4px;
+    right: 2px;
+    min-width: 16px;
+    padding: 2px 4px;
+    border-radius: var(--r-pill);
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-size: 10px;
+    text-align: center;
+  }
+  .app-sidebar [aria-haspopup] .app-nav-count { display: none; }
+
+  .app-user {
+    justify-content: center;
+    width: var(--tap);
+    padding: var(--s-2) 0 0;
+  }
+
+  /* Tooltips: the labels are hidden, so hovering says what each icon is. */
+  .app-sidebar [data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    z-index: 50;
+    top: 50%;
+    left: calc(100% + 10px);
+    width: max-content;
+    padding: 5px 8px;
+    border-radius: var(--r-xs);
+    background: var(--text);
+    color: var(--bg);
+    font: 500 12px/1.3 var(--font-body);
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transform: translate(-2px, -50%);
+    transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+  }
+  .app-sidebar [data-tooltip]:is(:hover, :focus-visible)::after {
+    opacity: 1;
+    transform: translate(0, -50%);
+    transition-delay: 300ms;
+  }
+  .app-sidebar [data-tooltip]:focus-visible::after { transition-delay: 0ms; }
+}
+
+/* ── Phone: glass top bar and bottom tab bar ─────────────────────────────── */
+
+.app-topbar,
+.app-tabbar {
+  position: fixed;
+  z-index: 50;
+  left: 0;
+  right: 0;
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .app-topbar,
+  .app-tabbar { background: var(--surface); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .app-topbar,
+  .app-tabbar {
+    background: var(--surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+@media (min-width: 768px) {
+  .app-topbar,
+  .app-tabbar,
+  .app-fab { display: none !important; }
+}
+
+.app-topbar {
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--shell-top);
+  padding: env(safe-area-inset-top) var(--s-2) 0 var(--page-gutter);
+  border-bottom: 1px solid var(--glass-edge);
+}
+.app-topbar-bell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap);
+  height: var(--tap);
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.app-topbar-bell:active { background: var(--layer-3); }
+.app-topbar-bell:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.app-topbar-bell .app-unread-dot {
+  top: 10px;
+  right: 10px;
+  border-color: var(--surface);
+}
+
+.app-tabbar {
+  bottom: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  height: var(--bottom-nav-h);
+  padding: 0 var(--s-1) env(safe-area-inset-bottom);
+  border-top: 1px solid var(--glass-edge);
+}
+.app-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 48px;
+  color: var(--text-2);
+  font: 500 12px/1.2 var(--font-body);
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+.app-tab-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 30px;
+  border-radius: var(--r-pill);
+  transition: background-color var(--dur) var(--ease);
+}
+.app-tab-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-tab[aria-current="page"] { color: var(--accent-text); }
+.app-tab[aria-current="page"] .app-tab-icon { background: var(--accent-soft); }
+.app-tab:active .app-tab-icon { background: var(--layer-3); }
+.app-tab:focus-visible { outline: none; }
+.app-tab:focus-visible .app-tab-icon { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* The phone mic: Calendar and the Projects list only (no composer there). */
+.app-fab {
+  position: fixed;
+  z-index: 55;
+  right: var(--s-4);
+  bottom: calc(var(--bottom-nav-h) + var(--s-4));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: var(--shadow-md), 0 6px 20px rgb(from var(--accent) r g b / 0.32);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+  transition: transform var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+.app-fab:active { transform: scale(0.96); background: var(--accent-hover); }
+.app-fab:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+
+/* ── Arriving from the capture home: chrome eases in ─────────────────────── */
+
+@keyframes app-rail-in {
+  from { opacity: 0; transform: translateX(-12px); }
+}
+@keyframes app-bar-in {
+  from { opacity: 0; transform: translateY(6px); }
+}
+.shell.is-arriving .app-sidebar { animation: app-rail-in var(--dur-slow) var(--ease) both; }
+.shell.is-arriving .app-topbar,
+.shell.is-arriving .app-tabbar { animation: app-bar-in var(--dur-slow) var(--ease) 60ms both; }
+@media (prefers-reduced-motion: reduce) {
+  .shell.is-arriving .app-sidebar,
+  .shell.is-arriving .app-topbar,
+  .shell.is-arriving .app-tabbar { animation: none; }
+}
+
+/* ── Notifications sheet (components/NotificationBell.tsx) ───────────────── */
+
+.notif-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-bottom: var(--s-3);
+}
+.notif-actions:empty { display: none; }
+
+.notif-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.notif-item {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-1) var(--s-3) var(--s-3);
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  cursor: default;
+}
+.notif-item:last-child { border-bottom: 0; }
+.notif-item.is-unread { cursor: pointer; }
+.notif-item.is-unread::before {
+  content: "";
+  position: absolute;
+  top: calc(var(--s-3) + 6px);
+  left: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.notif-item.is-pinned {
+  margin-bottom: var(--s-2);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+}
+.notif-item.is-pinned::before { display: none; }
+
+.notif-item-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--elev-2);
+  color: var(--text-2);
+}
+.notif-item.is-pinned .notif-item-icon { background: var(--surface); color: var(--accent-text); }
+
+.notif-item-content {
+  flex: 1;
+  min-width: 0;
+}
+.notif-item-title {
+  margin: 0;
+  color: var(--text);
+  font: 600 14px/1.35 var(--font-body);
+  overflow-wrap: anywhere;
+}
+.notif-item:not(.is-unread) .notif-item-title { font-weight: 500; }
+.notif-item-body {
+  margin: 2px 0 0;
+  color: var(--text-2);
+  font: 400 13px/1.45 var(--font-body);
+  overflow-wrap: anywhere;
+}
+.notif-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  margin-top: var(--s-2);
+}
+.notif-item-time {
+  color: var(--text-3);
+  font: 500 12px/1 var(--font-body);
+  font-variant-numeric: tabular-nums;
+}
+.notif-item-dismiss {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap);
+  height: var(--tap);
+  margin: -10px 0 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.notif-item-dismiss:hover { background: var(--elev-2); color: var(--text); }
+.notif-item-dismiss:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }

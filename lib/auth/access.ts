@@ -4,33 +4,52 @@
 function parseEmails(raw: string | undefined): Set<string> {
   return new Set(
     (raw ?? "")
-      .split(",")
-      .map((e) => e.trim().toLowerCase())
+      .split(/[,;\s]+/)
+      .map(normalizeEmail)
       .filter(Boolean)
   );
 }
 
-function normalize(email: string | null | undefined): string {
-  return (email ?? "").trim().toLowerCase();
+/** Lowercased and trimmed. A space inside the address can only be a "+" that
+ *  a query string decoded (a+eval@x.com → "a eval@x.com"), so it goes back. */
+export function normalizeEmail(email: string | null | undefined): string {
+  return (email ?? "").trim().toLowerCase().replace(/\s+(?=[^@]*@)/g, "+");
 }
 
-/** True only for emails listed in ALLOWED_EMAILS. Fails closed: if the env var
- *  is unset or empty, nobody is allowed in. */
+/** The address without a "+tag" (a+eval@x.com → a@x.com). */
+function withoutTag(email: string): string {
+  return email.replace(/\+[^@]*(?=@)/, "");
+}
+
+/** Pure allowlist match: exact (case-insensitive, trimmed), or a "+tag" alias of
+ *  an invited address (same mailbox). An invited alias doesn't admit the base
+ *  address or other aliases. */
+export function emailInList(email: string | null | undefined, allowed: ReadonlySet<string>): boolean {
+  const e = normalizeEmail(email);
+  if (!e || !/^[^@\s]+@[^@\s]+$/.test(e)) return false;
+  if (allowed.has(e)) return true;
+  const base = withoutTag(e);
+  return base !== e && allowed.has(base);
+}
+
+/** True only for emails listed in ALLOWED_EMAILS (see emailInList). Fails
+ *  closed: if the env var is unset or empty, nobody is allowed in. */
 export function isEmailAllowed(email: string | null | undefined): boolean {
-  const e = normalize(email);
-  if (!e) return false;
   const allowed = parseEmails(process.env.ALLOWED_EMAILS);
   if (allowed.size === 0) {
     console.warn("[auth] ALLOWED_EMAILS is empty — denying all sign-ins.");
     return false;
   }
-  return allowed.has(e);
+  return emailInList(email, allowed);
 }
 
 /** True when the email matches OWNER_EMAIL — the account whose Google
  *  credentials (GOOGLE_* env vars) back the Gmail / Google Calendar tools. */
 export function isOwnerEmail(email: string | null | undefined): boolean {
-  const e = normalize(email);
-  const owner = normalize(process.env.OWNER_EMAIL);
+  const e = normalizeEmail(email);
+  const owner = normalizeEmail(process.env.OWNER_EMAIL);
   return !!e && !!owner && e === owner;
 }
+
+/** Shown when an uninvited email asks for a sign-in code (before anything is sent). */
+export const NOT_INVITED = "This email isn't invited yet. Ask Tangent's team for an invite, or try another address.";

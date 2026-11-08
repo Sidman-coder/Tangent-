@@ -451,7 +451,7 @@ export const POST = withUser(async (req: Request) => {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { error: "ANTHROPIC_API_KEY is not set, so Tangent can't draft branches yet." },
+        { error: "Tangent's AI isn't set up on the server yet, so it can't draft branches." },
         { status: 503 }
       );
     }
@@ -531,7 +531,7 @@ export const POST = withUser(async (req: Request) => {
         return NextResponse.json({ error: "Tangent is busy right now. Try again in a minute." }, { status: 429 });
       }
       if (r.status === 401 || r.status === 403) {
-        return NextResponse.json({ error: "Tangent's AI key isn't working. Check ANTHROPIC_API_KEY." }, { status: 503 });
+        return NextResponse.json({ error: "Tangent's AI can't connect right now. Try again later." }, { status: 503 });
       }
       if (r.status === 0) {
         return NextResponse.json({ error: "Tangent couldn't reach Claude just now." }, { status: 502 });

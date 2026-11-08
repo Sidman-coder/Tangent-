@@ -21,7 +21,18 @@ type Resolve = (specifier: string, context: unknown, next: (s: string, c: unknow
 
 type Load = typeof import("./load");
 void (import("./load") as Promise<Load>).then(
-  ({ DEFAULT_CAPACITY: cap, estimateMinutes, minutesFromNotes, placeTask, spreadSessions, suggestRelief, dayLoad, formatMinutes }) => {
+  ({
+    DEFAULT_CAPACITY: cap,
+    DEFAULT_PLACEMENT_RULES: rules,
+    PACKED_NOTE,
+    estimateMinutes,
+    minutesFromNotes,
+    placeTask,
+    spreadSessions,
+    suggestRelief,
+    dayLoad,
+    formatMinutes,
+  }) => {
     let n = 0;
     const task = (p: Partial<Task> & Pick<Task, "date">): Task => ({
       id: `t${n++}`,
@@ -122,6 +133,51 @@ void (import("./load") as Promise<Load>).then(
       assert.equal(formatMinutes(45), "45 min");
       assert.equal(formatMinutes(60), "1 hr");
       assert.equal(formatMinutes(150), "2.5 hrs");
+    });
+
+    // Placement rules for new flexible steps.
+    const step = (date: string, time: string, planId = "p1"): Task =>
+      task({ date, time, planId, commitment: "flexible", notes: "TIME: 30 min", title: `step ${date} ${time}` });
+    const twoOnTue = [...week, step(TUE, "16:00"), step(TUE, "17:00")];
+
+    test("at most 2 steps from one project per day", () => {
+      const placed = placeTask(twoOnTue, { now, cap, earliest: TUE, latest: WED, preferredDate: TUE, rules, projectId: "p1" });
+      assert.equal(placed?.date, WED);
+      assert.notEqual(placed?.note, PACKED_NOTE);
+      // Another project's steps do not count.
+      const other = placeTask(twoOnTue, { now, cap, earliest: TUE, latest: WED, preferredDate: TUE, rules, projectId: "p2" });
+      assert.equal(other?.date, TUE);
+    });
+
+    test("packs the day and says so when the deadline leaves no other day", () => {
+      const placed = placeTask(twoOnTue, { now, cap, earliest: TUE, latest: TUE, rules, projectId: "p1" });
+      assert.equal(placed?.date, TUE);
+      assert.equal(placed?.note, PACKED_NOTE);
+    });
+
+    test("keeps 15 minutes clear around fixed items", () => {
+      const dentist = task({ date: TUE, time: "16:15", title: "Dentist appointment", commitment: "fixed" });
+      const tasks = [...week, dentist];
+      const loose = placeTask(tasks, { now, cap, minutes: 45, earliest: TUE, latest: TUE });
+      assert.equal(loose?.time, "15:30");
+      const buffered = placeTask(tasks, { now, cap, minutes: 45, earliest: TUE, latest: TUE, rules });
+      assert.equal(buffered?.time, "17:30");
+    });
+
+    test("prefers the student's work times, then any open time, never inside school", () => {
+      const evening = { ...rules, preferredWindows: [{ start: 19 * 60, end: 21 * 60 }] };
+      assert.equal(placeTask(week, { now, cap, minutes: 45, earliest: TUE, latest: TUE, rules: evening })?.time, "19:00");
+      const morning = { ...rules, preferredWindows: [{ start: 6 * 60, end: 7 * 60 }] };
+      const placed = placeTask(week, { now, cap, minutes: 45, earliest: TUE, latest: TUE, rules: morning });
+      assert.equal(placed?.time, "15:30");
+    });
+
+    test("spreading sessions follows the same limit and reports packing", () => {
+      const moved = spreadSessions(twoOnTue, [TUE, FRI], { now, cap, rules, projectId: "p1" });
+      assert.notEqual(moved[0].date, TUE);
+      assert.equal(moved[0].note, undefined);
+      const packed = spreadSessions(twoOnTue, [TUE], { now, cap, slack: 0, rules, projectId: "p1" });
+      assert.deepEqual(packed, [{ date: TUE, time: packed[0].time, note: PACKED_NOTE }]);
     });
   }
 );

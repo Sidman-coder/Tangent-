@@ -12,7 +12,7 @@
   color: var(--text);
   font-family: var(--font-body);
   overflow-y: auto;
-  transition: opacity 0.35s ease;
+  transition: opacity 0.35s var(--ease);
 }
 .onb.is-leaving { opacity: 0; pointer-events: none; }
 
@@ -53,7 +53,7 @@
   background: transparent;
   color: var(--text-2);
   cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 .onb-back:hover { background: var(--accent-soft); color: var(--accent); }
 
@@ -129,7 +129,7 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
 .onb-choice:hover { border-color: var(--accent-line); }
 .onb-choice:focus-visible,
@@ -156,7 +156,7 @@
   border-radius: 999px;
   border: 1px solid var(--line);
   color: var(--accent-ink);
-  transition: background 0.2s ease, border-color 0.2s ease;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
 .onb-choice.is-on .onb-choice-check { background: var(--accent); border-color: var(--accent); }
 
@@ -170,7 +170,7 @@
   color: var(--text);
   font: inherit;
   font-size: 16px; /* 16px keeps iOS from zooming on focus */
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
 .onb-input:focus {
   outline: none;
@@ -198,7 +198,7 @@
   font: inherit;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 .onb-day.is-on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 .onb-times { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }

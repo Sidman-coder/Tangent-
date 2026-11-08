@@ -10,6 +10,8 @@ import { getRequestContext } from "../request-context";
 import { describeChangeSet, type ChangeOp, type ChangeSet } from "./changeset";
 import { buildDraft, type DraftInput, type PreviewPayload } from "./draft";
 import { logEvent } from "./events";
+import { emptiedPlans } from "../delete-scope";
+import type { Plan, Task } from "../types";
 
 
 /** describeChangeSet with the student's own task and plan titles, plus the
@@ -21,7 +23,22 @@ export async function previewFor(cs: Pick<ChangeSet, "ops">, today?: string): Pr
   const likelyDuplicates = await likelyDuplicateTitles(
     adds.map((o) => ({ title: o.title, date: o.date, time: o.time ?? "", completed: false }))
   ).catch(() => []);
-  return { lines: describeChangeSet(cs, { tasks, plans, today }), likelyDuplicates };
+  const payload: PreviewPayload = { lines: describeChangeSet(cs, { tasks, plans, today }), likelyDuplicates };
+  const removals = planRemovalsFor(cs, tasks ?? [], plans ?? []);
+  if (removals.length) payload.planRemovals = removals;
+  return payload;
+}
+
+/** The "Also remove the plan" boxes: plans the draft's deletes leave empty,
+ *  plus any it already removes. Checked while a delete_plan op is there. */
+export function planRemovalsFor(cs: Pick<ChangeSet, "ops">, tasks: readonly Task[], plans: readonly Plan[]): NonNullable<PreviewPayload["planRemovals"]> {
+  const deleting = new Set(cs.ops.flatMap((o) => (o.op === "delete_task" ? [o.task_id] : [])));
+  if (deleting.size === 0) return [];
+  const checked = new Set(cs.ops.flatMap((o) => (o.op === "delete_plan" ? [o.plan_id] : [])));
+  const emptied = new Set(emptiedPlans(tasks.filter((t) => deleting.has(t.id)), tasks, plans).map((p) => p.id));
+  return plans
+    .filter((p) => emptied.has(p.id) || checked.has(p.id))
+    .map((p) => ({ planId: p.id, title: p.title, checked: checked.has(p.id) }));
 }
 
 /**

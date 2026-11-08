@@ -25,7 +25,6 @@ export const POST = withUser(async (req: Request) => {
     console.log("[api/voice-browser] Received audio:", buffer.length, "bytes,", mimeType);
 
     const text = await transcribeAudio(buffer, mimeType);
-    console.log("[api/voice-browser] Transcribed text:", text);
 
     if (!text) {
       return NextResponse.json({ ok: false, error: "Could not transcribe audio" }, { status: 422 });

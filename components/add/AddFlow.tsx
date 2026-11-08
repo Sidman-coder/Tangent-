@@ -14,25 +14,34 @@
 // Frontend only: it drives the same /api/chat, /api/confirm and
 // /api/questions routes the palette, mic and AI page already use.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
-import { ArrowRight, ArrowUp, CalendarDays, FolderKanban, Mic, Orbit, MessageSquareText, Square } from "lucide-react";
+import { ArrowRight, ArrowUp, AudioLines, Mic, Orbit, MessageSquareText } from "lucide-react";
 import ActionReceipt from "@/components/ActionReceipt";
 import PreviewCard from "@/components/PreviewCard";
 import { useAppState } from "@/components/AppStateProvider";
+import { planSeriesColor } from "@/lib/task-colors";
 import "@/components/console/clarify-card.css";
 import ClarifyCard, { type ClarifyAnswer, type ClarifyQuestion } from "@/components/console/ClarifyCard";
+import SlotQuestionCard from "@/components/grill/SlotQuestionCard";
+
+/** "Grill until enough" so far, sent back each turn (lib/context/grill.ts). */
+type SlotTurn = { answers: { slot: string; answer: string }[]; skipped: string[]; inARow: number; stopped: boolean };
+const NO_TURN: SlotTurn = { answers: [], skipped: [], inARow: 0, stopped: false };
 import { useVoiceCapture } from "@/hooks/useVoiceCapture";
 import { routeAsk } from "@/lib/ask-route";
 import { heardSomethingToAdd } from "@/lib/voice-intent";
-import { putAsk } from "@/lib/ask-handoff";
+import { askOnHome } from "@/lib/ask-handoff";
 import { putNewPathTitle } from "@/lib/path-handoff";
+import { HOME_INTENT_EVENT, takeHomeIntent, type HomeIntent } from "@/lib/home-intent";
 import { generateQuestions } from "@/lib/questions-client";
 import type { ChangeSet } from "@/lib/pipeline/changeset";
 import type { PreviewPayload } from "@/lib/pipeline/draft";
+import HelpPlanBetter from "@/components/grill/HelpPlanBetter";
+import DestPill, { type DestChoice } from "./DestPill";
 import "./add.css";
 
 type Dest = "calendar" | "project";
@@ -53,14 +62,15 @@ type Reply = {
   pending?: { id: string; message: string };
   changeSet?: ChangeSet;
   preview?: PreviewPayload;
+  slotFlow?: { slot: string; score: number; checkIn: boolean };
 };
 
 type Phase =
   | { kind: "compose" }
   | { kind: "working"; text: string }
-  | { kind: "asking"; text: string; questions: ClarifyQuestion[]; message: string }
+  | { kind: "asking"; text: string; questions: ClarifyQuestion[]; message: string; slot?: { name: string; score: number; checkIn: boolean; turn: SlotTurn } }
   | { kind: "confirm"; id: string; message: string }
-  | { kind: "preview"; changeSet: ChangeSet; preview: PreviewPayload }
+  | { kind: "preview"; changeSet: ChangeSet; preview: PreviewPayload; said: string; asked: number }
   | { kind: "done"; summary: string; actionId: string | null; where: { href: string; label: string } | null }
   | { kind: "error"; message: string }
   | { kind: "heard"; text: string };
@@ -102,19 +112,27 @@ export default function AddFlow({
   const { state, refresh } = useAppState();
   const [text, setText] = useState(initialText);
   const [phase, setPhase] = useState<Phase>({ kind: "compose" });
-  const [destChoice, setDestChoice] = useState<Dest | null>(null);
-  const [projectId, setProjectId] = useState<string | "new">("new");
+  // With Pipeline V2 off there's no preview card to carry these.
+  const [help, setHelp] = useState<{ planId: string; said: string; asked: number } | null>(null);
+  // The pill's choice, for the next send only. Projects starts on New project.
+  const startChoice: DestChoice | null = defaultDest === "project" ? { dest: "project", projectId: "new" } : defaultDest === "calendar" ? { dest: "calendar" } : null;
+  const [choice, setChoice] = useState<DestChoice | null>(startChoice);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inputId = `add-input${useId().replace(/:/g, "")}`;
   // A phone gets the short prompt, so it fits on one line.
   const [narrow, setNarrow] = useState(false);
   useEffect(() => setNarrow(window.innerWidth < 520), []);
   const doneTimer = useRef<number | null>(null);
 
-  const projects = useMemo(() => (state?.plans ?? []).slice(-6).reverse(), [state?.plans]);
+  const projects = useMemo(
+    () => (state?.plans ?? []).slice(-6).reverse().map((p) => ({ id: p.id, title: p.title, color: planSeriesColor(p) })),
+    [state?.plans]
+  );
   const route = routeAsk(text);
-  // The student's tap wins; otherwise the words decide.
-  const dest: Dest = destChoice ?? defaultDest ?? (route === "project" ? "project" : "calendar");
-  const handoff = !destChoice && !defaultDest && (route === "question" || route === "goal") ? route : null;
+  // The student's pick wins; on Auto the words decide.
+  const dest: Dest = choice?.dest ?? (route === "project" ? "project" : "calendar");
+  const handoff = !choice && (route === "question" || route === "goal") ? route : null;
+  const targetProject = choice?.dest === "project" ? choice.projectId : "new";
 
   useEffect(() => {
     if (autoFocus) window.setTimeout(() => inputRef.current?.focus(), 30);
@@ -143,18 +161,21 @@ export default function AddFlow({
 
   const reset = useCallback(() => {
     setText("");
-    setDestChoice(null);
-    setProjectId("new");
-  }, []);
+    setChoice(startChoice);
+    // startChoice only depends on defaultDest.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultDest]);
 
   const finish = useCallback(
-    (data: Reply, said: string, deferQuestions: boolean) => {
+    (data: Reply, said: string, deferQuestions: boolean, asked = 0) => {
       const where = data.taskDate
         ? { href: `/calendar?date=${data.taskDate}`, label: `On your calendar · ${dayName(data.taskDate)}` }
         : data.projectId || data.plan?.id
           ? { href: `/projects/${data.projectId ?? data.plan!.id}`, label: data.plan?.title ? `Project · ${data.plan.title}` : "In your project" }
           : null;
       setPhase({ kind: "done", summary: clean(data.message ?? data.response, "Added."), actionId: data.actionId ?? null, where });
+      const planId = data.projectId ?? data.plan?.id;
+      if (planId) setHelp({ planId, said, asked });
       reset();
       void refresh();
       // Skipped questions, or a quick capture: Tangent asks later, on Today.
@@ -166,10 +187,11 @@ export default function AddFlow({
   );
 
   const send = useCallback(
-    async (said: string, followUp?: { answers: ClarifyAnswer[] | null }) => {
+    async (said: string, followUp?: { answers?: ClarifyAnswer[] | null; slotTurn?: SlotTurn }, source: "voice" | "typed" = "typed") => {
       const words = said.trim();
       if (!words) return;
       setPhase({ kind: "working", text: words });
+      setHelp(null);
       const toProject = dest === "project";
       try {
         const res = await fetch("/api/chat", {
@@ -179,17 +201,22 @@ export default function AddFlow({
             messages: [{ role: "user", content: words }],
             mode: "calendar",
             stream: false,
+            source,
             // A plain to-do is saved instantly; anything bigger is considered for questions.
             capture: !toProject && !followUp,
-            clarify: !followUp,
+            clarify: !followUp || !!followUp.slotTurn,
             answers: followUp?.answers ?? undefined,
-            ...(toProject ? (projectId === "new" ? { newProject: true } : { projectId }) : {}),
+            // One question at a time until Tangent knows enough (lib/context).
+            slotFlow: true,
+            slotTurn: followUp?.slotTurn,
+            ...(toProject ? (targetProject === "new" ? { newProject: true } : { projectId: targetProject }) : {}),
           }),
         });
         const data = (await res.json()) as Reply;
         if (!res.ok || !data.ok) throw new Error(data.error || "That didn't go through. Try again.");
         if (data.action === "clarify" && data.questions?.length) {
-          setPhase({ kind: "asking", text: words, questions: data.questions, message: data.message ?? "A few quick questions so this fits you." });
+          const slot = data.slotFlow ? { name: data.slotFlow.slot, score: data.slotFlow.score, checkIn: data.slotFlow.checkIn, turn: followUp?.slotTurn ?? NO_TURN } : undefined;
+          setPhase({ kind: "asking", text: words, questions: data.questions, message: data.message ?? "A few quick questions so this fits you.", slot });
           return;
         }
         if (data.action === "confirm_required" && data.pending) {
@@ -197,27 +224,36 @@ export default function AddFlow({
           return;
         }
         if (data.action === "preview" && data.changeSet && data.preview) {
-          setPhase({ kind: "preview", changeSet: data.changeSet, preview: data.preview });
+          setPhase({ kind: "preview", changeSet: data.changeSet, preview: data.preview, said: words, asked: followUp?.answers?.length ?? followUp?.slotTurn?.answers.length ?? 0 });
+          return;
+        }
+        // Pipeline V2's intent router can decide mid-flight that this is
+        // really a long-range goal; hand it to Tangents the same way a typed
+        // goal does.
+        if (data.action === "route_tangent") {
+          putNewPathTitle(words);
+          reset();
+          onClose?.();
+          router.push("/tangents?new=1");
           return;
         }
         // Answered questions already sharpened it; otherwise ask later.
-        const answered = Boolean(followUp?.answers && followUp.answers.length > 0);
-        finish(data, words, !answered);
+        const asked = followUp?.answers?.length ?? followUp?.slotTurn?.answers.length ?? 0;
+        finish(data, words, asked === 0, asked);
       } catch (e) {
         setPhase({ kind: "error", message: e instanceof Error ? e.message : "Something went wrong." });
       }
     },
-    [dest, finish, projectId]
+    [dest, finish, onClose, reset, router, targetProject]
   );
 
   const submit = useCallback(() => {
     const words = text.trim();
     if (!words) return;
     if (handoff === "question") {
-      putAsk("ai", words);
       reset();
       onClose?.();
-      router.push("/ai?ask=1");
+      askOnHome(words, router.push);
       return;
     }
     if (handoff === "goal") {
@@ -266,7 +302,7 @@ export default function AddFlow({
         window.setTimeout(() => inputRef.current?.focus(), 0);
         return;
       }
-      window.setTimeout(() => void send(t), 0);
+      window.setTimeout(() => void send(t, undefined, "voice"), 0);
     },
     onError: (msg) => setPhase({ kind: "error", message: msg }),
   });
@@ -280,16 +316,62 @@ export default function AddFlow({
     void voice.startRecording();
   }, [listenOnOpen, voice]);
 
+  // The shell's "New" button and phone mic land here: focus the box or start listening.
+  const voiceRef = useRef(voice);
+  voiceRef.current = voice;
+  useEffect(() => {
+    // Only Home's box answers; Projects has a hero box of its own.
+    if (variant !== "hero") return;
+    const act = () => {
+      if (window.location.pathname !== "/") return;
+      const intent: HomeIntent | null = takeHomeIntent();
+      if (intent === "listen") void voiceRef.current.startRecording();
+      else if (intent === "focus") {
+        const el = inputRef.current;
+        el?.scrollIntoView({ block: "center" });
+        el?.focus({ preventScroll: true });
+      }
+    };
+    act();
+    window.addEventListener(HOME_INTENT_EVENT, act);
+    return () => window.removeEventListener(HOME_INTENT_EVENT, act);
+  }, [variant]);
+
   const busy = phase.kind === "working" || transcribing;
   const hint = handoff === "question"
-    ? { icon: MessageSquareText, text: "Sounds like a question. Enter asks Tangent AI." }
+    ? { icon: MessageSquareText, text: "Sounds like a question. Enter asks Tangent." }
     : handoff === "goal"
       ? { icon: Orbit, text: "Sounds like a long-range goal. Enter starts a Tangent." }
       : null;
 
   return (
     <section className={`add-flow is-${variant}${listening ? " is-listening" : ""}`} aria-label="Add to Tangent">
+      <label className="sr-only" htmlFor={inputId}>
+        What do you want to add?
+      </label>
+      <textarea
+        id={inputId}
+        name="capture"
+        ref={inputRef}
+        className={`add-input${listening ? " is-live" : ""}`}
+        rows={1}
+        value={text}
+        disabled={busy}
+        placeholder={listening ? "Listening…" : placeholder ?? (narrow ? "Type or say anything…" : "Type or say anything: a task, a project, a question")}
+        onChange={(e) => {
+          setText(e.target.value);
+          if (phase.kind === "done" || phase.kind === "error" || phase.kind === "heard") setPhase({ kind: "compose" });
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            submit();
+          }
+          if (e.key === "Escape" && listening) voice.cancelRecording();
+        }}
+      />
       <div className="add-row">
+        <DestPill choice={choice} projects={projects} onChange={setChoice} disabled={busy} />
         <button
           type="button"
           className={`add-mic${listening ? " is-on" : ""}`}
@@ -298,86 +380,30 @@ export default function AddFlow({
           aria-label={listening ? "Stop and add" : "Say it"}
           title={listening ? "Stop and add" : "Say it"}
         >
-          {listening ? <Square size={14} strokeWidth={0} fill="currentColor" aria-hidden="true" /> : <Mic size={variant === "hero" ? 22 : 18} aria-hidden="true" />}
+          {listening ? <AudioLines size={20} strokeWidth={1.75} aria-hidden="true" /> : <Mic size={20} strokeWidth={1.75} aria-hidden="true" />}
         </button>
-        <textarea
-          ref={inputRef}
-          className="add-input"
-          rows={1}
-          value={text}
-          disabled={busy}
-          placeholder={listening ? "Listening…" : placeholder ?? (narrow ? "Add anything, or ask" : "Add a task, a project, or ask anything")}
-          aria-label="What do you want to add?"
-          onChange={(e) => {
-            setText(e.target.value);
-            if (phase.kind === "done" || phase.kind === "error" || phase.kind === "heard") setPhase({ kind: "compose" });
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              submit();
-            }
-            if (e.key === "Escape" && listening) voice.cancelRecording();
-          }}
-        />
         <button type="button" className="add-send" onClick={submit} disabled={busy || !text.trim()} aria-label="Add">
-          {busy ? <span className="add-spinner" aria-hidden="true" /> : <ArrowUp size={18} strokeWidth={2.4} aria-hidden="true" />}
+          {busy ? <span className="add-spinner" aria-hidden="true" /> : <ArrowUp size={18} strokeWidth={2.25} aria-hidden="true" />}
         </button>
       </div>
 
-      {/* Where it goes. Hidden until there's something to place. */}
+      {/* A question or a long-range goal goes somewhere else; say so first. */}
       <AnimatePresence initial={false}>
-        {text.trim() && phase.kind !== "asking" && (
-          <m.div
-            key="dest"
-            className="add-dest"
+        {text.trim() && phase.kind !== "asking" && hint && (
+          <m.p
+            key="hint"
+            className="add-hint"
             // Opacity only: animating height to "auto" stalled half-open when
             // the tab was in the background, clipping the row.
             initial={{ opacity: 0 }}
             animate={{ opacity: 1, transition: { duration: 0.16 } }}
             exit={{ opacity: 0, transition: { duration: 0.1 } }}
           >
-            {hint ? (
-              <p className="add-hint">
-                <hint.icon size={14} aria-hidden="true" /> {hint.text}
-                <button type="button" className="add-hint-alt" onClick={() => setDestChoice("calendar")}>
-                  Add it as a task instead
-                </button>
-              </p>
-            ) : (
-              <>
-                <span className="add-dest-label">Goes to</span>
-                <div className="add-seg" role="radiogroup" aria-label="Where it goes">
-                  <button type="button" role="radio" aria-checked={dest === "calendar"} className={dest === "calendar" ? "is-on" : ""} onClick={() => setDestChoice("calendar")}>
-                    <CalendarDays size={14} aria-hidden="true" /> Calendar
-                  </button>
-                  <button type="button" role="radio" aria-checked={dest === "project"} className={dest === "project" ? "is-on" : ""} onClick={() => setDestChoice("project")}>
-                    <FolderKanban size={14} aria-hidden="true" /> Project
-                  </button>
-                </div>
-                {dest === "project" && (
-                  <div className="add-projects" role="radiogroup" aria-label="Which project">
-                    <button type="button" role="radio" aria-checked={projectId === "new"} className={projectId === "new" ? "is-on" : ""} onClick={() => setProjectId("new")}>
-                      New project
-                    </button>
-                    {projects.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        role="radio"
-                        aria-checked={projectId === p.id}
-                        className={projectId === p.id ? "is-on" : ""}
-                        onClick={() => setProjectId(p.id)}
-                      >
-                        <span className="add-project-dot" style={{ background: p.color }} aria-hidden="true" />
-                        {p.title}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-          </m.div>
+            <hint.icon size={14} strokeWidth={1.75} aria-hidden="true" /> {hint.text}
+            <button type="button" className="add-hint-alt" onClick={() => setChoice({ dest: "calendar" })}>
+              Add it as a task instead
+            </button>
+          </m.p>
         )}
       </AnimatePresence>
 
@@ -393,11 +419,30 @@ export default function AddFlow({
               <span>{phase.message}</span>
               <span className="add-asking-said">“{phase.text}”</span>
             </p>
-            <ClarifyCard
-              questions={phase.questions}
-              skipLabel="Skip for now"
-              onSubmit={(answers) => void send(phase.text, { answers })}
-            />
+            {phase.slot ? (
+              (() => {
+                const { name, turn } = phase.slot;
+                const next = (t: SlotTurn) => void send(phase.text, { slotTurn: t });
+                return (
+                  <SlotQuestionCard
+                    key={`${name}-${turn.answers.length + turn.skipped.length}-${phase.slot.checkIn}`}
+                    card={phase.questions[0]}
+                    score={phase.slot.score}
+                    checkIn={phase.slot.checkIn}
+                    onAnswer={(answer) => next({ ...turn, answers: [...turn.answers, { slot: name, answer }], inARow: turn.inARow + 1 })}
+                    onSkip={() => next({ ...turn, skipped: [...turn.skipped, name], inARow: turn.inARow + 1 })}
+                    onStop={() => next({ ...turn, stopped: true })}
+                    onKeepGoing={() => next({ ...turn, inARow: 0 })}
+                  />
+                );
+              })()
+            ) : (
+              <ClarifyCard
+                questions={phase.questions}
+                skipLabel="Skip for now"
+                onSubmit={(answers) => void send(phase.text, { answers })}
+              />
+            )}
           </m.div>
         )}
         {phase.kind === "confirm" && (
@@ -415,6 +460,7 @@ export default function AddFlow({
               changeSet={phase.changeSet}
               preview={phase.preview}
               onChanged={() => void refresh()}
+              grill={{ said: phase.said, asked: phase.asked }}
               onSettled={() => window.setTimeout(() => setPhase({ kind: "compose" }), 2500)}
             />
           </m.div>
@@ -444,6 +490,7 @@ export default function AddFlow({
           </m.p>
         )}
       </AnimatePresence>
+      {help && <HelpPlanBetter key={help.planId} planId={help.planId} said={help.said} asked={help.asked} onDone={() => setHelp(null)} />}
     </section>
   );
 }
