@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
-import { createPortal } from "react-dom";
 import { m, useReducedMotion } from "motion/react";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { wallClockNow } from "@/lib/time";
@@ -15,6 +14,9 @@ import type { PreviewPayload } from "@/lib/pipeline/draft";
 import { PENDING_QUESTION_ID, type PendingQuestion } from "@/lib/pending-question";
 import { openTask } from "@/components/TaskDetail";
 import Button from "@/components/ui/Button";
+import Chip from "@/components/ui/Chip";
+import IconButton from "@/components/ui/IconButton";
+import SegmentedTabs from "@/components/ui/SegmentedTabs";
 import SidePeek from "@/components/ui/SidePeek";
 import { handleResourceClick } from "@/lib/task-utils";
 import { toYMD, formatTime12 } from "@/lib/dates";
@@ -40,6 +42,8 @@ const VIEWS: { id: CalView; label: string }[] = [
   { id: "agenda", label: "Agenda" },
 ];
 const VIEW_KEY = "tangent-cal-view";
+/** On a phone the week grid shows this many days. */
+const PHONE_DAYS = 3;
 const AGENDA_DAYS = 21;
 
 function startOfWeek(d: Date, firstDay: number): Date {
@@ -115,10 +119,18 @@ export default function CalendarPage() {
   const [month, setMonth] = useState(now.getMonth());
   const [group, setGroup] = useState<TaskGroup | "all">("all");
   const [view, setView] = useState<CalView>("month");
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  // A phone gets three days in the time grid instead of seven.
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 720px)");
+    const sync = () => setNarrow(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
   const [weekAnchor, setWeekAnchor] = useState(now);
-  const weekStart = startOfWeek(weekAnchor, firstDay);
+  const weekStart = narrow ? addDays(weekAnchor, 0) : startOfWeek(weekAnchor, firstDay);
+  const weekLength = narrow ? PHONE_DAYS : 7;
   const [agendaStart, setAgendaStart] = useState(() => new Date(now.getFullYear(), now.getMonth(), now.getDate()));
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   // Clicking one event opens just that event; clicking the date opens the day.
@@ -357,7 +369,7 @@ export default function CalendarPage() {
   const step = (dir: -1 | 1) => {
     if (view === "month") { if (dir < 0) prevMonth(); else nextMonth(); return; }
     setMonthDir(dir);
-    if (view === "week") setWeekAnchor((w) => addDays(w, dir * 7));
+    if (view === "week") setWeekAnchor((w) => addDays(w, dir * weekLength));
     else setAgendaStart((a) => addDays(a, dir * AGENDA_DAYS));
   };
   const prevMonth = () => { setMonthDir(-1); if (month === 0) { setYear((y) => y - 1); setMonth(11); } else setMonth((mo) => mo - 1); };
@@ -477,7 +489,7 @@ export default function CalendarPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const weekDays = Array.from({ length: weekLength }, (_, i) => addDays(weekStart, i));
   const agendaDays = Array.from({ length: AGENDA_DAYS }, (_, i) => addDays(agendaStart, i));
 
   // Concise labels for what's on screen (lib/short-titles.ts): narrow cells
@@ -490,80 +502,53 @@ export default function CalendarPage() {
   const headingDate = view === "month" ? new Date(year, month, 1) : view === "week" ? weekStart : agendaStart;
   const headingMonth = headingDate.toLocaleString(undefined, { month: "long" });
   const headingYear = String(headingDate.getFullYear());
-  const spanEnd = view === "week" ? weekDays[6] : agendaDays[agendaDays.length - 1];
+  const spanEnd = view === "week" ? weekDays[weekDays.length - 1] : agendaDays[agendaDays.length - 1];
   const headingSpan = view === "month"
     ? null
     : `${headingDate.toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${spanEnd.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
-  const unitLabel = view === "month" ? "month" : view === "week" ? "week" : "three weeks";
+  const unitLabel = view === "month" ? "month" : view === "week" ? (narrow ? "three days" : "week") : "three weeks";
+  // The time grid opens at the start of the school day, or 7 AM.
+  const schoolStart = Number.parseInt(state?.user.schoolHours?.start ?? "", 10);
+  const startHour = Number.isFinite(schoolStart) ? Math.min(20, Math.max(0, schoolStart)) : 7;
+  const viewPanel = { id: "calendar-view-panel", role: "tabpanel", "aria-labelledby": `cal-view-tab-${view}` } as const;
   const openAddAt = (ymd: string, time?: string) => { setAddModalDate(ymd); setAddModalTime(time); setShowAddModal(true); };
   const activePlan = planFilter ? getPlan(planFilter) : null;
 
-  // The island: every calendar control on one floating glass capsule at the
-  // bottom centre, so the grid gets the whole page. Portalled to <body>: the
-  // page's entrance transform would otherwise make "fixed" relative to it.
-  const island = (
-      <div className="cal-island" role="toolbar" aria-label="Calendar controls">
-        <div className="cal-island-group">
-              <div className="cal-view-switch" role="tablist" aria-label="Calendar view">
-                {VIEWS.map((v) => (
-                  <button
-                    key={v.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={view === v.id}
-                    className={`cal-view-tab${view === v.id ? " is-active" : ""}`}
-                    onClick={() => chooseView(v.id)}
-                  >
-                    {view === v.id && (
-                      <m.span layoutId="cal-view-pill" className="cal-view-pill" transition={{ type: "spring", visualDuration: 0.28, bounce: 0 }} />
-                    )}
-                    <span className="cal-view-label">{v.label}</span>
-                  </button>
-                ))}
-              </div>
-              <div className="cal-arrows">
-                <button type="button" className="cal-arrow" onClick={() => step(-1)} aria-label={`Previous ${unitLabel}`}>
-                  <ChevronLeft size={16} aria-hidden="true" />
-                </button>
-                <button type="button" className="cal-today" onClick={goToday}>Today</button>
-                <button type="button" className="cal-arrow" onClick={() => step(1)} aria-label={`Next ${unitLabel}`}>
-                  <ChevronRight size={16} aria-hidden="true" />
-                </button>
-                <button type="button" className="cal-arrow" onClick={openRecentChanges} aria-label="Recent changes" title="Recent changes">
-                  <Undo2 size={16} aria-hidden="true" />
-                </button>
-              </div>
-        </div>
-          <div className="cal-segment-bar" role="tablist" aria-label="Show">
-            {[{ id: "all" as const, label: "All" }, ...TASK_GROUPS].map((g) => (
-              <button
-                key={g.id}
-                type="button"
-                role="tab"
-                aria-selected={group === g.id}
-                className={`cal-segment${group === g.id ? " is-active" : ""}`}
-                onClick={() => setGroup(g.id)}
-              >
-                {g.label}
-              </button>
-            ))}
-          </div>
-      </div>
-  );
-
   return (
     <>
-      {mounted && createPortal(island, document.body)}
       <TaskTip tasks={state?.tasks ?? []} plans={plans} colorFor={getTaskCategoryColor} />
       <div className="calendar-page">
-        <section className="calendar-toolbar" aria-label="Calendar controls">
-          <div className="calendar-toolbar-primary">
-            <h1 className="cal-month-heading">
-              <span>{headingMonth}</span> <span className="cal-heading-year">{headingYear}</span>
-              {headingSpan && <span className="cal-heading-span">{headingSpan}</span>}
-            </h1>
+        <header className="cal-bar">
+          <h1 className="cal-title">
+            <span className="cal-title-month">{headingMonth}</span> <span className="cal-title-year">{headingYear}</span>
+            {headingSpan && <span className="cal-title-span">{headingSpan}</span>}
+          </h1>
+          <div className="cal-bar-nav" role="group" aria-label="Move through the calendar">
+            <Button variant="secondary" size="sm" onClick={goToday}>
+              Today
+            </Button>
+            <IconButton label={`Previous ${unitLabel}`} icon={<ChevronLeft size={18} strokeWidth={1.75} />} onClick={() => step(-1)} />
+            <IconButton label={`Next ${unitLabel}`} icon={<ChevronRight size={18} strokeWidth={1.75} />} onClick={() => step(1)} />
           </div>
-      </section>
+          <div className="cal-bar-views">
+            <SegmentedTabs
+              label="Calendar view"
+              idPrefix="cal-view"
+              value={view}
+              onChange={chooseView}
+              options={VIEWS.map((v) => ({ value: v.id, label: v.id === "week" && narrow ? "3 days" : v.label, controls: "calendar-view-panel" }))}
+              className="cal-bar-tabs"
+            />
+            <IconButton label="Recent changes" icon={<Undo2 size={18} strokeWidth={1.75} />} onClick={openRecentChanges} tooltipSide="left" />
+          </div>
+          <div className="cal-bar-filters" role="group" aria-label="Show">
+            {[{ id: "all" as const, label: "All" }, ...TASK_GROUPS].map((g) => (
+              <Chip key={g.id} variant="filter" selected={group === g.id} onClick={() => setGroup(g.id)}>
+                {g.label}
+              </Chip>
+            ))}
+          </div>
+        </header>
 
       {activePlan && (
         <div className="plan-filter-banner" style={{ borderLeft: `3px solid ${planSeriesColor(activePlan)}` }}>
@@ -574,8 +559,9 @@ export default function CalendarPage() {
 
       {view === "week" && (
         <m.section
-          key={`wk-${toYMD(weekStart)}`}
+          key={`wk-${toYMD(weekStart)}-${weekLength}`}
           className="calendar-week-shell"
+          {...viewPanel}
           initial={reduced || monthDir === 0 ? false : { opacity: 0, x: monthDir * 28 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ type: "spring", visualDuration: 0.38, bounce: 0.08 }}
@@ -591,13 +577,14 @@ export default function CalendarPage() {
             onAddAt={(ymd, time) => openAddAt(ymd, time)}
             onMoveTask={(t, ymd, time) => void moveTask(t, ymd, time)}
             toYMD={toYMD}
+            startHour={startHour}
           />
           {moveError && <p className="calendar-move-error" role="alert">{moveError}</p>}
         </m.section>
       )}
 
       {view === "agenda" && (
-        <section className="calendar-agenda-shell" key={`ag-${toYMD(agendaStart)}`}>
+        <section className="calendar-agenda-shell" key={`ag-${toYMD(agendaStart)}`} {...viewPanel}>
           <AgendaView
             onOpenTask={(_ymd, id) => openTask(id)}
             days={agendaDays}
@@ -613,7 +600,7 @@ export default function CalendarPage() {
       )}
 
       {view === "month" && (
-      <section className="calendar-grid-shell">
+      <section className="calendar-grid-shell" {...viewPanel}>
           <div className="cal-weekday-row" aria-hidden="true">
             {[...WEEKDAY_LABELS.slice(firstDay), ...WEEKDAY_LABELS.slice(0, firstDay)].map((d) => (
               <div key={d} className="cal-weekday-label">
@@ -724,8 +711,8 @@ export default function CalendarPage() {
       )}
       </div>
 
-      {selectedDay && (
-        <SidePeek open titleId="calendar-day-title" onClose={() => { setSelectedDay(null); setRemoved(null); }}>
+      <SidePeek open={!!selectedDay} titleId="calendar-day-title" onClose={() => { setSelectedDay(null); setRemoved(null); }}>
+        {selectedDay && (
           <div className="calendar-peek-content">
             <div className="calendar-modal-header">
               <span className="calendar-peek-kicker">Selected day</span>
@@ -964,8 +951,8 @@ export default function CalendarPage() {
               </form>
             </details>
           </div>
-        </SidePeek>
-      )}
+        )}
+      </SidePeek>
 
       {/* Add Task Modal */}
       {showAddModal && (

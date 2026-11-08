@@ -18,7 +18,7 @@ type Resolve = (specifier: string, context: unknown, next: (s: string, c: unknow
 });
 
 type Mod = typeof import("./today-sections");
-void (import("./today-sections") as Promise<Mod>).then(({ groupTodayTasks, overdueStyle, glanceLine }) => {
+void (import("./today-sections") as Promise<Mod>).then(({ groupTodayTasks, overdueStyle, glanceLine, nowLine, dayPartOf }) => {
   const TZ = "America/New_York";
   // Wed, Nov 4 2026, 2:00 PM in New York.
   const NOW = new Date("2026-11-04T19:00:00Z");
@@ -33,51 +33,79 @@ void (import("./today-sections") as Promise<Mod>).then(({ groupTodayTasks, overd
   });
   const ids = (list: { id: string }[]) => list.map((t) => t.id);
 
-  test("fixed and reminder items today are Must do, timed first", () => {
-    const later = task({ commitment: "fixed", time: "16:00" });
-    const sooner = task({ commitment: "fixed", time: "15:00" });
+  const parts = (groups: { parts: { part: string; tasks: { id: string }[] }[] }) =>
+    Object.fromEntries(groups.parts.map((p) => [p.part, ids(p.tasks)]));
+
+  test("today's items fall into time-of-day groups, timed first by time", () => {
+    const breakfast = task({ commitment: "fixed", time: "07:30" });
+    const noon = task({ commitment: "fixed", time: "12:00" });
+    const later = task({ commitment: "flexible", time: "16:59" });
+    const evening = task({ commitment: "reminder", time: "17:00" });
+    const night = task({ commitment: "flexible", time: "22:15" });
     const untimed = task({ commitment: "reminder" });
-    const { mustDo } = groupTodayTasks([untimed, later, sooner], NOW, TZ);
-    assert.deepEqual(ids(mustDo), [sooner.id, later.id, untimed.id]);
+    const groups = groupTodayTasks([untimed, night, later, evening, noon, breakfast], NOW, TZ);
+    assert.deepEqual(parts(groups), {
+      morning: [breakfast.id],
+      afternoon: [noon.id, later.id],
+      evening: [evening.id],
+      night: [night.id],
+      anytime: [untimed.id],
+    });
   });
 
-  test("a Canvas item due today is Must do", () => {
-    const canvas = task({ source: "canvas", title: "Lab 4", time: "23:59", kind: "school" });
-    assert.deepEqual(ids(groupTodayTasks([canvas], NOW, TZ).mustDo), [canvas.id]);
+  test("empty time groups are left out", () => {
+    const groups = groupTodayTasks([task({ commitment: "flexible", time: "18:00" })], NOW, TZ);
+    assert.deepEqual(groups.parts.map((p) => p.part), ["evening"]);
   });
 
-  test("flexible steps today are Today's plan, by time", () => {
-    const b = task({ commitment: "flexible", time: "18:00" });
-    const a = task({ commitment: "flexible", time: "16:30" });
-    const c = task({ commitment: "flexible" });
-    assert.deepEqual(ids(groupTodayTasks([c, b, a], NOW, TZ).todaysPlan), [a.id, b.id, c.id]);
-  });
-
-  test("earlier overdue fixed items sit on top, newest three, with a count of the rest", () => {
-    const today = task({ commitment: "reminder" });
-    const old = ["2026-11-03", "2026-11-02", "2026-11-01", "2026-10-30", "2026-10-29"].map((date) =>
-      task({ commitment: "reminder", date })
+  test("inside a group, work sits under its project, School or Personal", () => {
+    const bio1 = task({ commitment: "flexible", time: "15:00", planId: "bio" });
+    const canvas = task({ source: "canvas", kind: "school", title: "Lab 4", time: "15:30" });
+    const bio2 = task({ commitment: "flexible", time: "16:00", planId: "bio" });
+    const gym = task({ commitment: "fixed", time: "16:30" });
+    const [afternoon] = groupTodayTasks([gym, bio2, canvas, bio1], NOW, TZ).parts;
+    assert.deepEqual(
+      afternoon.blocks.map((b) => [b.kind, b.planId, ids(b.tasks)]),
+      [
+        ["project", "bio", [bio1.id, bio2.id]],
+        ["school", null, [canvas.id]],
+        ["personal", null, [gym.id]],
+      ]
     );
-    const groups = groupTodayTasks([today, ...old], NOW, TZ);
-    assert.deepEqual(ids(groups.mustDo), [old[0].id, old[1].id, old[2].id, today.id]);
-    assert.equal(groups.olderOverdueCount, 2);
+    assert.deepEqual(ids(afternoon.tasks), [bio1.id, bio2.id, canvas.id, gym.id]);
   });
 
-  test("soft overdue steps sit at the bottom of Today's plan", () => {
-    const missed = task({ commitment: "flexible", date: "2026-11-03", time: "16:00" });
-    const today = task({ commitment: "flexible", time: "18:00" });
-    assert.deepEqual(ids(groupTodayTasks([missed, today], NOW, TZ).todaysPlan), [today.id, missed.id]);
+  test("done items stay in place, faded, and don't count as left", () => {
+    const done = task({ commitment: "fixed", time: "09:00", completed: true });
+    const open = task({ commitment: "flexible", time: "10:00" });
+    const groups = groupTodayTasks([open, done], NOW, TZ);
+    assert.deepEqual(parts(groups), { morning: [done.id, open.id] });
+    assert.equal(groups.parts[0].open, 1);
+    assert.deepEqual(groups.counts, { left: 1, must: 0, pastDue: 0, done: 1 });
   });
 
-  test("a dismissed overdue item leaves Must do", () => {
+  test("Past due holds the last three days, newest first, with a count of older ones", () => {
+    const fixed = task({ commitment: "reminder", date: "2026-11-03" });
+    const slipped = task({ commitment: "flexible", date: "2026-11-02", time: "16:00" });
+    const edge = task({ commitment: "fixed", date: "2026-11-01" });
+    const old = ["2026-10-31", "2026-10-20"].map((date) => task({ commitment: "reminder", date }));
+    const oldStep = task({ commitment: "flexible", date: "2026-10-30" });
+    const groups = groupTodayTasks([edge, ...old, oldStep, slipped, fixed], NOW, TZ);
+    assert.deepEqual(ids(groups.pastDue), [fixed.id, slipped.id, edge.id]);
+    assert.equal(groups.olderPastDueCount, 3);
+    assert.equal(groups.counts.pastDue, 6);
+  });
+
+  test("a dismissed, done or recurring earlier item isn't past due", () => {
     const gone = task({ commitment: "reminder", date: "2026-11-03", overdueDismissedAt: "2026-11-04T10:00:00Z" });
-    const groups = groupTodayTasks([gone], NOW, TZ);
-    assert.deepEqual(groups.mustDo, []);
-    assert.equal(groups.olderOverdueCount, 0);
+    const done = task({ commitment: "fixed", date: "2026-11-03", completed: true });
+    const recurring = task({ commitment: "reminder", date: "2026-11-03", recurring: { enabled: true, frequency: "daily", parentId: "r" } });
+    const groups = groupTodayTasks([gone, done, recurring], NOW, TZ);
+    assert.deepEqual(groups.pastDue, []);
+    assert.equal(groups.olderPastDueCount, 0);
   });
 
-  test("done items and School Blocks are in no section", () => {
-    const done = task({ commitment: "fixed", completed: true });
+  test("School Blocks are in no group", () => {
     const school = task({
       kind: "school",
       title: "School",
@@ -85,16 +113,17 @@ void (import("./today-sections") as Promise<Mod>).then(({ groupTodayTasks, overd
       time: "08:00",
       recurring: { enabled: true, frequency: "weekly", parentId: "s" },
     });
-    const groups = groupTodayTasks([done, school], NOW, TZ);
-    assert.deepEqual([groups.mustDo, groups.todaysPlan, groups.comingUp], [[], [], []]);
+    const groups = groupTodayTasks([school], NOW, TZ);
+    assert.deepEqual([groups.parts, groups.pastDue, groups.comingUp], [[], [], []]);
   });
 
-  test("Coming up holds the next three days, grouped and in order", () => {
+  test("Coming up holds the next three days, grouped and in order, without done items", () => {
     const d3 = task({ commitment: "flexible", date: "2026-11-07" });
     const d1b = task({ commitment: "fixed", date: "2026-11-05", time: "15:00" });
     const d1a = task({ commitment: "flexible", date: "2026-11-05", time: "09:00" });
+    const d1done = task({ commitment: "flexible", date: "2026-11-05", completed: true });
     const d4 = task({ commitment: "fixed", date: "2026-11-08" });
-    const { comingUp } = groupTodayTasks([d3, d1b, d1a, d4], NOW, TZ);
+    const { comingUp } = groupTodayTasks([d3, d1b, d1a, d1done, d4], NOW, TZ);
     assert.deepEqual(
       comingUp.map((d) => d.date),
       ["2026-11-05", "2026-11-07"]
@@ -106,9 +135,43 @@ void (import("./today-sections") as Promise<Mod>).then(({ groupTodayTasks, overd
     // 11:30 PM Nov 3 in Los Angeles is already Nov 4 in New York.
     const at = new Date("2026-11-04T07:30:00Z");
     const t = task({ commitment: "reminder", date: "2026-11-04" });
-    assert.deepEqual(ids(groupTodayTasks([t], at, "America/New_York").mustDo), [t.id]);
-    assert.deepEqual(groupTodayTasks([t], at, "America/Los_Angeles").mustDo, []);
+    assert.deepEqual(parts(groupTodayTasks([t], at, "America/New_York")), { anytime: [t.id] });
+    assert.deepEqual(groupTodayTasks([t], at, "America/Los_Angeles").parts, []);
     assert.equal(groupTodayTasks([t], at, "America/Los_Angeles").comingUp[0].date, "2026-11-04");
+  });
+
+  test("the Now line sits before the first timed item that hasn't started", () => {
+    const done = task({ commitment: "fixed", time: "09:00", completed: true });
+    const lunch = task({ commitment: "fixed", time: "12:30" });
+    const next = task({ commitment: "flexible", time: "14:00" });
+    const evening = task({ commitment: "flexible", time: "19:00" });
+    const groups = groupTodayTasks([evening, next, lunch, done, task({})], NOW, TZ);
+    assert.deepEqual(nowLine(groups, NOW, TZ), { before: next.id });
+  });
+
+  test("the Now line goes after the last timed group once everything has started", () => {
+    const morning = task({ commitment: "fixed", time: "09:00" });
+    const groups = groupTodayTasks([morning, task({})], NOW, TZ);
+    assert.deepEqual(nowLine(groups, NOW, TZ), { after: "morning" });
+  });
+
+  test("no Now line when nothing today has a time", () => {
+    assert.equal(nowLine(groupTodayTasks([task({})], NOW, TZ), NOW, TZ), null);
+    assert.equal(nowLine(groupTodayTasks([], NOW, TZ), NOW, TZ), null);
+  });
+
+  test("dayPartOf reads 24-hour times and treats no time as Anytime", () => {
+    assert.deepEqual(["00:00", "11:59", "12:00", "16:59", "17:00", "20:59", "21:00", "23:59", ""].map(dayPartOf), [
+      "morning",
+      "morning",
+      "afternoon",
+      "afternoon",
+      "evening",
+      "evening",
+      "night",
+      "night",
+      "anytime",
+    ]);
   });
 
   test("a fixed item goes hard once its time has passed", () => {
@@ -148,27 +211,26 @@ void (import("./today-sections") as Promise<Mod>).then(({ groupTodayTasks, overd
     assert.equal(overdueStyle(task({ commitment: "fixed", date: "2026-11-05" }), NOW, TZ), null);
   });
 
-  test("glance line names the count, the next thing and the plan", () => {
+  test("glance line names what's left, what's past due and the next fixed thing", () => {
     const dentist = task({ commitment: "fixed", title: "Dentist", time: "15:30" });
     const form = task({ commitment: "reminder", title: "Turn in form" });
     const past = task({ commitment: "fixed", title: "Missed", time: "09:00" });
-    const steps = [task({ commitment: "flexible" }), task({ commitment: "flexible" })];
-    const groups = groupTodayTasks([dentist, form, past, ...steps], NOW, TZ);
-    assert.equal(glanceLine(groups, NOW, TZ), "3 must-dos · next: Dentist at 3:30 PM · 2 plan steps left");
+    const step = task({ commitment: "flexible", time: "14:30" });
+    const late = task({ commitment: "reminder", date: "2026-11-03" });
+    const groups = groupTodayTasks([dentist, form, past, step, late], NOW, TZ);
+    assert.equal(glanceLine(groups, NOW, TZ), "4 left today · 1 past due · next: Dentist at 3:30 PM");
   });
 
-  test("glance line uses singular forms and leaves out empty parts", () => {
-    const form = task({ commitment: "reminder", title: "Turn in form" });
-    const step = task({ commitment: "flexible" });
-    assert.equal(glanceLine(groupTodayTasks([form], NOW, TZ), NOW, TZ), "1 must-do");
-    assert.equal(glanceLine(groupTodayTasks([step], NOW, TZ), NOW, TZ), "Nothing you have to do today · 1 plan step left");
-    assert.equal(glanceLine(groupTodayTasks([], NOW, TZ), NOW, TZ), "Nothing you have to do today");
+  test("glance line for an empty day and a finished one", () => {
+    assert.equal(glanceLine(groupTodayTasks([], NOW, TZ), NOW, TZ), "Nothing planned today");
+    const done = task({ commitment: "flexible", completed: true });
+    assert.equal(glanceLine(groupTodayTasks([done], NOW, TZ), NOW, TZ), "All done for today");
   });
 
-  test("glance line counts overdue items past the ones shown", () => {
+  test("glance line counts past due items older than the ones shown", () => {
     const old = ["2026-11-03", "2026-11-02", "2026-11-01", "2026-10-30"].map((date) =>
       task({ commitment: "reminder", date })
     );
-    assert.equal(glanceLine(groupTodayTasks(old, NOW, TZ), NOW, TZ), "4 must-dos");
+    assert.equal(glanceLine(groupTodayTasks(old, NOW, TZ), NOW, TZ), "Nothing planned today · 4 past due");
   });
 });

@@ -34,6 +34,6 @@ FIELDS
 - confidence: 0 to 1, how sure you are of the intent. Below 0.6 when two intents are about equally likely.
 - plan_mention: the student's own words for an existing plan or project ("my iCF prep", "SAT plan"), exactly as written, or null.
 - task_mention: their words for an existing task ("math hw", "dentist appointment"), or null.
-- clean_title: for add_task, a short task title without lead-ins ("I have a", "remind me to") and without the date or time words ("Soccer coaching appointment"); otherwise null.
+- clean_title: for add_task, a short task title, 2 to 6 words, without lead-ins ("I have a", "remind me to"), without the date or time words and without a trailing period ("Soccer coaching appointment"); otherwise null.
 - needs_questions: true only for new_plan or new_project when key facts are missing (deadline, what it is for) and asking first would clearly make it better.
 - reason: under 12 words, why.`;

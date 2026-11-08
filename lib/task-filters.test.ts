@@ -17,7 +17,7 @@ type Resolve = (specifier: string, context: unknown, next: (s: string, c: unknow
   },
 });
 
-void (import("./task-filters") as Promise<typeof import("./task-filters")>).then(({ applyTaskFilter, endOfWeek, matchesDay, parseTaskFilter, timeOfDay }) => {
+void (import("./task-filters") as Promise<typeof import("./task-filters")>).then(({ applyTaskFilter, endOfWeek, inView, matchesDay, parseTaskFilter, parseTaskView, taskView, timeOfDay }) => {
   const TUE = "2026-11-03";
   const t = (date: string, time: string, source?: string) => ({ date, time, source });
   const self = <T,>(x: T) => x;
@@ -85,4 +85,25 @@ void (import("./task-filters") as Promise<typeof import("./task-filters")>).then
     assert.deepEqual(parseTaskFilter("not json", fallback), fallback);
     assert.deepEqual(parseTaskFilter(null, fallback), fallback);
   });
+
+  test("view tabs sort tasks into school, projects and personal", () => {
+    assert.equal(taskView({ source: "canvas" }), "school");
+    assert.equal(taskView({ kind: "school" }), "school");
+    assert.equal(taskView({ kind: "personal" }), "personal");
+    assert.equal(taskView({}), "personal");
+    assert.equal(taskView({ kind: "commitment", source: null }), "personal");
+    // A project step about a class is still the project's work.
+    assert.equal(taskView({ kind: "school", planId: "p1" }), "projects");
+    assert.equal(taskView({ pathNodeId: "n1" }), "projects");
+    assert.equal(inView({ source: "canvas" }, "all"), true);
+    assert.equal(inView({ source: "canvas" }, "personal"), false);
+    assert.equal(inView({ planId: "p1" }, "projects"), true);
+  });
+
+  test("a saved view tab that doesn't read falls back to All", () => {
+    assert.equal(parseTaskView("school"), "school");
+    assert.equal(parseTaskView("everything"), "all");
+    assert.equal(parseTaskView(null), "all");
+  });
 });
+

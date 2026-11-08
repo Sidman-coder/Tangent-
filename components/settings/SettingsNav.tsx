@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
 import { Bell, CalendarClock, ChevronRight, Database, History, KeyRound, Sparkles, UserRound, type LucideIcon } from "lucide-react";
 import type { SettingsPage } from "@/lib/settings/routes";
 
@@ -19,10 +20,38 @@ export function settingsMeta(page: SettingsPage) {
   return SETTINGS_NAV.find((n) => n.page === page) ?? SETTINGS_NAV[0];
 }
 
+/** True on that section's page (and its /dev preview, /dev/app/settings-<page>). */
+function isCurrent(pathname: string, page: SettingsPage) {
+  return pathname === `/settings/${page}` || pathname.endsWith(`/settings-${page}`);
+}
+
 /** The Settings sections: a side list on a laptop ("sidebar"), the landing
- *  list with chevrons on a phone ("list"). */
-export default function SettingsNav({ variant }: { variant: "sidebar" | "list" }) {
+ *  list with chevrons on a phone ("list"), and underline tabs across the top
+ *  of each page on a phone ("tabs"). */
+export default function SettingsNav({ variant }: { variant: "sidebar" | "list" | "tabs" }) {
   const pathname = usePathname();
+  const tabsRef = useRef<HTMLElement>(null);
+  // Keep the current tab in view when the strip scrolls sideways.
+  useEffect(() => {
+    if (variant !== "tabs") return;
+    const current = tabsRef.current?.querySelector<HTMLElement>("[aria-current='page']");
+    current?.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [variant, pathname]);
+  if (variant === "tabs") {
+    return (
+      <nav ref={tabsRef} className="settings-tabs ui-tabs ui-tabs--underline" aria-label="Settings sections">
+        {SETTINGS_NAV.map(({ page, label }) => {
+          const active = isCurrent(pathname, page);
+          return (
+            <Link key={page} href={`/settings/${page}`} className="ui-tab" aria-current={active ? "page" : undefined}>
+              <span className="ui-tab-label">{label}</span>
+              {active && <span className="ui-tab-underline" aria-hidden="true" />}
+            </Link>
+          );
+        })}
+      </nav>
+    );
+  }
   if (variant === "list") {
     return (
       <nav aria-label="Settings sections">
@@ -47,7 +76,7 @@ export default function SettingsNav({ variant }: { variant: "sidebar" | "list" }
     <nav className="settings-sidenav" aria-label="Settings sections">
       {SETTINGS_NAV.map(({ page, label, icon: Icon }) => {
         const href = `/settings/${page}`;
-        const active = pathname === href;
+        const active = isCurrent(pathname, page);
         return (
           <Link key={page} href={href} className={`settings-sidenav-link${active ? " is-active" : ""}`} aria-current={active ? "page" : undefined}>
             <Icon size={16} aria-hidden="true" />

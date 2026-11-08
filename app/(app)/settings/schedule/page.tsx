@@ -78,7 +78,7 @@ export default function ScheduleSettingsPage() {
             options={capacityOptions(capacity.weekend)}
           />
         </SettingRow>
-        <SettingRow label="Week starts on" help="For the calendar and Month plan previews." htmlFor="week-start">
+        <SettingRow label="Week starts on" help="For the calendar and project previews." htmlFor="week-start">
           <Select
             id="week-start"
             value={String(state?.user.weekStart ?? 0)}

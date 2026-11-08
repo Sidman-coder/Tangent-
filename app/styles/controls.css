@@ -23,7 +23,7 @@ body :is(button, a, [role="button"]):is(
   .tg-clarify-btn.is-primary, .tg-btn-accent, .tg-brief-pill, .tg-send:not(:disabled), .tg-chip.is-on,
   .knows-gtk, .knows-add-btn:not(:disabled), .gtk-primary, .gtk-send, .gtk-mic.is-on, .cmdk-mic.is-on,
   .tour-primary, .preview-card-btn.is-primary, .not-found-home, .td-primary,
-  .add-send:not(:disabled), .add-mic.is-on, .add-projects button.is-on, .setup-nudge-go,
+  .add-send:not(:disabled), .setup-nudge-go,
   .capture-chip.is-primary
 ) {
   border: 1px solid transparent;
@@ -55,7 +55,7 @@ body :is(button, a, [role="button"]):is(
   .attention-defer, .ui-task-help, .action-receipt-undo, .calendar-task-remove, .import-ctx-prompt button,
   .td-secondary, .resource-link, .preview-card-btn:not(.is-primary),
   .tg-example, .tg-send:disabled,
-  .add-mic:not(.is-on), .tg-mic.is-idle, .capture-open-app, .capture-chip:not(.is-primary), .capture-start
+  .tg-mic.is-idle, .capture-open-app, .capture-chip:not(.is-primary), .capture-start
 ) {
   border: 1px solid var(--field-line);
   background: var(--surface);
@@ -73,7 +73,7 @@ body :is(button, a, [role="button"]):is(
   }
 }
 /* Mics at rest keep an accent glyph. */
-body :is(.gtk-mic:not(.is-on), .add-mic:not(.is-on), .tg-mic.is-idle, .tg-new-chat) {
+body :is(.gtk-mic:not(.is-on), .tg-mic.is-idle, .tg-new-chat) {
   color: var(--accent-text);
 }
 
@@ -131,7 +131,7 @@ body :is(.tg-icon-btn, .tg-mic, .tg-send, .tg-chat-more, .td-icon, .side-peek-cl
 
 /* Words sit dead centre in every pill. A fixed-height pill with line-height 1
    otherwise puts the text a pixel or two low. */
-body :is(.tg-chip, .tg-clarify-btn, .path-step-chip, .path-chip, .preview-card-btn, .add-seg button, .add-projects button, .attention-chip, .setup-nudge-go, .ui-task-help, .attention-defer, .action-receipt-undo, .cal-segment, .knows-forget) {
+body :is(.tg-chip, .tg-clarify-btn, .path-step-chip, .path-chip, .preview-card-btn, .attention-chip, .setup-nudge-go, .ui-task-help, .attention-defer, .action-receipt-undo, .cal-segment, .knows-forget) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -161,12 +161,3 @@ body :is(.tg-chip, .tg-clarify-btn, .path-step-chip, .path-chip, .preview-card-b
   border-left-width: 0;
 }
 
-/* The calendar's floating controls: a plain raised capsule. */
-.cal-island {
-  border: 1px solid var(--line);
-  background: var(--surface);
-  box-shadow: var(--shadow-md);
-}
-.calendar-page .calendar-toolbar {
-  background: transparent;
-}

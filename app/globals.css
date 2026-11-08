@@ -4337,10 +4337,9 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Behind Tangents from the first frame (see AppShell). */
 
-/* The last floating surfaces that were solid: the task card, the tour card,
+/* The last floating surfaces that were solid: the tour card,
    Grill me and the task Help chat. Same thick glass as Tell Tangent and the
    bell. Scoped through body so their own stylesheets can't win on load order. */
-body .td-card,
 body .tour-card,
 body .gtk-sheet {
   background: var(--glass-thick);
@@ -4353,7 +4352,6 @@ body .gtk-sheet {
 }
 
 @media (prefers-reduced-transparency: reduce) {
-  body .td-card,
   body .tour-card,
   body .gtk-sheet {
     background: var(--surface);
@@ -4491,7 +4489,48 @@ body .gtk-sheet {
 .plan-day-sheet ul { padding: 0; margin: 12px 0; list-style: none; }
 .plan-day-sheet li { display: grid; gap: 4px; padding-block: 8px; }
 .plan-day-sheet li span { color: var(--muted); font-size: .85rem; }
+/* Phone only: the month's new steps as a list under the grid. */
+.plan-day-list { display: none; }
 @media (max-width: 599px) {
+  .plan-day-list {
+    display: grid;
+    gap: 16px;
+    margin: 16px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .plan-day-list-date {
+    margin: 0 0 6px;
+    color: var(--text-2);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .plan-day-list-day ul {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .plan-day-list-item {
+    display: grid;
+    gap: 2px;
+    padding: 10px 12px 10px 14px;
+    border-radius: var(--r-md);
+    background: color-mix(in srgb, var(--step-color) 10%, var(--surface));
+    box-shadow: inset 3px 0 0 var(--step-color);
+  }
+  .plan-day-list-title {
+    color: var(--text);
+    font-size: 14.5px;
+    font-weight: 600;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+  }
+  .plan-day-list-meta {
+    color: var(--text-2);
+    font-size: 13px;
+  }
   .plan-month-step { width: 7px; }
   .plan-month-step::before { width: 6px; height: 6px; }
   .plan-day-sheet { margin: auto auto max(12px, env(safe-area-inset-bottom)); }

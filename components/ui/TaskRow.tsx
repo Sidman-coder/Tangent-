@@ -29,6 +29,9 @@ type TaskRowProps = {
   emphasis?: "deadline" | "must";
   /** Desktop: hide the actions until the row is hovered or focused. */
   revealActions?: boolean;
+  /** The project this row is listed under: its name is dropped from the title,
+   *  and the project dot and category tag go (every row here shares them). */
+  projectName?: string | null;
 };
 
 function shortDate(ymd: string): string {
@@ -50,6 +53,7 @@ export default function TaskRow({
   flag,
   emphasis,
   revealActions = false,
+  projectName,
 }: TaskRowProps) {
   const questionDot = hasQuestions ? <span className="task-question-dot" title="Tangent has a question about this" /> : null;
   return (
@@ -85,15 +89,15 @@ export default function TaskRow({
         ) : (
           <span className="ui-task-check" aria-hidden="true" />
         )}
-        <span className="ui-task-kind" style={{ background: kindColor }} aria-hidden="true" />
+        {!projectName && <span className="ui-task-kind" style={{ background: kindColor }} aria-hidden="true" />}
         <div className="ui-task-copy">
           {onOpen ? (
             <button type="button" className="ui-task-title-button" onClick={onOpen}>
-              <TaskTitle task={task} />
+              <TaskTitle task={task} projectName={projectName} />
               {questionDot}
             </button>
           ) : (
-            <span className="ui-task-title"><TaskTitle task={task} />{questionDot}</span>
+            <span className="ui-task-title"><TaskTitle task={task} projectName={projectName} />{questionDot}</span>
           )}
           <div className="ui-task-meta">
             <time dateTime={`${task.date}T${task.time}`}>
@@ -102,7 +106,7 @@ export default function TaskRow({
               {isDueOnly(task) ? "Due" : formatTime12(task.time)}
             </time>
             {flag}
-            {categoryLabel(task) && <span className="ui-task-kind-label">{categoryLabel(task)}</span>}
+            {!projectName && categoryLabel(task) && <span className="ui-task-kind-label">{categoryLabel(task)}</span>}
             {task.recurring?.enabled && (
               <span className="ui-task-recurring"><Repeat2 size={12} aria-hidden="true" /> Recurring</span>
             )}

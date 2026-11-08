@@ -65,9 +65,9 @@ const STEPS: Step[] = [
   },
   {
     route: "/",
-    target: [".today-slider"],
-    title: "A small slider under the box",
-    body: "Swipe it for today at a glance, to choose where the next thing goes, and for questions you skipped. Answer whenever you like; every answer sharpens the task and teaches Tangent about you.",
+    target: [".add-flow.is-hero .add-pill"],
+    title: "Choose where it goes",
+    body: "Auto lets Tangent decide whether it's a task, a project or a question. Tap it to send the next thing to your calendar or a project instead. Questions Tangent skipped wait in a quiet line under the box; answer whenever you like.",
   },
   {
     route: "/",
@@ -76,9 +76,9 @@ const STEPS: Step[] = [
   },
   {
     route: "/calendar",
-    target: [".cal-island"],
+    target: [".cal-bar"],
     title: "One bar to steer the calendar",
-    body: "Week, Month or Agenda, back and forward, and what to show: School, Projects or Short-term. All in the floating bar, so the calendar itself stays clear.",
+    body: "Week, Month or Agenda, back and forward, and what to show: School, Projects or Short-term. All in the bar at the top.",
   },
   {
     route: "/calendar",

@@ -217,7 +217,7 @@ function printTable(rows: Row[]) {
  * and writes nothing to the database. `--round2 --check` is free.
  */
 async function round2(check: boolean) {
-  const { Round2FileSchema, gradeKind, gradeSlots, gradeRoute } = await import("@/lib/pipeline/grade");
+  const { Round2FileSchema, gradeKind, gradeSlots, gradeRoute, gradeTitle } = await import("@/lib/pipeline/grade");
   const { estimateCostUsd, modelFor } = await import("@/lib/ai/models");
   const raw = (await import("@/lib/pipeline/fixtures/round2.json")).default as unknown;
   const parsed = Round2FileSchema.safeParse(raw);
@@ -226,9 +226,9 @@ async function round2(check: boolean) {
     process.exit(1);
   }
   const file = parsed.data;
-  const n = file.kinds.length + file.slots.length + file.routes.length;
+  const n = file.kinds.length + file.slots.length + file.routes.length + file.titles.length;
   const cost = MARGIN * n * estimateCostUsd(modelFor("FAST"), ROUTER_CALL);
-  console.log(`Round 2: ${file.kinds.length} kind, ${file.slots.length} slot, ${file.routes.length} route cases on ${modelFor("FAST")}`);
+  console.log(`Round 2: ${file.kinds.length} kind, ${file.slots.length} slot, ${file.routes.length} route, ${file.titles.length} title cases on ${modelFor("FAST")}`);
   console.log(`Estimated cost: at most about $${cost.toFixed(2)} (×${MARGIN} margin; clear cases skip the AI)`);
 
   const { classifyWithFallback } = await import("@/lib/task-kind-ai");
@@ -261,7 +261,12 @@ async function round2(check: boolean) {
       gradeRoute(c.expect, await classifyIntent(c.text, { flag: true, tz: file.timezone, today: file.reference_date, planTitles: [], caller: callIntentRouter }))
     );
   }
-  for (const part of ["kind", "slot", "route"]) {
+  for (const c of file.titles) {
+    await run(c.id, async () =>
+      gradeTitle(c, (await classifyIntent(c.text, { flag: true, tz: file.timezone, today: file.reference_date, planTitles: c.project ? [c.project] : [], caller: callIntentRouter })).cleanTitle)
+    );
+  }
+  for (const part of ["kind", "slot", "route", "title"]) {
     const rows = results.filter((r) => r.id.startsWith(`${part}-`));
     console.log(`${part}: ${rows.filter((r) => r.pass).length}/${rows.length}`);
   }

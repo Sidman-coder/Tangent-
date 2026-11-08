@@ -88,7 +88,7 @@ const DETAIL_SCHEMA = {
 } as const;
 
 const TASK_RULES = `Each task:
-- title: under 7 words, specific to this session.
+- title: 2 to 6 words, starts with a verb, names the real thing ("Solve 10 limit problems"). Never repeat the plan or project name, no emoji, no trailing period.
 - time: HH:MM between 07:00 and 20:00; vary it sensibly.
 - calendarId: cal_school for classes, homework, tests and studying for school; cal_other for everything else (skills, hobbies, extracurriculars, projects, health).
 - notes: ONE sentence saying exactly what to work on and how, specific to the topic. No URLs.
@@ -229,7 +229,7 @@ async function outline(input: GeneratePlanInput, sizes: number[]): Promise<{ tit
   const system = `You outline study and practice plans for a student's calendar.
 ${input.dateContext}
 The plan has ${dates.length} session${dates.length > 1 ? "s" : ""} from ${dates[0]} to ${dates[dates.length - 1]}, split into exactly ${sizes.length} phase${sizes.length > 1 ? "s" : ""} of ${sizes.join(", ")} session${dates.length > 1 ? "s" : ""}.
-Return a title (2 to 6 words, specific to the goal, e.g. "Chess Tactics Fundamentals"; never "New Plan" or "Study Plan") and, for each phase in order, a short name and a one-sentence goal. Phases progress from foundations to harder work.`;
+Return a title (2 to 6 words, specific to the goal, e.g. "Chess Tactics Fundamentals"; never "New Plan", "New project" or "Study Plan") and, for each phase in order, a short name and a one-sentence goal. Phases progress from foundations to harder work.`;
   let last: GeneratedPlan = { ok: false, error: "Outline failed" };
   for (let attempt = 1; attempt <= 2; attempt++) {
     const r = await callClaude(

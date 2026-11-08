@@ -20,13 +20,16 @@ export type Pace = {
   remaining: number;
   /** Days until the last open step, today included. Null with no dated steps. */
   daysLeft: number | null;
-  /** Steps to finish in the next 7 days to stay on course. */
+  /** Whole steps to finish in the next 7 days to stay on course (rounded up). */
   neededThisWeek: number;
   doneLast7: number;
   /** True when a finished step had no completedAt and was counted by its date. */
   approximate: boolean;
   overdue: number;
   status: PaceStatus;
+  /** The first step's date while nothing is done and it's still ahead: the
+   *  project hasn't started, so it's neither on track nor behind. */
+  startsOn: string | null;
 };
 
 export type WeekLoad = { start: string; end: string; label: string; minutes: number; count: number };
@@ -63,7 +66,9 @@ export function paceOf(tasks: StatTask[], today: string): Pace {
   const dated = open.filter((t) => t.date);
   const last = dated[dated.length - 1]?.date;
   const daysLeft = last ? Math.max(1, daysBetweenYMD(today, last) + 1) : null;
-  const neededThisWeek = daysLeft === null ? 0 : (open.length * Math.min(7, daysLeft)) / daysLeft;
+  // Whole steps: 8 steps over 37 days is 2 this week, never "1.5135… steps".
+  // The epsilon keeps an exact 2 from rounding up to 3.
+  const neededThisWeek = daysLeft === null ? 0 : Math.ceil((open.length * Math.min(7, daysLeft)) / daysLeft - 1e-9);
   const weekAgo = addDaysYMD(today, -6);
   let approximate = false;
   const doneLast7 = tasks.filter((t) => {
@@ -82,7 +87,9 @@ export function paceOf(tasks: StatTask[], today: string): Pace {
   if (open.length > 0 && (overdue > 0 || wasDue) && doneLast7 < neededThisWeek) {
     status = doneLast7 / neededThisWeek >= BEHIND_BELOW ? "Slightly behind" : "Behind";
   }
-  return { remaining: open.length, daysLeft, neededThisWeek, doneLast7, approximate, overdue, status };
+  const first = dated[0]?.date;
+  const startsOn = first && first > today && !tasks.some((t) => t.completed) ? first : null;
+  return { remaining: open.length, daysLeft, neededThisWeek, doneLast7, approximate, overdue, status, startsOn };
 }
 
 export function nextSteps<T extends StatTask>(tasks: T[], count = 3): T[] {
@@ -109,6 +116,40 @@ export function recommendedPace(tasks: StatTask[], today: string): string {
   const length = SESSION_LENGTHS.find((l) => minutes / l <= MAX_SESSIONS_A_WEEK) ?? SESSION_LENGTHS[SESSION_LENGTHS.length - 1];
   const sessions = Math.max(1, Math.round(minutes / length));
   return `About ${sessions} session${sessions === 1 ? "" : "s"} of ${length} min this week keeps you on track.`;
+}
+
+export type StepWeeks<T extends StatTask = StatTask> = { thisWeek: T[]; nextWeek: T[]; later: T[] };
+
+/** Open steps as This week (overdue included), Next week and Later (undated last). */
+export function stepsByWeek<T extends StatTask>(tasks: T[], today: string, weekStart?: WeekStart): StepWeeks<T> {
+  const thisEnd = endOfWeek(today, weekStart);
+  const nextEnd = addDaysYMD(thisEnd, 7);
+  const out: StepWeeks<T> = { thisWeek: [], nextWeek: [], later: [] };
+  for (const t of openSteps(tasks)) {
+    if (t.date && t.date <= thisEnd) out.thisWeek.push(t);
+    else if (t.date && t.date <= nextEnd) out.nextWeek.push(t);
+    else out.later.push(t);
+  }
+  return out;
+}
+
+export type WeekSession = "done" | "planned" | "missed";
+
+/** One dot per step dated this week, in order: done, missed (its day passed)
+ *  or planned. Steps finished this week from another week don't add dots. */
+export function weekSessions(tasks: StatTask[], today: string, weekStart?: WeekStart): WeekSession[] {
+  const end = endOfWeek(today, weekStart);
+  const start = addDaysYMD(end, -6);
+  return tasks
+    .filter((t) => t.date && t.date >= start && t.date <= end)
+    .sort(byDate)
+    .map((t) => (t.completed ? "done" : t.date < today ? "missed" : "planned"));
+}
+
+/** "Tue, Nov 17" */
+export function weekdayDate(ymd: string): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
 }
 
 /** The first week starts today and includes unfinished work from earlier days. */

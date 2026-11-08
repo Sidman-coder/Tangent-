@@ -1,62 +1,44 @@
 /* ═════════════════════════════════════════════════════════════════════════
-   Add (components/add/AddFlow.tsx): the most important control in Tangent.
-   One thick Liquid Glass surface; the mic and Add are glass buttons on it
-   (prominent iris for Add, clear glass with an iris glyph for the mic).
-   The hero on Today is the same thing, bigger.
+   The Composer (components/add/AddFlow.tsx): Home capture, the Projects
+   starter and the ⌘K sheet. TANGENT-STYLE §8 "Input with mic":
+     words on top (1–6 lines), then [Auto ▾] · mic · send underneath.
+   Flat surface, 1px line, --r-lg; focus turns the border violet with a soft ring.
    ═════════════════════════════════════════════════════════════════════════ */
 
 .add-flow {
   position: relative;
-  isolation: isolate;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 10px;
-  border: 1px solid var(--lg-edge);
-  border-radius: 26px;
-  background: var(--lg-fill-strong);
-  -webkit-backdrop-filter: var(--lg-filter);
-  backdrop-filter: var(--lg-filter);
-  box-shadow:
-    inset 0 1px 0 var(--lg-rim-top),
-    inset 0 -1px 0 var(--lg-rim-bottom),
-    0 1px 2px rgb(28 26 38 / 0.05),
-    0 18px 44px -22px var(--lg-shade);
-  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-3) var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
 .add-flow:focus-within {
-  border-color: rgb(from var(--accent) r g b / 0.35);
-  box-shadow:
-    inset 0 1px 0 var(--lg-rim-top),
-    0 0 0 4px rgb(from var(--accent) r g b / 0.1),
-    0 18px 44px -22px var(--lg-shade);
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
-.add-flow.is-hero {
-  padding: 14px;
-  border-radius: 30px;
+.add-flow.is-listening {
+  border-color: var(--accent-line);
 }
 .add-flow.is-sheet {
   border: 0;
   border-radius: 0;
   background: transparent;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
   box-shadow: none;
 }
 
-.add-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-/* The words. Scoped past the global input reset (0,3,1). */
-.add-flow .add-row .add-input:is(textarea) {
-  flex: 1;
-  min-width: 0;
-  min-height: 44px;
-  max-height: 132px;
-  padding: 11px 4px;
+/* The words. Scoped past the global input reset. */
+.add-flow .add-input:is(textarea) {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  max-height: 160px;
+  margin: 0;
+  padding: var(--s-2) var(--s-1) 0;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -64,7 +46,7 @@
   color: var(--text);
   font: inherit;
   font-size: 16px;
-  line-height: 1.4;
+  line-height: 1.5;
   resize: none;
   outline: none;
   overflow-y: auto;
@@ -73,77 +55,201 @@
 .add-flow .add-input::-webkit-scrollbar {
   display: none;
 }
-.add-flow.is-hero .add-row .add-input:is(textarea) {
-  min-height: 52px;
-  padding-block: 14px;
-  font-size: 17px;
-}
 .add-flow .add-input::placeholder {
   color: var(--text-3);
 }
+/* Live words while listening: gray until they're final. */
+.add-flow .add-input.is-live {
+  color: var(--text-3);
+}
+.add-flow .add-input:disabled {
+  opacity: 1;
+  background: transparent;
+}
 
-/* Mic: clear glass, iris glyph. Recording: prominent glass with a breathing ring. */
+.add-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+/* [Auto ▾] */
+.add-pill-wrap {
+  position: relative;
+  min-width: 0;
+  margin-right: auto;
+}
+.add-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  height: 32px;
+  padding: 0 10px 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+/* 44px hit area around the 32px pill. */
+.add-pill::before {
+  content: "";
+  position: absolute;
+  inset: -6px -2px;
+}
+.add-pill.is-set {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.add-pill[aria-expanded="true"] {
+  background: var(--elev-2);
+  color: var(--text);
+}
+.add-pill:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.add-pill-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.add-pill svg {
+  flex: none;
+  color: var(--text-3);
+}
+.add-pill.is-set svg {
+  color: currentColor;
+}
+
+.add-pill-menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+  min-width: 200px;
+  max-width: min(300px, calc(100vw - 48px));
+  max-height: 320px;
+  padding: var(--s-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  overflow-y: auto;
+  animation: add-menu-in var(--dur-fast) var(--ease);
+}
+:root[data-theme="dark"] .add-pill-menu {
+  background: var(--elev-2);
+}
+@keyframes add-menu-in {
+  from { opacity: 0; transform: translateY(-4px); }
+}
+.add-pill-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 40px;
+  padding: 0 var(--s-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.add-pill-item:hover,
+.add-pill-item:focus-visible {
+  background: var(--elev-2);
+  outline: none;
+}
+.add-pill-item:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--focus);
+}
+.add-pill-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  color: var(--text-2);
+}
+.add-pill-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.add-pill-check {
+  flex: none;
+  color: var(--accent-text);
+}
+.add-project-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+/* Mic (ghost) and send (filled), both 44px. */
 .add-mic,
 .add-send {
   flex: none;
+  position: relative;
   display: grid;
   place-items: center;
   width: 44px;
   height: 44px;
   padding: 0;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   cursor: pointer;
-  transition: transform 0.16s cubic-bezier(0.23, 1, 0.32, 1), background 0.2s ease, opacity 0.2s ease;
-}
-.add-flow.is-hero .add-mic,
-.add-flow.is-hero .add-send {
-  width: 52px;
-  height: 52px;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
 }
 .add-mic {
-  position: relative;
-  border: 1px solid var(--lg-edge);
-  background: var(--lg-fill-strong);
-  -webkit-backdrop-filter: var(--lg-filter);
-  backdrop-filter: var(--lg-filter);
-  color: var(--accent);
-  box-shadow: inset 0 1px 0 var(--lg-rim-top), 0 6px 16px -10px var(--lg-shade);
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
 }
-.add-mic.is-on,
-.add-send {
-  border: 1px solid rgb(255 255 255 / 0.28);
-  background: rgb(from var(--accent) r g b / 0.9);
-  -webkit-backdrop-filter: var(--lg-filter);
-  backdrop-filter: var(--lg-filter);
-  color: var(--accent-ink);
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.4),
-    inset 0 -1px 0 rgb(0 0 0 / 0.1),
-    0 8px 22px -10px rgb(from var(--accent) r g b / 0.6);
+@media (hover: hover) and (pointer: fine) {
+  .add-mic:hover:not(:disabled) {
+    background: var(--elev-2);
+    color: var(--text);
+  }
 }
-.add-mic.is-on::after {
-  content: "";
-  position: absolute;
-  inset: -5px;
-  border-radius: inherit;
-  border: 2px solid rgb(from var(--accent) r g b / 0.35);
-  animation: add-breathe 1.6s ease-in-out infinite;
+.add-mic.is-on {
+  color: var(--red);
+  animation: add-pulse 1.2s ease-in-out infinite;
 }
-@keyframes add-breathe {
-  0%, 100% { transform: scale(1); opacity: 0.9; }
-  50% { transform: scale(1.12); opacity: 0.3; }
+@keyframes add-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
 }
 .add-send:disabled {
-  opacity: 0.38;
+  border: 0;
+  background: var(--accent);
+  color: var(--accent-ink);
+  opacity: 0.4;
   cursor: default;
-  box-shadow: none;
 }
 .add-mic:disabled {
   opacity: 0.5;
+  cursor: default;
 }
 .add-mic:active:not(:disabled),
 .add-send:active:not(:disabled) {
-  transform: scale(0.95);
+  transform: scale(0.96);
 }
 
 .add-spinner {
@@ -158,90 +264,26 @@
   to { transform: rotate(360deg); }
 }
 
-/* Where it goes. */
-.add-dest {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 10px;
-  padding: 0 6px 2px;
-}
-.add-dest-label {
-  color: var(--text-3);
-  font-size: 12.5px;
-}
-.add-seg {
-  display: inline-flex;
-  gap: 2px;
-  padding: 3px;
-  border-radius: 999px;
-  background: rgb(from var(--text) r g b / 0.06);
-}
-.add-seg button,
-.add-projects button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text-2);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease;
-}
-.add-seg button.is-on {
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: 0 1px 2px rgb(28 26 38 / 0.1), inset 0 1px 0 var(--lg-rim-top);
-}
-.add-projects {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  width: 100%;
-}
-.add-projects button {
-  max-width: 260px;
-  border: 1px solid var(--lg-edge);
-  background: var(--lg-fill);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.add-projects button.is-on {
-  border-color: rgb(255 255 255 / 0.28);
-  background: rgb(from var(--accent) r g b / 0.88);
-  color: var(--accent-ink);
-}
-.add-project-dot {
-  flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-}
-
+/* "Sounds like a question" */
 .add-hint {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 8px;
   margin: 0;
+  padding: 0 var(--s-1) var(--s-1);
   color: var(--text-2);
   font-size: 13px;
 }
 .add-hint svg {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .add-hint-alt {
+  min-height: 32px;
   padding: 0;
   border: 0;
   background: none;
-  color: var(--accent);
+  color: var(--accent-text);
   font: inherit;
   font-weight: 500;
   cursor: pointer;
@@ -254,11 +296,11 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 14px;
+  gap: var(--s-2) var(--s-3);
   margin: 0;
-  padding: 10px 12px;
-  border-radius: 16px;
-  background: rgb(from var(--text) r g b / 0.04);
+  padding: 10px var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--elev-2);
   color: var(--text-2);
   font-size: 14px;
 }
@@ -273,7 +315,7 @@
   align-items: center;
   gap: 4px;
   margin-left: auto;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 13px;
   font-weight: 600;
   text-decoration: none;
@@ -285,14 +327,14 @@
 }
 .add-confirm > div {
   display: flex;
-  gap: 8px;
+  gap: var(--s-2);
 }
 
 .add-asking {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 4px 6px 2px;
+  padding: var(--s-1) var(--s-1) 2px;
 }
 .add-asking-lead {
   display: flex;
@@ -310,58 +352,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .add-mic.is-on::after {
+  .add-mic.is-on,
+  .add-pill-menu {
     animation: none;
   }
 }
-
-@media (prefers-reduced-transparency: reduce) {
-  .add-flow:not(.is-sheet),
-  .add-mic {
-    background: var(--surface);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
-}
-
-@media (max-width: 640px) {
-  .add-flow.is-hero .add-mic,
-  .add-flow.is-hero .add-send {
-    width: 46px;
-    height: 46px;
-  }
-  .add-flow.is-hero .add-row .add-input:is(textarea) {
-    font-size: 16px;
-  }
-}
-
-/* The Send to choice, for the next send only. */
-.add-dest-chip {
-  flex: none;
-  align-self: center;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  max-width: 140px;
-  padding-left: 12px;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--text);
-  font-size: 13px;
-}
-.add-dest-chip-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.add-dest-chip-clear {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  margin-left: -8px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text-2);
-  cursor: pointer;
-}
-.add-dest-chip-clear:hover { color: var(--text); }
-.add-dest-chip-clear:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

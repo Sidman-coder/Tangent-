@@ -2,7 +2,7 @@
 
 // Development-only: a page of the app inside the real shell, with sample data
 // (lib/dev/sample-state.ts), for design review without an account.
-// /dev/app/today, /dev/app/calendar, /dev/app/projects, /dev/app/school, /dev/app/settings, /dev/app/settings-account (…-security, -schedule,
+// /dev/app/today, /dev/app/calendar, /dev/app/projects, /dev/app/project, /dev/app/school, /dev/app/settings, /dev/app/settings-account (…-security, -schedule,
 // -notifications, -context, -activity, -data),
 // /dev/app/ai, /dev/app/preview, /dev/app/color, /dev/app/grill. 404s in production. API calls fail here (no session), so
 // anything loaded from the server shows its empty or error state.
@@ -22,6 +22,7 @@ import { useState } from "react";
 import CalendarPage from "@/app/(app)/calendar/page";
 import ProjectsPage from "@/app/(app)/projects/page";
 import SchoolPage from "@/app/(app)/projects/school/page";
+import ProjectView from "@/components/projects/ProjectView";
 import SettingsPage from "@/app/(app)/settings/page";
 import SettingsFrame from "@/components/settings/SettingsFrame";
 import AccountSettings from "@/app/(app)/settings/account/page";
@@ -39,7 +40,7 @@ function PreviewCalendarSample() {
   const today = getUserToday(useUserTimezone());
   return (
     <section className="preview-card" style={{ maxWidth: 680, margin: "24px auto" }}>
-      <h1 className="preview-card-title">Robotics plan preview</h1>
+      <h1 className="preview-card-title">Robotics project preview</h1>
       <PlanCalendarPreview
         ops={[
           { op: "add_task", title: "Sketch the intake arm", date: today, time: "16:00", commitment: "flexible", plan_id: "p1", notes: "Make the first prototype easier to measure." },
@@ -92,6 +93,9 @@ const PAGES: Record<string, React.ComponentType> = {
   today: TodayHome,
   calendar: CalendarPage,
   projects: ProjectsPage,
+  project: function SampleProject() {
+    return <ProjectView id="p1" />;
+  },
   school: SchoolPage,
   settings: framed(SettingsPage),
   "settings-account": framed(AccountSettings),

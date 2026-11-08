@@ -8,7 +8,7 @@
 }
 
 .tg-md > * + * {
-  margin-top: 0.6em;
+  margin-top: 8px;
 }
 
 .tg-md p {
@@ -22,7 +22,7 @@
 }
 
 .tg-md li + li {
-  margin-top: 0.2em;
+  margin-top: 4px;
 }
 
 .tg-md h3,
@@ -295,4 +295,98 @@
   .tg-msg-text.is-streaming .tg-md > :last-child::after {
     animation: none;
   }
+}
+
+/* ── Round 3: thread rhythm ──────────────────────────────────────────────
+   Tighter turns, your messages in a soft accent bubble (85% max), Tangent's
+   replies plain and full width, preview cards never wider than the column. */
+.tg-console .tg-thread-inner {
+  gap: 20px;
+}
+.tg-console .tg-turn {
+  gap: 12px;
+}
+.tg-console .tg-msg-user {
+  max-width: 85%;
+  background: var(--accent-soft);
+}
+.tg-console .tg-msg-body > * {
+  max-width: 100%;
+  min-width: 0;
+}
+.tg-console .tg-msg-actions {
+  margin-top: 2px;
+}
+
+/* Header: room for the title; the icons and Done sit on one line. */
+.tg-console .tg-main-head {
+  padding: 8px 12px 8px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.tg-console .tg-main-title {
+  overflow: hidden;
+  font: 650 16px/1.3 var(--font-body);
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tg-console .tg-head-title {
+  flex: 1;
+}
+.tg-console .tg-head-actions {
+  flex: none;
+  gap: 2px;
+}
+.tg-console .tg-head-actions .tg-done {
+  margin-left: 6px;
+}
+
+/* Jump to latest: a round button just above the composer. */
+.tg-below.is-round {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  color: var(--text-2);
+}
+.tg-below.is-round:hover {
+  color: var(--text);
+}
+.tg-below:focus-visible {
+  outline: 2px solid var(--focus, var(--accent));
+  outline-offset: 2px;
+}
+
+/* Typing: three dots, or a still "Thinking…" when motion is reduced. */
+.tg-typing-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+.tg-typing-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tg-typing {
+    display: none;
+  }
+  .tg-typing-text {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+    color: var(--text-2);
+    font: 450 14px/22px var(--font-body);
+  }
+}
+
+.tg-console .tg-dock-hint {
+  margin-top: 6px;
+  font-size: 12px;
 }

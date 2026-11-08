@@ -136,7 +136,7 @@ export default function SecuritySettings({ email }: { email: string }) {
 
   return (
     <section id="security" className="settings-group" aria-labelledby="security-title">
-      <h2 id="security-title" className="settings-group-title">Security</h2>
+      <h2 id="security-title" className="settings-group-title">Password</h2>
       <p className="settings-group-note">How you sign in. Email codes and Google always work.</p>
       <div className="settings-card">
         <div className={`settings-row${open ? " is-stacked" : ""}`}>

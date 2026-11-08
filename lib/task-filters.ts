@@ -79,3 +79,32 @@ export function parseTaskFilter(raw: string | null, fallback: TaskFilter): TaskF
     return fallback;
   }
 }
+
+/** Home's view tabs: which part of life a task belongs to. School is Canvas
+ *  work and school-kind tasks; Projects is anything a project planned;
+ *  Personal is the rest. */
+export type TaskView = "all" | "school" | "projects" | "personal";
+
+export const TASK_VIEWS: { id: TaskView; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "school", label: "School" },
+  { id: "projects", label: "Projects" },
+  { id: "personal", label: "Personal" },
+];
+
+type Viewable = { source?: string | null; kind?: string | null; planId?: string | null; pathNodeId?: string | null };
+
+export function taskView(task: Viewable): Exclude<TaskView, "all"> {
+  if (task.planId || task.pathNodeId) return "projects";
+  if (task.source === "canvas" || task.kind === "school") return "school";
+  return "personal";
+}
+
+export function inView(task: Viewable, view: TaskView): boolean {
+  return view === "all" || taskView(task) === view;
+}
+
+/** A saved view tab, or All when it's missing or unknown. */
+export function parseTaskView(raw: string | null): TaskView {
+  return TASK_VIEWS.find((v) => v.id === raw)?.id ?? "all";
+}

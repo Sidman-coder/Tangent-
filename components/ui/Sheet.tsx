@@ -150,7 +150,9 @@ function SheetPanel({
       if (i >= 0) stack.splice(i, 1);
       scrollLocks = Math.max(0, scrollLocks - 1);
       if (scrollLocks === 0) document.body.style.overflow = savedOverflow;
-      if (opener && opener.isConnected) opener.focus();
+      // Hand focus back, unless another sheet opened in this one's place
+      // (task → its chat) and now holds it.
+      if (opener && opener.isConnected && stack.length === 0) opener.focus();
     };
     // initialFocus is read once, on open.
     // eslint-disable-next-line react-hooks/exhaustive-deps

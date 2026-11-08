@@ -60,206 +60,221 @@
   }
 }
 
-/* Home's "Ask anything" bar. */
-.home-ask {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 44px;
-  padding: 10px 14px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface);
-  color: var(--text-2);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.home-ask:hover {
-  border-color: var(--accent);
-  color: var(--text);
-}
-
-.home-ask:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.home-ask-label {
-  flex: 1;
-}
-
-.home-ask-link {
-  font-size: 0.85rem;
-  color: var(--text-2);
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.home-ask-link:hover {
-  color: var(--accent);
-}
-
-.home-ask-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-/* The chat library at /ai. */
+/* Chats at /ai (docs/design/WIREFRAMES.md §4): plain rows on hairlines,
+   newest first. */
 .chat-library {
-  max-width: 760px;
+  display: grid;
+  gap: 12px;
+  max-width: var(--content-max, 760px);
   margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
 }
 
-.chat-library-tools {
+.chat-library-head {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+}
+.chat-library-head .page-header-title {
+  margin: 0;
 }
 
 .chat-library-search {
-  flex: 1 1 220px;
-  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(280px, 100%);
+  min-height: 40px;
   padding: 0 12px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--surface);
-  color: var(--text);
-  font: inherit;
+  color: var(--text-3);
+  transition: border-color var(--dur-fast, 150ms) var(--ease, ease);
 }
-
-.chat-library-tabs {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.chat-library-tab {
-  min-height: 44px;
-  padding: 0 14px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text-2);
-  font: inherit;
-  cursor: pointer;
-}
-
-.chat-library-tab[aria-pressed="true"] {
-  background: var(--accent);
+.chat-library-search:focus-within {
   border-color: var(--accent);
-  color: var(--accent-ink);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+/* Beats the global input:not(…):not(…):not(…) box (app/globals.css); the
+   label draws the box here. */
+.chat-library .chat-library-search input[type="search"][name],
+.chat-library .chat-library-search input[type="search"][name]:focus {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--text);
+  font: 450 15px/1.3 var(--font-body);
+}
+.chat-library-search input::placeholder {
+  color: var(--text-3);
+}
+
+.chat-library-panel {
+  min-height: 120px;
+}
+.chat-library-panel .ui-empty {
+  padding-block: 40px;
 }
 
 .chat-library-list {
-  list-style: none;
   margin: 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  list-style: none;
 }
 
-.chat-library-row {
-  display: flex;
-  align-items: stretch;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface);
+.chat-library-row + .chat-library-row {
+  border-top: 1px solid var(--line);
 }
 
+.chat-library-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Mark · title · preview · time on one line on a wide screen. */
 .chat-library-open {
+  display: grid;
+  grid-template-columns: 20px minmax(0, max-content) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
   flex: 1;
   min-width: 0;
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  padding: 12px 14px;
+  min-height: 52px;
+  padding: 8px 8px 8px 6px;
   border: 0;
+  border-radius: 10px;
   background: transparent;
   color: var(--text);
   font: inherit;
   text-align: left;
   text-decoration: none;
   cursor: pointer;
-  border-radius: 12px;
+  transition: background var(--dur-fast, 150ms) var(--ease, ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .chat-library-open:hover {
+    background: var(--elev-1, var(--surface));
+  }
+}
+.chat-library-open:focus-visible {
+  outline: 2px solid var(--focus, var(--accent));
+  outline-offset: -2px;
 }
 
-.chat-library-open:focus-visible,
-.chat-library-delete:focus-visible,
-.chat-library-tab:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+.chat-library-mark {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  color: var(--text-2);
 }
 
 .chat-library-dot {
-  flex: none;
   width: 10px;
   height: 10px;
-  margin-top: 6px;
   border-radius: 50%;
-  background: var(--chat-dot, var(--series-neutral));
+  background: var(--chat-dot, var(--accent));
 }
-
-.chat-library-text {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+.chat-library-dot.is-ring {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--chat-dot, var(--accent));
 }
 
 .chat-library-title {
-  font-weight: 600;
-}
-
-.chat-library-meta,
-.chat-library-preview {
-  font-size: 0.85rem;
-  color: var(--text-2);
+  max-width: 34ch;
   overflow: hidden;
+  font: 600 15px/1.35 var(--font-body);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.chat-library-preview {
+  overflow: hidden;
+  color: var(--text-2);
+  font: 450 14px/1.35 var(--font-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-library-flag {
+  color: var(--text-3);
+}
+
+.chat-library-when {
+  color: var(--text-3);
+  font: 500 13px/1 var(--font-body);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Delete shows on hover or focus where there's a mouse; always on touch. */
 .chat-library-delete {
   flex: none;
-  min-width: 44px;
-  border: 0;
-  background: transparent;
-  color: var(--text-2);
-  cursor: pointer;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
+  color: var(--text-3);
+}
+@media (hover: hover) and (pointer: fine) {
+  .chat-library-delete {
+    opacity: 0;
+    transition: opacity var(--dur-fast, 150ms) var(--ease, ease);
+  }
+  .chat-library-item:hover .chat-library-delete,
+  .chat-library-item:focus-within .chat-library-delete,
+  .chat-library-delete[aria-expanded="true"] {
+    opacity: 1;
+  }
+  .chat-library-delete:hover {
+    color: var(--danger-text);
+  }
 }
 
-.chat-library-delete:hover {
-  color: var(--red);
+.chat-library-confirm {
+  padding: 0 0 12px 32px;
 }
 
-.chat-library-empty {
-  color: var(--text-2);
-  padding: 24px 0;
-  text-align: center;
+.chat-library-error {
+  margin: 0 0 8px;
+  color: var(--danger-text);
+  font: 500 13px/1.4 var(--font-body);
+}
+.chat-library-confirm .chat-library-error {
+  margin: 6px 0 0;
 }
 
-.chat-library-delete.is-confirm {
-  padding: 0 12px;
-  font: inherit;
-  font-size: 0.85rem;
-  color: var(--red);
+/* Phone: search under the title; title and time on the first line, the
+   preview under it. */
+@media (max-width: 767px) {
+  .chat-library-search {
+    width: 100%;
+  }
+  .chat-library-open {
+    grid-template-columns: 20px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "mark title when"
+      ". preview preview";
+    row-gap: 2px;
+    column-gap: 10px;
+    min-height: 60px;
+  }
+  .chat-library-mark { grid-area: mark; }
+  .chat-library-title { grid-area: title; max-width: none; }
+  .chat-library-preview { grid-area: preview; }
+  .chat-library-when { grid-area: when; }
+  .chat-library-confirm {
+    padding-left: 0;
+  }
 }
 
-/* 44px targets in the sheet's header. */
-.chat-sheet .tg-main-head .tg-icon-btn,
+/* The sheet header's Done: a 44px tap target around the small button. */
 .chat-sheet .tg-main-head .tg-done {
-  min-width: 44px;
-  min-height: 44px;
+  min-height: 36px;
 }

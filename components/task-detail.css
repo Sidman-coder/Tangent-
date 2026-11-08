@@ -1,62 +1,30 @@
-/* A task, centred (components/TaskDetail.tsx) — Google Calendar's event card
-   in Tangent's materials: a solid card (it's content), glass controls. */
+/* A task (components/TaskDetail.tsx), in the shared Sheet: a centred card on
+   a laptop, a bottom sheet on a phone. Mark done sits in the sheet footer. */
 
-.td-scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 420;
-  display: grid;
-  place-items: center;
-  padding: 16px;
-  background: rgb(14 13 20 / 0.28);
+.ui-sheet--modal.td-sheet {
+  width: min(480px, 100%);
 }
 
-.td-card {
-  position: relative;
-  width: min(460px, 100%);
-  max-height: min(640px, calc(100dvh - 32px));
-  overflow-y: auto;
-  border: 1px solid var(--line);
-  border-radius: 22px;
-  background: var(--surface);
-  box-shadow: 0 30px 80px -24px rgb(14 13 20 / 0.45), 0 2px 6px rgb(14 13 20 / 0.06);
-  outline: none;
-}
-
+/* Ask and Remove, beside the Sheet's floating close button. */
 .td-toolbar {
   position: sticky;
-  top: 0;
-  z-index: 1;
+  z-index: 2;
+  top: var(--s-2);
   display: flex;
   justify-content: flex-end;
-  gap: 6px;
-  padding: 12px 12px 0;
+  gap: 2px;
+  margin: var(--s-2) 0 0;
+  padding-right: 2px;
 }
 
-.td-icon {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 999px;
-  color: var(--text-2);
-  cursor: pointer;
-}
-
-.td-icon:disabled {
-  opacity: 0.5;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .td-icon:hover {
-    color: var(--text);
-  }
+.td-sheet .ui-sheet-footer .ui-button {
+  min-width: 140px;
 }
 
 .td-body {
   display: grid;
   gap: 18px;
-  padding: 4px 24px 22px;
+  padding: 4px 24px 24px;
 }
 
 .td-head {
@@ -76,7 +44,7 @@
 .td-head h2 {
   margin: 0;
   color: var(--text);
-  font: 700 22px/1.25 var(--font-display);
+  font: 700 22px/1.25 var(--font-body);
   letter-spacing: -0.02em;
 }
 
@@ -232,47 +200,6 @@
   color: var(--accent);
   font: 550 14px/1.4 var(--font-body);
   text-decoration: none;
-}
-
-.td-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding-top: 4px;
-}
-
-.td-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 38px;
-  padding: 0 16px;
-  border-radius: 999px;
-  font: 600 13.5px/1 var(--font-body);
-  cursor: pointer;
-  transition: transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
-}
-
-
-
-.td-primary:active {
-  transform: scale(0.97);
-}
-
-.td-primary.is-done {
-  background: rgb(from var(--highlight) r g b / 0.9);
-}
-
-@media (max-width: 720px) {
-  .td-scrim {
-    align-items: end;
-    padding: 0;
-  }
-  .td-card {
-    width: 100%;
-    border-radius: 22px 22px 0 0;
-    padding-bottom: env(safe-area-inset-bottom);
-  }
 }
 
 .td-planning {

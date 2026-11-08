@@ -59,7 +59,7 @@ export default function YourDataSection() {
 
   return (
     <section id="your-data" className="settings-group" aria-labelledby="your-data-title">
-      <h2 id="your-data-title" className="settings-group-title">Your data</h2>
+      <h2 id="your-data-title" className="settings-group-title">What&apos;s stored</h2>
       <p className="settings-group-note">What Tangent keeps, why, and who helps it run. It&apos;s yours: take a copy any time.</p>
       <div className="settings-card">
         <div className="settings-row is-stacked">

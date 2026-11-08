@@ -349,10 +349,13 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
                     </ol>
                   </div>
                 ) : mode === "plan" ? (
-                  <span className="tg-typing" role="status" aria-label="Tangent is typing">
-                    <span />
-                    <span />
-                    <span />
+                  <span className="tg-typing-wrap" role="status">
+                    <span className="tg-typing" aria-hidden="true">
+                      <span />
+                      <span />
+                      <span />
+                    </span>
+                    <span className="tg-typing-text">Thinking…</span>
                   </span>
                 ) : (
                   <ol className="tg-steps">
@@ -368,10 +371,23 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
       </div>
 
       {below && (
-        <button type="button" className="tg-below" onClick={scrollDown}>
-          <ArrowDown size={14} strokeWidth={2} aria-hidden="true" />
-          {below === "reply" ? "This reply continues below" : "Jump to latest"}
-        </button>
+        below === "reply" ? (
+          <button type="button" className="tg-below" onClick={scrollDown}>
+            <ArrowDown size={14} strokeWidth={2} aria-hidden="true" />
+            This reply continues below
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="tg-below is-round"
+            onClick={scrollDown}
+            aria-label="Jump to latest"
+            data-tooltip="Jump to latest"
+            data-tooltip-side="top"
+          >
+            <ArrowDown size={18} strokeWidth={1.75} aria-hidden="true" />
+          </button>
+        )
       )}
     </div>
   );

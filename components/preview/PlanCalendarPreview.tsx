@@ -13,6 +13,12 @@ const weekdayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const monthLabel = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
 const dateLabel = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "short", day: "numeric", timeZone: "UTC" });
 
+/** "Mon, Nov 9 · 4:00 PM" → "4:00 PM"; the list already shows the day. */
+const timeOnly = (when: string) => {
+  const at = when.indexOf(" · ");
+  return at < 0 ? "" : when.slice(at + 3);
+};
+
 type Props = { ops: ChangeSet["ops"]; tasks: Task[]; plans: Plan[]; weekStart: WeekStart; today: string };
 
 export default function PlanCalendarPreview({ ops, tasks, plans, weekStart, today }: Props) {
@@ -27,6 +33,17 @@ export default function PlanCalendarPreview({ ops, tasks, plans, weekStart, toda
   const month = monthOf(day);
   const week = day ? startOfPreviewWeek(day, weekStart) : "";
   const grid = useMemo(() => month && day && mode === "month" ? buildMonthGrid(month, weekStart, items, today) : [], [month, day, mode, weekStart, items, today]);
+  // Phone: under the month, the new steps day by day, so the titles read
+  // without tapping each dot.
+  const dayList = useMemo(() => {
+    if (!month) return [];
+    const byDay = new Map<string, typeof items>();
+    for (const item of items) {
+      if (item.kind !== "new" || item.date.slice(0, 7) !== month.slice(0, 7)) continue;
+      byDay.set(item.date, [...(byDay.get(item.date) ?? []), item]);
+    }
+    return Array.from(byDay.entries()).sort(([a], [b]) => a.localeCompare(b));
+  }, [items, month]);
   const weeks = useMemo(() => week && mode === "week" ? previewWeeks(ops, tasks, plans, { date: week, weekStart }) : [], [week, mode, ops, tasks, plans, weekStart]);
 
   useEffect(() => {
@@ -84,6 +101,26 @@ export default function PlanCalendarPreview({ ops, tasks, plans, weekStart, toda
             </div>
           ))}
         </div>
+      )}
+      {mode === "month" && dayList.length > 0 && (
+        <ol className="plan-day-list" aria-label={`New steps in ${monthLabel.format(new Date(month))}`}>
+          {dayList.map(([date, list]) => (
+            <li key={date} className="plan-day-list-day">
+              <p className="plan-day-list-date">{dateLabel.format(new Date(date))}</p>
+              <ul>
+                {list.map((item) => {
+                  const time = timeOnly(item.when);
+                  return (
+                    <li key={item.key} className="plan-day-list-item" style={{ "--step-color": item.color ?? "var(--accent)" } as React.CSSProperties}>
+                      <span className="plan-day-list-title">{item.title}</span>
+                      <span className="plan-day-list-meta">{[time, item.label].filter(Boolean).join(" · ") || "New step"}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </li>
+          ))}
+        </ol>
       )}
       <dialog ref={dialog} className="plan-day-sheet" aria-labelledby={headingId} onClose={() => setSheetDate(null)} onKeyDown={(event) => event.stopPropagation()}>
         {sheetDate && <>

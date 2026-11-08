@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { m, useReducedMotion } from "motion/react";
 import type { Task } from "@/lib/types";
+import { ChevronDown } from "lucide-react";
 import TaskTitle from "@/components/ui/TaskTitle";
 import { isCanvasCleared } from "@/lib/canvas-clear";
 import { canDragTask, dropTarget, minutesToTime, nudge, overlapAt } from "@/lib/calendar-drag";
@@ -24,6 +25,7 @@ const LONG_PRESS_MS = 400;
 const DRAG_THRESHOLD_PX = 5;
 const TOUCH_SLOP_PX = 8;
 const EDGE_SCROLL_PX = 40;
+const DUE_KEY = "tangent-cal-due-open";
 
 type Gesture = {
   task: Task;
@@ -53,6 +55,8 @@ type Props = {
   /** Dropped on a new day or time. Without it, blocks don't drag. */
   onMoveTask?: (task: Task, ymd: string, time: string) => void;
   toYMD: (d: Date) => string;
+  /** The hour the grid opens on (school start, or 7 AM). */
+  startHour?: number;
 };
 
 function minutesOf(time: string): number {
@@ -104,7 +108,7 @@ function lanes(tasks: Task[]): { task: Task; lane: number; of: number }[] {
   return placed;
 }
 
-export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpenDay, onOpenTask, labelFor, onAddAt, onMoveTask, toYMD }: Props) {
+export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpenDay, onOpenTask, labelFor, onAddAt, onMoveTask, toYMD, startHour = 7 }: Props) {
   const reduced = useReducedMotion() ?? false;
   const scrollRef = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(() => new Date());
@@ -112,6 +116,20 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
   const suppressClick = useRef(false);
   const [ghost, setGhost] = useState<{ taskId: string; ymd: string; minutes: number; color: string } | null>(null);
   const dayKeys = days.map(toYMD);
+  // The Due row folds to a count per day; the choice is remembered.
+  const [dueOpen, setDueOpen] = useState(true);
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(DUE_KEY) === "0") setDueOpen(false);
+    } catch {}
+  }, []);
+  const toggleDue = () =>
+    setDueOpen((open) => {
+      try {
+        window.localStorage.setItem(DUE_KEY, open ? "0" : "1");
+      } catch {}
+      return !open;
+    });
 
   const place = (g: Gesture) => {
     const first = scrollRef.current?.querySelector<HTMLElement>(".wk-col");
@@ -252,17 +270,15 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
     return () => clearInterval(id);
   }, []);
 
-  // Open on the part of the day that matters: an hour before now, or the
-  // morning when viewing another week.
+  // Open at the start of the school day (or 7 AM), a little above it so the
+  // hour's label shows.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const hasToday = days.some((d) => toYMD(d) === todayYmd);
-    const hour = hasToday ? Math.max(START_HOUR, new Date().getHours() - 1) : 8;
-    el.scrollTop = (hour - START_HOUR) * HOUR_PX;
-    // Only when the week changes, not on every task edit.
+    el.scrollTop = Math.max(0, (startHour - START_HOUR) * HOUR_PX - 16);
+    // Only when the days change, not on every task edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toYMD(days[0])]);
+  }, [toYMD(days[0]), days.length, startHour]);
 
   const hasDue = days.some((d) => tasksForDay(toYMD(d)).some(isDue));
   const hours = useMemo(() => Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i), []);
@@ -271,7 +287,7 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
   const overlap = ghost ? overlapAt(tasksForDay(ghost.ymd).filter((t) => !isDue(t)), ghost.taskId, ghost.minutes, BLOCK_MIN) : null;
 
   return (
-    <div className={`wk${dragging ? " is-dragging" : ""}`}>
+    <div className={`wk${dragging ? " is-dragging" : ""}`} style={{ "--wk-days": days.length } as React.CSSProperties}>
       <div className="wk-head">
         <span className="wk-gutter" aria-hidden="true" />
         {days.map((d) => {
@@ -289,14 +305,22 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
       {/* Due dates (Canvas, 11:59 PM) aren't times anything happens: like an
           all-day row, they sit above the grid instead of at its very bottom. */}
       {hasDue && (
-        <div className="wk-due">
-          <span className="wk-gutter wk-due-label">Due</span>
+        <div className={`wk-due${dueOpen ? "" : " is-folded"}`}>
+          <button type="button" className="wk-gutter wk-due-label" onClick={toggleDue} aria-expanded={dueOpen} aria-label={dueOpen ? "Fold due dates" : "Show due dates"}>
+            Due
+            <ChevronDown size={12} strokeWidth={2} aria-hidden="true" className="wk-due-chevron" />
+          </button>
           {days.map((d) => {
             const ymd = toYMD(d);
             const due = tasksForDay(ymd).filter(isDue);
             return (
               <div key={ymd} className="wk-due-col">
-                {due.map((t) => (
+                {!dueOpen && due.length > 0 && (
+                  <button type="button" className="wk-due-count" onClick={() => onOpenDay(ymd)}>
+                    {due.length} due
+                  </button>
+                )}
+                {dueOpen && due.map((t) => (
                   <button
                     key={t.id}
                     type="button"

@@ -1,16 +1,14 @@
 "use client";
 
-// Home's general chat: an "Ask anything" bar that opens Ask Tangent over the
-// day. Links land here too: /?ask=1 (Cmd-K or AddFlow handed over words),
-// /?chat=<id> (a general chat from the library), /?taskChat=<id>.
+// Home's general chat sheet. Nothing shows until a link opens it: /?ask=1
+// (the composer or Cmd-K handed over a question), /?chat=<id> (a general chat
+// from the library), /?taskChat=<id>.
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Library, MessageSquareText } from "lucide-react";
 import ChatSheet from "./ChatSheet";
 import { openTaskChat } from "./TaskChatSheet";
-import { takeAsk } from "@/lib/ask-handoff";
+import { ASK_EVENT, takeAsk } from "@/lib/ask-handoff";
 import "./chat-sheet.css";
 
 export default function HomeChat() {
@@ -36,6 +34,18 @@ export default function HomeChat() {
     router.replace("/", { scroll: false });
   }, [router]);
 
+  // Asked from this page (the composer or Cmd-K): open in place.
+  useEffect(() => {
+    const onAsk = (event: Event) => {
+      event.preventDefault();
+      setOpenId(null);
+      setAskOnOpen(takeAsk("ai"));
+      setOpen(true);
+    };
+    window.addEventListener(ASK_EVENT, onAsk);
+    return () => window.removeEventListener(ASK_EVENT, onAsk);
+  }, []);
+
   const close = () => {
     setOpen(false);
     setOpenId(null);
@@ -43,17 +53,6 @@ export default function HomeChat() {
   };
 
   return (
-    <>
-      <div className="home-ask-row">
-        <button type="button" className="home-ask" onClick={() => setOpen(true)} aria-haspopup="dialog">
-          <MessageSquareText size={18} aria-hidden="true" />
-          <span className="home-ask-label">Ask Tangent anything…</span>
-        </button>
-        <Link className="home-ask-link" href="/ai" aria-label="All chats">
-          <Library size={18} aria-hidden="true" />
-        </Link>
-      </div>
-      <ChatSheet open={open} scope={{ type: "general" }} openId={openId} askOnOpen={askOnOpen} label="Ask Tangent" onClose={close} />
-    </>
+    <ChatSheet open={open} scope={{ type: "general" }} openId={openId} askOnOpen={askOnOpen} label="Ask Tangent" onClose={close} />
   );
 }

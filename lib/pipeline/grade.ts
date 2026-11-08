@@ -260,8 +260,34 @@ export const Round2FileSchema = z.strictObject({
       expect: z.enum(ROUTE_KINDS),
     })
   ),
+  /** add_task captures whose clean_title should read as a short list item. */
+  titles: z.array(
+    z.strictObject({
+      id: z.string().regex(/^[a-z0-9-]+$/),
+      text: z.string().min(1),
+      /** An existing project the title must not repeat. */
+      project: z.string().min(1).optional(),
+    })
+  ),
 });
 export type Round2File = z.infer<typeof Round2FileSchema>;
+
+const TITLE_EMOJI = /(?:[\uD83C-\uDBFF][\uDC00-\uDFFF]|[☀-➿])/;
+const TITLE_LEAD_INS = /^(i |i'|remind me|need to|have to|add |put )/i;
+
+/** A list-ready title: 2 to 6 words, no lead-in, no project name, no emoji, no trailing period. */
+export function gradeTitle(expected: { project?: string }, got: string | null | undefined): Grade {
+  const title = (got ?? "").trim();
+  if (!title) return { pass: false, failures: ["title: none"] };
+  const failures: string[] = [];
+  const words = title.split(/\s+/).length;
+  if (words < 2 || words > 6) failures.push(`title: ${words} words ("${title}")`);
+  if (TITLE_LEAD_INS.test(title)) failures.push(`title: lead-in ("${title}")`);
+  if (expected.project && title.toLowerCase().includes(expected.project.toLowerCase())) failures.push(`title: repeats project ("${title}")`);
+  if (TITLE_EMOJI.test(title)) failures.push(`title: emoji ("${title}")`);
+  if (/\.$/.test(title)) failures.push(`title: trailing period ("${title}")`);
+  return { pass: failures.length === 0, failures };
+}
 
 export function gradeKind(expected: z.infer<typeof KIND>, got: string | null | undefined): Grade {
   return got === expected ? { pass: true, failures: [] } : { pass: false, failures: [`kind: expected ${expected}, got ${got ?? "nothing"}`] };

@@ -41,8 +41,7 @@
   font-weight: 600;
 }
 .settings-sidenav-link:focus-visible,
-.settings-list-link:focus-visible,
-.settings-back:focus-visible {
+.settings-list-link:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -90,18 +89,21 @@
   color: var(--text-3);
 }
 
-.settings-back {
+/* Phone: the sections as underline tabs at the top of each page. */
+.settings-tabs {
   display: none;
-  align-items: center;
-  gap: 2px;
-  align-self: flex-start;
-  min-height: 44px;
-  margin: -8px 0 -12px -6px;
-  padding: 0 8px 0 2px;
-  color: var(--accent);
-  font-size: 15px;
-  font-weight: 500;
+}
+.settings-tabs.ui-tabs--underline {
+  gap: 20px;
+  margin-top: -4px;
+}
+.settings-tabs .ui-tab {
+  flex: none;
   text-decoration: none;
+}
+.settings-tabs .ui-tab[aria-current="page"] {
+  color: var(--text);
+  font-weight: 600;
 }
 
 .settings-section-footer {
@@ -207,8 +209,8 @@
   .settings-sidenav {
     display: none;
   }
-  .settings-back {
-    display: inline-flex;
+  .settings-tabs {
+    display: flex;
   }
   .settings-page .ui-button--sm {
     min-height: 44px;

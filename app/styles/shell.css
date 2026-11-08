@@ -542,10 +542,6 @@
 }
 .app-fab:active { transform: scale(0.96); background: var(--accent-hover); }
 .app-fab:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
-/* On Calendar the view switcher floats at the bottom; the FAB sits above it. */
-.shell:has(.cal-island) .app-fab {
-  bottom: calc(var(--bottom-nav-h) + 22px + 80px + var(--s-3));
-}
 
 /* ── Arriving from the capture home: chrome eases in ─────────────────────── */
 

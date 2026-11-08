@@ -20,7 +20,7 @@ let n = 0;
 const step = (date: string, over: Partial<StatTask> = {}): StatTask => ({ id: `t${n++}`, title: "Step", date, time: "16:00", completed: false, ...over });
 
 void (import("./project-stats") as Promise<typeof import("./project-stats")>).then(
-  ({ assignmentWeight, bottleneckStep, courseGroups, dueThisWeek, nextDeadline, nextSteps, paceOf, progressOf, recommendedPace, schoolFocus, workloadByWeek }) => {
+  ({ assignmentWeight, bottleneckStep, courseGroups, dueThisWeek, nextDeadline, nextSteps, paceOf, progressOf, recommendedPace, schoolFocus, stepsByWeek, weekdayDate, weekSessions, workloadByWeek }) => {
     test("progress counts done over total and copes with nothing", () => {
       assert.deepEqual(progressOf([step(TODAY, { completed: true }), step(TODAY), step(TODAY)]), { done: 1, total: 3, percent: 33 });
       assert.deepEqual(progressOf([]), { done: 0, total: 0, percent: 0 });
@@ -70,6 +70,38 @@ void (import("./project-stats") as Promise<typeof import("./project-stats")>).th
 
     test("an overdue last step leaves one day, not a negative", () => {
       assert.equal(paceOf([step("2026-10-20")], TODAY).daysLeft, 1);
+    });
+
+    test("needed steps are whole numbers, rounded up (the 1.5135… regression)", () => {
+      // 8 steps, last one 36 days out: 37 days left, 8 × 7 / 37 = 1.5135… → 2.
+      const eight = Array.from({ length: 8 }, (_, i) => step(i === 7 ? "2026-12-09" : "2026-11-20"));
+      const pace = paceOf(eight, TODAY);
+      assert.equal(pace.daysLeft, 37);
+      assert.equal(pace.neededThisWeek, 2);
+      assert.ok(Number.isInteger(pace.neededThisWeek));
+      // An exact whole number stays put.
+      assert.equal(paceOf([step("2026-11-05"), step("2026-11-09"), step("2026-11-12"), step("2026-11-16")], TODAY).neededThisWeek, 2);
+    });
+
+    test("a project whose first step is ahead and nothing done hasn't started", () => {
+      assert.equal(paceOf([step("2026-11-17"), step("2026-11-20")], TODAY).startsOn, "2026-11-17");
+      assert.equal(paceOf([step("2026-11-17"), step("2026-11-01", { completed: true })], TODAY).startsOn, null);
+      assert.equal(paceOf([step(TODAY), step("2026-11-20")], TODAY).startsOn, null);
+      assert.equal(weekdayDate("2026-11-17"), "Tue, Nov 17");
+    });
+
+    test("open steps group into this week (with overdue), next week and later", () => {
+      const tasks = [step("2026-10-30"), step("2026-11-08"), step("2026-11-09"), step("2026-11-15"), step("2026-11-16"), step(""), step("2026-11-04", { completed: true })];
+      const weeks = stepsByWeek(tasks, TODAY);
+      assert.deepEqual(weeks.thisWeek.map((t) => t.date), ["2026-10-30", "2026-11-08"]);
+      assert.deepEqual(weeks.nextWeek.map((t) => t.date), ["2026-11-09", "2026-11-15"]);
+      assert.deepEqual(weeks.later.map((t) => t.date), ["2026-11-16", ""]);
+    });
+
+    test("week dots: one per step this week, done, missed or planned", () => {
+      const tasks = [step("2026-11-02", { completed: true }), step("2026-11-02"), step("2026-11-05"), step("2026-11-10"), step("2026-10-28", { completed: true })];
+      assert.deepEqual(weekSessions(tasks, TODAY), ["done", "missed", "planned"]);
+      assert.deepEqual(weekSessions([], TODAY), []);
     });
 
     test("next steps are the soonest three, undated last", () => {

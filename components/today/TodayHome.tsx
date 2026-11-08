@@ -1,19 +1,19 @@
 "use client";
 
-// Home. One input, one small slider, then the day in three sections, so a
-// student opening the app knows in three seconds what they must do today.
+// Home. A greeting with the day at a glance, one composer, view tabs, then
+// the day in sections, so a student opening the app knows in three seconds
+// what they must do today.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as m from "motion/react-m";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import ActionReceipt from "@/components/ActionReceipt";
-import AddFlow, { type AddDestination } from "@/components/add/AddFlow";
+import AddFlow from "@/components/add/AddFlow";
 import HomeChat from "@/components/chat/HomeChat";
 import FreshStart from "@/components/dashboard/FreshStart";
 import { CanvasCard, StartingIntentCard } from "@/components/dashboard/HomeCards";
 import QuestionsInbox from "@/components/dashboard/QuestionsInbox";
 import "@/components/dashboard/today-home.css";
-import { useTaskFilter } from "@/components/TaskFilterChips";
 import { useQuestionSets } from "@/hooks/useQuestionSets";
 import { useGrillQueue } from "@/hooks/useGrillQueue";
 import { withoutClearedCanvas } from "@/lib/canvas-clear";
@@ -23,17 +23,15 @@ import { todayQueue } from "@/lib/grill-queue";
 import { riseIn, staggerChildren } from "@/lib/motion";
 import { prefsOf } from "@/lib/personalize";
 import { isOnboardingSchoolTask } from "@/lib/school-block";
-import { NO_TIME_LABEL, applyTaskFilter, type TaskFilter } from "@/lib/task-filters";
+import { inView } from "@/lib/task-filters";
 import { localNow, wallClockNow } from "@/lib/time";
 import { readReplanDay, readSetAside, writeReplanDay, writeSetAside } from "@/lib/today-local";
 import { glanceLine, groupTodayTasks } from "@/lib/today-sections";
 import { MAX_AUTO_MOVES, canMoveStep, freshStartSteps, missedSteps, type SmallerStep } from "@/lib/today-steps";
-import { tracksCompletion } from "@/lib/urgency";
 import type { ActionRecord, Task } from "@/lib/types";
-import TodayFilter from "./TodayFilter";
-import TodayRow from "./TodayRow";
+import TodayFilter, { useTodayView } from "./TodayFilter";
+import TodayNudge from "./TodayNudge";
 import TodaySections from "./TodaySections";
-import TodaySlider from "./TodaySlider";
 import { useSetupLeft } from "./useSetupLeft";
 import "./today.css";
 
@@ -41,7 +39,6 @@ type Override = Partial<Pick<Task, "completed" | "date" | "time" | "overdueDismi
 type Receipt = { id: number; label: string; onUndo?: () => void };
 
 const RECEIPT_MS = 6000;
-const TODAY_AS_USUAL: TaskFilter = { day: "today", time: "any" };
 
 function greetingFor(hour: number): string {
   if (hour >= 5 && hour < 12) return "Good morning.";
@@ -83,7 +80,7 @@ export default function TodayHome() {
 
   const { sets: questionSets, reload: reloadQuestions } = useQuestionSets();
   const { items: grillItems, reload: reloadGrill } = useGrillQueue();
-  const { left: setupLeft, hide: hideSetup } = useSetupLeft();
+  const { left: setupLeft } = useSetupLeft();
   const questionTaskIds = useMemo(() => new Set(questionSets.map((q) => q.taskId)), [questionSets]);
 
   const [overrides, setOverrides] = useState<Record<string, Override>>({});
@@ -91,7 +88,6 @@ export default function TodayHome() {
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [recentActions, setRecentActions] = useState<ActionRecord[]>([]);
   const [greeting, setGreeting] = useState("");
-  const [destination, setDestination] = useState<AddDestination | null>(null);
   const [questionsOpen, setQuestionsOpen] = useState(false);
   const receiptSeq = useRef(0);
 
@@ -166,22 +162,20 @@ export default function TodayHome() {
   const onToday = useMemo(() => doable.filter((t) => !setAside.has(t.id)), [doable, setAside]);
   const groups = useMemo(() => groupTodayTasks(onToday, instant, tz), [instant, onToday, tz]);
 
-  const [filter, setFilter] = useTaskFilter("today", TODAY_AS_USUAL);
-  const filterActive = filter.day !== "today" || filter.time !== "any";
-  const filtered = useMemo(() => {
-    const open = doable
-      .filter((t) => !t.completed && (!t.date || t.date >= today || tracksCompletion(t)))
-      .sort((a, b) => (!a.date !== !b.date ? (a.date ? -1 : 1) : a.date.localeCompare(b.date) || a.time.localeCompare(b.time)));
-    return applyTaskFilter(open, (t) => t, filter, today, state?.user.weekStart ?? 0);
-  }, [doable, filter, today, state?.user.weekStart]);
+  // The view tabs narrow the list; the greeting and glance still speak for the whole day.
+  const [view, setView] = useTodayView();
+  const shownGroups = useMemo(
+    () => (view === "all" ? groups : groupTodayTasks(onToday.filter((t) => inView(t, view)), instant, tz)),
+    [groups, instant, onToday, tz, view]
+  );
 
   const displayName = state?.user.displayName?.trim() ?? "";
-  const leftToday = groups.mustDo.length + groups.todaysPlan.length;
+  const leftToday = groups.counts.left;
   const doneToday = useMemo(() => tasks.filter((t) => t.date === today && t.completed && !isOnboardingSchoolTask(t)).length, [tasks, today]);
   useEffect(() => {
     const hour = localNow(tz).hour;
-    setGreeting(displayName ? getGreeting(displayName, hour, { left: leftToday, urgent: groups.mustDo.length, done: doneToday }) : greetingFor(hour));
-  }, [displayName, tz, leftToday, doneToday, groups.mustDo.length]);
+    setGreeting(displayName ? getGreeting(displayName, hour, { left: leftToday, urgent: groups.counts.must, done: doneToday }) : greetingFor(hour));
+  }, [displayName, tz, leftToday, doneToday, groups.counts.must]);
 
   const showReceipt = useCallback((label: string, onUndo?: () => void) => {
     setReceipt({
@@ -238,6 +232,12 @@ export default function TodayHome() {
   const onDone = (task: Task) => {
     void setCompleted(task, true).then((ok) =>
       ok ? showReceipt(`Completed “${task.title}”`, () => void setCompleted(task, false)) : showReceipt("That didn't save. Try again.")
+    );
+  };
+
+  const onUndone = (task: Task) => {
+    void setCompleted(task, false).then((ok) =>
+      ok ? showReceipt(`Marked “${task.title}” not done`, () => void setCompleted(task, true)) : showReceipt("That didn't save. Try again.")
     );
   };
 
@@ -347,8 +347,9 @@ export default function TodayHome() {
   const startingIntent = prefs.startingIntent;
   const showCanvasCard = Boolean(user?.email && prefs.helpFocus && !startingIntent);
   const glance = useMemo(() => glanceLine(groups, instant, tz), [groups, instant, tz]);
+  const dateLabel = now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 
-  const rowActions = { onDone, onNotToday, onSplit, onDismiss };
+  const rowActions = { onDone, onUndone, onNotToday, onSplit, onDismiss };
 
   if (loading && !state) {
     return (
@@ -363,44 +364,25 @@ export default function TodayHome() {
   return (
     <m.div className="today-page today-v2" variants={staggerChildren} initial="hidden" animate="show">
       <m.header variants={riseIn} className="today-head">
-        <h1 className="today-greeting">{greeting || " "}</h1>
-        <TodayFilter filter={filter} onChange={setFilter} active={filterActive} />
+        <h1 className="today-greeting">{greeting || " "}</h1>
+        <p className="today-sub" suppressHydrationWarning>
+          <span>{dateLabel}</span>
+          {glance && <span aria-hidden="true"> · </span>}
+          {glance && <span>{glance}</span>}
+        </p>
       </m.header>
 
       {error && <p className="today-inline-error" role="status">Your schedule could not refresh. Showing the latest available view.</p>}
 
       <m.div variants={riseIn} className="today-add" data-primary-composer>
-        <AddFlow
-          variant="hero"
-          placeholder="Type or say anything…"
-          hideDest
-          destination={destination}
-          onDestinationClear={() => setDestination(null)}
-          onDestinationUsed={() => setDestination(null)}
-        />
+        <AddFlow variant="hero" placeholder="Type or say anything…" />
       </m.div>
 
-      <m.div variants={riseIn} className="today-ask">
-        <HomeChat />
-      </m.div>
-
-      <m.div variants={riseIn}>
-        <TodaySlider
-          glance={glance}
-          onGlance={() => {
-            const target = document.getElementById("must-do");
-            target?.scrollIntoView({ block: "start" });
-            target?.focus({ preventScroll: true });
-          }}
-          plans={plans}
-          destination={destination}
-          onDestination={setDestination}
-          questionCount={questionCount}
-          onAnswer={() => setQuestionsOpen(true)}
-          setupLeft={setupLeft}
-          onHideSetup={hideSetup}
-        />
-      </m.div>
+      {!questionsOpen && (
+        <m.div variants={riseIn}>
+          <TodayNudge today={today} questionCount={questionCount} setupLeft={setupLeft} onAnswer={() => setQuestionsOpen(true)} />
+        </m.div>
+      )}
 
       {questionsOpen && (
         <QuestionsInbox
@@ -416,44 +398,21 @@ export default function TodayHome() {
         />
       )}
 
-      <m.div variants={riseIn}>
-        {filterActive ? (
-          <section className="today-section" aria-label="Filtered to-do">
-            {filtered.main.length + filtered.noTime.length === 0 ? (
-              <p className="today-section-empty">Nothing here. Try another filter.</p>
-            ) : (
-              <div className="today-rows">
-                {[...filtered.main, ...filtered.noTime].map((task, i) => (
-                  <div key={task.id} className="today-rows-item">
-                    {i === filtered.main.length && <p className="task-filter-group">{NO_TIME_LABEL}</p>}
-                    <TodayRow
-                      task={task}
-                      plans={plans}
-                      now={instant}
-                      today={today}
-                      timezone={tz}
-                      busy={busyTaskId === task.id}
-                      hasQuestions={questionTaskIds.has(task.id)}
-                      {...rowActions}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        ) : (
+      <m.div variants={riseIn} className="today-list">
+        <TodayFilter view={view} onChange={setView} controls="today-list" />
+        <div id="today-list" role="tabpanel" aria-labelledby={`today-view-tab-${view}`}>
           <TodaySections
-            groups={groups}
+            groups={shownGroups}
             plans={plans}
             now={instant}
             today={today}
             timezone={tz}
             busyTaskId={busyTaskId}
             questionTaskIds={questionTaskIds}
-            planFooter={clearedSteps.length > 0 ? <FreshStart count={clearedSteps.length} backlog={missedCount > MAX_AUTO_MOVES} onConfirm={freshStart} /> : null}
+            freshStart={view === "all" && clearedSteps.length > 0 ? <FreshStart count={clearedSteps.length} backlog={missedCount > MAX_AUTO_MOVES} onConfirm={freshStart} /> : null}
             {...rowActions}
           />
-        )}
+        </div>
       </m.div>
 
       {startingIntent && (
@@ -487,6 +446,8 @@ export default function TodayHome() {
           </div>
         </m.details>
       )}
+
+      <HomeChat />
 
       {receipt && (
         <div key={receipt.id} className="today-receipt" role="status">

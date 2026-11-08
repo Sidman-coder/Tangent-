@@ -88,7 +88,7 @@ export default function WhatTangentKnows() {
 
   return (
     <section id="what-tangent-knows" className="settings-group" aria-labelledby="knows-title">
-      <h2 id="knows-title" className="settings-group-title">What Tangent knows</h2>
+      <h2 id="knows-title" className="settings-group-title">Facts it plans with</h2>
       <p className="settings-group-note">
         Everything Tangent has learned about you. It uses this for every plan, question and answer. Forget anything that&apos;s wrong.
         {v2 && (

@@ -26,7 +26,7 @@ type Resolve = (specifier: string, context: unknown, next: (s: string, c: unknow
 
 type Mod = typeof import("./grade");
 
-void (import("./grade") as Promise<Mod>).then(({ Round2FileSchema, gradeKind, gradeSlots, gradeRoute, routeKindOf }) => {
+void (import("./grade") as Promise<Mod>).then(({ Round2FileSchema, gradeKind, gradeSlots, gradeRoute, gradeTitle, routeKindOf }) => {
   const raw = JSON.parse(readFileSync(new URL("./fixtures/round2.json", import.meta.url), "utf8")) as unknown;
 
   test("round2 fixtures are valid, unique and cover every kind and route", () => {
@@ -34,7 +34,8 @@ void (import("./grade") as Promise<Mod>).then(({ Round2FileSchema, gradeKind, gr
     assert.ok(file.kinds.length >= 20, "20+ task-kind cases");
     assert.ok(file.slots.length >= 15, "15+ slot cases");
     assert.ok(file.routes.length >= 15, "15+ routing cases");
-    const ids = [...file.kinds, ...file.slots, ...file.routes].map((c) => c.id);
+    assert.ok(file.titles.length >= 10, "10+ title cases");
+    const ids = [...file.kinds, ...file.slots, ...file.routes, ...file.titles].map((c) => c.id);
     assert.equal(new Set(ids).size, ids.length, "ids are unique");
     for (const k of ["fixed", "reminder", "flexible"]) assert.ok(file.kinds.some((c) => c.kind === k), k);
     for (const r of ["question", "task", "plan"]) assert.ok(file.routes.filter((c) => c.expect === r).length >= 4, r);
@@ -51,5 +52,12 @@ void (import("./grade") as Promise<Mod>).then(({ Round2FileSchema, gradeKind, gr
     assert.equal(routeKindOf({ route: "clarify", intent: "clarify" }), null);
     assert.equal(gradeRoute("task", { route: "draft", intent: "add_task" }).pass, true);
     assert.equal(gradeRoute("plan", { route: "clarify", intent: "clarify" }).pass, false);
+    assert.equal(gradeTitle({ project: "Robotics" }, "Finish the budget spreadsheet").pass, true);
+    assert.deepEqual(gradeTitle({}, null).failures, ["title: none"]);
+    assert.equal(gradeTitle({ project: "Robotics" }, "Robotics budget spreadsheet").pass, false);
+    assert.equal(gradeTitle({}, "Remind me to email the teacher").pass, false);
+    assert.equal(gradeTitle({}, "Read chapters 4 and 5.").pass, false);
+    assert.equal(gradeTitle({}, "Study").pass, false);
+    assert.equal(gradeTitle({}, "Read the whole first half of the novel tonight").pass, false);
   });
 });

@@ -162,8 +162,7 @@
   white-space: nowrap;
 }
 
-.projects-finished h2,
-.project-steps h2 {
+.projects-finished h2 {
   margin: 0 0 10px;
   color: var(--text-3);
   font: 600 12px/1 var(--font-body);
@@ -268,40 +267,6 @@
   margin-bottom: 10px;
 }
 
-.project-foot {
-  padding-top: 8px;
-}
-
-.project-delete,
-.project-delete-no {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--text-3);
-  font: 500 13px/1 var(--font-body);
-  cursor: pointer;
-}
-
-.project-delete-confirm {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  color: var(--text);
-  font: 500 13.5px/1.45 var(--font-body);
-}
-
-.project-delete-yes {
-  height: 32px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--red);
-  color: var(--red-ink);
-  font: 600 13px/1 var(--font-body);
-  cursor: pointer;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .project-card,
   .project-progress span {
@@ -337,30 +302,6 @@
   .project-side {
     order: -1;
   }
-}
-
-.project-ask-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  min-height: 44px;
-  padding: 0 16px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-md, 12px);
-  background: var(--surface);
-  color: var(--text);
-  font: 550 14px/1 var(--font-body);
-  text-decoration: none;
-  cursor: pointer;
-}
-.project-ask-link:hover {
-  background: var(--elev-1);
-}
-.project-ask-link:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 
 /* Starting a project is the Add box (components/add), which is its own
@@ -445,4 +386,202 @@
 /* Phone: room under the last project for the mic button (app/styles/shell.css). */
 @media (max-width: 767px) {
   .projects-page { padding-bottom: 88px; }
+}
+
+/* ── Project page (docs/design/WIREFRAMES.md §3) ───────────────────────── */
+
+.project-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 36px;
+}
+
+.project-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* How much is done, as a small pie in the project's color. */
+.project-pie {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  background: conic-gradient(var(--project-color, var(--accent)) var(--pie, 0%), var(--elev-2) 0);
+  box-shadow: inset 0 0 0 1.5px rgb(from var(--project-color, var(--accent)) r g b / 0.35);
+}
+
+.project-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  /* Two lines at most; the full brief is in How this was planned. */
+  max-height: calc(2 * 28px + 6px);
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+}
+.project-chips li {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.project-planned summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  color: var(--text-2);
+  font: 550 13px/1 var(--font-body);
+  cursor: pointer;
+  list-style: none;
+}
+.project-planned summary::-webkit-details-marker {
+  display: none;
+}
+.project-planned summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--dur-fast, 150ms) var(--ease, ease);
+}
+.project-planned[open] summary::before {
+  transform: rotate(45deg);
+}
+@media (hover: hover) and (pointer: fine) {
+  .project-planned summary:hover {
+    color: var(--text);
+  }
+}
+.project-planned summary:focus-visible {
+  border-radius: 6px;
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.project-planned-card {
+  display: grid;
+  gap: 6px;
+  max-width: 640px;
+  margin-top: 6px;
+}
+.project-planned-card h3 {
+  margin: 0;
+  color: var(--text-3);
+  font: 600 12px/1.3 var(--font-body);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.project-planned-card h3:not(:first-child) {
+  margin-top: 8px;
+}
+.project-planned-card ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text);
+  font: 450 14px/1.45 var(--font-body);
+}
+.project-planned-card li span {
+  color: var(--text-2);
+}
+.project-planned-note {
+  margin: 6px 0 0;
+  color: var(--text-3);
+  font: 450 13px/1.4 var(--font-body);
+}
+
+/* Steps on the left; progress, extras and settings on the right. Phone and
+   tablet: progress first, then the steps, then the rest, Delete last. */
+.project-layout--steps {
+  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-areas:
+    "main pace"
+    "main extras"
+    "main settings"
+    "main .";
+  grid-template-rows: auto auto auto 1fr;
+  gap: 16px 40px;
+}
+.project-layout--steps .project-main {
+  grid-area: main;
+  gap: 20px;
+  max-width: 640px;
+}
+.project-pace-card {
+  grid-area: pace;
+}
+.project-extras {
+  grid-area: extras;
+  min-width: 0;
+}
+.project-settings {
+  display: grid;
+  gap: 16px;
+  grid-area: settings;
+  min-width: 0;
+  padding-top: 4px;
+}
+.project-settings .project-delete {
+  justify-self: start;
+}
+.project-delete-error {
+  margin: 6px 0 0;
+  color: var(--danger-text);
+  font: 500 13px/1.4 var(--font-body);
+}
+@media (max-width: 980px) {
+  .project-layout--steps {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "pace" "main" "extras" "settings";
+    grid-template-rows: none;
+    gap: 24px;
+  }
+  .project-layout--steps .project-main {
+    max-width: none;
+  }
+}
+
+.project-steps {
+  display: grid;
+  gap: 2px;
+}
+.project-page .project-group-header {
+  min-height: 32px;
+  padding: 0;
+  color: var(--text-3);
+  font: 600 12px/1.3 var(--font-body);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.project-page .project-group-header .ui-group-header-toggle {
+  min-height: 32px;
+}
+
+.project-page .project-add {
+  justify-self: start;
+  margin-left: -8px;
+}
+
+/* Phone: room under Delete for the mic button (app/styles/shell.css). */
+@media (max-width: 767px) {
+  .project-page { padding-bottom: 88px; }
+}
+
+/* Steps beside a side column need more room than one reading column. */
+.content-inner:has(.project-layout) {
+  max-width: 1000px;
+}
+.project-page .project-group-header .ui-group-header-toggle {
+  text-transform: inherit;
+  letter-spacing: inherit;
 }

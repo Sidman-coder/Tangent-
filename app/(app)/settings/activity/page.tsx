@@ -14,7 +14,7 @@ export default function ActivitySettingsPage() {
       {v2 ? (
         <AiActivity />
       ) : (
-        <SettingsSection title="AI activity">
+        <SettingsSection title="Change history">
           <SettingRow label="Not on for your account yet" help="When it is, every change Tangent makes shows up here with an undo." />
         </SettingsSection>
       )}

@@ -1,7 +1,8 @@
 "use client";
 
 // The stats panel, for a project or for School. All the math is in
-// lib/project-stats.ts; this only lays it out.
+// lib/project-stats.ts; this only lays it out. The project page shows its own
+// progress and pace card, so it asks for the extras only (Focus, Workload).
 
 import { useMemo, useState } from "react";
 import { AlertCircle, CheckCircle2, Clock } from "lucide-react";
@@ -17,6 +18,7 @@ import {
   recommendedPace,
   schoolFocus,
   shortDate,
+  weekdayDate,
   workloadByWeek,
   type PaceStatus,
   type StatTask,
@@ -45,7 +47,18 @@ function duration(minutes: number): string {
   return `${hours} hr${hours === 1 ? "" : "s"}`;
 }
 
-export default function ProjectStats({ tasks, today, school = false }: { tasks: StatTask[]; today: string; school?: boolean }) {
+export default function ProjectStats({
+  tasks,
+  today,
+  school = false,
+  extrasOnly = false,
+}: {
+  tasks: StatTask[];
+  today: string;
+  school?: boolean;
+  /** Leave out Progress, Pace and Coming up (the project page has its own). */
+  extrasOnly?: boolean;
+}) {
   const weekStart = useAppState().state?.user.weekStart ?? 0;
   const stats = useMemo(() => {
     const open = tasks.filter((t) => !t.completed);
@@ -65,6 +78,8 @@ export default function ProjectStats({ tasks, today, school = false }: { tasks: 
 
   return (
     <section className="pstats" aria-label={school ? "School stats" : "Project stats"}>
+      {!extrasOnly && (
+      <>
       <div className="pstats-block">
         <div className="pstats-row">
           <h3>Progress</h3>
@@ -81,18 +96,23 @@ export default function ProjectStats({ tasks, today, school = false }: { tasks: 
       <div className="pstats-block">
         <div className="pstats-row">
           <h3>Pace</h3>
-          <span className={`pstats-chip ${PACE_CLASS[pace.status]}`}>
-            <PaceIcon size={13} aria-hidden="true" />
-            {pace.status}
-          </span>
+          {/* Not started yet: neither on track nor behind. */}
+          {!pace.startsOn && (
+            <span className={`pstats-chip ${PACE_CLASS[pace.status]}`}>
+              <PaceIcon size={13} aria-hidden="true" />
+              {pace.status}
+            </span>
+          )}
         </div>
         <p className="pstats-note">
           {pace.remaining === 0
             ? "Nothing left to do."
-            : `${plural(pace.neededThisWeek, "step")} needed this week. ${pace.approximate ? "About " : ""}${pace.doneLast7} done in the last 7 days.`}
+            : pace.startsOn
+              ? `Starts ${weekdayDate(pace.startsOn)}.`
+              : `${plural(pace.neededThisWeek, "step")} needed this week. ${pace.approximate ? "About " : ""}${pace.doneLast7} done in the last 7 days.`}
           {pace.overdue > 0 && ` ${pace.overdue} overdue.`}
         </p>
-        <p className="pstats-sentence">{sentence}</p>
+        {!pace.startsOn && <p className="pstats-sentence">{sentence}</p>}
       </div>
 
       {(deadline || next.length > 0) && (
@@ -116,6 +136,8 @@ export default function ProjectStats({ tasks, today, school = false }: { tasks: 
             </ol>
           )}
         </div>
+      )}
+      </>
       )}
 
       {focus && (

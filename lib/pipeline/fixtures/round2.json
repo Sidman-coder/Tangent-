@@ -368,5 +368,60 @@
       "text": "study plan for the AP Bio exam in May",
       "expect": "plan"
     }
+  ],
+  "titles": [
+    {
+      "id": "title-remind-me-to-email-my-chem-teacher-about",
+      "text": "remind me to email my chem teacher about the retake tomorrow"
+    },
+    {
+      "id": "title-i-need-to-finish-the-robotics-budget-spr",
+      "text": "i need to finish the robotics budget spreadsheet by friday",
+      "project": "Robotics"
+    },
+    {
+      "id": "title-add-a-task-to-practice-the-debate-openin",
+      "text": "add a task to practice the debate opening speech tonight",
+      "project": "Debate"
+    },
+    {
+      "id": "title-i-have-to-read-chapters-4-and-5-of-gatsb",
+      "text": "I have to read chapters 4 and 5 of gatsby before thursday"
+    },
+    {
+      "id": "title-can-you-add-study-flashcards-for-the-bio",
+      "text": "can you add study flashcards for the bio quiz on monday"
+    },
+    {
+      "id": "title-put-down-that-i-need-to-fill-out-the-faf",
+      "text": "put down that I need to fill out the FAFSA this weekend"
+    },
+    {
+      "id": "title-remind-me-to-bring-my-calculator-to-the",
+      "text": "remind me to bring my calculator to the AP calc test"
+    },
+    {
+      "id": "title-add-renew-my-library-books-to-my-list",
+      "text": "add renew my library books to my list"
+    },
+    {
+      "id": "title-i-should-probably-start-the-history-essa",
+      "text": "I should probably start the history essay outline today.",
+      "project": "History essay"
+    },
+    {
+      "id": "title-add-to-my-college-apps-project-ask-ms-ri",
+      "text": "add to my college apps project: ask Ms. Rivera for a recommendation letter",
+      "project": "College apps"
+    },
+    {
+      "id": "title-oh-and-i-ve-got-to-sign-up-for-the-sat-b",
+      "text": "oh and I've got to sign up for the SAT before the deadline 🙃"
+    },
+    {
+      "id": "title-remind-me-to-pay-the-club-dues",
+      "text": "remind me to pay the club dues",
+      "project": "Robotics"
+    }
   ]
 }

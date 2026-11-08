@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Button from "@/components/ui/Button";
 import { getGreeting } from "@/lib/greetings";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { localNow } from "@/lib/time";
@@ -51,7 +52,7 @@ import {
   Clock,
   Flag,
   Hammer,
-  Library,
+  MessagesSquare,
   ListChecks,
   Repeat,
   Sun,
@@ -175,6 +176,9 @@ export type ChatPanelProps = {
  * a project's chat panel all render this; each scope keeps one continuing
  * thread (lib/chat/scope.ts), and general chats continue within two hours.
  */
+/** Header links styled like IconButton (docs/design/TANGENT-STYLE.md §8). */
+const HEAD_ICON = "ui-icon-button ui-icon-button--ghost ui-icon-button--md";
+
 export default function ChatPanel({ scope, openId = null, askOnOpen = null, onDone }: ChatPanelProps) {
   const router = useRouter();
   const { state, refresh } = useAppState();
@@ -1003,7 +1007,7 @@ export default function ChatPanel({ scope, openId = null, askOnOpen = null, onDo
       onTranscript={acceptTranscript}
       onVoiceError={setErr}
       mode={chatMode}
-      placeholder={v2 ? "Ask, plan, or add something…" : undefined}
+      placeholder="Ask, plan, or add something…"
       onStop={stop}
     />
   );
@@ -1019,17 +1023,17 @@ export default function ChatPanel({ scope, openId = null, askOnOpen = null, onDo
           </div>
           <div className="tg-head-actions">
             {v2 && (
-              <Link href="/settings/activity" className="tg-icon-btn" aria-label="AI activity" title="AI activity">
-                <Clock size={17} strokeWidth={1.8} aria-hidden="true" />
+              <Link href="/settings/activity" className={HEAD_ICON} aria-label="AI activity" data-tooltip="AI activity">
+                <Clock size={18} strokeWidth={1.75} aria-hidden="true" />
               </Link>
             )}
-            <Link href="/ai" className="tg-icon-btn" aria-label="All chats" title="All chats">
-              <Library size={17} strokeWidth={1.8} aria-hidden="true" />
+            <Link href="/ai" className={HEAD_ICON} aria-label="All chats" data-tooltip="All chats">
+              <MessagesSquare size={18} strokeWidth={1.75} aria-hidden="true" />
             </Link>
             {onDone && (
-              <button type="button" className="tg-btn tg-done" onClick={onDone}>
+              <Button variant="secondary" size="sm" className="tg-done" onClick={onDone}>
                 Done
-              </button>
+              </Button>
             )}
           </div>
         </header>
@@ -1192,9 +1196,7 @@ export default function ChatPanel({ scope, openId = null, askOnOpen = null, onDo
               {attachedChip}
               {composer}
               <p className="tg-dock-hint">
-                {v2
-                  ? "Ask a question, add something, or start a project. You’ll see a preview before anything is added."
-                  : <>Think things through with Tangent here. Whatever you decide, it can add for you, and you&apos;ll always see what changed.</>}
+                {v2 ? "You’ll see a preview before anything changes." : "You’ll always see what changed, and you can undo it."}
               </p>
             </div>
           </>

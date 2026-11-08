@@ -10,7 +10,7 @@ import { useUserTimezone } from "@/components/AppStateProvider";
 import { localNow } from "@/lib/time";
 import AddFlow from "@/components/add/AddFlow";
 import { generateQuestions } from "@/lib/questions-client";
-import { putAsk } from "@/lib/ask-handoff";
+import { askOnHome } from "@/lib/ask-handoff";
 import { putNewPathTitle } from "@/lib/path-handoff";
 import ActionReceipt from "@/components/ActionReceipt";
 import Toast, { ToastPortal } from "@/components/ui/Toast";
@@ -185,9 +185,10 @@ export default function CommandPalette() {
         // tell what was meant; the Tangents page and the AI page's card take it.
         if (data.action === "route_tangent" || data.action === "clarify") {
           setToast(null);
-          if (data.action === "route_tangent") putNewPathTitle(trimmed);
-          else putAsk("ai", trimmed);
-          router.push(data.action === "route_tangent" ? "/tangents?new=1" : "/?ask=1");
+          if (data.action === "route_tangent") {
+            putNewPathTitle(trimmed);
+            router.push("/tangents?new=1");
+          } else askOnHome(trimmed, router.push);
           return;
         }
         if (data.action === "preview" && data.changeSet && data.preview) {

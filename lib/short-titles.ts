@@ -5,7 +5,7 @@
 // new label. Titles that are already short are used as they are.
 
 import { useEffect, useState } from "react";
-import { splitCourse } from "./course";
+import { cleanTaskTitle } from "./clean-title";
 import type { Task } from "./types";
 
 const KEY = "tangent-short-titles-v2";
@@ -33,7 +33,7 @@ function writeCache(cache: Cache) {
 
 /** The title calendars show before (or without) a label: course stripped. */
 export function baseTitle(task: Pick<Task, "title" | "source">): string {
-  return splitCourse(task).title;
+  return cleanTaskTitle(task.title, { course: task.source === "canvas" ? "drop" : "keep" }).title;
 }
 
 function cacheKey(task: Pick<Task, "id" | "title">): string {

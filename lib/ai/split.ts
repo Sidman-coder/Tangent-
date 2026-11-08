@@ -32,7 +32,7 @@ const SYSTEM = `A high school student looked at one step and said it's too big. 
 
 - Each step is one concrete thing with a visible result, doable in 10 to 30 minutes.
 - The first step is the easiest way in. Together the steps should move the work forward; they don't have to finish it.
-- Each title reads like a to-do they'd write, starts with a verb and names the real thing ("Read pages 40-45 and mark the two main causes"). Under 80 characters.
+- Each title reads like a to-do they'd write: 2 to 6 words, starts with a verb, names the real thing ("Read pages 40-45"). Never repeat the project name, no emoji, no trailing period.
 - Use only what the task says. Never invent details, names, page numbers or deadlines. If you don't know the specifics, keep the title general.
 - No filler: no "get organized", "take a break", "stay focused" or "review your notes".
 - minutes is your realistic estimate for that step.`;
