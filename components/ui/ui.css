@@ -1534,3 +1534,13 @@ span.ui-task-check {
     transform: none;
   }
 }
+
+/* Round 4 §3.6: a step's outcome, "You'll have: …". Hidden until the row is
+   hovered, focused or expanded on pointer screens; always shown on touch. */
+.ui-task-outcome { margin: 2px 0 0; color: var(--text-2); font-size: 12.5px; line-height: 1.4; overflow-wrap: anywhere; }
+@media (hover: hover) {
+  .ui-task-row .ui-task-outcome { display: none; }
+  .ui-task-row:hover .ui-task-outcome,
+  .ui-task-row:focus-within .ui-task-outcome,
+  .ui-task-row.is-expanded .ui-task-outcome { display: block; }
+}

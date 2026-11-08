@@ -14,7 +14,7 @@
 // (app/api/voice-browser/route.ts) call the exact same downstream logic —
 // Next.js route files may only export HTTP method handlers, so this can't
 // live in route.ts itself.
-import { NO_TIMEFRAME_NOTE, answeredEndDate, withoutFrequencies } from "@/lib/timeframe";
+import { answeredEndDate, withoutFrequencies } from "@/lib/timeframe";
 import { NextResponse } from "next/server";
 import { inferCalendarGroup, parseCalendarGroup } from "@/lib/calendars";
 import { addTasksToPlan } from "@/lib/store";
@@ -23,8 +23,9 @@ import { addDaysYMD, localNow, promptDateContext, singleRelativeDay, ymdFromPart
 import type { Plan, Task, TaskKind } from "@/lib/types";
 import { needsAgentTools, runVoiceAgentToolLoop } from "@/lib/voice-agent-tools";
 import { extractStructuredJson } from "@/lib/anthropic-json";
-import { generatePlan, isClearPlanRequest, planDates } from "@/lib/ai/plan";
-import { placeNewTask, spreadPlanDates } from "@/lib/spacing";
+import { generatePlan, isClearPlanRequest } from "@/lib/ai/plan";
+import { placeNewTask, spreadPlanDates, studentStepMinutes } from "@/lib/spacing";
+import { ROUND_ONE_COPY, roundDates, roundLine } from "@/lib/rounds";
 import { PACKED_NOTE } from "@/lib/load";
 import { buildStudentContext } from "@/lib/ai/student-context";
 import { briefAssumptions, briefNotes, readBrief } from "@/lib/ai/plan-brief";
@@ -892,7 +893,6 @@ async function handleVoiceTextInner(
       // FIX 2 — Extract date range from user text
       let startDate = today;
       let endDate = addDaysYMD(today, 7);
-      let rangeGiven = false;
 
       const monthMap: Record<string, number> = {
         january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
@@ -963,12 +963,10 @@ async function handleVoiceTextInner(
       if (foundDates.length >= 2) {
         startDate = ymdFromParts(local.year, foundDates[0].month, foundDates[0].day);
         endDate = ymdFromParts(local.year, foundDates[1].month, foundDates[1].day);
-        rangeGiven = true;
         console.log("[api/voice] Extracted date range from text:", startDate, "to", endDate);
       } else if (foundDates.length === 1) {
         startDate = today;
         endDate = ymdFromParts(local.year, foundDates[0].month, foundDates[0].day);
-        rangeGiven = true;
         console.log("[api/voice] Extracted end date only:", endDate);
       }
 
@@ -991,7 +989,6 @@ async function handleVoiceTextInner(
         if (pattern.test(durationText)) {
           endDate = addDaysYMD(today, days - 1);
           startDate = today;
-          rangeGiven = true;
           console.log("[api/voice] Duration word matched — days:", days, "| endDate:", endDate);
           break;
         }
@@ -1001,7 +998,6 @@ async function handleVoiceTextInner(
       if (answeredEnd) {
         startDate = today;
         endDate = answeredEnd;
-        rangeGiven = true;
       }
       console.log("[api/voice] Final date range:", startDate, "to", endDate);
 
@@ -1012,8 +1008,15 @@ async function handleVoiceTextInner(
       // defaults for the rest) steers the planner and is kept as project notes.
       const brief = readBrief(text, { studentContext: studentPicture, capacityKnown: picture?.capacityKnown });
       const briefText = brief && brief.type !== "single" ? briefNotes(brief) : "";
-      const projectNotes = [opts.projectGoal, briefText].filter(Boolean).join("\n") || undefined;
-      const evenDates = planDates(startDate, endDate);
+      // Round 4 §3.4: plans come in rounds. This round is about a week of 3 to
+      // 7 steps, sized to the step size the student actually finishes; the
+      // next round is planned from how these went.
+      const stepMinutes = await studentStepMinutes().catch(() => null);
+      const goalEnd = endDate;
+      const evenDates = roundDates(startDate, endDate, stepMinutes);
+      endDate = evenDates[evenDates.length - 1] ?? startDate;
+      const projectNotes =
+        [opts.projectGoal, briefText, opts.projectId ? "" : roundLine({ n: 1, startedOn: startDate })].filter(Boolean).join("\n") || undefined;
       // The spacing brain moves sessions off days that are already full and
       // gives each one a real open time (lib/spacing.ts).
       const spaced = await spreadPlanDates(evenDates).catch((e) => {
@@ -1061,8 +1064,9 @@ async function handleVoiceTextInner(
         if (drafting) {
           // Pipeline V2: the same tasks, saved as a draft for the student to confirm.
           const planTitle = resolvePlanTitle(generated.title, text);
-          const assumptions = [`Spread from ${friendlyWhen(startDate, undefined, today)} to ${friendlyWhen(endDate, undefined, today)}`];
-          if (!rangeGiven) assumptions.push(NO_TIMEFRAME_NOTE);
+          const assumptions = opts.projectId ? [] : [ROUND_ONE_COPY];
+          assumptions.push(`Spread from ${friendlyWhen(startDate, undefined, today)} to ${friendlyWhen(endDate, undefined, today)}`);
+          if (goalEnd > endDate) assumptions.push(`Your goal runs to ${friendlyWhen(goalEnd, undefined, today)}; later rounds cover the rest`);
           if (shifted > 0) assumptions.push(`${shifted} session${shifted > 1 ? "s" : ""} moved off days that were already full`);
           // Master fix B4: say the spacing happened even when nothing had to move.
           else if (spaced) assumptions.push("Spaced around your busy days");

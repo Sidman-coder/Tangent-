@@ -13,9 +13,9 @@ import * as m from "motion/react-m";
 import { ArrowRight, CalendarPlus, ListChecks, Route, X } from "lucide-react";
 import Button from "@/components/ui/Button";
 import CanvasConnectGuide from "@/components/CanvasConnectGuide";
-import { OPEN_PALETTE_EVENT, type OpenPaletteDetail } from "@/hooks/useVoiceCapture";
 import { riseIn } from "@/lib/motion";
 import { putNewPathTitle } from "@/lib/path-handoff";
+import { requestHomePlan } from "@/lib/home-intent";
 import { pathsStarterCopy, type Prefs } from "@/lib/personalize";
 import type { Path } from "@/lib/types";
 
@@ -37,11 +37,10 @@ export function StartingIntentCard({ intent, onCleared }: { intent: string; onCl
     void clearStartingIntent().then(onCleared);
   };
 
-  // Prefills capture; the student still reads it and presses send.
+  // Round 4 §3.1: plans it right here in Home's composer (questions first,
+  // each skippable), never a task named after the goal.
   const breakDown = () => {
-    window.dispatchEvent(
-      new CustomEvent<OpenPaletteDetail>(OPEN_PALETTE_EVENT, { detail: { prefill: `Break this into steps: ${intent}` } })
-    );
+    requestHomePlan(intent);
     done();
   };
 
@@ -62,7 +61,7 @@ export function StartingIntentCard({ intent, onCleared }: { intent: string; onCl
       <p className="home-intent-text">“{intent}”</p>
       <div className="home-card-actions">
         <Button variant="secondary" size="sm" onClick={breakDown} icon={<ListChecks size={15} aria-hidden="true" />}>
-          Break it into steps
+          Plan it
         </Button>
         <Button variant="secondary" size="sm" onClick={makePath} icon={<Route size={15} aria-hidden="true" />}>
           Make it a Path

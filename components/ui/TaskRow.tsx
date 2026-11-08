@@ -8,6 +8,7 @@ import type { Task } from "@/lib/types";
 import { formatTime12, isDueOnly } from "@/lib/dates";
 import TaskTitle from "@/components/ui/TaskTitle";
 import { categoryLabel } from "@/lib/task-colors";
+import { outcomeFromNotes } from "@/lib/rounds";
 
 
 type TaskRowProps = {
@@ -55,6 +56,8 @@ export default function TaskRow({
   revealActions = false,
   projectName,
 }: TaskRowProps) {
+  // Round 4 §3.6: "You'll have: …" shows on hover, focus or expand.
+  const outcome = outcomeFromNotes(task.notes);
   const questionDot = hasQuestions ? <span className="task-question-dot" title="Tangent has a question about this" /> : null;
   return (
     <article
@@ -116,6 +119,7 @@ export default function TaskRow({
               </Link>
             )}
           </div>
+          {outcome && !task.completed && <p className="ui-task-outcome">You&apos;ll have: {outcome}</p>}
         </div>
         {actions && <div className="ui-task-actions" data-reveal={revealActions ? "hover" : undefined}>{actions}</div>}
       </div>

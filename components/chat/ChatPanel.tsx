@@ -65,6 +65,7 @@ import PenMark from "@/components/console/PenMark";
 import { formatTime12 } from "@/lib/dates";
 import { tracksCompletion } from "@/lib/urgency";
 import { aiFirstSuggestion, prefsOf, type AiSuggestionKey } from "@/lib/personalize";
+import { sittings } from "@/lib/chat/history";
 import "./console.css";
 
 // Linear-style starter cards: fill the composer, never send on their own.
@@ -1101,6 +1102,7 @@ export default function ChatPanel({ scope, openId = null, askOnOpen = null, onDo
           </div>
         ) : (
           <>
+            {scope.type === "project" && <ThreadHistory turns={turns} />}
             <ChatThread
               turns={turns}
               busy={busy}
@@ -1203,5 +1205,34 @@ export default function ChatPanel({ scope, openId = null, askOnOpen = null, onDo
         )}
       </section>
     </div>
+  );
+}
+
+
+/** Round 4 §3.2: a project's one thread, split into the sittings it was
+ *  written in. Tapping one scrolls the thread to it. */
+function ThreadHistory({ turns }: { turns: Turn[] }) {
+  const list = useMemo(() => sittings(turns), [turns]);
+  if (list.length < 2) return null;
+  const day = (iso: string) =>
+    iso ? new Date(iso).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }) : "Earlier";
+  return (
+    <details className="tg-history">
+      <summary>Earlier conversations ({list.length - 1})</summary>
+      <ol>
+        {list.map((s) => (
+          <li key={s.firstId}>
+            <button
+              type="button"
+              onClick={() => document.getElementById(`turn-${s.firstId}`)?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" })}
+            >
+              <span className="tg-history-day">{day(s.at)}</span>
+              <span className="tg-history-label">{s.label}</span>
+              <span className="tg-history-count">{s.count}</span>
+            </button>
+          </li>
+        ))}
+      </ol>
+    </details>
   );
 }

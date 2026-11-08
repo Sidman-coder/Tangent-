@@ -20,6 +20,7 @@ import { routeCommand } from "../ai/router";
 import type { Intent } from "./changeset";
 import { routeRequest } from "./route-request";
 import { INTENT_SYSTEM } from "./intent-prompt";
+import { isPlanningRequest } from "./planning-intent";
 
 export const ROUTER_INTENTS = [
   "new_plan",
@@ -152,7 +153,18 @@ export function confidenceBucket(c: number | null): "none" | "low" | "mid" | "hi
   return c < MIN_CONFIDENCE ? "low" : c < 0.85 ? "mid" : "high";
 }
 
+/** §3.1: "break down…", "make a plan for…", "help me…", "steps to…", "how do
+ *  I get…" plan, whatever the model or the keyword rule said. */
+const PLANNING_OVERRIDES: readonly RouterIntent[] = ["add_task", "question", "clarify", "change_task", "complete_task"];
+
+function asPlanning(u: Understanding): Understanding {
+  return { ...u, route: "draft", intent: "new_plan", confidence: Math.max(u.confidence ?? 0, MIN_CONFIDENCE), cleanTitle: null, needsQuestions: true };
+}
+
 function fromRules(text: string, tz: string, at: Date | undefined, fallback: Understanding["fallback"]): Understanding {
+  if (isPlanningRequest(text)) {
+    return asPlanning({ via: "rules", route: "draft", intent: null, confidence: null, planMention: null, taskMention: null, cleanTitle: null, needsQuestions: true, fallback });
+  }
   const route = routeRequest(text, tz, at);
   return {
     via: route === "fast" ? "fast" : "rules",
@@ -182,7 +194,7 @@ export async function classifyIntent(text: string, ctx: ClassifyContext): Promis
   const parsed = RouterOutputSchema.safeParse(raw);
   if (!parsed.success) return fromRules(text, ctx.tz, ctx.at, "bad_json");
   const out = parsed.data;
-  return {
+  const understood: Understanding = {
     via: "router",
     route: routeFor(out),
     intent: out.intent,
@@ -192,4 +204,5 @@ export async function classifyIntent(text: string, ctx: ClassifyContext): Promis
     cleanTitle: out.clean_title || null,
     needsQuestions: out.needs_questions,
   };
+  return PLANNING_OVERRIDES.includes(out.intent) && isPlanningRequest(text) ? asPlanning(understood) : understood;
 }

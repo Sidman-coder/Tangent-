@@ -3,6 +3,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { callClaude, messageText, streamClaude, type ClaudeResult } from "@/lib/ai/call";
 import { addDaysYMD, daysBetweenYMD } from "@/lib/time";
 import { inferCalendarGroup } from "@/lib/calendars";
+import { withOutcome } from "@/lib/rounds";
 import type { Tier } from "@/lib/ai/models";
 
 // Two-stage plan generation.
@@ -29,6 +30,9 @@ export type PlanTask = {
   calendarId: "cal_school" | "cal_other";
   notes: string;
   startAction: string;
+  /** Round 4 §3.4: what the student will have when it's done, shown as
+   *  "You'll have: …". Also kept in notes as a YOU'LL HAVE: line. */
+  outcome: string;
   resources: { label: string; url: string }[];
 };
 
@@ -48,6 +52,7 @@ const TASK_SCHEMA = {
     calendarId: { type: "string", enum: CALENDAR_IDS },
     notes: { type: "string" },
     startAction: { type: "string" },
+    outcome: { type: "string" },
     resources: {
       type: "array",
       items: {
@@ -58,7 +63,7 @@ const TASK_SCHEMA = {
       },
     },
   },
-  required: ["title", "time", "calendarId", "notes", "startAction", "resources"],
+  required: ["title", "time", "calendarId", "notes", "startAction", "outcome", "resources"],
   additionalProperties: false,
 } as const;
 
@@ -93,6 +98,7 @@ const TASK_RULES = `Each task:
 - calendarId: cal_school for classes, homework, tests and studying for school; cal_other for everything else (skills, hobbies, extracurriculars, projects, health).
 - notes: ONE sentence saying exactly what to work on and how, specific to the topic. No URLs.
 - startAction: one concrete thing to do in the first 2 minutes, under 20 words, starting with a verb (Watch, Read, Open, Solve, Write, Review, Draft).
+- outcome: the concrete thing the student will have when it's done, under 12 words, a noun phrase with no leading verb ("a list of 10 post ideas", "a first draft of the intro"). It completes "You'll have: …".
 - resources: 0 to 2 links, only when a specific page genuinely helps this session AND you are certain the exact URL exists (well-known sites such as Khan Academy, YouTube, Coursera, MIT OpenCourseWare, Lichess, Codecademy). Otherwise an empty array. Never homepages or search-result URLs.
 Sessions must build on each other; no two alike.`;
 
@@ -198,7 +204,9 @@ export function normalizeTask(raw: unknown, date: string): PlanTask | null {
     .map((r) => ({ label: clip(r.label, 120), url: clip(r.url, 500) }))
     .filter((r) => r.label && isUsefulUrl(r.url))
     .slice(0, 2);
-  return { title, date, time, calendarId, notes: clip(t.notes, 400), startAction: clip(t.startAction, 160), resources };
+  const outcome = clip(t.outcome, 140).replace(/^you'?ll have:?\s*/i, "").replace(/\.$/, "");
+  const notes = withOutcome(clip(t.notes, 400), outcome) ?? "";
+  return { title, date, time, calendarId, notes, startAction: clip(t.startAction, 160), outcome, resources };
 }
 
 // ─── Generation ──────────────────────────────────────────────────────────────

@@ -18,7 +18,8 @@ import {
   recommendedPace,
   schoolFocus,
   shortDate,
-  weekdayDate,
+  hoursLabel,
+  startsLabel,
   workloadByWeek,
   type PaceStatus,
   type StatTask,
@@ -41,11 +42,8 @@ function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
-function duration(minutes: number): string {
-  if (minutes < 60) return `${minutes} min`;
-  const hours = Math.round((minutes / 60) * 10) / 10;
-  return `${hours} hr${hours === 1 ? "" : "s"}`;
-}
+/** Round 4 §3.6: whole or half hours, "about 5 hrs", never "4.8 hrs". */
+const duration = hoursLabel;
 
 export default function ProjectStats({
   tasks,
@@ -108,7 +106,7 @@ export default function ProjectStats({
           {pace.remaining === 0
             ? "Nothing left to do."
             : pace.startsOn
-              ? `Starts ${weekdayDate(pace.startsOn)}.`
+              ? `${startsLabel(pace.startsOn, today)}.`
               : `${plural(pace.neededThisWeek, "step")} needed this week. ${pace.approximate ? "About " : ""}${pace.doneLast7} done in the last 7 days.`}
           {pace.overdue > 0 && ` ${pace.overdue} overdue.`}
         </p>

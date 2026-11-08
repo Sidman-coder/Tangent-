@@ -129,14 +129,14 @@ export async function classifyWithAsk(
 }
 
 /** The label on a preview row. */
-export function commitmentLabel(kind: TaskCommitment): "Appointment" | "Reminder" | "Plan step" {
+export function commitmentLabel(kind: TaskCommitment): "Appointment" | "Reminder" | "Goal step" {
   if (kind === "fixed") return "Appointment";
-  return kind === "reminder" ? "Reminder" : "Plan step";
+  return kind === "reminder" ? "Reminder" : "Goal step";
 }
 
 /** The choices in the task detail's Type selector. */
 export const COMMITMENT_OPTIONS: { value: TaskCommitment; label: string }[] = [
   { value: "fixed", label: "Fixed appointment" },
   { value: "reminder", label: "Reminder" },
-  { value: "flexible", label: "Flexible step" },
+  { value: "flexible", label: "Goal step" },
 ];

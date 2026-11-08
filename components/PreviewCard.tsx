@@ -39,6 +39,10 @@ type Props = {
   /** What the student said and how many questions they already answered, so
    *  "Help Tangent plan better" doesn't ask them again. */
   grill?: { said: string; asked: number };
+  /** Round 4 §3.3: the planning workspace shows the calendar in its own pane. */
+  hideCalendar?: boolean;
+  /** Called with the draft's ops whenever they change (an edit removes or moves one). */
+  onOps?: (ops: ChangeSet["ops"]) => void;
 };
 
 async function post(url: string, body?: unknown, method = "POST"): Promise<{ status: number; data: Record<string, unknown> }> {
@@ -54,7 +58,7 @@ async function post(url: string, body?: unknown, method = "POST"): Promise<{ sta
 const phaseOf = (status: unknown): Phase | null =>
   status === "confirmed" || status === "discarded" || status === "undone" || status === "draft" ? status : null;
 
-export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed, autoFocus = false, className, onSettled, onJustChatting, grill }: Props) {
+export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed, autoFocus = false, className, onSettled, onJustChatting, grill, hideCalendar = false, onOps }: Props) {
   const { state } = useAppState();
   const timezone = useUserTimezone();
   const [cs, setCs] = useState(changeSet);
@@ -74,6 +78,9 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
   const base = `/api/changesets/${encodeURIComponent(cs.id)}`;
   const settledRef = useRef(onSettled);
   settledRef.current = onSettled;
+  const opsRef = useRef(onOps);
+  opsRef.current = onOps;
+  useEffect(() => opsRef.current?.(cs.ops), [cs.ops]);
 
   // A confirmed plan stays put until its "Help Tangent plan better" is through.
   const [grillDone, setGrillDone] = useState(false);
@@ -270,9 +277,9 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
       </p>
       <p className="preview-card-title">{cs.summary}</p>
 
-      {hasCalendar && !editing && <PlanCalendarPreview ops={cs.ops} tasks={state?.tasks ?? []} plans={state?.plans ?? []} weekStart={state?.user.weekStart ?? 0} today={getUserToday(timezone)} />}
+      {hasCalendar && !editing && !hideCalendar && <PlanCalendarPreview ops={cs.ops} tasks={state?.tasks ?? []} plans={state?.plans ?? []} weekStart={state?.user.weekStart ?? 0} today={getUserToday(timezone)} />}
 
-      <ul className="preview-card-lines" hidden={hasCalendar && !editing && cs.ops.every((op) => op.op === "add_task" || op.op === "move_task" || op.op === "create_plan")}>
+      <ul className="preview-card-lines" hidden={hasCalendar && !editing && !hideCalendar && cs.ops.every((op) => op.op === "add_task" || op.op === "move_task" || op.op === "create_plan")}>
         {view.lines.map((line, i) => {
           const op = cs.ops[i];
           // A plan removal shows as its checkbox below, not as a line.

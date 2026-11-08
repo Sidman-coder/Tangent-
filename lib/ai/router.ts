@@ -16,6 +16,7 @@
 // "fast-path-miss" rather than guessing.
 
 import { addDaysYMD, getUserToday, resolveRelativeDate, singleRelativeDay, weekRange, currentInstant } from "@/lib/time";
+import { isPlanningRequest } from "@/lib/pipeline/planning-intent";
 
 export type FastRoute =
   | { op: "complete"; title: string }
@@ -276,6 +277,7 @@ export function quickCapture(text: string, tz: string, at: Date = currentInstant
   const s = text.trim().replace(/\s+/g, " ").replace(/[.!]+$/, "");
   if (!s || s.length > 120 || s.includes("?")) return null;
   if (NOT_A_TODO.test(s) || MULTI_OR_PLAN.test(s)) return null;
+  if (isPlanningRequest(s)) return null;
   // Fixed-wording commands keep their own no-AI routes.
   const routed = routeCommand(s, tz, at);
   if (routed && routed.op !== "add") return null;

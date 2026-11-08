@@ -168,3 +168,17 @@
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* Round 4 §3.3: Skip and Stop as quiet text buttons (still 44px to tap). */
+.tg-clarify-quiet {
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.tg-clarify-quiet:hover:not(:disabled), .tg-clarify-quiet:focus-visible { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+.tg-clarify-quiet:disabled { opacity: 0.5; cursor: default; }

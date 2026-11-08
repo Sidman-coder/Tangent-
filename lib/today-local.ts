@@ -43,3 +43,24 @@ export function writeReplanDay(today: string): void {
     /* storage blocked: it may run again on the next load */
   }
 }
+
+// Round 4 §3.4: how many times each step was put off with Not today, so the
+// second time asks why (one tap). Device-only; losing it just asks later.
+const PUT_OFF_KEY = "tangent-today-put-off";
+
+/** Counts this Not today and returns the step's total so far. */
+export function bumpPutOff(taskId: string): number {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PUT_OFF_KEY) ?? "{}") as Record<string, unknown>;
+    const counts: Record<string, number> = {};
+    for (const [id, n] of Object.entries(saved)) if (typeof n === "number") counts[id] = n;
+    const next = (counts[taskId] ?? 0) + 1;
+    counts[taskId] = next;
+    // Keep the newest 200 steps.
+    const kept = Object.fromEntries(Object.entries(counts).slice(-200));
+    localStorage.setItem(PUT_OFF_KEY, JSON.stringify(kept));
+    return next;
+  } catch {
+    return 1;
+  }
+}

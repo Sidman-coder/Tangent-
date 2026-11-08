@@ -18,6 +18,7 @@ import ChatSheet from "@/components/chat/ChatSheet";
 import { openTaskChat } from "@/components/chat/TaskChatSheet";
 import ColorPicker from "@/components/projects/ColorPicker";
 import ProjectStats from "@/components/projects/ProjectStats";
+import RoundReview from "@/components/projects/RoundReview";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Chip from "@/components/ui/Chip";
@@ -26,7 +27,8 @@ import GroupHeader from "@/components/ui/GroupHeader";
 import ProgressPace from "@/components/ui/ProgressPace";
 import TaskRow from "@/components/ui/TaskRow";
 import { joinProjectNotes, splitProjectNotes, type ProjectNotes } from "@/lib/project-notes";
-import { paceOf, stepsByWeek, weekdayDate, weekSessions, type Pace, type WeekSession } from "@/lib/project-stats";
+import { paceOf, startsLabel, stepsByWeek, weekdayDate, weekSessions, type Pace, type WeekSession } from "@/lib/project-stats";
+import { roundChip } from "@/lib/rounds";
 import { rowPresence, spring } from "@/lib/motion";
 import { planSeriesColor } from "@/lib/task-colors";
 import { getUserToday } from "@/lib/time";
@@ -38,9 +40,9 @@ function plural(n: number, word: string): string {
 }
 
 /** One sentence, whole numbers only (docs/design/TANGENT-STYLE.md §8 Progress / pace). */
-function paceSentence(pace: Pace, week: WeekSession[]): string {
+function paceSentence(pace: Pace, week: WeekSession[], today: string): string {
   if (pace.remaining === 0) return "Every step is done.";
-  if (pace.startsOn) return `Starts ${weekdayDate(pace.startsOn)}.`;
+  if (pace.startsOn) return `${startsLabel(pace.startsOn, today)}.`;
   const doneThisWeek = week.filter((w) => w === "done").length;
   let line: string;
   if (pace.status !== "On track") {
@@ -64,8 +66,10 @@ const MAX_CHIPS = 5;
 function briefChips(notes: ProjectNotes, lastDate: string | null): { key: string; text: string; title?: string }[] {
   const chips: { key: string; text: string; title?: string }[] = [];
   const deadline = notes.known.find((k) => DEADLINE_LABEL.test(k.label));
+  // Round 4 §3.6: a project planned in rounds shows its round, not an end date.
+  if (notes.round) chips.push({ key: "round", text: roundChip(notes.round), title: "Tangent plans the next round from how this one goes" });
   if (deadline) chips.push({ key: "due", text: `Due ${deadline.value}`, title: deadline.label });
-  else if (lastDate) chips.push({ key: "ends", text: `Ends ${weekdayDate(lastDate)}`, title: "Last step" });
+  else if (lastDate && !notes.round) chips.push({ key: "ends", text: `Ends ${weekdayDate(lastDate)}`, title: "Last step" });
   notes.known.forEach((k, i) => {
     if (k === deadline) return;
     // "5" alone says nothing; "5 hours per week" does.
@@ -297,6 +301,7 @@ export default function ProjectView({ id }: { id: string }) {
           </details>
         )}
       </header>
+      {notes.round && <RoundReview projectId={id} stepsKey={`${done.length}/${steps.length}`} onChanged={() => void refresh()} />}
 
       <div className="project-layout project-layout--steps">
         <div className="project-main">
@@ -356,7 +361,7 @@ export default function ProjectView({ id }: { id: string }) {
             done={done.length}
             total={steps.length}
             week={pace.startsOn ? undefined : week}
-            sentence={paceSentence(pace, week)}
+            sentence={paceSentence(pace, week, today)}
           />
         </Card>
 

@@ -14,6 +14,7 @@ import TangentLogo from "@/components/TangentLogo";
 import Button from "@/components/ui/Button";
 import { useAppState } from "@/components/AppStateProvider";
 import { browserTimezone } from "@/lib/time";
+import { requestHomePlan } from "@/lib/home-intent";
 import { AGE_OPTIONS, ageStorageKey } from "@/lib/auth/age";
 import {
   DAY_VIEW_OPTIONS,
@@ -172,6 +173,9 @@ export default function FirstRun({ onComplete }: { onComplete: () => Promise<voi
       const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Couldn't save your setup. Try again.");
       writeStorage(storageKey, null);
+      // Round 4 §3.1: the goal they named starts planning on Home (in its
+      // composer, questions skippable), never a task.
+      if (body.preferences.startingIntent) requestHomePlan(body.preferences.startingIntent, true);
       setLeaving(true);
       await onComplete();
     } catch (e) {

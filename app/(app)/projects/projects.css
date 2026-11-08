@@ -603,3 +603,21 @@
 }
 .projects-paths-link:hover { background: var(--elev-2); }
 .projects-paths-link svg { color: var(--series-teal, var(--accent)); }
+
+/* Round 4 §3.4: the round review card. */
+.round-review {
+  display: grid;
+  gap: 8px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--project-color, var(--accent));
+  border-radius: 14px;
+  background: var(--surface);
+}
+.round-review h2 { margin: 0; font-size: 17px; font-weight: 600; }
+.round-review-eyebrow { margin: 0; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
+.round-review-summary { margin: 0; color: var(--text); line-height: 1.5; }
+.round-review-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.round-review-quiet { padding: 4px 2px; border: 0; background: none; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
+.round-review-quiet:hover, .round-review-quiet:focus-visible { color: var(--text); text-decoration: underline; }
+.round-review-error { flex-basis: 100%; margin: 0; color: var(--danger, var(--text)); font-size: 13px; }

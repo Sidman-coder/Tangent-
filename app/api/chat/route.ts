@@ -118,6 +118,8 @@ export const POST = withUser(async (req: Request) => {
       slotFlow?: unknown;
       /** The slot flow so far, sent back each turn (lib/context/grill.ts SlotTurn). */
       slotTurn?: unknown;
+      /** Round 4 §3.3: "Just talk" in the planning workspace. A reply only; nothing is added. */
+      talk?: unknown;
     };
     const mode: ChatMode = body.mode === "plan" ? "plan" : "calendar";
     const raw = body.messages;
@@ -194,7 +196,7 @@ export const POST = withUser(async (req: Request) => {
     // Flag off: the Plan/Calendar switch decides, as before. Flag on there is
     // one box and no mode, except the Projects chat, which still talks a
     // project through in Plan mode.
-    if (mode === "plan" && (!TANGENT_PIPELINE_V2 || projectId || aboutTask)) {
+    if (body.talk === true || (mode === "plan" && (!TANGENT_PIPELINE_V2 || projectId || aboutTask))) {
       // Asked from inside a project: the talk is about that project.
       const note = [projectId && !aboutTask ? await projectBrief(projectId, threadSummary) : null, aboutTask?.brief].filter(Boolean).join("\n\n");
       if (body.stream !== true) {

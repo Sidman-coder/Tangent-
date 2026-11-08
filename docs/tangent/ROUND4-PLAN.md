@@ -9,7 +9,7 @@ Branch `v3-core-loop`. Spec: `docs/tangent/CONTEXT-ENGINE.md` (copied from Part 
 | 0 Read, audit, plan | Done, approved 2026-11-08 |
 | 1 Bugs, sign-up, access | Done (see Phase 1 log) |
 | 2 Context engine foundation | Done (see Phase 2 log), plus behaviour reading (Phase 2b) |
-| 3 Planning flow | Not started |
+| 3 Planning flow | Done (see Phase 3 log) |
 | 4 Tasks, calendar, Paths | Not started (4.4 Paths pulled forward, done) |
 | 5 Home, notifications, settings, You, mapped | Not started (5.3 Settings layout and 5.4 You, mapped pulled forward, done) |
 | 6 Onboarding | Not started |
@@ -298,3 +298,50 @@ The user asked for two things before Phase 3. First, the context should read how
 
 **Manual step:** run migration 4 in `docs/MANUAL-STEPS.md` (Round 4, Phase 2b).
 
+
+## Phase 3 log: planning flow (2026-11-08)
+
+**3.1 Intent fixes.** `lib/pipeline/planning-intent.ts` reads "break down…", "make a plan/path for…", "help me…", "steps to…" and "how do I get…" as planning, never as a task with that literal title. The onboarding goal is sent with `planRequestFor`, so it always plans. Tests: `lib/pipeline/planning-intent.test.ts` plus new fixtures in `lib/pipeline/fixtures/requests.json`.
+
+**3.2 One chat, in place.**
+- Planning started in the Home composer (a typed or spoken goal, or the onboarding goal) continues in that composer: it opens into the planning workspace (3.3) instead of moving to another page.
+- When the plan is confirmed, the talk that made it is written into the new project's one thread (`lib/chat/seed-thread.ts`), in order: the request, each question and answer, the "Tell me anything" text, and a "Planned round 1" line. A thread that already has messages is left alone. Best effort: a failure only means the thread starts empty.
+- The project's Chat panel shows "Earlier conversations (N)" when the thread spans more than one sitting (3 hours apart, `lib/chat/history.ts`); each entry scrolls to that sitting.
+
+**3.3 Planning workspace** (`components/add/PlanWorkspace.tsx`, `components/add/AddFlow.tsx`).
+- **Opening:** opens when Tangent asks planning questions or drafts a plan (a new project or more than one step). The composer grows in place with Motion `layout` (spring, about 300 ms; no animation with reduced motion), and Today widens to 1200px while it's open.
+- **Left pane:** the conversation so far, the current question card, then "Tell me anything about this: your schedule, what you've already done, what's hard". That text is sent with each request as "More about this: …". The reply box sits under them.
+- **Right pane:** the calendar preview (month by default, plus week). New steps show in the project colour and existing items as grey dots. Below it, "How this plan works" says what round 1 gets you, what the plan is based on (facts used and assumptions), and "When you finish these, tell Tangent how they went and it plans the next round."
+- **Draft card:** in the workspace, the preview card hides its own calendar and lists its lines instead.
+- **Phone (under 768px):** stacked panes behind Chat / Plan tabs.
+- **"Plan it" | "Just talk":** a segmented toggle.
+  - "Just talk" sends `talk: true`, and `/api/chat` answers with `planReply` only, so nothing is added.
+  - A draft or question on screen stays there through a talk reply.
+  - The distress guard still runs first, and its kind reply appears in the conversation.
+- **Calendar popover:** the hover tip shows the full title, date and time, and the note ("why"). `placeTip` moves it sideways to stay inside the pane or viewport, and flips it above the step when there's no room below. Tapping a day still opens the day sheet.
+- **Skip and Stop:** now quiet text buttons, still 44px tall. "Stop planning" is renamed "Stop and plan", because it drafts with what Tangent knows.
+
+**3.4 Rounds** (`lib/rounds.ts`, `app/api/rounds/route.ts`, `components/projects/RoundReview.tsx`).
+- **Storage:** a project planned in rounds has a `Round — N · started YYYY-MM-DD` description line. Each step can have a `YOU'LL HAVE: …` notes line, shown as "You'll have" on the task row and in task detail. No migration.
+- **Review card:** shows on the project once 70% of the round is done or its last step day has passed.
+  - It summarises check-in and "Not today" codes in plain sentences. Codes only; the student's words are never used.
+  - "Plan round N" drafts the next week (3 to 7 steps) as a preview. Confirming it advances the round line.
+  - "Not now" hides the card until the next round.
+- **Event:** `round_reviewed`.
+
+**3.5 Wording.** Flexible/plan steps are now "Goal step" everywhere (`lib/task-kind.ts`, CONTEXT.md glossary: Goal step, Round, Check-in; PROJECT.md).
+
+**3.6 Project page fixes.** `lib/project-stats.ts` no longer calls a new project "Behind". Before the first step's date it says "Starts today / tomorrow / Tue, Nov 10" (regression tests in `lib/project-stats.test.ts`). The round chip replaces the end-date chip. "You'll have:" shows under each step on hover or expand. The workload chart uses whole or half hours ("about 5 hrs", `hoursLabel`).
+
+**Checked in the browser** (signed-out `/dev/app/today` preview, with `/api/chat`, `/api/changesets` and `/api/sessions` mocked so no model calls were made):
+- **Planning flow:** ask → answer → draft at 1440px. The tip stays inside the pane on the last column.
+- **Phone:** Chat / Plan tabs at 390px.
+- **Just talk:** sends `talk: true`, with no capture or clarify.
+- **Close:** returns to the plain composer.
+- **Thread seeding:** confirming writes the expected seven messages to `/api/sessions`.
+
+**Known gaps:**
+- **Undo after advancing a round:** undoing the round-2 preview after Confirm leaves the round line advanced, so the review card won't reappear for that round. Rare, and fixable from the project description.
+- **Onboarding hand-off:** the onboarding goal plans in the Today composer (`/`). If the student opens the big-mic Home first, the goal waits in sessionStorage until they open Today in the same session.
+- **Workspace scope:** the workspace is Home-only. The ⌘K sheet and the Projects starter keep the compact flow, because a two-pane layout doesn't fit a sheet.
+- **Not checked live:** the real model path. Run `npm run eval:pipeline` (paid) to check the planning intent fixtures.

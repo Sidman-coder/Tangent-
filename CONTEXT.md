@@ -43,7 +43,7 @@ A concrete operation TANGENT proposes or performs after understanding a Capture,
 _Avoid_: Suggestion, automation when no operation occurs
 
 **Today**:
-The home screen at `/`, with one capture input and three sections: Must do, Today's plan, and Coming up. Its flexible plan steps support Done, Not today, and Too big.
+The home screen at `/`, with one capture input and three sections: Must do, Today's plan, and Coming up. Its Goal steps support Done, Not today, and Too big.
 _Avoid_: Dashboard, daily brief
 
 **Must do**:
@@ -51,7 +51,7 @@ The first section of Today: fixed-time items for today and anything hard overdue
 _Avoid_: Urgent, priorities
 
 **Today's plan**:
-The second section of Today: today's flexible plan steps, each with Done, Not today, and Too big.
+The second section of Today: today's Goal steps, each with Done, Not today, and Too big.
 _Avoid_: To-do list, schedule
 
 **Coming up**:
@@ -59,15 +59,27 @@ The third section of Today: what is due or planned in the next few days.
 _Avoid_: Upcoming tasks, later
 
 **Task commitment**:
-Whether a task is fixed (a set time), a reminder (a nudge, no time block), or a flexible plan step (Tangent may move it). Product copy and the Round 2 brief call this the task's kind; in code it is `task.commitment`, because the existing task `kind` describes the area of work.
+Whether a task is fixed (a set time), a reminder (a nudge, no time block), or a Goal step (flexible: Tangent may move it). Product copy and the Round 2 brief call this the task's kind; in code it is `task.commitment`, because the existing task `kind` describes the area of work.
 _Avoid_: Task type, category
+
+**Goal step**:
+A flexible step toward one of the student's goals, usually part of a project; Tangent may move it. Shown as "Goal step" in the task's Type and on previews. In code it is `commitment: "flexible"`. Replaces "Plan step" and "Flexible step" (Round 4). A fixed item due today is a **Must-do**.
+_Avoid_: Plan step, flexible step, to-do
+
+**Round**:
+About one week of Goal steps (3 to 7) toward a project's goal. Round 1 starts when the project is planned; at about 70% done, or when its week ends, a round review summarises how it went and proposes the next round, which the student confirms. Stored as a `Round — N · started YYYY-MM-DD` line in the project's description. Each step says what it produces as "You'll have: …".
+_Avoid_: Sprint, phase, milestone
+
+**Check-in**:
+The optional, skippable question after Done: how it went (Nailed it, Okay, Struggled) and how long it took (less, about right, more). Only the codes are logged; the student's own words stay on their step.
+_Avoid_: Survey, rating
 
 **Hard overdue**:
 A missed deadline or fixed commitment. It stays in Must do until it is done or dismissed.
 _Avoid_: Late, failed
 
 **Soft overdue**:
-A missed flexible step. It sits calmly at the bottom of Today's plan until it is done or re-planned, never flagged in red.
+A missed Goal step. It sits calmly at the bottom of Today's plan until it is done or re-planned, never flagged in red.
 _Avoid_: Late, failed, missed task
 
 **Push**:

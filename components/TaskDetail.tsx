@@ -31,16 +31,18 @@ export function openTask(taskId: string) {
 
 /** Tangent's notes come as "GOAL: … FOCUS: … TIME: …"; show them as parts. */
 function noteParts(notes: string): { label: string; text: string }[] | null {
-  const LABELS: Record<string, string> = { GOAL: "Goal", FOCUS: "What to do", TIME: "Time" };
-  const re = /(GOAL|FOCUS|TIME):\s*/g;
+  // Round 4 §3.4 adds "YOU'LL HAVE:" (the step's outcome) and "HOW IT WENT:"
+  // (the student's own check-in words).
+  const LABELS: Record<string, string> = { GOAL: "Goal", FOCUS: "What to do", TIME: "Time", "YOU'LL HAVE": "You'll have", "HOW IT WENT": "How it went" };
+  const re = /(GOAL|FOCUS|TIME|YOU'LL HAVE|HOW IT WENT):\s*/g;
   const hits = Array.from(notes.matchAll(re));
-  if (hits.length < 2) return null;
-  return hits
-    .map((h, i) => ({
-      label: LABELS[h[1]],
-      text: notes.slice((h.index ?? 0) + h[0].length, i + 1 < hits.length ? hits[i + 1].index : undefined).trim(),
-    }))
-    .filter((p) => p.text);
+  const lead = notes.slice(0, hits[0]?.index ?? notes.length).trim();
+  if (hits.length < (lead ? 1 : 2)) return null;
+  const parts = hits.map((h, i) => ({
+    label: LABELS[h[1]],
+    text: notes.slice((h.index ?? 0) + h[0].length, i + 1 < hits.length ? hits[i + 1].index : undefined).trim(),
+  }));
+  return [...(lead ? [{ label: "What to do", text: lead }] : []), ...parts].filter((p) => p.text);
 }
 
 /** Tasks already given steps this session, so a card never asks twice. */

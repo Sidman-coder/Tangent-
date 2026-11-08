@@ -135,3 +135,31 @@ export async function readStepEvents(): Promise<StepEvent[]> {
     return [];
   }
 }
+
+/** Round 4 §3.4: one project's check-in and "Not today" codes since a date,
+ *  for the round review. Codes only, grouped by step. Empty before the
+ *  migration or on any error. */
+export async function readPlanStepCodes(planId: string, sinceYmd: string): Promise<{ taskId: string | null; kind: StepEventKind; code: string }[]> {
+  if (tableMissing || !UUID_RE.test(planId)) return [];
+  try {
+    const { db, userId } = getRequestContext();
+    const { data, error } = await db
+      .from("step_events")
+      .select("task_id, kind, code")
+      .eq("user_id", userId)
+      .eq("plan_id", planId)
+      .in("kind", ["check_in", "not_today"])
+      .gte("created_at", `${sinceYmd}T00:00:00Z`)
+      .not("code", "is", null)
+      .limit(300);
+    if (error) {
+      if (!noteMissing(error)) console.warn("[step-events] could not read project codes:", error.code ?? "unknown");
+      return [];
+    }
+    return (data ?? [])
+      .filter((r: { kind: unknown; code: unknown }) => isStepEventKind(r.kind) && typeof r.code === "string")
+      .map((r: { task_id: string | null; kind: StepEventKind; code: string }) => ({ taskId: r.task_id, kind: r.kind, code: r.code }));
+  } catch {
+    return [];
+  }
+}

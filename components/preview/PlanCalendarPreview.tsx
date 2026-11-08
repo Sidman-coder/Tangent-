@@ -88,7 +88,7 @@ export default function PlanCalendarPreview({ ops, tasks, plans, weekStart, toda
               <button type="button" className="plan-month-day" aria-label={`${dateLabel.format(new Date(cell.date))}, ${cell.newItems.length + cell.newOverflow} new steps, ${cell.existing.length + cell.existingOverflow} existing items`} aria-current={cell.isToday ? "date" : undefined} onClick={() => openDay(cell.date)}>{Number(cell.date.slice(-2))}</button>
               <div className="plan-month-items">
                 {cell.newItems.map((item) => (
-                  <button key={item.key} type="button" className="plan-month-step" style={{ "--step-color": item.color ?? "var(--accent)" } as React.CSSProperties} aria-label={`${item.title}, ${item.when}${item.why ? `. ${item.why}` : ""}`} onClick={() => setSheetDate(cell.date)}>
+                  <button key={item.key} type="button" className="plan-month-step" style={{ "--step-color": item.color ?? "var(--accent)" } as React.CSSProperties} aria-label={`${item.title}, ${item.when}${item.why ? `. ${item.why}` : ""}`} onClick={() => setSheetDate(cell.date)} onPointerEnter={(e) => placeTip(e.currentTarget)} onFocus={(e) => placeTip(e.currentTarget)}>
                     <span className="plan-month-tip" aria-hidden="true"><strong>{item.title}</strong><span>{item.when}</span>{item.label && <span>{item.label}</span>}{item.why && <span>{item.why}</span>}</span>
                   </button>
                 ))}
@@ -139,4 +139,27 @@ export default function PlanCalendarPreview({ ops, tasks, plans, weekStart, toda
       </dialog>
     </div>
   );
+}
+
+/** Round 4 §3.3: keep the hover tip on screen. Shifted sideways when it would
+ *  leave the viewport (or the scrolling pane it sits in), flipped above the
+ *  step when there's no room below. Runs after the tip is shown by :hover. */
+function placeTip(step: HTMLElement) {
+  const tip = step.querySelector<HTMLElement>(".plan-month-tip");
+  if (!tip) return;
+  tip.style.removeProperty("--tip-dx");
+  tip.classList.remove("is-above");
+  requestAnimationFrame(() => {
+    const r = tip.getBoundingClientRect();
+    if (!r.width) return;
+    const pane = step.closest<HTMLElement>(".plan-ws-right, .preview-card") ?? document.documentElement;
+    const box = pane === document.documentElement ? { left: 0, right: window.innerWidth } : pane.getBoundingClientRect();
+    const left = Math.max(box.left, 8);
+    const right = Math.min(box.right, window.innerWidth - 8);
+    let dx = 0;
+    if (r.right > right) dx = right - r.right;
+    if (r.left + dx < left) dx = left - r.left;
+    if (dx) tip.style.setProperty("--tip-dx", `${Math.round(dx)}px`);
+    if (r.bottom > window.innerHeight - 8 && r.top - r.height - step.offsetHeight > 8) tip.classList.add("is-above");
+  });
 }

@@ -18,7 +18,7 @@ TANGENT is three screens:
 
 1. **Capture:** mic and typed input on Today, with a separate capture mode at `/capture`.
 2. **Plan:** 2–3 questions, then small 10–30 minute steps with a short "why", placed around School Blocks, Canvas deadlines, and busy days. Every plan goes through preview, confirm, and undo.
-3. **Today:** the home screen at `/`, with Must do, Today's plan, and Coming up. Flexible steps support Done, Not today, and Too big; missed work can be re-planned or given a Fresh start.
+3. **Today:** the home screen at `/`, with Must do, Today's plan, and Coming up. Goal steps support Done, Not today, and Too big; missed work can be re-planned or given a Fresh start.
 
 **AI surfaces after the v3 build:** AddFlow for adding or planning, and one Ask Tangent chat for questions.
 
@@ -45,7 +45,7 @@ The product is not an AI counselor, therapy product, family surveillance system,
 **v3 build status (2026-11-05, branch `v3-core-loop`, not pushed):** Phases 0–3 and Round 2 (Phases A–G) are built and committed locally. The current branch passes its node tests and a production build. Steps only a person can do, including seven Round 2 migrations, are in [MANUAL-STEPS](../MANUAL-STEPS.md). Nothing below has been run end to end with a signed-in account, a real microphone or real Canvas data; the UI was checked on the `/dev/app/*` sample pages.
 
 - **Today (`/`).** One capture input and three sections. **Must do** holds fixed-time items and hard overdue; **Today's plan** holds today's flexible steps with Done, Not today and Too big; **Coming up** shows the next few days. Hard overdue (a missed deadline) stays until done or dismissed; soft overdue (a missed flexible step) sits at the bottom of Today's plan, calmly, until it is done or re-planned. Past calendar imports never count as overdue. Fresh start and the automatic re-plan on a miss move work forward without penalty.
-- **Task commitment.** Each task is fixed, a reminder, or flexible (`task.commitment`); only flexible steps move. It is inferred on capture and changeable on the task.
+- **Task commitment.** Each task is fixed, a reminder, or a Goal step (`task.commitment: "flexible"`); only Goal steps move. It is inferred on capture and changeable on the task.
 - **Colors.** Project tasks use their project's color; personal tasks and unmatched Canvas tasks have their own consistent colors (`lib/task-colors.ts`), and a project's color is picked from the palette.
 - **Plan preview.** A confirmed-before-saving preview defaults to the month view, starting on the student's chosen week start.
 - **Grill me (sufficiency).** Tangent keeps asking one question at a time until it knows enough to plan (context slots and a sufficiency score), never asks what it already knows, and every question has Skip and Stop. The older template queue in `grill_questions` still feeds Today and Settings.

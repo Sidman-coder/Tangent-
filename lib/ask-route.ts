@@ -8,6 +8,8 @@
 //   goal     → a long-range goal: a Tangent (Path)
 //   do       → saved or acted on (capture, move, complete, plan sessions…)
 
+import { isPlanningRequest } from "./pipeline/planning-intent";
+
 export type AskRoute = "question" | "project" | "goal" | "do";
 
 const QUESTION_START =
@@ -26,6 +28,9 @@ export function routeAsk(text: string): AskRoute {
   const s = text.trim().replace(/\s+/g, " ");
   if (!s) return "do";
   if (CALENDAR_QUESTION.test(s)) return "do";
+  // Round 4 §3.1: "break down…", "help me…", "how do I get…" ask for a plan,
+  // not an answer: plan it (a Tangent when it's long-range).
+  if (isPlanningRequest(s)) return GOAL_CUE.test(s) ? "goal" : "project";
   // A question about a goal or project ("how should I study for…") is still
   // a question: talk it through first.
   if (s.endsWith("?") || QUESTION_START.test(s)) return "question";

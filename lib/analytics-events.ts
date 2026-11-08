@@ -16,6 +16,8 @@ export const PILOT_EVENTS = [
   "task_done",
   "not_today",
   "too_big",
+  "step_check_in",
+  "round_reviewed",
   "fresh_start",
   "auto_replan",
   "grill_answered",

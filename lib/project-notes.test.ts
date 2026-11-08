@@ -33,8 +33,8 @@ void (import("./project-notes") as Promise<Notes>).then(({ splitProjectNotes, jo
   });
 
   test("a plain goal has no brief", () => {
-    assert.deepEqual(splitProjectNotes("Learn to juggle"), { goal: "Learn to juggle", known: [], assumed: [], briefLines: [] });
-    assert.deepEqual(splitProjectNotes(""), { goal: "", known: [], assumed: [], briefLines: [] });
+    assert.deepEqual(splitProjectNotes("Learn to juggle"), { goal: "Learn to juggle", known: [], assumed: [], briefLines: [], round: null });
+    assert.deepEqual(splitProjectNotes(""), { goal: "", known: [], assumed: [], briefLines: [], round: null });
     assert.deepEqual(splitProjectNotes(null).goal, "");
   });
 

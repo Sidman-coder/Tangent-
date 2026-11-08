@@ -4488,6 +4488,9 @@ body .gtk-sheet {
   font-size: .75rem;
 }
 .plan-month-cell:nth-child(7n) .plan-month-tip, .plan-month-cell:nth-child(7n - 1) .plan-month-tip { inset-inline: auto 0; }
+/* Round 4 §3.3: placeTip() nudges it back on screen or flips it above. */
+.plan-month-tip { translate: var(--tip-dx, 0) 0; box-shadow: 0 6px 20px color-mix(in srgb, #000 14%, transparent); }
+.plan-month-tip.is-above { inset-block: auto 100%; }
 @media (hover: hover) {
   .plan-month-step:hover .plan-month-tip, .plan-month-step:focus-visible .plan-month-tip { display: grid; gap: 4px; }
 }

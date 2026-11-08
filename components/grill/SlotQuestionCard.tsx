@@ -124,8 +124,9 @@ export default function SlotQuestionCard({ card, score, checkIn, disabled, onAns
             Continue
           </button>
         )}
-        <button type="button" className="tg-clarify-btn" onClick={onSkip} disabled={disabled}>Skip</button>
-        <button type="button" className="tg-clarify-btn" onClick={onStop} disabled={disabled}>Stop planning</button>
+        {/* Round 4 §3.3: quieter, so answering stays the obvious move; never blocking. */}
+        <button type="button" className="tg-clarify-quiet" onClick={onSkip} disabled={disabled}>Skip</button>
+        <button type="button" className="tg-clarify-quiet" onClick={onStop} disabled={disabled}>Stop and plan</button>
       </div>
     </div>
   );

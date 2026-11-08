@@ -24,6 +24,8 @@ import {
 import { addDaysYMD, localNow } from "@/lib/time";
 import { getContextSlots } from "@/lib/context/store";
 import { preferredWindows } from "@/lib/context/flow";
+import { completionByHour, preferredStepSize } from "@/lib/student/observations";
+import { readStepEvents } from "@/lib/student/step-events";
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 const HHMM = /^\d{1,2}:\d{2}$/;
@@ -33,11 +35,26 @@ const HHMM = /^\d{1,2}:\d{2}$/;
 async function studentRules(): Promise<PlacementRules> {
   try {
     const slots = await getContextSlots();
-    const windows = preferredWindows(slots?.global.preferredWorkTimes);
+    // What they said wins; otherwise the hours they actually finish things in
+    // (Round 4 §3.4: steps go in the student's best hours).
+    const windows = preferredWindows(slots?.global.preferredWorkTimes) ?? (await observedWindows());
     return windows ? { ...DEFAULT_PLACEMENT_RULES, preferredWindows: windows } : DEFAULT_PLACEMENT_RULES;
   } catch {
     return DEFAULT_PLACEMENT_RULES;
   }
+}
+
+/** Two-hour windows around the hours the student finishes most steps, or
+ *  undefined until there's enough to say. */
+async function observedWindows(): Promise<{ start: number; end: number }[] | undefined> {
+  const best = completionByHour(await readStepEvents().catch(() => [])).value.best;
+  const windows = best.filter((h) => h >= 6 && h <= 22).map((h) => ({ start: h * 60, end: Math.min(23 * 60, (h + 2) * 60) }));
+  return windows.length ? windows : undefined;
+}
+
+/** The step size the student actually finishes, in minutes, or null. */
+export async function studentStepMinutes(): Promise<number | null> {
+  return preferredStepSize(await readStepEvents().catch(() => [])).value;
 }
 
 export async function studentCapacity(): Promise<{ cap: Capacity; known: boolean }> {
