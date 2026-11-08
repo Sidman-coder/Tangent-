@@ -139,6 +139,13 @@ Each migration will have a check query in `docs/MANUAL-STEPS.md`. Code must read
 
 ---
 
+## Decisions confirmed by the user (2026-11-08)
+
+- **Fact store (conflict 1):** go with the recommendation: extend `context_entries` as the student model, keep `context_slots` for per-project slot state. The user wants the context pack (Phase 2.4) treated as a top priority: whatever makes students feel Tangent really gets them, as long as it is safe.
+- **Waitlist (conflict 4):** keep the session; uninvited emails can create an account but never reach the app. A separate marketing landing page for the waitlist will be built later; Round 4 only builds the in-app page they land on.
+- **Open sign-up (conflict 5):** accepted, with Supabase rate-limit and CAPTCHA settings listed as manual steps.
+- **Under-13 (conflict 3):** explained to the user; awaiting their answer.
+
 ## Conflicts between the prompt and the code, and decisions I need
 
 1. **Reuse `context_slots` for facts?** The prompt says reuse and extend `context_slots` and `grill_questions`. `context_slots` is keyed by a fixed slot list with a source check (answer/inferred/default/known), which does not match facts (many per category, source said/seen/guessed). **Recommendation:** extend `context_entries` as the fact store (migration 1), keep `context_slots` as per-project slot state, and have every slot answer also write a fact. Keep `grill_questions` as the queue. Tell me if you want one table instead.
