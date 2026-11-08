@@ -1758,6 +1758,15 @@ textarea:focus {
   accent-color: var(--accent);
 }
 
+.preview-card-used {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.preview-card-used > span {
+  font-weight: 600;
+}
 .preview-card-note,
 .preview-card-muted {
   margin: 0;
@@ -4086,6 +4095,14 @@ textarea:focus {
 }
 .knows-group li:last-child {
   border-bottom: 0;
+}
+.knows-group li > span {
+  flex: 1;
+  min-width: 0;
+}
+.knows-guess {
+  color: var(--text-3);
+  font-style: normal;
 }
 .knows-summary,
 .knows-empty {

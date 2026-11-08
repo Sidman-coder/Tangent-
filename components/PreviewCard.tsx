@@ -161,7 +161,7 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
       const { status, data } = await post(base, body, "PATCH");
       if (!data.ok) return settle(status, data);
       setCs(data.changeSet as ChangeSet);
-      setView(data.preview as PreviewPayload);
+      setView((prev) => ({ ...(data.preview as PreviewPayload), factsUsed: (data.preview as PreviewPayload).factsUsed ?? prev.factsUsed }));
     });
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -341,6 +341,11 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
             <li key={a}>{a}</li>
           ))}
         </ul>
+      )}
+      {view.factsUsed && view.factsUsed.length > 0 && (
+        <p className="preview-card-used">
+          <span>Used:</span> {view.factsUsed.join(" · ")}
+        </p>
       )}
       {view.likelyDuplicates.length > 0 && (
         <p className="preview-card-note">Probably already on your calendar, will be skipped: {view.likelyDuplicates.join(", ")}</p>

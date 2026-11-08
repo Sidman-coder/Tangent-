@@ -5,7 +5,8 @@
 // button wants an answer now, not in up to an hour. Both routes publish through the
 // same publishDailyBrief() so the Bell only ever shows one pinned brief per day.
 import { NextResponse } from "next/server";
-import { getAllTasks, getContextAsString, getUserTimezone } from "@/lib/store";
+import { getAllTasks, getUserTimezone } from "@/lib/store";
+import { studentFactsText } from "@/lib/ai/student-context";
 import { addDaysYMD, currentInstant, getUserToday } from "@/lib/time";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import { DAILY_BRIEF_SCHEMA, DEFAULT_DAILY_BRIEF, publishDailyBrief, type DailyBrief } from "@/lib/daily-brief";
@@ -23,7 +24,7 @@ export const POST = withUser(async () => {
     if (!apiKey) return NextResponse.json({ ok: false, error: "No API key" });
 
     const tasks = await getAllTasks();
-    const userContext = await getContextAsString();
+    const userContext = await studentFactsText("brief");
     const timeZone = await getUserTimezone();
     const now = currentInstant();
     const today = getUserToday(timeZone, now);

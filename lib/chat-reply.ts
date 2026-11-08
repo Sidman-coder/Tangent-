@@ -48,7 +48,8 @@ export async function planReply(
   // Plan mode used to know nothing about the student: "plan my week" with ten
   // overdue items asked them what they needed to do. It now gets the same
   // picture every other AI step does (lib/ai/student-context.ts).
-  const picture = await buildStudentContext().then((c) => c.text).catch(() => "");
+  const lastAsk = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
+  const picture = await buildStudentContext({ purpose: "plan", query: lastAsk }).then((c) => c.text).catch(() => "");
   const base = opts.followUp ? PLAN_SYSTEM + PLAN_FOLLOWUP : PLAN_SYSTEM;
   const projectNote = opts.projectNote ?? "";
   // Master fix Phase 4: streamed to the chat as it's written when asked.

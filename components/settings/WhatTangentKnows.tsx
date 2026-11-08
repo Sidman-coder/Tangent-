@@ -8,6 +8,7 @@ import "@/components/get-to-know-you.css";
 
 import { useCallback, useEffect, useState } from "react";
 import type { ContextEntry } from "@/lib/types";
+import type { FactCategory } from "@/lib/student/facts";
 import { GET_TO_KNOW_DONE_EVENT } from "@/components/GetToKnowYou";
 import { usePipelineV2 } from "@/components/PipelineFlag";
 import Link from "next/link";
@@ -15,21 +16,32 @@ import Button from "@/components/ui/Button";
 import ConfirmPanel from "@/components/ui/ConfirmPanel";
 import FormMessage from "@/components/ui/FormMessage";
 
-const CATEGORY_LABEL: Record<ContextEntry["category"], string> = {
-  goal: "Goals",
-  commitment: "Commitments",
-  habit: "How you work",
-  preference: "Preferences",
-  work: "Classes & work",
-  person: "People",
-  general: "Other",
+// The student-model categories (lib/student/facts.ts FACT_CATEGORY_LABELS),
+// copied as plain strings so the fact rules stay out of the client bundle.
+const CATEGORY_LABEL: Record<FactCategory, string> = {
+  goals: "Goals",
+  schedule: "Your schedule",
+  classes_activities: "Classes and activities",
+  how_you_work: "How you work",
+  whats_hard: "What's hard",
+  push_style: "How you like to be pushed",
+  future: "Your future",
+  identity: "About you",
 };
-const ORDER: ContextEntry["category"][] = ["goal", "commitment", "work", "habit", "preference", "person", "general"];
+const ORDER: FactCategory[] = ["goals", "schedule", "classes_activities", "how_you_work", "whats_hard", "push_style", "future", "identity"];
+
+async function send(body: unknown): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch("/api/context", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    return { ok: res.ok && data.ok === true, error: res.status === 422 ? data.error : undefined };
+  } catch {
+    return { ok: false };
+  }
+}
 
 async function post(body: unknown): Promise<boolean> {
-  const res = await fetch("/api/context", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  const data = (await res.json().catch(() => ({}))) as { ok?: boolean };
-  return res.ok && data.ok === true;
+  return (await send(body)).ok;
 }
 
 export default function WhatTangentKnows() {
@@ -65,6 +77,11 @@ export default function WhatTangentKnows() {
     if (!(await post({ action: "forget", id }))) void load();
   };
 
+  const confirm = async (id: string) => {
+    setEntries((list) => list?.map((e) => (e.id === id ? { ...e, unconfirmed: false } : e)) ?? null);
+    if (!(await post({ action: "confirm", id }))) void load();
+  };
+
   const forgetAll = async () => {
     setForgetting(true);
     setNote(null);
@@ -79,12 +96,15 @@ export default function WhatTangentKnows() {
     const fact = draft.trim();
     if (!fact) return;
     setBusy(true);
-    if (await post({ action: "remember", fact })) setDraft("");
+    setNote(null);
+    const result = await send({ action: "remember", fact });
+    if (result.ok) setDraft("");
+    else setNote({ tone: "error", text: result.error ?? "Couldn't save that. Try again." });
     setBusy(false);
     void load();
   };
 
-  const groups = ORDER.map((c) => ({ c, items: (entries ?? []).filter((e) => e.category === c) })).filter((g) => g.items.length > 0);
+  const groups = ORDER.map((c) => ({ c, items: (entries ?? []).filter((e) => (e.factCategory ?? "identity") === c) })).filter((g) => g.items.length > 0);
 
   return (
     <section id="what-tangent-knows" className="settings-group" aria-labelledby="knows-title">
@@ -117,9 +137,17 @@ export default function WhatTangentKnows() {
               <ul>
                 {items.map((e) => (
                   <li key={e.id}>
-                    <span>{e.fact}</span>
+                    <span>
+                      {e.unconfirmed && <em className="knows-guess">Guess · </em>}
+                      {e.fact}
+                    </span>
+                    {e.unconfirmed && (
+                      <button type="button" className="knows-forget" onClick={() => void confirm(e.id)} aria-label={`That's right: ${e.fact}`}>
+                        That&apos;s right
+                      </button>
+                    )}
                     <button type="button" className="knows-forget" onClick={() => void forget(e.id)} aria-label={`Forget: ${e.fact}`}>
-                      Forget
+                      {e.unconfirmed ? "Not right" : "Forget"}
                     </button>
                   </li>
                 ))}

@@ -6,7 +6,8 @@ import "server-only";
 
 import { getRequestContext } from "@/lib/request-context";
 import { schemaErrorKind, warnSchemaOnce } from "@/lib/schema-compat";
-import { isGlobalSlotKey, isSlotKey, type AnySlot, type GlobalSlotKey, type SlotKey, type SlotMap, type SlotSource, type SlotValue } from "./slots";
+import { isGlobalSlotKey, isSlotKey, type GlobalSlotKey, type SlotKey, type SlotMap, type SlotSource, type SlotValue } from "./slots";
+import { STUDENT_EXTRA_SLOTS, isExtraSlotKey, type ExtraSlotKey, type QuestionSlot } from "./goal-slots";
 
 type Row = { project_id: string | null; slot_key: string; value: unknown; source: SlotSource; updated_at: string };
 
@@ -25,7 +26,16 @@ function toValue(row: Row): SlotValue | null {
   return null;
 }
 
-export type ContextSlots = { project: SlotMap<SlotKey>; global: SlotMap<GlobalSlotKey>; byProject: Map<string, SlotMap<SlotKey>> };
+export type ContextSlots = {
+  project: SlotMap<SlotKey>;
+  global: SlotMap<GlobalSlotKey>;
+  byProject: Map<string, SlotMap<SlotKey>>;
+  /** Goal-type slots (lib/context/goal-slots.ts): the student's own (platform,
+   *  followers…) plus this project's (weak topics, essay prompt…). */
+  extra: SlotMap<ExtraSlotKey>;
+};
+
+const isStudentExtra = (key: string): key is ExtraSlotKey => (STUDENT_EXTRA_SLOTS as readonly string[]).includes(key);
 
 /** Every slot the student has, or null before the migration. */
 export async function getContextSlots(): Promise<ContextSlots | null>;
@@ -38,12 +48,18 @@ export async function getContextSlots(projectId: string | null = null): Promise<
     console.warn("[context] could not read slots:", error.code ?? "unknown");
     return null;
   }
-  const out: ContextSlots = { project: {}, global: {}, byProject: new Map() };
+  const out: ContextSlots = { project: {}, global: {}, byProject: new Map(), extra: {} };
   for (const row of (data ?? []) as Row[]) {
     const value = toValue(row);
     if (!value) continue;
     if (row.project_id === null) {
       if (isGlobalSlotKey(row.slot_key)) out.global[row.slot_key] = value;
+      else if (isStudentExtra(row.slot_key)) out.extra[row.slot_key] = value;
+      continue;
+    }
+    const key = row.slot_key;
+    if (projectId && row.project_id === projectId && isExtraSlotKey(key) && !isStudentExtra(key)) {
+      out.extra[key as ExtraSlotKey] = value;
       continue;
     }
     if (!isSlotKey(row.slot_key)) continue;
@@ -57,10 +73,12 @@ export async function getContextSlots(projectId: string | null = null): Promise<
 
 /** Saves slots (project_id null for the student's own). Returns false before
  *  the migration or on any failure: slots are a help, never a blocker. */
-export async function saveContextSlots(projectId: string | null, slots: Partial<Record<AnySlot, SlotValue>>): Promise<boolean> {
+export async function saveContextSlots(projectId: string | null, slots: Partial<Record<QuestionSlot, SlotValue>>): Promise<boolean> {
   if (projectId !== null && !UUID_RE.test(projectId)) return false;
+  const belongs = (key: string) =>
+    projectId === null ? isGlobalSlotKey(key) || isStudentExtra(key) : isSlotKey(key) || (isExtraSlotKey(key) && !isStudentExtra(key));
   const rows = Object.entries(slots)
-    .filter(([key, v]) => v && (projectId === null ? isGlobalSlotKey(key) : isSlotKey(key)))
+    .filter(([key, v]) => v && belongs(key))
     .map(([key, v]) => ({ project_id: projectId, slot_key: key, value: (v as SlotValue).value, source: (v as SlotValue).source, updated_at: (v as SlotValue).updatedAt }));
   if (!rows.length) return true;
   const { db, userId } = getRequestContext();

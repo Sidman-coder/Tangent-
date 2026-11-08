@@ -40,7 +40,7 @@ export const POST = withUser(async (req: Request) => {
     if (!body.taskId) return NextResponse.json({ ok: false, error: "taskId required" }, { status: 400 });
     const task = await updateTask(body.taskId, {});
     if (!task) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
-    const picture = await buildStudentContext();
+    const picture = await buildStudentContext({ purpose: "plan", projectId: task.planId ?? null, query: task.title });
     const request = String(body.request ?? task.title).slice(0, 1000);
     // A quick capture was saved with the student's raw words; tidy it (title,
     // notes with a time estimate, first step) while the questions are written.
@@ -95,7 +95,7 @@ export const POST = withUser(async (req: Request) => {
     if (taskAnswers.length === 0) return NextResponse.json({ ok: true, summary: "Got it — saved." });
 
     const tz = await getUserTimezone();
-    const picture = await buildStudentContext();
+    const picture = await buildStudentContext({ purpose: "plan", projectId: task.planId ?? null, query: task.title });
     const r = await refineTask(task, taskAnswers, picture.text, promptDateContext(tz));
     if (!r) return NextResponse.json({ ok: true, summary: "Saved your answers." });
 

@@ -198,3 +198,63 @@ Each migration will have a check query in `docs/MANUAL-STEPS.md`. Code must read
 Checks: lint (7 warnings, same as baseline), typecheck, 659 tests, build all pass.
 
 **Not verified:** a real Create account and waitlist sign-in against Supabase, the age screen signed in, and the email's code length. They're in `docs/MANUAL-STEPS.md` → Round 4.
+
+## Phase 2 log (2026-11-08)
+
+Migrations were renamed from the `20261108…` proposals to `20261110…`, and the plan's items 1, 2 and 4 are now `20261110000000_student_facts.sql`, `20261110010000_step_events.sql` and `20261110020000_facts_used.sql`. `step_events` stores fixed columns (`hour`, `weekday`, `minutes`, `actual_minutes`, `code`) instead of `props jsonb`, so free text can't get in. Items 3, 5, 6 and 7 move to the phases that use them. Everything works before the migrations run: the new columns and tables are read defensively, with one server warning each (`lib/schema-compat.ts`).
+
+**2.1 Student model:** `context_entries` stays the fact store (user decision).
+- `lib/student/facts.ts` adds the 8 categories, the said/seen/guessed sources, confidence, a cleaned-up second-person `display_text` (the original words are kept), and `prepareFact`/`factView`.
+- `lib/student/sensitive.ts` blocks health, mental-health and family-conflict details before anything is saved, and drops vague values.
+- Every write path goes through it: `lib/store.ts`, `/api/context`, `lib/context-extract.ts` and `lib/ai/import-context.ts`. Settings → What Tangent knows shows guesses as guesses.
+
+**2.2 Observation log:**
+- `lib/student/step-events.ts` writes `step_events` rows. They hold no titles and no notes.
+- Events are logged as follows:
+  - created: `applyChangeSet` and `/api/tasks`
+  - done, skipped and rescheduled: `/api/tasks` and `/api/reschedule`
+  - "Not today" with a reason code, and too big: `/api/today`
+- Logging is fire-and-forget and never blocks the action.
+- `lib/student/observations.ts` turns these rows into three numbers: the time multiplier, completion by hour, and preferred step size. Each number is used only once there's enough data, and then appears in the pack as "HOW THEY ACTUALLY WORK (observed)".
+
+**2.3 Question engine:** `lib/context/goal-slots.ts` handles five goal types: general, exam, creator, club and essay.
+- Each goal type has must-have slots and nice-to-have slots.
+- It reads the free-text answers first (platform, followers, niche, weak topics, drafts and so on).
+- It asks 1–3 questions per turn and at most 5 in total, and every question can be skipped or stopped. When it has enough it says "I have enough to start round 1."
+- Student-level answers such as followers or niche are saved as facts with no project, so they are never asked again.
+- `lib/context/grill.ts` and `components/add/AddFlow.tsx` use it.
+
+**2.4 Context pack:** `lib/student/context-pack.ts` (pure) and `lib/ai/student-context.ts`.
+- Facts are ranked as 0.5 relevance + 0.3 confidence + 0.2 recency. Relevance depends on the purpose, on matching words in the request, and on whether the fact belongs to this project; recency halves every 60 days.
+- The pack holds the top 10–15 facts, with guesses labelled as unconfirmed.
+- Sections in the pack:
+  - this project's state comes first
+  - calibration
+  - the next 14 days
+  - a token budget for each purpose, which drops the least important section first and never drops today or capacity
+- Every AI call site uses it with a purpose:
+  - chat, grill, path and path-intake
+  - questions and extend-plan
+  - voice and chat-reply
+  - daily brief and proactive
+  - voice-agent tools
+- The facts shown are recorded for each request:
+  - `change_sets.facts_used` and `ai_decisions.facts_used` store id and text only, never prompts
+  - the plan preview card shows "Used: …"
+  - `used_count` goes up for each fact used
+
+**2.5 Evals:** `lib/pipeline/fixtures/context.json`.
+- **Slot coverage:** 8 goals, run free in `npm test` (`lib/pipeline/context-evals.test.ts`). For example, the Instagram goal asks about followers, niche and hoursPerWeek, and "200 subscribers" is never asked again.
+- **Swap test:** 2 goals × 2 student profiles. `gradeSwap` checks that each plan mentions its own student and that the two plans share at most 60% of their words. The paid run is `npm run eval:pipeline -- --context` (about $0.08). It was **not run**.
+
+Checks:
+- lint: 5 warnings, all existing `exhaustive-deps` ones, down from 7
+- typecheck: passes
+- tests: 707 pass
+- build: passes
+- the free check `npm run eval:pipeline -- --context --check`: passes
+
+**Not done / not verified:**
+- Settings → AI activity doesn't show "Used: …" yet; only the plan preview card does. That's planned for Phase 5 (Settings).
+- The voice agent still falls back to the old context string when the pack fails.
+- Nothing has run against the real database, because the migrations haven't been applied.

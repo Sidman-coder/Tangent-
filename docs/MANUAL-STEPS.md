@@ -147,3 +147,32 @@ Sign-up is now open: anyone can create an account, and only `ALLOWED_EMAILS` get
 - On a throwaway account, choose an age under 13: `/not-yet` shows "Tangent is for students 13 and up". Undo it in the SQL Editor:
   `update auth.users set raw_app_meta_data = raw_app_meta_data - 'under_13' where email = 'THE_TEST_EMAIL';`
 - Paste an 8-digit code with spaces: it fills in and waits for **Sign in**.
+
+### Phase 2: context engine (3 migrations)
+
+Run these in the Supabase SQL Editor, in order. Each one is safe to run twice. The app works before they're applied: it just plans without the new fact details, the observation log and the "Used: …" line, and logs one server warning for each.
+
+1. **`supabase/migrations/20261110000000_student_facts.sql`** adds student-model columns to `context_entries`. Check it (expect 8 rows):
+   ```sql
+   select column_name from information_schema.columns
+   where table_schema = 'public' and table_name = 'context_entries'
+     and column_name in ('fact_category','fact_source','confidence','last_confirmed_at','project_id','used_count','display_text','slot_key');
+   ```
+2. **`supabase/migrations/20261110010000_step_events.sql`** creates the `step_events` table with own-row RLS. Check it (expect `true`, then 3 policies):
+   ```sql
+   select relrowsecurity from pg_class where oid = 'public.step_events'::regclass;
+   select policyname, cmd from pg_policies where schemaname = 'public' and tablename = 'step_events';
+   ```
+3. **`supabase/migrations/20261110020000_facts_used.sql`** adds `facts_used` to `change_sets` and `ai_decisions`. Check it (expect 2 rows):
+   ```sql
+   select table_name from information_schema.columns
+   where table_schema = 'public' and column_name = 'facts_used' and table_name in ('change_sets','ai_decisions');
+   ```
+
+**Check it in the app** (signed in, after the migrations):
+- Tell Tangent something about yourself, then open Settings → What Tangent knows. The fact reads as "You …". If you typed something about health or family, it isn't saved.
+- Ask for "help me grow my Instagram". It asks 1–3 questions at a time (followers, niche, hours a week), at most 5 in total, and Skip and Stop always work. Ask for a second creator goal afterwards: it doesn't ask followers or niche again.
+- Open a plan preview: under the steps it shows "Used: …" with your own facts.
+- Finish a step, press "Not today" on another, then run `select kind, code, hour from step_events order by created_at desc limit 5;`. The rows have no titles.
+
+**Evals** (paid, about $0.08; asks before spending): `npm run eval:pipeline -- --context` runs the swap test, which plans the same goal for two different students and checks the plans differ. The free check is `npm run eval:pipeline -- --context --check`. The full pipeline eval is still `npm run eval:pipeline`.

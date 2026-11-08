@@ -1,5 +1,5 @@
 import "server-only";
-import { getRequestContext, requestMemo, forgetMemo } from "./request-context";
+import { getRequestContext, requestMemo, forgetMemo, factsUsedThisRequest } from "./request-context";
 import { DEFAULT_TIMEZONE, isValidTimezone } from "./dates";
 import { addDaysYMD, expandRecurrence, getUserToday, weekRange } from "./time";
 import { preferencesFrom } from "./onboarding";
@@ -39,6 +39,7 @@ import type {
 } from "./types";
 import { commitmentOf } from "./task-kind";
 import { createColumnMemo, schemaErrorKind, warnSchemaOnce } from "./schema-compat";
+import { factCategoryFor, factView, isFactCategory, isFactSource, prepareFact, type FactView } from "./student/facts";
 import { parseNotificationPrefs, type NotificationPrefs } from "./settings/notification-prefs";
 import { EXPORT_TABLES, redactExportRow } from "./settings/data-export";
 import { assignProjectColor, projectSeries, type SeriesKey } from "./task-colors";
@@ -1247,6 +1248,34 @@ export async function purgeOldDecisions(): Promise<number | null> {
   }
 }
 
+const missingFactsUsed = createColumnMemo();
+
+/**
+ * Saves which facts shaped this change set or decision (Round 4,
+ * 20261110020000_facts_used.sql): a list of {id, text}, never the prompt.
+ * Its own update after the row is written, so a missing column only loses
+ * this line. Best effort, never throws.
+ */
+export async function attachFactsUsed(table: "change_sets" | "ai_decisions", id: string, facts = factsUsedThisRequest()): Promise<void> {
+  if (!facts.length || !isUuid(id) || missingFactsUsed.isMissing(table)) return;
+  try {
+    const { db, userId } = ctx();
+    const value = facts.slice(0, 15).map((f) => ({ id: f.id, text: f.text.slice(0, 200) }));
+    // Students can't write ai_decisions themselves (see decisionsAdmin).
+    const client = table === "ai_decisions" ? createAdminClient() : db;
+    const { error } = await client.from(table).update({ facts_used: value }).eq("user_id", userId).eq("id", id);
+    if (!error) return;
+    if (schemaErrorKind(error) === "missing_column") {
+      missingFactsUsed.markMissing(table);
+      warnSchemaOnce(`${table}.facts_used`, `${table}.facts_used missing; apply 20261110020000_facts_used.sql (docs/MANUAL-STEPS.md). Plans work without "Used: …" until then.`);
+      return;
+    }
+    console.warn(`[store] attachFactsUsed(${table}):`, error.code ?? "unknown");
+  } catch {
+    // A nicety; the change itself is saved.
+  }
+}
+
 /** Inserts the request's decision row; its id, or null if it couldn't. */
 export async function recordDecision(input: DecisionInput): Promise<string | null> {
   try {
@@ -1260,7 +1289,9 @@ export async function recordDecision(input: DecisionInput): Promise<string | nul
       warnDecisions("recordDecision", error);
       return null;
     }
-    return (data as { id: string }).id;
+    const id = (data as { id: string }).id;
+    await attachFactsUsed("ai_decisions", id);
+    return id;
   } catch (e) {
     warnDecisions("recordDecision", e);
     return null;
@@ -2134,50 +2165,237 @@ type ContextRow = {
   fact: string;
   source: ContextEntry["source"];
   created_at: string;
+  // Round 4 (20261110000000_student_facts.sql); absent before it runs.
+  fact_category?: string | null;
+  fact_source?: string | null;
+  confidence?: number | null;
+  last_confirmed_at?: string | null;
+  project_id?: string | null;
+  used_count?: number | null;
+  display_text?: string | null;
+  slot_key?: string | null;
 };
 
-function contextFromRow(r: ContextRow): ContextEntry {
-  return { id: r.id, timestamp: iso(r.created_at), category: r.category, fact: r.fact, source: r.source };
+const BASE_CONTEXT_COLUMNS = "id, category, fact, source, created_at";
+const FACT_COLUMNS = "fact_category, fact_source, confidence, last_confirmed_at, project_id, used_count, display_text, slot_key";
+// All eight columns arrive in one migration, so one flag covers them.
+const missingFactColumns = createColumnMemo();
+
+function contextColumns(): string {
+  return missingFactColumns.isMissing("facts") ? BASE_CONTEXT_COLUMNS : `${BASE_CONTEXT_COLUMNS}, ${FACT_COLUMNS}`;
 }
 
-export async function getUserContext(): Promise<UserContext> {
+/** True when the error is the student-model columns not being there yet. */
+function noteMissingFactColumns(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error || schemaErrorKind(error) !== "missing_column" || missingFactColumns.isMissing("facts")) return false;
+  missingFactColumns.markMissing("facts");
+  warnSchemaOnce("context_entries.facts", "context_entries student-model columns are missing; apply 20261110000000_student_facts.sql (docs/MANUAL-STEPS.md)");
+  return true;
+}
+
+type ContextView = { entry: ContextEntry; view: FactView; row: ContextRow };
+
+function contextFromRow(r: ContextRow): ContextView {
+  const factSource = isFactSource(r.fact_source) ? r.fact_source : null;
+  const view = factView({ fact: r.fact, displayText: r.display_text ?? null, factSource });
+  const entry: ContextEntry = { id: r.id, timestamp: iso(r.created_at), category: r.category, fact: view.display || r.fact, source: r.source };
+  if (view.display && view.display !== r.fact) entry.original = r.fact;
+  entry.factCategory = isFactCategory(r.fact_category) ? r.fact_category : factCategoryFor(r.category, r.fact);
+  if (factSource) entry.factSource = factSource;
+  if (typeof r.confidence === "number") entry.confidence = r.confidence;
+  if (r.last_confirmed_at !== undefined) entry.lastConfirmedAt = r.last_confirmed_at ? iso(r.last_confirmed_at) : null;
+  if (r.project_id !== undefined) entry.projectId = r.project_id;
+  if (typeof r.used_count === "number") entry.usedCount = r.used_count;
+  if (r.slot_key !== undefined) entry.slotKey = r.slot_key;
+  if (view.unconfirmed) entry.unconfirmed = true;
+  return { entry, view, row: r };
+}
+
+/** The code and message of an error fail() threw, for schemaErrorKind. */
+function schemaCause(e: unknown): { code?: string; message?: string } {
+  const err = e as { code?: string; message?: string };
+  return { code: err?.code, message: err?.message };
+}
+
+async function readContextRows(where: string): Promise<ContextRow[]> {
   const { db, userId } = ctx();
-  const [rows, profile] = await Promise.all([
-    selectAll<ContextRow>("getUserContext", (from, to) =>
-      db
-        .from("context_entries")
-        .select("id, category, fact, source, created_at")
-        .eq("user_id", userId)
-        .order("created_at")
-        .order("id")
-        .range(from, to)
-    ),
-    getProfileRow("getUserContext"),
-  ]);
+  const read = () =>
+    selectAll<ContextRow>(where, (from, to) =>
+      db.from("context_entries").select(contextColumns()).eq("user_id", userId).order("created_at").order("id").range(from, to) as unknown as PromiseLike<{
+        data: ContextRow[] | null;
+        error: { message: string; code?: string } | null;
+      }>,
+    );
+  try {
+    return await read();
+  } catch (e) {
+    if (noteMissingFactColumns(schemaCause(e))) return read();
+    throw e;
+  }
+}
+
+/** Every remembered fact as Tangent shows it, hidden ones (vague, empty or
+ *  sensitive) left out. Saves the cleaned-up wording the first time it's
+ *  shown, keeping the student's original words. */
+export async function getUserContext(): Promise<UserContext> {
+  const [rows, profile] = await Promise.all([readContextRows("getUserContext"), getProfileRow("getUserContext")]);
+  const views = rows.map(contextFromRow);
+  void tidyFacts(views).catch(() => undefined);
   return {
-    entries: rows.map(contextFromRow),
+    entries: views.filter((v) => !v.view.hidden).map((v) => v.entry),
     compressedSummary: profile.context_summary ?? "",
     lastUpdated: iso(profile.context_updated_at),
     totalInteractions: profile.context_interactions ?? 0,
   };
 }
 
-export async function addContextEntry(entry: Omit<ContextEntry, "id" | "timestamp">): Promise<ContextEntry> {
+const tidiedThisProcess = new Set<string>();
+
+/**
+ * The one-time display cleanup, a little at a time: saves display_text for
+ * facts that read better in the second person, and turns vague ones into a
+ * follow-up question in the queue. The stored `fact` is never changed. Once
+ * per student per server process; best effort.
+ */
+async function tidyFacts(views: ContextView[]): Promise<void> {
+  if (missingFactColumns.isMissing("facts")) return;
   const { db, userId } = ctx();
-  const { data, error } = await db
+  if (tidiedThisProcess.has(userId)) return;
+  tidiedThisProcess.add(userId);
+  const toClean = views.filter((v) => v.view.needsCleanup && !v.row.display_text && "display_text" in v.row).slice(0, 25);
+  for (const v of toClean) {
+    const { error } = await db.from("context_entries").update({ display_text: v.view.display }).eq("user_id", userId).eq("id", v.entry.id);
+    if (error) {
+      noteMissingFactColumns(error);
+      return;
+    }
+  }
+  const followUps = Array.from(new Set(views.filter((v) => v.view.followUp).map((v) => v.view.followUp as string))).slice(0, 3);
+  if (!followUps.length) return;
+  const { data: existing, error } = await db.from("grill_questions").select("question").eq("user_id", userId).eq("kind", "followup");
+  if (error) return; // grill_questions isn't there yet: ask another time
+  const asked = new Set((existing ?? []).map((r: { question: string }) => r.question));
+  const fresh = followUps.filter((q) => !asked.has(q));
+  if (!fresh.length) return;
+  const { error: insertError } = await db
+    .from("grill_questions")
+    .insert(fresh.map((question) => ({ user_id: userId, project_id: null, question, kind: "followup", choices: [], priority: 1 })));
+  if (insertError) console.warn("[store] could not queue follow-up questions:", insertError.code ?? "unknown");
+}
+
+export type NewContextEntry = Omit<ContextEntry, "id" | "timestamp" | "original" | "usedCount" | "lastConfirmedAt" | "unconfirmed">;
+
+/**
+ * Remembers a fact. Sensitive details are never kept, and vague or empty ones
+ * are dropped: both return null. A fact Tangent already knows is confirmed
+ * again rather than saved twice.
+ */
+export async function addContextEntry(entry: NewContextEntry): Promise<ContextEntry | null> {
+  const prepared = prepareFact({
+    category: entry.category,
+    fact: entry.fact,
+    source: entry.source,
+    factSource: entry.factSource,
+    factCategory: entry.factCategory,
+    confidence: entry.confidence,
+    projectId: entry.projectId,
+    slotKey: entry.slotKey,
+  });
+  if (!prepared.ok) {
+    if (prepared.reason === "sensitive") console.log("[store] Context entry not kept: sensitive");
+    return null;
+  }
+  const { db, userId } = ctx();
+  const now = new Date().toISOString();
+  const confirmed = prepared.factSource !== "guessed";
+  const base = { user_id: userId, category: entry.category, fact: prepared.fact, source: entry.source };
+  const extra = {
+    fact_category: prepared.factCategory,
+    fact_source: prepared.factSource,
+    confidence: prepared.confidence,
+    last_confirmed_at: confirmed ? now : null,
+    project_id: entry.projectId && isUuid(entry.projectId) ? entry.projectId : null,
+    display_text: prepared.display,
+    slot_key: entry.slotKey && /^[a-zA-Z]{1,32}$/.test(entry.slotKey) ? entry.slotKey : null,
+  };
+
+  if (!missingFactColumns.isMissing("facts")) {
+    const { data: same, error: sameError } = await db
+      .from("context_entries")
+      .select(contextColumns())
+      .eq("user_id", userId)
+      .eq("display_text", prepared.display)
+      .limit(1);
+    if (sameError) noteMissingFactColumns(sameError);
+    else if (same && same.length) {
+      const row = same[0] as unknown as ContextRow;
+      if (confirmed) {
+        await db
+          .from("context_entries")
+          .update({ last_confirmed_at: now, fact_source: prepared.factSource, confidence: Math.max(row.confidence ?? 0, prepared.confidence) })
+          .eq("user_id", userId)
+          .eq("id", row.id);
+      }
+      return contextFromRow(row).entry;
+    }
+  }
+
+  let result = await db
     .from("context_entries")
-    .insert({ user_id: userId, category: entry.category, fact: entry.fact, source: entry.source })
-    .select("id, category, fact, source, created_at")
+    .insert(missingFactColumns.isMissing("facts") ? base : { ...base, ...extra })
+    .select(contextColumns())
     .single();
-  if (error) fail("addContextEntry", error);
+  if (result.error && noteMissingFactColumns(result.error)) {
+    result = await db.from("context_entries").insert(base).select(contextColumns()).single();
+  }
+  if (result.error) fail("addContextEntry", result.error);
   const profile = await getProfileRow("addContextEntry");
   await updateProfile("addContextEntry", {
     context_interactions: (profile.context_interactions ?? 0) + 1,
-    context_updated_at: new Date().toISOString(),
+    context_updated_at: now,
   });
-  const full = contextFromRow(data as ContextRow);
+  const full = contextFromRow(result.data as unknown as ContextRow).entry;
   console.log("[store] Context entry added:", full.category);
   return full;
+}
+
+/** The student said a guess is right (or confirmed a fact again). */
+export async function confirmContextEntry(id: string): Promise<boolean> {
+  if (!isUuid(id) || missingFactColumns.isMissing("facts")) return false;
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from("context_entries")
+    .update({ fact_source: "said", confidence: 1, last_confirmed_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .eq("id", id)
+    .select("id");
+  if (error) {
+    noteMissingFactColumns(error);
+    return false;
+  }
+  return (data?.length ?? 0) > 0;
+}
+
+/** Counts that these facts shaped an AI answer. Best effort, never throws. */
+export async function markFactsUsed(ids: string[]): Promise<void> {
+  if (!ids.length || missingFactColumns.isMissing("facts")) return;
+  try {
+    const { db, userId } = ctx();
+    const unique = Array.from(new Set(ids.filter(isUuid))).slice(0, 20);
+    if (!unique.length) return;
+    const { data, error } = await db.from("context_entries").select("id, used_count").eq("user_id", userId).in("id", unique);
+    if (error) {
+      noteMissingFactColumns(error);
+      return;
+    }
+    await Promise.all(
+      (data as { id: string; used_count: number | null }[]).map((r) =>
+        db.from("context_entries").update({ used_count: (r.used_count ?? 0) + 1 }).eq("user_id", userId).eq("id", r.id),
+      ),
+    );
+  } catch {
+    // Counting is a nicety; the answer already went out.
+  }
 }
 
 /** Removes one remembered fact (the student said it's wrong). */
@@ -2202,7 +2420,7 @@ export async function getContextAsString(): Promise<string> {
   const c = await getUserContext();
   const entries = c.entries
     .slice(-50) // last 50 entries max
-    .map((e) => `[${e.category}] ${e.fact}`)
+    .map((e) => `[${e.category}] ${e.fact}${e.unconfirmed ? " (a guess, not confirmed)" : ""}`)
     .join("\n");
 
   if (c.compressedSummary) {
@@ -3522,7 +3740,7 @@ export async function seedGrillQuestions(planId: string, said: string, askedJust
   const { entries } = await getUserContext();
   const drafts = pickGrillQuestions({
     title: plan.title as string,
-    facts: entries.map((e) => e.fact),
+    facts: entries.flatMap((e) => (e.original ? [e.fact, e.original] : [e.fact])),
     said,
     asked,
     // A plan already asked some of its budget counts those too.
@@ -3563,7 +3781,7 @@ export async function answerGrillQuestion(
     const { data: plan } = await db.from("plans").select("title").eq("id", item.projectId).eq("user_id", userId).maybeSingle();
     title = (plan?.title as string | undefined) ?? null;
   }
-  await addContextEntry({ category: factCategory(item.kind), fact: factFromAnswer(item, answer, title), source: "manual" });
+  await addContextEntry({ category: factCategory(item.kind), fact: factFromAnswer(item, answer, title), source: "manual", projectId: item.projectId });
   return { replan: changesPlan(item.kind) && Boolean(item.projectId), projectId: item.projectId, question: item.question };
 }
 

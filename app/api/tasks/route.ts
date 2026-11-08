@@ -18,6 +18,7 @@ import { withUser } from "@/lib/request-context";
 import { trackEvent } from "@/lib/analytics";
 import { logServerError } from "@/lib/server-log";
 import { normalizeTime, taskFieldError } from "@/lib/task-input";
+import { logStepEvent } from "@/lib/student/step-events";
 
 const TASK_KINDS: TaskKind[] = ["school", "academic-ec", "side-ec", "personal", "commitment"];
 const COMMITMENTS: TaskCommitment[] = ["fixed", "reminder", "flexible"];
@@ -97,6 +98,7 @@ export const POST = withUser(async (req: Request) => {
       }
       console.log("[api/tasks] add_task success:", task.id);
       trackEvent("capture", { task_id: task.id, source: "manual" });
+      logStepEvent({ kind: "created", task });
       return NextResponse.json({ ok: true, task, state: await getAppState() });
     }
 
@@ -108,6 +110,7 @@ export const POST = withUser(async (req: Request) => {
       if (!task) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
       console.log("[api/tasks] complete_task success:", body.id);
       trackEvent("task_done", { task_id: task.id });
+      logStepEvent({ kind: "done", task });
       return NextResponse.json({ ok: true, task, state: await getAppState() });
     }
 
@@ -150,7 +153,10 @@ export const POST = withUser(async (req: Request) => {
       const task = await toggleTask(body.id);
       if (!task) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
       console.log("[api/tasks] toggle_task success:", body.id, "->", task.completed);
-      if (task.completed) trackEvent("task_done", { task_id: task.id });
+      if (task.completed) {
+        trackEvent("task_done", { task_id: task.id });
+        logStepEvent({ kind: "done", task });
+      }
       return NextResponse.json({ ok: true, task, state: await getAppState() });
     }
 
@@ -166,10 +172,14 @@ export const POST = withUser(async (req: Request) => {
         patch.kind = body.kind as TaskKind;
       }
       if (body.completed !== undefined) patch.completed = body.completed;
+      const moved = body.date !== undefined || body.time !== undefined;
       const task = await updateTask(body.id, patch);
       if (!task) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
       console.log("[api/tasks] update_task success:", body.id);
-      if (body.completed === true) trackEvent("task_done", { task_id: task.id });
+      if (body.completed === true) {
+        trackEvent("task_done", { task_id: task.id });
+        logStepEvent({ kind: "done", task });
+      } else if (moved) logStepEvent({ kind: "rescheduled", task });
       return NextResponse.json({ ok: true, task, state: await getAppState() });
     }
 
@@ -201,6 +211,7 @@ export const POST = withUser(async (req: Request) => {
       const task = await updateTask(body.id, { overdueDismissedAt: new Date().toISOString() });
       if (!task) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
       const saved = Boolean(task.overdueDismissedAt);
+      if (saved) logStepEvent({ kind: "skipped", task });
       const record = saved
         ? await recordAction("reschedule_task", `Dismissed "${task.title}"`, {
             restoredFields: [{ taskId: task.id, fields: { overdueDismissedAt: before.overdueDismissedAt ?? null } }],

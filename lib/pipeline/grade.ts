@@ -313,3 +313,90 @@ export function gradeRoute(expected: RouteKind, u: { route: string; intent: stri
   const got = routeKindOf(u);
   return got === expected ? { pass: true, failures: [] } : { pass: false, failures: [`route: expected ${expected}, got ${got ?? `${u.route}/${u.intent ?? "none"}`}`] };
 }
+
+// ─── Round 4: the context engine ─────────────────────────────────────────────
+// Slot coverage (free, rules only) and the swap test: the same goal for two
+// students must give two different plans, each fitted to its student. Run with
+// `npm run eval:pipeline -- --context` (asks before spending; `--check` is free).
+
+const CaseId = z.string().regex(/^[a-z0-9-]+$/);
+
+export const ContextEvalFileSchema = z.strictObject({
+  version: z.literal(1),
+  reference_date: Ymd,
+  timezone: z.string().min(1),
+  slot_coverage: z.array(
+    z.strictObject({
+      id: CaseId,
+      text: z.string().min(1),
+      type: z.enum(["general", "exam", "creator", "club", "essay"]),
+      /** Slots Tangent must ask about. */
+      asks: z.array(z.string().min(1)).min(1),
+      /** Slots the words already answer, so it must not ask. */
+      never: z.array(z.string().min(1)).optional(),
+    })
+  ),
+  swaps: z.array(
+    z.strictObject({
+      id: CaseId,
+      goal: z.string().min(1),
+      sessions: z.number().int().min(2).max(14),
+      profiles: z
+        .array(
+          z.strictObject({
+            id: CaseId,
+            facts: z.array(z.strictObject({ text: z.string().min(1), category: z.string().min(1) })).min(2),
+            /** Word stems; the plan must mention at least one. */
+            mentions: z.array(z.string().min(2)).min(1),
+          })
+        )
+        .length(2),
+    })
+  ),
+});
+export type ContextEvalFile = z.infer<typeof ContextEvalFileSchema>;
+
+/** Jaccard overlap of two sets of words (0–1). */
+function overlap(a: Set<string>, b: Set<string>): number {
+  if (!a.size && !b.size) return 1;
+  let both = 0;
+  a.forEach((w) => {
+    if (b.has(w)) both++;
+  });
+  return both / (a.size + b.size - both);
+}
+
+function planWords(tasks: readonly { title: string; notes?: string }[]): Set<string> {
+  const out = new Set<string>();
+  for (const t of tasks) for (const w of `${t.title} ${t.notes ?? ""}`.toLowerCase().match(/[a-z]{4,}/g) ?? []) out.add(w);
+  return out;
+}
+
+/** Most this alike two plans for different students may be. */
+export const SWAP_MAX_OVERLAP = 0.6;
+
+/**
+ * Two plans for the same goal and two different students: each must mention
+ * something from its own student's facts, and together they must not be
+ * near-copies.
+ */
+export function gradeSwap(
+  profiles: readonly { id: string; mentions: readonly string[] }[],
+  plans: readonly (readonly { title: string; notes?: string }[])[],
+): Grade {
+  const failures: string[] = [];
+  profiles.forEach((p, i) => {
+    const tasks = plans[i] ?? [];
+    if (!tasks.length) {
+      failures.push(`${p.id}: no plan`);
+      return;
+    }
+    const text = tasks.map((t) => `${t.title} ${t.notes ?? ""}`).join(" ").toLowerCase();
+    if (!p.mentions.some((m) => text.includes(m.toLowerCase()))) failures.push(`${p.id}: mentions none of ${p.mentions.join(", ")}`);
+  });
+  if (plans.length >= 2 && plans[0].length && plans[1].length) {
+    const o = overlap(planWords(plans[0]), planWords(plans[1]));
+    if (o > SWAP_MAX_OVERLAP) failures.push(`plans too alike (${Math.round(o * 100)}% shared words)`);
+  }
+  return { pass: failures.length === 0, failures };
+}

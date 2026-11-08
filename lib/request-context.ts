@@ -25,6 +25,9 @@ export type RequestContext = {
   aiRoute?: string;
   /** Background writes (lib/pipeline/events.ts) to finish before the response. */
   pending?: Set<Promise<void>>;
+  /** Facts the context pack put in front of the AI this request (id → text),
+   *  so the change set or decision it produced can say "Used: …". */
+  factsUsed?: Map<string, string>;
 };
 
 const storage = new AsyncLocalStorage<RequestContext>();
@@ -52,6 +55,21 @@ export function requestMemo<T>(key: string, load: () => Promise<T>): Promise<T> 
   ctx.memo.set(key, p);
   p.catch(() => ctx.memo?.delete(key));
   return p;
+}
+
+/** Records facts the AI was shown in this request. No-op outside one. */
+export function noteFactsUsed(facts: { id: string; text: string }[]): void {
+  const ctx = storage.getStore();
+  if (!ctx || !facts.length) return;
+  ctx.factsUsed ??= new Map();
+  for (const f of facts) if (ctx.factsUsed.size < 30) ctx.factsUsed.set(f.id, f.text);
+}
+
+/** The facts the AI was shown so far in this request. */
+export function factsUsedThisRequest(): { id: string; text: string }[] {
+  const ctx = storage.getStore();
+  if (!ctx?.factsUsed) return [];
+  return Array.from(ctx.factsUsed.entries()).map(([id, text]) => ({ id, text }));
 }
 
 /** Longest a response waits for background writes (see trackPending). */

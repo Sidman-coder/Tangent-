@@ -137,6 +137,8 @@ export type PreviewPayload = {
   /** Plans this delete leaves with no tasks: the card's "Also remove the plan"
    *  box, checked while the draft has a delete_plan op for it. */
   planRemovals?: { planId: string; title: string; checked: boolean }[];
+  /** What Tangent knew that shaped this draft (the facts' text, at most 6). */
+  factsUsed?: string[];
 };
 
 // ─── Preview edits (PATCH /api/changesets/[id]) ─────────────────────────────

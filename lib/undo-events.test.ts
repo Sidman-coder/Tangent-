@@ -12,7 +12,8 @@ const FAKE_CONTEXT =
   encodeURIComponent(
     "export const getRequestContext = () => globalThis.__undoTestCtx;" +
       "export const requestMemo = (_k, f) => f();" +
-      "export const forgetMemo = () => {};"
+      "export const forgetMemo = () => {};" +
+      "export const factsUsedThisRequest = () => [];"
   );
 
 const NO_ADMIN =

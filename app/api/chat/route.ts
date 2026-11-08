@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withUser } from "@/lib/request-context";
 import { trackEvent } from "@/lib/analytics";
+import { DISTRESS_REPLY, looksDistressed } from "@/lib/student/sensitive";
 import { calendarReply, lastUserMessage, pendingAnswerReply, planReply, type CalendarReplyOptions } from "@/lib/chat-reply";
 import { parsePendingQuestion, PENDING_QUESTION_ID } from "@/lib/pending-question";
 import { TANGENT_PIPELINE_V2 } from "@/lib/pipeline/flags";
@@ -141,6 +142,16 @@ export const POST = withUser(async (req: Request) => {
       return NextResponse.json({ ok: false, error: "No user message" }, { status: 400 });
     }
 
+    // Real distress is never turned into a task or remembered: a kind reply
+    // that points to a trusted adult and 988 (lib/student/sensitive.ts).
+    if (looksDistressed(userText)) {
+      const reply = { ok: true, action: null, message: DISTRESS_REPLY, response: DISTRESS_REPLY, care: true };
+      if (body.stream !== true) return NextResponse.json(reply);
+      return new Response(JSON.stringify({ type: "result", ...reply }) + "\n", {
+        headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" },
+      });
+    }
+
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       return NextResponse.json({ ok: false, error: "Tangent's AI isn't set up on the server yet, so it can't answer right now." }, { status: 503 });
@@ -210,6 +221,8 @@ export const POST = withUser(async (req: Request) => {
     if (joins && !projectId) projectId = joins.id.slice(PROJECT_QUESTION_PREFIX.length);
     let pipelineText = userText;
     let slotDrafted = false;
+    // "I have enough to start round 1": shown with the draft it led to.
+    let grillNote: string | undefined;
     const slotTurn = parseSlotTurn(body.slotTurn);
     if (slotTurn?.stopped) trackEvent("grill_stopped", { count: slotTurn.answers.length, source: "slots" });
     if (
@@ -231,9 +244,9 @@ export const POST = withUser(async (req: Request) => {
           const reply = {
             ok: true,
             action: "clarify",
-            message: turn.checkIn ? "Tangent knows enough to make a first plan." : "One quick question so this fits you.",
-            questions: [{ id: `slot:${turn.card.slot}`, question: turn.card.question, options: turn.card.options, ...(turn.card.multi ? { multi: true } : {}), ...(turn.card.assume ? { assume: turn.card.assume } : {}) }],
-            slotFlow: { slot: turn.card.slot, score: turn.score, checkIn: turn.checkIn },
+            message: turn.cards.length > 1 ? "A few quick questions so this fits you." : "One quick question so this fits you.",
+            questions: turn.cards.map((c) => ({ id: `slot:${c.slot}`, question: c.question, options: c.options, ...(c.multi ? { multi: true } : {}), ...(c.assume ? { assume: c.assume } : {}) })),
+            slotFlow: { slots: turn.cards.map((c) => c.slot), progress: turn.progress },
           };
           if (body.stream !== true) return NextResponse.json(reply);
           return new Response(JSON.stringify({ type: "result", ...reply }) + "\n", {
@@ -245,6 +258,7 @@ export const POST = withUser(async (req: Request) => {
           if (slotTurn && slotTurn.answers.length > 0) trackEvent("grill_answered", { count: slotTurn.answers.length, source: "slots" });
           if (slotTurn && slotTurn.skipped.length > 0) trackEvent("grill_skipped", { count: slotTurn.skipped.length, source: "slots" });
           if (turn.notes) pipelineText = `${userText}\n\n${turn.notes}`;
+          if (turn.enough) grillNote = turn.message;
         }
       }
     }
@@ -259,7 +273,7 @@ export const POST = withUser(async (req: Request) => {
       pipelineText = `${userText}\n\nMy answers to your questions:\n${answers.map((a) => `- ${a.question} ${a.answer}`).join("\n")}`;
     } else if (body.route !== "chat" && body.clarify === true && (body.newProject === true || shouldConsiderClarifying(userText))) {
       // A new project is always grilled first: it's the biggest ask there is.
-      const picture = await buildStudentContext().catch(() => null);
+      const picture = await buildStudentContext({ purpose: "grill", query: userText }).catch(() => null);
       const questions = picture
         ? await clarifyQuestions(userText, picture.text, {
             askCapacity: !picture.capacityKnown,
@@ -312,13 +326,14 @@ export const POST = withUser(async (req: Request) => {
           })
         : calendarReply(messages, pipelineText, onProgress, { project, preview: !project || TANGENT_PIPELINE_V2 });
 
-    if (body.stream !== true) return NextResponse.json(await reply());
+    const withNote = (r: Record<string, unknown>) => (grillNote && r.action === "preview" ? { ...r, grillNote } : r);
+    if (body.stream !== true) return NextResponse.json(withNote(await reply()));
 
     // Streamed: one JSON object per line. Plan progress ({type:"plan_outline"},
     // {type:"plan_task"}) and talked reply text ({type:"reply_text"}) as it's
     // generated, then {type:"result", ...} with the same fields as the
     // non-streamed reply. Tasks are only saved at the end.
-    return ndjson((send) => reply(send));
+    return ndjson(async (send) => withNote(await reply(send)));
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     console.error("[api/chat] Unhandled error:", message);

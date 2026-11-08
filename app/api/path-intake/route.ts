@@ -60,7 +60,7 @@ export const POST = withUser(async (req: Request) => {
     draft?: Record<string, string>;
     nodeId?: string;
   };
-  const picture = await buildStudentContext();
+  const picture = await buildStudentContext({ purpose: "path", query: body.title });
   const kind = KIND_WORDS[body.kind ?? "other"] ?? KIND_WORDS.other;
 
   if (body.action === "prefill") {

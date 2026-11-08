@@ -31,6 +31,7 @@ const MARGIN = 1.5;
 async function main() {
   const check = process.argv.includes("--check");
   if (process.argv.includes("--round2")) return round2(check);
+  if (process.argv.includes("--context")) return contextSwap(check);
   // Drafting is gated on the flag, read when lib/pipeline/flags.ts loads.
   process.env.TANGENT_PIPELINE_V2 = "true";
 
@@ -271,6 +272,70 @@ async function round2(check: boolean) {
     console.log(`${part}: ${rows.filter((r) => r.pass).length}/${rows.length}`);
   }
   console.log(`\n${results.filter((r) => r.pass).length}/${results.length} passed`);
+}
+
+/**
+ * Round 4 (Phase 2.5): the swap test, from lib/pipeline/fixtures/context.json.
+ * Each goal is planned twice, once per student profile (their facts ranked
+ * into the same STUDENT CONTEXT block the app sends), and gradeSwap checks the
+ * two plans differ and each fits its student. Calls generatePlan directly:
+ * no database, nothing saved. `--context --check` is free; slot coverage is
+ * rules-only and runs in `npm test`.
+ */
+async function contextSwap(check: boolean) {
+  const { ContextEvalFileSchema, gradeSwap } = await import("@/lib/pipeline/grade");
+  const { estimateCostUsd, modelFor } = await import("@/lib/ai/models");
+  const { rankFacts, factLine } = await import("@/lib/student/context-pack");
+  const { generatePlan, planDates } = await import("@/lib/ai/plan");
+  const { promptDateContext, addDaysYMD } = await import("@/lib/time");
+  const raw = (await import("@/lib/pipeline/fixtures/context.json")).default as unknown;
+  const parsed = ContextEvalFileSchema.safeParse(raw);
+  if (!parsed.success) {
+    console.error("context.json is invalid:\n" + parsed.error.message);
+    process.exit(1);
+  }
+  const file = parsed.data;
+  const plans = file.swaps.length * 2;
+  const perPlan = estimateCostUsd(modelFor("SMART"), PLAN_OUTLINE) + PLAN_DETAIL_CALLS * estimateCostUsd(modelFor("FAST"), PLAN_DETAIL);
+  const cost = MARGIN * plans * perPlan;
+  console.log(`Context swap: ${file.swaps.length} goals × 2 students = ${plans} plans (${file.slot_coverage.length} slot coverage cases run free in npm test)`);
+  console.log(`Estimated cost: at most about $${cost.toFixed(2)} (×${MARGIN} margin)`);
+  if (check) {
+    console.log("Check OK: context fixtures valid, modules load. No AI calls made.");
+    return;
+  }
+  if (!(await ask(`This makes ${plans} plans with the AI (about $${cost.toFixed(2)}). Type y to continue: `))) {
+    console.log("Stopped. Nothing was spent.");
+    return;
+  }
+
+  const now = new Date(`${file.reference_date}T12:00:00Z`);
+  let passed = 0;
+  for (const s of file.swaps) {
+    const start = addDaysYMD(file.reference_date, 1);
+    const dates = planDates(start, addDaysYMD(start, s.sessions * 3)).slice(0, s.sessions);
+    const made = await Promise.all(
+      s.profiles.map(async (p) => {
+        const facts = rankFacts(
+          p.facts.map((f, i) => ({ id: `${p.id}-${i}`, text: f.text, factCategory: f.category as never, timestamp: now.toISOString() })),
+          { purpose: "plan", query: s.goal, now },
+        );
+        const picture = `WHAT YOU KNOW ABOUT THEM (most relevant first):\n${facts.map(factLine).join("\n")}`;
+        const plan = await generatePlan({
+          request: `${s.goal}\n\nSTUDENT CONTEXT (fit the plan to this student):\n${picture}`,
+          dateContext: promptDateContext(file.timezone, now),
+          dates,
+        });
+        if (!plan.ok) console.log(`  ${p.id}: plan failed (${plan.error})`);
+        return plan.ok ? plan.tasks : [];
+      }),
+    );
+    const g = gradeSwap(s.profiles, made);
+    if (g.pass) passed++;
+    console.log(`${g.pass ? "PASS" : "FAIL"}  ${s.id}${g.pass ? "" : `  (${g.failures.join("; ")})`}`);
+    s.profiles.forEach((p, i) => console.log(`  ${p.id}: ${made[i].slice(0, 3).map((t) => t.title).join(" | ")}`));
+  }
+  console.log(`\n${passed}/${file.swaps.length} passed`);
 }
 
 main().catch((e: unknown) => {

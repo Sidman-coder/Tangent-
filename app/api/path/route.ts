@@ -503,7 +503,7 @@ export const POST = withUser(async (req: Request) => {
       .reduce((sum, n) => sum + (n.hoursPerWeek ?? 0), 0);
 
     // Who the student is, so ideas fit them instead of a generic student.
-    const picture = await buildStudentContext().catch(() => null);
+    const picture = await buildStudentContext({ purpose: "path", query: owning.path.title }).catch(() => null);
     const prompt = [
       pathBrief(owning.path, committedHours, getUserToday(await getUserTimezone())),
       ...(picture?.text ? [`About the student (background):\n${picture.text}`] : []),

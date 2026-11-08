@@ -180,7 +180,7 @@ export async function understandAndRoute(messages: ChatMessage[], userText: stri
   // and the client can show it (app/api/chat already asked when his own rule
   // fired, so this only adds the router's cases).
   if (u.needsQuestions && opts.clarify && (u.intent === "new_plan" || u.intent === "new_project")) {
-    const picture = await buildStudentContext().catch(() => null);
+    const picture = await buildStudentContext({ purpose: "grill", query: userText }).catch(() => null);
     const chat = messages.slice(0, -1).filter((m) => m.role === "user").map((m) => m.content).join("\n").slice(-2000);
     const questions = picture ? await clarifyQuestions(userText, picture.text, { askCapacity: !picture.capacityKnown, chat }).catch(() => []) : [];
     if (questions.length > 0) return done({ ok: true, action: "clarify", message: "A few quick questions so this fits you.", questions });

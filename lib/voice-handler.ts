@@ -1006,7 +1006,7 @@ async function handleVoiceTextInner(
       console.log("[api/voice] Final date range:", startDate, "to", endDate);
 
       // Session dates are fixed here (lib/ai/plan.ts sessionInterval), not by the model.
-      const picture = await buildStudentContext().catch(() => null);
+      const picture = await buildStudentContext({ purpose: "plan", query: text }).catch(() => null);
       const studentPicture = picture?.text ?? "";
       // Master fix Phase 3: the plan brief (answers, chat and context filled in;
       // defaults for the rest) steers the planner and is kept as project notes.
@@ -1176,7 +1176,7 @@ async function handleVoiceTextInner(
     routeAs(ROUTES.fast);
     // Memory, school hours, capacity, how full the next two weeks are, what's
     // due, their goals (lib/ai/student-context.ts).
-    const userContext = await buildStudentContext()
+    const userContext = await buildStudentContext({ purpose: "voice", query: text })
       .then((c) => c.text)
       .catch(() => getContextAsString());
     const voiceRequest = {

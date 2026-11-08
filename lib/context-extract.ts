@@ -1,8 +1,8 @@
 import "server-only";
-import { getUserContext, addContextEntry, setCompressedSummary } from "@/lib/store";
+import { addContextEntry } from "@/lib/store";
 import type { ContextEntry } from "@/lib/types";
 import { extractStructuredJson } from "@/lib/anthropic-json";
-import { callClaude, messageText } from "@/lib/ai/call";
+import { callClaude } from "@/lib/ai/call";
 
 const CONTEXT_EXTRACT_SCHEMA = {
   type: "object",
@@ -17,8 +17,9 @@ const CONTEXT_EXTRACT_SCHEMA = {
             enum: ["preference", "habit", "commitment", "goal", "person", "work", "general"],
           },
           fact: { type: "string" },
+          stated: { type: "boolean" },
         },
-        required: ["category", "fact"],
+        required: ["category", "fact", "stated"],
         additionalProperties: false,
       },
     },
@@ -27,63 +28,52 @@ const CONTEXT_EXTRACT_SCHEMA = {
   additionalProperties: false,
 } as const;
 
+const SYSTEM = `Extract durable facts about a high school student from this conversation: things that will still be true in a few weeks. Ignore one-time events and tasks already handled.
+
+Write each fact to the student, in the second person, as one short sentence: "You have soccer practice Mondays and Wednesdays until 6", "You do your best work late at night". Be specific; leave out anything too vague to plan with ("you have a test coming up").
+
+stated: true when the student said it outright, false when you are inferring it.
+
+Never extract health, mental health, family conflict, relationships, sexuality, religion, substances or anything else sensitive, even if the student mentions it.
+
+Categories: preference (how they like to work), habit (what they regularly do), commitment (recurring schedule), goal (what they are working toward), person (someone they mention), work (classes, clubs, jobs, projects), general (other durable facts).
+
+If nothing durable is found return an empty facts array.`;
+
 /** Pulls durable facts about the student out of one exchange and adds them to
- *  their context file, compressing it once it passes 40 entries. Runs inside
- *  the caller's user context (the store scopes every write to that student). */
+ *  what Tangent knows. Facts go through the same filter as every other write
+ *  (lib/student/facts.ts prepareFact): sensitive or vague ones are never kept.
+ *  Nothing is compressed away: the context pack ranks facts instead. Runs
+ *  inside the caller's user context. */
 export async function extractContextFacts(conversation: string, source: ContextEntry["source"] = "chat"): Promise<ContextEntry[]> {
-  // Extract key facts from a conversation using Haiku
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return [];
+  if (!apiKey || !conversation.trim()) return [];
 
   const response = await callClaude(
     "contextExtract",
-    {
-      system: `Extract durable facts about the user from this conversation. Only extract things that would remain true for weeks or months. Ignore one-time events and tasks already handled.
-
-Categories: preference (how they like to work), habit (what they regularly do), commitment (recurring schedule), goal (what they are working toward), person (someone they mention), work (their job/projects), general (other durable facts)
-
-If nothing durable is found return an empty facts array.`,
-      messages: [{
-        role: "user",
-        content: `Conversation:\n${conversation}`,
-      }],
-    },
-    { format: { type: "json_schema", schema: CONTEXT_EXTRACT_SCHEMA } }
+    { system: SYSTEM, messages: [{ role: "user", content: `Conversation:\n${conversation.slice(0, 8000)}` }] },
+    { format: { type: "json_schema", schema: CONTEXT_EXTRACT_SCHEMA } },
   );
 
-  let facts: Array<{ category: string; fact: string }> = [];
+  let facts: Array<{ category: string; fact: string; stated?: boolean }> = [];
   try {
     if (!response.ok) throw new Error(`Anthropic error ${response.status}`);
-    facts = extractStructuredJson<{ facts: Array<{ category: string; fact: string }> }>(response.message).facts;
+    facts = extractStructuredJson<{ facts: Array<{ category: string; fact: string; stated?: boolean }> }>(response.message).facts;
   } catch (e) {
     console.error("[context-extract] Fact extraction parsing failed:", e instanceof Error ? e.message : e);
   }
 
+  const CATS = ["preference", "habit", "commitment", "goal", "person", "work", "general"] as const;
   const added: ContextEntry[] = [];
-  for (const f of facts) {
-    if (f.fact && f.category) {
-      const entry = await addContextEntry({
-        category: f.category as ContextEntry["category"],
-        fact: f.fact,
-        source: source,
-      });
-      added.push(entry);
-    }
-  }
-
-  // Check if compression needed — over 40 entries
-  const ctx = await getUserContext();
-  if (ctx.entries.length > 40) {
-    const allFacts = ctx.entries.map((e) => `[${e.category}] ${e.fact}`).join("\n");
-
-    const compressResponse = await callClaude("contextCompress", {
-      system: "Compress these user facts into a dense paragraph that preserves all key information. Remove duplicates. Keep it under 350 words. Plain text only.",
-      messages: [{ role: "user", content: allFacts }],
+  for (const f of facts.slice(0, 10)) {
+    if (!f.fact) continue;
+    const entry = await addContextEntry({
+      category: CATS.find((c) => c === f.category) ?? "general",
+      fact: f.fact,
+      source,
+      factSource: f.stated === false ? "guessed" : "said",
     });
-
-    const compressed = compressResponse.ok ? messageText(compressResponse.message) : "";
-    if (compressed) await setCompressedSummary(compressed);
+    if (entry) added.push(entry);
   }
-
   return added;
 }

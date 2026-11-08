@@ -14,7 +14,6 @@ import {
   addNotification,
   getAllTasks,
   getBriefConfig,
-  getContextAsString,
   getPendingBriefBatch,
   getUserTimezone,
   setPendingBriefBatch,
@@ -22,6 +21,7 @@ import {
 import { addDaysYMD, currentInstant, getUserToday } from "@/lib/time";
 import type { Notification } from "@/lib/types";
 import { extractStructuredJson } from "@/lib/anthropic-json";
+import { studentFactsText } from "@/lib/ai/student-context";
 import { modelParams } from "@/lib/ai/models";
 import { submitMessageBatch, getBatchStatus, fetchBatchResults } from "@/lib/anthropic-batch";
 import { checkStaleItems, fetchRSSSummary, summarizeManualUrl, generateBriefNarration } from "@/lib/brief-sources";
@@ -73,7 +73,7 @@ The greeting is one sentence referencing something specific about their day. The
 
 async function buildBriefContext(): Promise<string> {
   const tasks = await getAllTasks();
-  const userContext = await getContextAsString();
+  const userContext = await studentFactsText("brief");
   const config = await getBriefConfig();
   const timeZone = await getUserTimezone();
   const now = currentInstant();

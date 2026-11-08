@@ -13,6 +13,8 @@ import {
   updateTask,
 } from "@/lib/store";
 import { withUser } from "@/lib/request-context";
+import { logStepEvent, logStepEvents } from "@/lib/student/step-events";
+import { NOT_TODAY_REASONS, type NotTodayReason } from "@/lib/student/observations";
 import { trackEvent } from "@/lib/analytics";
 import {
   type StepMove,
@@ -31,7 +33,7 @@ export const dynamic = "force-dynamic";
 // Too big asks Claude for smaller steps.
 export const maxDuration = 60;
 
-type Body = { action?: string; taskId?: string; steps?: unknown };
+type Body = { action?: string; taskId?: string; steps?: unknown; reason?: unknown };
 
 /** Applies the moves and records them as one Undo. Whatever landed before a
  *  failure is still recorded, so it can be undone. */
@@ -60,8 +62,10 @@ function plural(n: number): string {
   return `${n} step${n === 1 ? "" : "s"}`;
 }
 
+const isNotTodayReason = (v: unknown): v is NotTodayReason => typeof v === "string" && (NOT_TODAY_REASONS as readonly string[]).includes(v);
+
 export const POST = withUser(async (request: Request) => {
-  const { action, taskId, steps } = (await request.json().catch(() => ({}))) as Body;
+  const { action, taskId, steps, reason } = (await request.json().catch(() => ({}))) as Body;
   const [tasks, { cap }, now] = await Promise.all([getAllTasks(), studentCapacity(), studentNow()]);
   const ctx = { now, cap };
 
@@ -88,6 +92,7 @@ export const POST = withUser(async (request: Request) => {
     const moves = planNotToday(tasks, task, ctx);
     const actionId = await applyMoves(moves, `Moved "${task.title}" off today`);
     trackEvent("not_today", { task_id: task.id, count: moves.length });
+    logStepEvent({ kind: "not_today", task, code: isNotTodayReason(reason) ? reason : null });
     return NextResponse.json({
       ok: true,
       moved: moves.length,
@@ -125,6 +130,7 @@ export const POST = withUser(async (request: Request) => {
       removedTasks: keepOriginal ? [] : [task],
     });
     trackEvent("too_big", { task_id: task.id, count: added.length });
+    logStepEvents([{ kind: "too_big", task }, ...added.map((t) => ({ kind: "created" as const, task: t }))]);
     return NextResponse.json({ ok: true, added: added.length, keptOriginal: keepOriginal, actionId: record.id });
   }
 

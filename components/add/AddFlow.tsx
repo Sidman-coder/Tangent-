@@ -62,15 +62,16 @@ type Reply = {
   pending?: { id: string; message: string };
   changeSet?: ChangeSet;
   preview?: PreviewPayload;
-  slotFlow?: { slot: string; score: number; checkIn: boolean };
+  slotFlow?: { slots: string[]; progress: number };
+  grillNote?: string;
 };
 
 type Phase =
   | { kind: "compose" }
   | { kind: "working"; text: string }
-  | { kind: "asking"; text: string; questions: ClarifyQuestion[]; message: string; slot?: { name: string; score: number; checkIn: boolean; turn: SlotTurn } }
+  | { kind: "asking"; text: string; questions: ClarifyQuestion[]; message: string; slot?: { slots: string[]; progress: number; at: number; turn: SlotTurn } }
   | { kind: "confirm"; id: string; message: string }
-  | { kind: "preview"; changeSet: ChangeSet; preview: PreviewPayload; said: string; asked: number }
+  | { kind: "preview"; changeSet: ChangeSet; preview: PreviewPayload; said: string; asked: number; note?: string }
   | { kind: "done"; summary: string; actionId: string | null; where: { href: string; label: string } | null }
   | { kind: "error"; message: string }
   | { kind: "heard"; text: string };
@@ -206,7 +207,7 @@ export default function AddFlow({
             capture: !toProject && !followUp,
             clarify: !followUp || !!followUp.slotTurn,
             answers: followUp?.answers ?? undefined,
-            // One question at a time until Tangent knows enough (lib/context).
+            // A few questions until Tangent knows enough (lib/context/goal-slots.ts).
             slotFlow: true,
             slotTurn: followUp?.slotTurn,
             ...(toProject ? (targetProject === "new" ? { newProject: true } : { projectId: targetProject }) : {}),
@@ -215,7 +216,7 @@ export default function AddFlow({
         const data = (await res.json()) as Reply;
         if (!res.ok || !data.ok) throw new Error(data.error || "That didn't go through. Try again.");
         if (data.action === "clarify" && data.questions?.length) {
-          const slot = data.slotFlow ? { name: data.slotFlow.slot, score: data.slotFlow.score, checkIn: data.slotFlow.checkIn, turn: followUp?.slotTurn ?? NO_TURN } : undefined;
+          const slot = data.slotFlow ? { slots: data.slotFlow.slots, progress: data.slotFlow.progress, at: 0, turn: followUp?.slotTurn ?? NO_TURN } : undefined;
           setPhase({ kind: "asking", text: words, questions: data.questions, message: data.message ?? "A few quick questions so this fits you.", slot });
           return;
         }
@@ -224,7 +225,7 @@ export default function AddFlow({
           return;
         }
         if (data.action === "preview" && data.changeSet && data.preview) {
-          setPhase({ kind: "preview", changeSet: data.changeSet, preview: data.preview, said: words, asked: followUp?.answers?.length ?? followUp?.slotTurn?.answers.length ?? 0 });
+          setPhase({ kind: "preview", changeSet: data.changeSet, preview: data.preview, said: words, asked: followUp?.answers?.length ?? followUp?.slotTurn?.answers.length ?? 0, note: data.grillNote });
           return;
         }
         // Pipeline V2's intent router can decide mid-flight that this is
@@ -421,18 +422,28 @@ export default function AddFlow({
             </p>
             {phase.slot ? (
               (() => {
-                const { name, turn } = phase.slot;
-                const next = (t: SlotTurn) => void send(phase.text, { slotTurn: t });
+                // 1–3 questions a turn, one card at a time; the turn goes back
+                // after the last one. Stop sends what Tangent has right away.
+                const { slots, at, turn, progress } = phase.slot;
+                const name = slots[at];
+                const card = phase.questions[at];
+                const advance = (t: SlotTurn) => {
+                  if (at + 1 < slots.length) setPhase({ ...phase, slot: { ...phase.slot!, at: at + 1, turn: t } });
+                  else void send(phase.text, { slotTurn: t });
+                };
+                // The bar fills as the batch is answered; 0.7 reads as 100%.
+                const score = 0.7 * Math.min(1, progress + ((1 - progress) * at) / slots.length);
+                if (!name || !card) return null;
                 return (
                   <SlotQuestionCard
-                    key={`${name}-${turn.answers.length + turn.skipped.length}-${phase.slot.checkIn}`}
-                    card={phase.questions[0]}
-                    score={phase.slot.score}
-                    checkIn={phase.slot.checkIn}
-                    onAnswer={(answer) => next({ ...turn, answers: [...turn.answers, { slot: name, answer }], inARow: turn.inARow + 1 })}
-                    onSkip={() => next({ ...turn, skipped: [...turn.skipped, name], inARow: turn.inARow + 1 })}
-                    onStop={() => next({ ...turn, stopped: true })}
-                    onKeepGoing={() => next({ ...turn, inARow: 0 })}
+                    key={`${name}-${turn.answers.length + turn.skipped.length}`}
+                    card={card}
+                    score={score}
+                    checkIn={false}
+                    onAnswer={(answer) => advance({ ...turn, answers: [...turn.answers, { slot: name, answer }], inARow: turn.inARow + 1 })}
+                    onSkip={() => advance({ ...turn, skipped: [...turn.skipped, name], inARow: turn.inARow + 1 })}
+                    onStop={() => void send(phase.text, { slotTurn: { ...turn, stopped: true } })}
+                    onKeepGoing={() => undefined}
                   />
                 );
               })()
@@ -456,6 +467,7 @@ export default function AddFlow({
         )}
         {phase.kind === "preview" && (
           <m.div key="preview" {...fade}>
+            {phase.note && <p className="add-grill-note" role="status">{phase.note}</p>}
             <PreviewCard
               changeSet={phase.changeSet}
               preview={phase.preview}

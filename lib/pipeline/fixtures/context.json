@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "reference_date": "2026-11-09",
+  "timezone": "America/New_York",
+  "slot_coverage": [
+    { "id": "cover-instagram", "text": "I want to grow my Instagram", "type": "creator", "asks": ["followers", "niche", "hoursPerWeek"] },
+    { "id": "cover-tiktok", "text": "get more tiktok followers", "type": "creator", "asks": ["followers", "niche", "hoursPerWeek"] },
+    { "id": "cover-youtube-known", "text": "Grow my YouTube channel, I'm at 200 subscribers", "type": "creator", "asks": ["niche", "hoursPerWeek"], "never": ["followers"] },
+    { "id": "cover-sat", "text": "SAT prep", "type": "exam", "asks": ["deadline", "outcome", "weakTopics"] },
+    { "id": "cover-ap-bio", "text": "Study for the AP Bio exam", "type": "exam", "asks": ["deadline", "outcome", "weakTopics"] },
+    { "id": "cover-club", "text": "Start a robotics club", "type": "club", "asks": ["outcome", "approvalSteps", "deadline"] },
+    { "id": "cover-essay", "text": "Common App personal statement", "type": "essay", "asks": ["deadline", "essayPrompt", "drafts"] },
+    { "id": "cover-guitar", "text": "Learn guitar", "type": "general", "asks": ["outcome", "deadline", "hoursPerWeek"] }
+  ],
+  "swaps": [
+    {
+      "id": "swap-instagram",
+      "goal": "Help me grow my Instagram over the next 3 weeks",
+      "sessions": 6,
+      "profiles": [
+        {
+          "id": "beginner-photographer",
+          "facts": [
+            { "text": "Your Instagram has 40 followers, mostly friends", "category": "goals" },
+            { "text": "You post film photos of your town", "category": "identity" },
+            { "text": "You can give about 2 hrs a week to it", "category": "schedule" },
+            { "text": "You've never made a Reel", "category": "whats_hard" }
+          ],
+          "mentions": ["photo", "film", "reel"]
+        },
+        {
+          "id": "established-baker",
+          "facts": [
+            { "text": "Your Instagram has 3,000 followers", "category": "goals" },
+            { "text": "Your account is about baking and cake decorating", "category": "identity" },
+            { "text": "You can give about 6 hrs a week to it", "category": "schedule" },
+            { "text": "Your Reels get far more views than your photo posts", "category": "how_you_work" }
+          ],
+          "mentions": ["bak", "cake", "recipe"]
+        }
+      ]
+    },
+    {
+      "id": "swap-sat",
+      "goal": "Make me an SAT study plan for the next 4 weeks",
+      "sessions": 8,
+      "profiles": [
+        {
+          "id": "math-weak",
+          "facts": [
+            { "text": "Your last practice SAT was 1180: 520 math, 660 reading", "category": "goals" },
+            { "text": "Algebra word problems are what trip you up", "category": "whats_hard" },
+            { "text": "You focus best in 25 minute blocks", "category": "how_you_work" }
+          ],
+          "mentions": ["math", "algebra", "word problem"]
+        },
+        {
+          "id": "reading-weak",
+          "facts": [
+            { "text": "Your last practice SAT was 1340: 750 math, 590 reading", "category": "goals" },
+            { "text": "Reading passages take you too long and you run out of time", "category": "whats_hard" },
+            { "text": "You can do 90 minute sessions on weekends", "category": "schedule" }
+          ],
+          "mentions": ["reading", "passage", "timed"]
+        }
+      ]
+    }
+  ]
+}
