@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { m, useReducedMotion } from "motion/react";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
@@ -32,6 +32,7 @@ import { X, Check, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil, 
 import WeekView from "@/components/calendar/WeekView";
 import AgendaView from "@/components/calendar/AgendaView";
 import TaskTip from "@/components/calendar/TaskTip";
+import CalendarRail from "@/components/calendar/CalendarRail";
 import TaskTitle from "@/components/ui/TaskTitle";
 import Toast, { ToastPortal } from "@/components/ui/Toast";
 
@@ -156,7 +157,7 @@ export default function CalendarPage() {
   const [dayChatInput, setDayChatInput] = useState("");
   const [dayChatBusy, setDayChatBusy] = useState(false);
 
-  const plans: Plan[] = state?.plans ?? [];
+  const plans: Plan[] = useMemo(() => state?.plans ?? [], [state?.plans]);
 
   const getPlan = useCallback((planId: string | null | undefined): Plan | null => {
     if (!planId) return null;
@@ -517,6 +518,7 @@ export default function CalendarPage() {
   return (
     <>
       <TaskTip tasks={state?.tasks ?? []} plans={plans} colorFor={getTaskCategoryColor} />
+      <div className="calendar-layout">
       <div className="calendar-page">
         <header className="cal-bar">
           <h1 className="cal-title">
@@ -709,6 +711,8 @@ export default function CalendarPage() {
           </m.div>
         </section>
       )}
+      </div>
+      <CalendarRail tasks={state?.tasks ?? []} today={todayYmd} />
       </div>
 
       <SidePeek open={!!selectedDay} titleId="calendar-day-title" onClose={() => { setSelectedDay(null); setRemoved(null); }}>

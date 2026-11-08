@@ -98,7 +98,7 @@ export default function TangentsPage() {
   return (
     <div className="tangents-gallery tangents-light">
       <PageHeader
-        title="Tangents"
+        title="Paths"
         description="Where you want to be in a year or more. Tangent maps the moves from what you already do."
         actions={
           paths && paths.length > 0 ? (

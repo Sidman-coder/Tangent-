@@ -266,6 +266,18 @@
   border-radius: 50%;
   background: var(--dot, var(--accent));
 }
+/* Paths: first in the Projects group, a small route mark in place of a dot. */
+.app-paths-icon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-inline: -5px;
+  border-radius: var(--r-xs, 6px);
+  color: var(--series-teal, var(--accent));
+}
+.app-paths-link { margin-bottom: 2px; }
 .app-project-name {
   flex: 1;
   min-width: 0;

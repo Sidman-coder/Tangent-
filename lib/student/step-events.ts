@@ -17,12 +17,13 @@ import { getUserTimezone } from "@/lib/store";
 import { localNow, weekdayOf } from "@/lib/time";
 import { minutesFromNotes } from "@/lib/load";
 import type { Task } from "@/lib/types";
-import { isStepEventKind, type StepEvent, type StepEventKind } from "./observations";
+import { isBehaviourKind, isStepEventKind, type StepEvent, type StepEventKind } from "./observations";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CODE_RE = /^[a-z_]{1,24}$/;
 
 let tableMissing = false;
+let behaviourKindsMissing = false;
 
 function noteMissing(error: { code?: string; message?: string }): boolean {
   if (schemaErrorKind(error) !== "missing_table") return false;
@@ -66,9 +67,20 @@ async function insert(events: StepEventInput[]): Promise<void> {
         code: e.code && CODE_RE.test(e.code) ? e.code : null,
       };
     });
-  if (!rows.length) return;
-  const { error } = await db.from("step_events").insert(rows);
-  if (error && !noteMissing(error)) console.warn("[step-events] not recorded:", error.code ?? "unknown");
+  const kept = behaviourKindsMissing ? rows.filter((r) => !isBehaviourKind(r.kind)) : rows;
+  if (!kept.length) return;
+  const { error } = await db.from("step_events").insert(kept);
+  if (!error || noteMissing(error)) return;
+  // 23514: the old kind check, before 20261111000000_step_events_behaviour.sql.
+  // Drop the behaviour kinds from now on and keep the step rows.
+  if (error.code === "23514" && !behaviourKindsMissing && kept.some((r) => isBehaviourKind(r.kind))) {
+    behaviourKindsMissing = true;
+    warnSchemaOnce("step_events_behaviour", "step_events can't take the behaviour kinds yet; apply 20261111000000_step_events_behaviour.sql (docs/MANUAL-STEPS.md). Tangent logs steps only until then.");
+    const steps = kept.filter((r) => !isBehaviourKind(r.kind));
+    if (steps.length) await db.from("step_events").insert(steps);
+    return;
+  }
+  console.warn("[step-events] not recorded:", error.code ?? "unknown");
 }
 
 /** Logs what happened to one or more steps. Never throws, never blocks. */

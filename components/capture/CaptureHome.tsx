@@ -35,6 +35,7 @@ import CaptureIsland from "./CaptureIsland";
 import FocusView, { saveFocus } from "./FocusView";
 import SortedCard from "./SortedCard";
 import { useCapture } from "./useCapture";
+import { markEntered } from "@/lib/entry";
 import "./capture.css";
 
 const TICK_MS = 50;
@@ -89,6 +90,8 @@ export default function CaptureHome() {
   // route changes, so the hop into the app is one continuous motion.
   const [leaving, setLeaving] = useState(false);
   useEffect(() => {
+    // Seen the capture home this session: / is Today from here on (lib/entry.ts).
+    markEntered();
     router.prefetch("/");
   }, [router]);
   const openApp = useCallback(

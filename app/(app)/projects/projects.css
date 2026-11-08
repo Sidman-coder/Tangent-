@@ -515,7 +515,7 @@
 .project-layout--steps .project-main {
   grid-area: main;
   gap: 20px;
-  max-width: 640px;
+  max-width: 760px;
 }
 .project-pace-card {
   grid-area: pace;
@@ -585,3 +585,21 @@
   text-transform: inherit;
   letter-spacing: inherit;
 }
+
+/* Paths, inside Projects: a quiet link beside New project. */
+.projects-paths-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--text);
+  font: 600 14px/1 var(--font-body);
+  text-decoration: none;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+.projects-paths-link:hover { background: var(--elev-2); }
+.projects-paths-link svg { color: var(--series-teal, var(--accent)); }

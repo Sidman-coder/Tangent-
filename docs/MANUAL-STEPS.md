@@ -175,4 +175,12 @@ Run these in the Supabase SQL Editor, in order. Each one is safe to run twice. T
 - Open a plan preview: under the steps it shows "Used: …" with your own facts.
 - Finish a step, press "Not today" on another, then run `select kind, code, hour from step_events order by created_at desc limit 5;`. The rows have no titles.
 
+### Phase 2b: behaviour in the observation log (1 migration)
+
+4. **`supabase/migrations/20261111000000_step_events_behaviour.sql`** lets `step_events` also record how you plan and ask (chat question types, plan accepted/edited/discarded, planning questions answered/skipped/stopped). Still codes only. Run it after the Phase 2 step_events migration. Check it (the result lists `chat_ask` and `question_skip`):
+   ```sql
+   select pg_get_constraintdef(oid) from pg_constraint where conname = 'step_events_kind_check';
+   ```
+   Before it runs, the new kinds are rejected by the old check: the app logs one server warning and carries on.
+
 **Evals** (paid, about $0.08; asks before spending): `npm run eval:pipeline -- --context` runs the swap test, which plans the same goal for two different students and checks the plans differ. The free check is `npm run eval:pipeline -- --context --check`. The full pipeline eval is still `npm run eval:pipeline`.

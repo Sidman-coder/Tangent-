@@ -184,7 +184,8 @@ Cards on the page get **no** shadow: a 1px `--line` border only.
 | Token | Value | Use |
 |---|---|---|
 | `--rail-w` | 232px (was 216) | Desktop sidebar |
-| `--content-max` | 760px for lists (Home, Today, Project, Chat); 1180px for Calendar and Settings | Main column |
+| `--content-max` | 1120px (Round 4): Calendar, Settings, Paths and the planning workspace | Wide pages; Calendar adds a 300px side rail at ≥ 1280px |
+| `--content-read` | 760px: reading columns (chat thread, project steps, Settings content beside its 220px sub-nav); Today 880px | Text never runs wider than this |
 | `--page-gutter` | 16 / 32 / 40px | Phone / tablet / desktop |
 | `--topbar-h` | 56px | Desktop and phone top bar |
 | `--bottom-nav-h` | 64px + `env(safe-area-inset-bottom)` | Phone bottom nav |

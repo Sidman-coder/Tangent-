@@ -33,6 +33,7 @@ import ContextSettings from "@/app/(app)/settings/context/page";
 import ActivitySettings from "@/app/(app)/settings/activity/page";
 import DataSettings from "@/app/(app)/settings/data/page";
 import AiPage from "@/app/(app)/ai/page";
+import TangentsPage from "@/app/(app)/tangents/page";
 import { SAMPLE_STATE } from "@/lib/dev/sample-state";
 import { addDaysYMD, getUserToday } from "@/lib/time";
 
@@ -106,6 +107,7 @@ const PAGES: Record<string, React.ComponentType> = {
   "settings-activity": framed(ActivitySettings),
   "settings-data": framed(DataSettings),
   ai: AiPage,
+  paths: TangentsPage,
   preview: PreviewCalendarSample,
   color: ColorPickerSample,
   grill: GrillSample,

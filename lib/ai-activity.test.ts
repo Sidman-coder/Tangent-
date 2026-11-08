@@ -53,7 +53,7 @@ test("understood: each request reads in plain words", () => {
   assert.equal(label("fast", null, "fast"), "Quick capture (no AI)");
   assert.equal(label("clarify", "clarify"), "Asked you to choose");
   assert.equal(label("task", "delete_plan_tasks"), "Remove tasks");
-  assert.equal(label("tangent", "tangent"), "Sent to Tangents");
+  assert.equal(label("tangent", "tangent"), "Sent to Paths");
   assert.equal(label("chat", null), "Question", "anything unknown reads as a question");
   // Quick capture wins even when an intent was guessed.
   assert.equal(label("task", "add_task", "fast"), "Quick capture (no AI)");

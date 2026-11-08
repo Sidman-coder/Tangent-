@@ -16,7 +16,7 @@ import "server-only";
 import { getAllPlans, getAllTasks, getPathGoals, getUserContext, markFactsUsed } from "@/lib/store";
 import { noteFactsUsed, trackPending } from "@/lib/request-context";
 import { readStepEvents } from "@/lib/student/step-events";
-import { calibrationLines } from "@/lib/student/observations";
+import { behaviourLines, calibrationLines } from "@/lib/student/observations";
 import { DEFAULT_BUDGET, KEEP, factLine, fitBudget, rankFacts, type ContextPurpose, type PackSection } from "@/lib/student/context-pack";
 import { cleanCourse } from "@/lib/course";
 import { describeLoad, formatMinutes } from "@/lib/load";
@@ -146,7 +146,7 @@ export async function buildStudentContext(opts: ContextPackOptions = {}): Promis
   if (memory?.compressedSummary) push("summary", 20, `EARLIER (summary of older conversations):\n${memory.compressedSummary.slice(0, 1200)}`);
 
   // How they really work, from what they did with past steps.
-  const calibration = calibrationLines(events);
+  const calibration = [...calibrationLines(events), ...behaviourLines(events)];
   if (calibration.length) push("calibration", 85, `HOW THEY ACTUALLY WORK (observed):\n${calibration.map((l) => `- ${l}`).join("\n")}`);
 
   const school = schoolHoursFromTasks(tasks);

@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import * as m from "motion/react-m";
 import { pageEnter } from "@/lib/motion";
-import { CalendarDays, FolderKanban, Home, MessageSquareText, Mic, Plus, Settings, type LucideIcon } from "lucide-react";
+import { CalendarDays, FolderKanban, Home, MessageSquareText, Mic, Plus, Route, Settings, type LucideIcon } from "lucide-react";
 import NotificationBell, { NotificationBellButton } from "./NotificationBell";
 import CommandPalette from "./CommandPalette";
 import GetToKnowYou, { GET_TO_KNOW_EVENT } from "./GetToKnowYou";
@@ -21,7 +21,7 @@ import { planSeriesColor } from "@/lib/task-colors";
 import { requestHomeIntent, type HomeIntent } from "@/lib/home-intent";
 
 // docs/design/TANGENT-STYLE.md §8 Nav. Four places you work, plus Settings.
-// Tangents has no link (v3: not part of the core loop); /tangents still works.
+// Paths (/tangents) sits under Projects in the sidebar, and on the Projects page on a phone.
 type NavLink = { href: string; label: string; icon: LucideIcon };
 const PLACES: NavLink[] = [
   { href: "/", label: "Home", icon: Home },
@@ -175,7 +175,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <a href="#main-content" className="skip-link">Skip to main content</a>
 
       <aside className="app-sidebar" aria-label="Sidebar">
-        <Link href="/" className="app-brand" aria-label="Tangent, go to Home">
+        <Link href="/capture" className="app-brand" aria-label="Tangent, go to the capture home">
           <TangentLogo size={28} />
           <span className="app-brand-word">Tangent</span>
         </Link>
@@ -220,9 +220,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        {projects.length > 0 && (
-          <section className="app-sidebar-projects" aria-labelledby="app-sidebar-projects-heading">
-            <h2 id="app-sidebar-projects-heading" className="app-sidebar-heading">Projects</h2>
+        <section className="app-sidebar-projects" aria-labelledby="app-sidebar-projects-heading">
+          <h2 id="app-sidebar-projects-heading" className="app-sidebar-heading">Projects</h2>
+          {/* Paths: the long goals (a year or more) that projects branch from. */}
+          <Link
+            href="/tangents"
+            className="app-project-item app-paths-link"
+            aria-current={isActive(pathname, "/tangents") ? "page" : undefined}
+          >
+            <span className="app-paths-icon" aria-hidden="true">
+              <Route size={14} strokeWidth={1.75} />
+            </span>
+            <span className="app-project-name">Paths</span>
+          </Link>
+          {projects.length > 0 && (
             <ul>
               {projects.map((p) => (
                 <li key={p.id}>
@@ -243,9 +254,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 </li>
               ))}
             </ul>
-            <Link href="/projects" className="app-project-all">All projects</Link>
-          </section>
-        )}
+          )}
+          {projects.length > 0 && <Link href="/projects" className="app-project-all">All projects</Link>}
+        </section>
 
         <div className="app-sidebar-bottom">
           <NotificationBellButton variant="sidebar" unread={unread} expanded={notifOpen} onClick={toggleNotifs} />
@@ -275,7 +286,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <header className="app-topbar">
-        <Link href="/" className="app-brand" aria-label="Tangent, go to Home">
+        <Link href="/capture" className="app-brand" aria-label="Tangent, go to the capture home">
           <TangentLogo size={28} />
           <span className="app-brand-word">Tangent</span>
         </Link>

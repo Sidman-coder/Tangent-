@@ -21,6 +21,8 @@ import { addDaysYMD, localNow } from "@/lib/time";
 import { cleanTitle } from "@/lib/quick-add";
 import { projectContext, taskContext } from "@/lib/chat/server";
 import { getChatSession } from "@/lib/store";
+import { logStepEvent, logStepEvents } from "@/lib/student/step-events";
+import { classifyAsk, toCode } from "@/lib/student/observations";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -164,6 +166,8 @@ export const POST = withUser(async (req: Request) => {
         : null;
     const aboutTask = typeof body.taskId === "string" && body.taskId ? await findTaskBrief(body.taskId, threadSummary) : null;
     if (aboutTask?.planId && !projectId) projectId = aboutTask.planId;
+    // What kind of help they ask a task chat for (a code, never the words).
+    if (aboutTask && typeof body.taskId === "string") logStepEvent({ kind: "chat_ask", task: { id: body.taskId, planId: aboutTask.planId ?? "", notes: "", date: "", time: "" }, code: classifyAsk(userText) });
 
     // An answer to a pending question (A1), flag on and off: resolved before
     // any other routing, so it never becomes a plan or hits a fast path. A
@@ -257,6 +261,13 @@ export const POST = withUser(async (req: Request) => {
           slotDrafted = true;
           if (slotTurn && slotTurn.answers.length > 0) trackEvent("grill_answered", { count: slotTurn.answers.length, source: "slots" });
           if (slotTurn && slotTurn.skipped.length > 0) trackEvent("grill_skipped", { count: slotTurn.skipped.length, source: "slots" });
+          if (slotTurn) {
+            logStepEvents([
+              ...slotTurn.answers.map((a) => ({ kind: "question_answer" as const, code: toCode(a.slot) })),
+              ...slotTurn.skipped.map((k) => ({ kind: "question_skip" as const, code: toCode(k) })),
+              ...(slotTurn.stopped ? [{ kind: "plan_stop" as const }] : []),
+            ]);
+          }
           if (turn.notes) pipelineText = `${userText}\n\n${turn.notes}`;
           if (turn.enough) grillNote = turn.message;
         }

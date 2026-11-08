@@ -3748,7 +3748,7 @@ textarea:focus {
   flex-direction: column;
   gap: 4px;
   width: 100%;
-  max-width: 820px;
+  max-width: 960px;
   margin: 0 auto;
   padding: 20px 20px 48px;
 }

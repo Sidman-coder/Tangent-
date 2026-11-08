@@ -204,7 +204,7 @@ export default function PathDeepView() {
         <div className="pplan-empty">
           <strong>That path isn&apos;t here</strong>
           <span>It may have been removed, or the link is from another account.</span>
-          <Link href="/tangents" className="pplan-back">Back to Tangents</Link>
+          <Link href="/tangents" className="pplan-back">Back to Paths</Link>
         </div>
       </div>
     );

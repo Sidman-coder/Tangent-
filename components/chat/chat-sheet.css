@@ -65,7 +65,7 @@
 .chat-library {
   display: grid;
   gap: 12px;
-  max-width: var(--content-max, 760px);
+  max-width: var(--content-read, 760px);
   margin: 0 auto;
 }
 

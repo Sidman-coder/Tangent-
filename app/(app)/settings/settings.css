@@ -7,7 +7,7 @@
 
 .settings-page .settings-layout {
   display: grid;
-  grid-template-columns: 180px minmax(0, 720px);
+  grid-template-columns: 220px minmax(0, 760px); /* Round 4 §5.3 */
   gap: 40px;
   align-items: start;
 }

@@ -2,7 +2,7 @@
 
 .today-v2 {
   width: 100%;
-  max-width: 720px;
+  max-width: 880px; /* Round 4: wider, still one scannable column */
   margin-inline: auto;
   gap: 16px;
 }

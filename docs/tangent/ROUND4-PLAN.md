@@ -8,10 +8,10 @@ Branch `v3-core-loop`. Spec: `docs/tangent/CONTEXT-ENGINE.md` (copied from Part 
 |---|---|
 | 0 Read, audit, plan | Done, approved 2026-11-08 |
 | 1 Bugs, sign-up, access | Done (see Phase 1 log) |
-| 2 Context engine foundation | Not started (ends with a stop for migrations) |
+| 2 Context engine foundation | Done (see Phase 2 log), plus behaviour reading (Phase 2b) |
 | 3 Planning flow | Not started |
-| 4 Tasks, calendar, Paths | Not started |
-| 5 Home, notifications, settings, You, mapped | Not started |
+| 4 Tasks, calendar, Paths | Not started (4.4 Paths pulled forward, done) |
+| 5 Home, notifications, settings, You, mapped | Not started (5.3 Settings layout and 5.4 You, mapped pulled forward, done) |
 | 6 Onboarding | Not started |
 | 7 Audit, screenshots, report | Not started |
 
@@ -258,3 +258,43 @@ Checks:
 - Settings → AI activity doesn't show "Used: …" yet; only the plan preview card does. That's planned for Phase 5 (Settings).
 - The voice agent still falls back to the old context string when the pack fails.
 - Nothing has run against the real database, because the migrations haven't been applied.
+
+## Phase 2b log: reading behaviour, and UI pulled forward (2026-11-08)
+
+The user asked for two things before Phase 3. First, the context should read how they work: follow-through, when they work, how they plan with the chat, and what they ask task chats. Second, a set of UI fixes, some of which were pulled forward from Phases 4 and 5.
+
+**Behaviour reading (codes only, never the student's words):**
+- **Migration:** `supabase/migrations/20261111000000_step_events_behaviour.sql` widens the `step_events` kind check. The new kinds are `chat_ask`, `plan_accept`, `plan_edit`, `plan_reject`, `plan_stop`, `question_answer` and `question_skip`.
+- **Before the migration runs:** the old check rejects the new kinds with error 23514. `lib/student/step-events.ts` then logs one server warning, stops sending behaviour rows, and still writes the step rows.
+- **Where events are logged:**
+  - A task chat logs `chat_ask` with the question's type: how_to, explain, check, stuck, time, motivation or other. `classifyAsk` assigns the type.
+  - When the plan is drafted, the planning questions log one `question_answer` or `question_skip` per slot (the slot name in snake_case), plus `plan_stop`.
+  - Preview Confirm, Edit, Discard and Undo log `plan_accept`, `plan_edit`, `plan_reject` and `plan_reject` with the code `undo`.
+- **What the AI sees:** `behaviourLines` in `lib/student/observations.ts` turns these into plain lines under "HOW THEY ACTUALLY WORK":
+  - follow-through rate and the usual "Not today" reason
+  - best weekdays and how much happens on weekends
+  - whether they take, change or turn down plans
+  - whether they answer or skip questions, and repeated Stops
+  - what they ask task chats about, each with a matching piece of advice
+- **Thresholds:** each line stays silent until there's enough data (6 due steps, 8 done steps, 3 plans, 4 questions, 3 asks).
+- **New "Not today" reasons:** unclear, not_feeling_it and blocked, for Phase 3.4.
+- **Tests:** `lib/student/behaviour.test.ts`.
+
+**UI pulled forward:**
+- **Home:** `/` sends you to the big-mic Home (`/capture`) the first time you open the app in a session, using the `tg_entered` cookie set by `lib/entry.ts`. `manifest.ts` starts there too.
+- **Paths:** reached from Projects (sidebar link and a pill). The Paths map follows light and dark mode (4.4).
+- **Widths:** new `--content-max` 1120px and `--content-read` 760px; Today is 880px; `docs/design/TANGENT-STYLE.md` is updated.
+- **Calendar:** gets a side rail at ≥ 1280px (`components/calendar/CalendarRail.tsx`). It shows the next 7 days in plain lines and an "Ask about your week" box. The box grows on focus and sends the question to the Home chat.
+- **Settings:** a 220px sub-nav and 760px content (5.3).
+- **What Tangent knows:** now "You, mapped" (5.4).
+  - Files: `lib/you-map.ts` and `components/settings/YouOrbit.tsx`.
+  - A slowly turning sphere of facts around the student's initials, with one colour per area. You can drag it, and it turns to face the card you scroll to.
+  - Origins read "You said", "Tangent noticed" and "Guess, confirm?".
+  - Each fact has Confirm, Edit and Forget.
+  - Reduced motion stops the spin.
+- **Not built here:** the chat expanding as you type, and the calendar beside the chat. Both are part of the planning workspace (3.3), so they're built once, there.
+
+**Conflict, recorded:** the master prompt's 5.1 keeps Today as the home page and reaches capture from it. The user's newer instruction says the big-mic Home is the first screen after onboarding and on every app open. Following the newer instruction (AGENTS.md: most recent user-confirmed information wins). Today is still one tap away in the sidebar and bottom nav.
+
+**Manual step:** run migration 4 in `docs/MANUAL-STEPS.md` (Round 4, Phase 2b).
+
