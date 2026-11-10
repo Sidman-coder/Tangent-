@@ -11,7 +11,7 @@ Branch `v3-core-loop`. Spec: `docs/tangent/CONTEXT-ENGINE.md` (copied from Part 
 | 2 Context engine foundation | Done (see Phase 2 log), plus behaviour reading (Phase 2b) |
 | 3 Planning flow | Done (see Phase 3 log) |
 | 4 Tasks, calendar, Tangents | Done (see Phase 4 log), with the user's 2026-11-09 feedback folded in |
-| 5 Home, notifications, settings, You, mapped | Not started (5.3 Settings layout, 5.4 You, mapped and the notifications popover pulled forward, done) |
+| 5 Home, notifications, settings, You, mapped | Done (see Phase 5 log); 5.3, 5.4 and the notifications popover were done in Phase 4 |
 | 6 Onboarding | Not started |
 | 7 Audit, screenshots, report | Not started |
 
@@ -401,3 +401,36 @@ The user's feedback arrived with Phase 4. Their screenshots did not come through
 - The real model answers on Home. Run `npm run eval:pipeline` (paid).
 - "Start this" on a real Tangent (the dev preview has no Tangents).
 - Phone long-press drag on a touch device.
+
+## Phase 5 log: Home timeline, Today's summary off (2026-11-09)
+
+5.3 (Settings layout), 5.4 (You, mapped) and the notifications popover and bottom sheet were done in Phase 4. This phase is 5.1 and the rest of 5.2.
+
+**5.1 Home timeline** (`lib/today-sections.ts`, `components/today/TodaySections.tsx`, `today.css`):
+- **Rail:** a thin vertical line on the left with a small ring and start time for each part (5 AM, 12 PM, 5 PM, 9 PM). The current part's ring is filled red. On a phone the times hide and the rail sits closer to the edge.
+- **Four parts, always:** Morning 5 AM – 12 PM, Afternoon 12 – 5 PM, Evening 5 – 9 PM, Late night 9 PM – 5 AM. An empty part is one faint row ("Nothing this afternoon"). A faint full-width line divides the parts. Anytime today follows the timeline when it has anything.
+- **Day runs 5 AM to 5 AM:** 12:00–4:59 AM is Late night, so a 1 AM item sorts after 11 PM.
+- **Now line:** always shows, in the part the clock is in (12:15 AM is Late night): before that part's first item that hasn't started, or at the end of the part.
+- **Stray dot:** it was the question dot after the title on rows Tangent has questions about. It is now screen-reader text only; the questions nudge on Home still shows.
+- **A goal's task under its project:** an older "Break down plan: Get 10k followers" task with no project now sits under the project made for that goal, matched by title (`goalPlanFor`). Steps scheduled from a Tangent sit under the Tangent's name.
+- **Unchanged:** Coming up, the questions nudge and the Canvas card.
+
+**5.2 Today's summary off** (`lib/feature-flags.ts`, `TODAYS_SUMMARY_ENABLED = false`):
+- **Hidden:** no summary button or pinned summary in the notification list, and no popup or desktop alert for one.
+- **Not created:** `POST /api/daily-brief` answers 404 and the daily cron skips.
+- **Kept:** the code in `lib/daily-brief.ts` stays; flip the flag to bring it back.
+- **Settings:** Settings → Notifications had no summary row, so nothing changed there.
+
+**Checks:**
+- **Lint:** 4 warnings, all pre-existing.
+- **Other checks:** typecheck clean, 761 tests pass, and the build passes.
+
+**Checked in the browser** (`/dev/app/today`, signed out, sample data, around 8:57 PM):
+- Desktop and phone (375 px, no sideways scroll): four parts, empty Afternoon and Late night rows, the Now line in Evening.
+- The bell popover with no summary button.
+
+**Not checked live:**
+- The 12:15 AM view (covered by tests only).
+- A real goal task matched to its project (the dev preview has none).
+- Dark mode.
+- The real model answers. Run `npm run eval:pipeline` (paid).

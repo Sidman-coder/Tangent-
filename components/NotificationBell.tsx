@@ -19,6 +19,7 @@ import Button from "@/components/ui/Button"
 import EmptyState from "@/components/ui/EmptyState"
 import { humanizeTimestamps } from "@/lib/humanize"
 import { collapseDuplicates } from "@/lib/notification-dedupe"
+import { TODAYS_SUMMARY_ENABLED, visibleNotifications } from "@/lib/feature-flags"
 
 type NotificationBellProps = {
   open: boolean
@@ -52,7 +53,8 @@ export default function NotificationBell({ open, onOpenChange, onUnreadChange }:
       const data = await r.json()
       const raw: Notification[] = data.notifications || []
       // One per reminder: the reminder job can repeat itself (lib/notification-dedupe.ts).
-      const list = collapseDuplicates(raw)
+      // Today's summary is hidden for now (lib/feature-flags.ts).
+      const list = visibleNotifications(collapseDuplicates(raw))
       setNotifications(list)
       // Desktop notifications piggyback on this same poll — no extra fetch.
       // See lib/desktop-notifications.ts for the opt-in + anti-spam rules.
@@ -259,8 +261,9 @@ export default function NotificationBell({ open, onOpenChange, onUnreadChange }:
         onOpenInbox={() => setOpen(true)}
       />
       <NotifSurface open={open} onClose={() => setOpen(false)}>
+        {((TODAYS_SUMMARY_ENABLED && !pinnedBrief) || notifications.length > 0) && (
         <div className="notif-actions">
-          {!pinnedBrief && (
+          {TODAYS_SUMMARY_ENABLED && !pinnedBrief && (
             <Button
               size="sm"
               variant="secondary"
@@ -278,6 +281,7 @@ export default function NotificationBell({ open, onOpenChange, onUnreadChange }:
             </Button>
           )}
         </div>
+        )}
         {notifications.length === 0 ? (
           <EmptyState
             icon={<Bell strokeWidth={1.75} aria-hidden="true" />}

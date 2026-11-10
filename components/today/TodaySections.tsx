@@ -1,8 +1,10 @@
 "use client";
 
 // The day in the order it happens: Past due (with Fresh start), then Morning,
-// Afternoon, Evening, Night and Anytime, each grouped by project, School or
-// Personal, with a Now line between rows. Coming up stays folded away.
+// Afternoon, Evening and Late night on a timeline rail (Round 4 §5.1), then
+// Anytime. Every part shows, an empty one as a faint row; each is grouped by
+// project, School or Personal, and the Now line sits in the part the clock is
+// in. Coming up stays folded away.
 
 import { Fragment, useState } from "react";
 import Link from "next/link";
@@ -12,7 +14,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import GroupHeader from "@/components/ui/GroupHeader";
 import { seriesColor, taskSeries } from "@/lib/task-colors";
 import { formatTaskDay } from "@/lib/task-when";
-import { DAY_PARTS, nowLine, type DayPart, type TaskBlock, type TodayGroups } from "@/lib/today-sections";
+import { DAY_PARTS, nothingOnDay, nowLine, type DayPart, type TaskBlock, type TodayGroups } from "@/lib/today-sections";
 import type { Plan, Task } from "@/lib/types";
 import TodayRow, { type TodayRowActions } from "./TodayRow";
 
@@ -52,7 +54,7 @@ export default function TodaySections({ groups, plans, now, today, timezone, bus
   const [toggled, setToggled] = useState<Partial<Record<DayPart, boolean>>>({});
   const comingCount = groups.comingUp.reduce((n, day) => n + day.tasks.length, 0);
   const line = nowLine(groups, now, timezone);
-  const nowBefore = line && "before" in line ? line.before : null;
+  const nowBefore = line.before;
 
   const row = (task: Task) => (
     <Fragment key={task.id}>
@@ -70,13 +72,30 @@ export default function TodaySections({ groups, plans, now, today, timezone, bus
     </Fragment>
   );
 
+  const blockView = (block: TaskBlock) => (
+    <div key={block.key} className="today-block">
+      <GroupHeader
+        variant="project"
+        as="h3"
+        title={blockTitle(block)}
+        color={seriesColor(taskSeries(block.tasks[0], plans))}
+        href={block.planId ? `/projects/${block.planId}` : undefined}
+      />
+      <div className="today-rows">
+        <AnimatePresence initial={false}>{block.tasks.map(row)}</AnimatePresence>
+      </div>
+    </div>
+  );
+
   const blockTitle = (block: TaskBlock) => {
     if (block.kind === "school") return "School";
     if (block.kind === "personal") return "Personal";
-    return plans.find((p) => p.id === block.planId)?.title ?? "Project";
+    return plans.find((p) => p.id === block.planId)?.title ?? block.title ?? "Project";
   };
 
-  const nothingToday = groups.parts.length === 0 && groups.pastDue.length === 0;
+  const nothingToday = nothingOnDay(groups) && groups.pastDue.length === 0;
+  const timed = groups.parts.filter((g) => g.part !== "anytime");
+  const anytime = groups.parts.find((g) => g.part === "anytime");
 
   return (
     <div className="today-sections">
@@ -108,41 +127,66 @@ export default function TodaySections({ groups, plans, now, today, timezone, bus
       {nothingToday ? (
         <EmptyState icon={<Sun size={20} strokeWidth={1.75} aria-hidden="true" />} title="You&apos;re all caught up.">Anything on your mind? Say it above.</EmptyState>
       ) : (
-        groups.parts.map((group) => {
-          const meta = DAY_PARTS.find((p) => p.id === group.part)!;
-          const allDone = group.open === 0;
-          const collapsed = toggled[group.part] ?? allDone;
-          return (
-            <section key={group.part} className="today-section today-part" aria-label={meta.label}>
+        <>
+          <div className="today-timeline">
+            {timed.map((group) => {
+              const meta = DAY_PARTS.find((p) => p.id === group.part)!;
+              const icon = (() => { const Icon = PART_ICONS[group.part]; return <Icon size={16} strokeWidth={1.75} aria-hidden="true" />; })();
+              const current = line.part === group.part;
+              const nowHere = current && line.before === null;
+              const empty = group.tasks.length === 0;
+              const collapsed = toggled[group.part] ?? group.open === 0;
+              return (
+                <section
+                  key={group.part}
+                  className={`today-section today-part${empty ? " is-empty" : ""}${current ? " is-current" : ""}`}
+                  aria-label={empty ? `${meta.label}: ${meta.empty.toLowerCase()}` : meta.label}
+                >
+                  <span className="today-rail-mark" aria-hidden="true">
+                    <span className="today-rail-time">{meta.start}</span>
+                  </span>
+                  {empty ? (
+                    <GroupHeader
+                      variant="time"
+                      as="h2"
+                      title={meta.label}
+                      icon={icon}
+                      range={meta.range}
+                      action={<span className="today-part-empty">{meta.empty}</span>}
+                    />
+                  ) : (
+                    <GroupHeader
+                      variant="time"
+                      as="h2"
+                      title={meta.label}
+                      icon={icon}
+                      range={meta.range}
+                      count={group.open}
+                      collapsed={collapsed}
+                      onToggle={() => setToggled((t) => ({ ...t, [group.part]: !collapsed }))}
+                    />
+                  )}
+                  {!collapsed && group.blocks.map(blockView)}
+                  {nowHere && <NowRule now={now} timezone={timezone} />}
+                </section>
+              );
+            })}
+          </div>
+          {anytime && (
+            <section className="today-section today-part is-anytime" aria-label="Anytime today">
               <GroupHeader
                 variant="time"
                 as="h2"
-                title={meta.label}
-                icon={(() => { const Icon = PART_ICONS[group.part]; return <Icon size={16} strokeWidth={1.75} aria-hidden="true" />; })()}
-                range={meta.range || undefined}
-                count={group.open}
-                collapsed={collapsed}
-                onToggle={() => setToggled((t) => ({ ...t, [group.part]: !collapsed }))}
+                title="Anytime today"
+                icon={<AnytimeIcon size={16} strokeWidth={1.75} aria-hidden="true" />}
+                count={anytime.open}
+                collapsed={toggled.anytime ?? anytime.open === 0}
+                onToggle={() => setToggled((t) => ({ ...t, anytime: !(t.anytime ?? anytime.open === 0) }))}
               />
-              {!collapsed &&
-                group.blocks.map((block) => (
-                  <div key={block.key} className="today-block">
-                    <GroupHeader
-                      variant="project"
-                      as="h3"
-                      title={blockTitle(block)}
-                      color={seriesColor(taskSeries(block.tasks[0], plans))}
-                      href={block.planId ? `/projects/${block.planId}` : undefined}
-                    />
-                    <div className="today-rows">
-                      <AnimatePresence initial={false}>{block.tasks.map(row)}</AnimatePresence>
-                    </div>
-                  </div>
-                ))}
-              {line && "after" in line && line.after === group.part && <NowRule now={now} timezone={timezone} />}
+              {!(toggled.anytime ?? anytime.open === 0) && anytime.blocks.map(blockView)}
             </section>
-          );
-        })
+          )}
+        </>
       )}
 
       <section className="today-section" aria-labelledby="coming-up-title">

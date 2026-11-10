@@ -297,3 +297,77 @@
 .step-follow-save { min-height: 36px; padding: 0 16px; border: 0; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
 .step-follow-save:disabled { opacity: 0.6; cursor: default; }
 .step-follow-reply { margin: 0; font-size: 14px; line-height: 1.5; }
+
+/* Round 4 §5.1: the day on a timeline rail. A thin line runs down the left
+   with a marker and start time per part; a faint full-width divider separates
+   the parts. Empty parts stay as one faint row so the day's shape is always
+   the same; the part the clock is in gets a filled marker and the Now line. */
+.today-timeline {
+  --rail-gutter: 56px;
+  --rail-x: 44px;
+  position: relative;
+  display: grid;
+  padding-left: var(--rail-gutter);
+}
+.today-timeline::before {
+  content: "";
+  position: absolute;
+  top: 26px;
+  bottom: 26px;
+  left: var(--rail-x);
+  width: 1px;
+  background: var(--line);
+}
+.today-timeline .today-part {
+  position: relative;
+  gap: 4px;
+  padding-block: 4px 12px;
+}
+.today-timeline .today-part.is-empty { padding-bottom: 4px; }
+.today-timeline .today-part + .today-part::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: calc(-1 * var(--rail-gutter));
+  height: 1px;
+  background: color-mix(in srgb, var(--line) 70%, transparent);
+}
+.today-rail-mark {
+  position: absolute;
+  top: 26px;
+  left: calc(var(--rail-x) - var(--rail-gutter) - 4px);
+  width: 9px;
+  height: 9px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--text-3);
+  border-radius: 50%;
+  background: var(--bg, var(--surface));
+  transform: translateY(-50%);
+}
+.today-part.is-current .today-rail-mark { border-color: var(--red); background: var(--red); }
+.today-part.is-empty:not(.is-current) .today-rail-mark { border-color: var(--line); }
+.today-rail-time {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+  transform: translateY(-50%);
+}
+.today-part.is-empty .ui-group-header { min-height: 44px; color: var(--text-3); font-weight: 500; }
+.today-part.is-empty .ui-group-header-range { opacity: 0.8; }
+.today-part-empty { color: var(--text-3); font-size: 13px; font-weight: 400; }
+/* The Now line starts on the rail: its dot sits on the line. */
+.today-timeline .today-now { margin-left: calc(var(--rail-x) - var(--rail-gutter) - 3px); }
+.today-timeline .today-now-dot { width: 7px; height: 7px; }
+
+@media (max-width: 767px) {
+  .today-timeline { --rail-gutter: 24px; --rail-x: 6px; }
+  .today-rail-time { display: none; }
+  .today-part.is-empty .ui-group-header-range { display: none; }
+}

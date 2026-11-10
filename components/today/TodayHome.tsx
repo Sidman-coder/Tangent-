@@ -160,13 +160,13 @@ export default function TodayHome() {
     [today]
   );
   const onToday = useMemo(() => doable.filter((t) => !setAside.has(t.id)), [doable, setAside]);
-  const groups = useMemo(() => groupTodayTasks(onToday, instant, tz), [instant, onToday, tz]);
+  const groups = useMemo(() => groupTodayTasks(onToday, instant, tz, plans), [instant, onToday, tz, plans]);
 
   // The view tabs narrow the list; the greeting and glance still speak for the whole day.
   const [view, setView] = useTodayView();
   const shownGroups = useMemo(
-    () => (view === "all" ? groups : groupTodayTasks(onToday.filter((t) => inView(t, view)), instant, tz)),
-    [groups, instant, onToday, tz, view]
+    () => (view === "all" ? groups : groupTodayTasks(onToday.filter((t) => inView(t, view)), instant, tz, plans)),
+    [groups, instant, onToday, tz, view, plans]
   );
 
   const displayName = state?.user.displayName?.trim() ?? "";
