@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useAppState } from "@/components/AppStateProvider";
 import CanvasConnectGuide from "@/components/CanvasConnectGuide";
 import ConnectionsSection from "@/components/settings/ConnectionsSection";
-import SchoolHoursEditor from "@/components/settings/SchoolHoursEditor";
+import CommitmentsEditor from "@/components/settings/CommitmentsEditor";
 import SettingsPageHeader from "@/components/settings/SettingsPageHeader";
 import { useCanvasStatus } from "@/components/settings/useCanvasStatus";
 import SettingsSection from "@/components/ui/SettingsSection";
@@ -59,7 +59,7 @@ export default function ScheduleSettingsPage() {
         description="How Tangent places work, so no day gets more than you can handle."
         footer={msg && <FormMessage tone={msg.tone}>{msg.text}</FormMessage>}
       >
-        <SchoolHoursEditor current={state?.user.schoolHours} onSaved={refresh} />
+        <CommitmentsEditor onSaved={refresh} />
         <SettingRow label="Work per school night" help="Past this, new work moves to a lighter day." htmlFor="cap-weekday">
           <Select
             id="cap-weekday"

@@ -1,4 +1,5 @@
-// Run with `npm test`. Covers the onboarding answers (lib/onboarding.ts), what
+// Run with `npm test`. Covers the onboarding answers (lib/onboarding.ts), the
+// facts they become (lib/onboarding-facts.ts), what
 // they change (lib/personalize.ts) and the School block replacement
 // (lib/school-block.ts). Same resolve hook as lib/schedule-slots.test.ts.
 import * as nodeModule from "node:module";
@@ -23,11 +24,15 @@ type Resolve = (specifier: string, context: unknown, next: (s: string, c: unknow
 type Onboarding = typeof import("./onboarding");
 type Personalize = typeof import("./personalize");
 type SchoolBlock = typeof import("./school-block");
-const load = Promise.all([import("./onboarding"), import("./personalize"), import("./school-block")]) as Promise<
-  [Onboarding, Personalize, SchoolBlock]
->;
+type Facts = typeof import("./onboarding-facts");
+const load = Promise.all([
+  import("./onboarding"),
+  import("./personalize"),
+  import("./school-block"),
+  import("./onboarding-facts"),
+]) as Promise<[Onboarding, Personalize, SchoolBlock, Facts]>;
 
-void load.then(([ob, px, sb]) => {
+void load.then(([ob, px, sb, facts]) => {
   // ─── Options ───────────────────────────────────────────────────────────────
 
   test("every listed option is accepted by its parser, and the lists match the spec", () => {
@@ -46,211 +51,272 @@ void load.then(([ob, px, sb]) => {
     assert.deepEqual(ob.WORKING_TOWARD_OPTIONS.map((o) => o.value), [...ob.WORKING_TOWARD]);
   });
 
-  test("every valid submission combination parses", () => {
-    for (const helpFocus of ob.HELP_FOCUS)
-      for (const slipPoint of ob.SLIP_POINTS)
-        for (const dayView of ob.DAY_VIEWS)
-          for (const workingToward of ob.WORKING_TOWARD) {
-            const r = ob.parseSubmission({ preferences: { helpFocus, slipPoint, dayView, workingToward }, school: null });
-            assert.ok(r.ok, `${helpFocus}/${slipPoint}/${dayView}/${workingToward}`);
-            if (r.ok) assert.deepEqual(r.value.preferences, { helpFocus, slipPoint, dayView, workingToward, startingIntent: null });
-          }
+  // ─── The eight questions (Round 4 Phase 6) ─────────────────────────────────
+
+  const SCHOOL = {
+    kind: "school" as const,
+    name: "School",
+    repeat: { kind: "weekdays" as const },
+    blocks: [{ days: [1, 2, 3, 4, 5], start: "08:00", end: "15:00" }],
+  };
+
+  const full = (): ReturnType<typeof ob.emptyDraft> => ({
+    ...ob.emptyDraft(),
+    name: "Maya",
+    grade: "10",
+    commitments: [SCHOOL],
+    matters: ["ap", "project"],
+    mattersText: "Getting my driver's license",
+    slips: ["putOff", "freeze"],
+    bugging: "Finish my robotics proposal",
+    bestTime: "evenings",
+    focusLength: "45",
+    schoolNightHours: "2",
+    toward: { major: "Computer science", career: "engineer", dream: "Build a rover", notSure: false },
+    push: "straight",
+    more: { brain: "Music helps me focus", push: "" },
   });
 
-  test("unknown values are rejected, not silently dropped", () => {
-    assert.equal(ob.parseHelpFocus("everything"), null);
-    assert.equal(ob.parseDayView("month"), null);
-    assert.equal(ob.parseSlipPoint(3), null);
-    assert.equal(ob.parseWorkingToward("School"), null);
-    for (const bad of [
-      { preferences: { helpFocus: "fun" } },
-      { preferences: { slipPoint: "homework" } },
-      { preferences: { dayView: "month" } },
-      { preferences: { workingToward: "win" } },
-      { preferences: { startingIntent: 42 } },
-      { preferences: { startingIntent: "x".repeat(141) } },
-      { preferences: {}, school: { days: [1], start: "15:00", end: "08:00" } },
-      { preferences: {}, school: { days: [], start: "08:00", end: "15:00" } },
-      { preferences: {}, school: { days: [9], start: "08:00", end: "15:00" } },
-      { preferences: {}, school: { days: [1, 1], start: "08:00", end: "15:00" } },
-      { preferences: {}, school: { days: [1], start: "8am", end: "15:00" } },
-    ]) {
-      assert.equal(ob.parseSubmission(bad).ok, false, JSON.stringify(bad));
+  test("the new answer lists match their parsers and options", () => {
+    const pairs: [readonly string[], (v: unknown) => string | null, { value: string }[]][] = [
+      [ob.GRADES, ob.parseGrade, ob.GRADE_OPTIONS],
+      [ob.MATTERS, ob.parseMatter, ob.MATTER_OPTIONS],
+      [ob.SLIPS, ob.parseSlip, ob.SLIP_OPTIONS],
+      [ob.BEST_TIMES, ob.parseBestTime, ob.BEST_TIME_OPTIONS],
+      [ob.FOCUS_LENGTHS, ob.parseFocusLength, ob.FOCUS_LENGTH_OPTIONS],
+      [ob.SCHOOL_NIGHT_HOURS, ob.parseSchoolNightHours, ob.SCHOOL_NIGHT_OPTIONS],
+      [ob.PUSH_STYLES, ob.parsePushStyle, ob.PUSH_OPTIONS],
+    ];
+    for (const [list, parse, options] of pairs) {
+      for (const v of list) assert.equal(parse(v), v);
+      assert.equal(parse("nope"), null);
+      assert.deepEqual(options.map((o) => o.value), [...list]);
     }
+  });
+
+  test("eight questions, then the ready screen, and none of them asks about week shape or integrations", () => {
+    assert.deepEqual(ob.STEPS, ["about", "busy", "matters", "slip", "bugging", "brain", "toward", "push", "ready"]);
+    assert.equal(ob.QUESTION_STEPS.length, 8);
+    const keys = Object.keys(ob.emptyDraft()).join(" ").toLowerCase();
+    for (const banned of ["weekshape", "integration", "canvas", "google", "notion"]) assert.ok(!keys.includes(banned), banned);
+  });
+
+  test("only the name is required; a half-filled commitment blocks Continue", () => {
+    const d = ob.emptyDraft();
+    assert.equal(ob.canContinue("about", d), false);
+    assert.equal(ob.canContinue("about", { ...d, name: "  " }), false);
+    assert.equal(ob.canContinue("about", { ...d, name: "Maya" }), true);
+    for (const step of ob.QUESTION_STEPS.filter((s) => s !== "about")) assert.equal(ob.canContinue(step, d), true, step);
+    const broken = { ...SCHOOL, blocks: [{ days: [], start: "08:00", end: "15:00" }] };
+    assert.equal(ob.canContinue("busy", { ...d, commitments: [broken] }), false);
+    assert.equal(ob.canContinue("busy", { ...d, commitments: [SCHOOL] }), true);
+  });
+
+  test("Skip turns into Continue once a step has any answer, including Tell me more", () => {
+    const d = ob.emptyDraft();
+    for (const step of ob.QUESTION_STEPS) assert.equal(ob.hasAnswer(step, d), false, step);
+    for (const step of ob.QUESTION_STEPS.filter((s) => s !== "about")) {
+      assert.equal(ob.hasAnswer(step, { ...d, more: { [step]: "something real" } }), true, step);
+    }
+    assert.equal(ob.hasAnswer("matters", { ...d, mattersText: "chess" }), true);
+    assert.equal(ob.hasAnswer("toward", { ...d, toward: { ...d.toward, notSure: true } }), true);
+    assert.equal(ob.hasAnswer("brain", { ...d, focusLength: "30" }), true);
+    assert.equal(ob.hasAnswer("bugging", { ...d, bugging: "   " }), false);
+  });
+
+  test("slips: up to two, and a third pick replaces the oldest", () => {
+    let s = ob.toggleSlip([], "forget");
+    s = ob.toggleSlip(s, "fade");
+    assert.deepEqual(s, ["forget", "fade"]);
+    assert.deepEqual(ob.toggleSlip(s, "perfect"), ["fade", "perfect"]);
+    assert.deepEqual(ob.toggleSlip(s, "forget"), ["fade"]);
+  });
+
+  test("a draft survives a refresh; an old or broken one starts fresh; bad fields drop one by one", () => {
+    const d = full();
+    const back = ob.parseStoredDraft(ob.serializeDraft("brain", d));
+    assert.ok(back);
+    assert.equal(back.step, "brain");
+    assert.deepEqual(back.draft, { ...d, more: { brain: "Music helps me focus" } });
+
+    assert.equal(ob.parseStoredDraft(JSON.stringify({ v: 1, step: "intent", draft: {} })), null);
+    assert.equal(ob.parseStoredDraft("{not json"), null);
+    assert.equal(ob.parseStoredDraft(null), null);
+
+    const tampered = JSON.parse(ob.serializeDraft("nowhere" as never, d));
+    tampered.draft.grade = "13";
+    tampered.draft.slips = ["forget", "bogus", "fade", "freeze"];
+    tampered.draft.push = 7;
+    tampered.draft.more = { brain: "ok", sneaky: "x" };
+    const t = ob.parseStoredDraft(JSON.stringify(tampered));
+    assert.ok(t);
+    assert.equal(t.step, "about");
+    assert.equal(t.draft.grade, null);
+    assert.deepEqual(t.draft.slips, ["forget", "fade"]);
+    assert.equal(t.draft.push, null);
+    assert.deepEqual(t.draft.more, { brain: "ok" });
+    assert.equal(t.draft.name, "Maya");
+  });
+
+  test("a resumed draft can't land past a step it can't continue from", () => {
+    const d = ob.emptyDraft();
+    assert.equal(ob.resumeStep("push", d), "about");
+    assert.equal(ob.resumeStep("push", { ...d, name: "Maya" }), "push");
+    assert.equal(ob.resumeStep("ready", full()), "ready");
+  });
+
+  test("Redo setup keeps the name and day view; the calendar stays put until commitments load", () => {
+    const d = ob.draftFromSaved({ displayName: " Maya ", preferences: { dayView: "week", helpFocus: "school" }, onboarded: true });
+    assert.equal(d.name, "Maya");
+    assert.equal(d.dayView, "week");
+    assert.equal(d.commitmentsKnown, false);
+    assert.equal(d.grade, null);
+    assert.equal(ob.submissionFromDraft(d).answers.commitments, null);
+    const fresh = ob.draftFromSaved({ displayName: "", onboarded: false });
+    assert.deepEqual(ob.submissionFromDraft(fresh).answers.commitments, []);
+  });
+
+  test("the submission keeps the older answers working and round-trips through the server check", () => {
+    const sub = ob.submissionFromDraft(full(), { timezone: "America/Chicago" });
+    assert.equal(sub.displayName, "Maya");
+    assert.equal(sub.timezone, "America/Chicago");
+    assert.deepEqual(sub.preferences, {
+      helpFocus: "balance",
+      slipPoint: "deadlines",
+      dayView: null,
+      workingToward: "school",
+      startingIntent: "Finish my robotics proposal",
+    });
+    assert.deepEqual(sub.answers.more, { brain: "Music helps me focus" });
+    const parsed = ob.parseSubmission(JSON.parse(JSON.stringify(sub)));
+    assert.ok(parsed.ok);
+    assert.deepEqual(parsed.value, sub);
+  });
+
+  test("the server rejects unknown or oversized answers", () => {
+    const base = JSON.parse(JSON.stringify(ob.submissionFromDraft(full())));
+    const bad = (mutate: (b: Record<string, Record<string, unknown>>) => void) => {
+      const b = JSON.parse(JSON.stringify(base));
+      mutate(b);
+      return ob.parseSubmission(b).ok;
+    };
+    assert.equal(bad(() => {}), true);
+    assert.equal(bad((b) => (b.answers.grade = "13")), false);
+    assert.equal(bad((b) => (b.answers.slips = ["forget", "fade", "freeze"])), false);
+    assert.equal(bad((b) => (b.answers.matters = ["grades", "nap"])), false);
+    assert.equal(bad((b) => (b.answers.push = "shove")), false);
+    assert.equal(bad((b) => (b.answers.bugging = "x".repeat(ob.STARTING_INTENT_MAX + 1))), false);
+    assert.equal(bad((b) => ((b.answers.toward as Record<string, unknown>).major = "x".repeat(ob.SHORT_TEXT_MAX + 1))), false);
+    assert.equal(bad((b) => (b.answers.more = { sneaky: "x" })), false);
+    assert.equal(bad((b) => (b.answers.more = { brain: "x".repeat(ob.MORE_MAX + 1) })), false);
+    assert.equal(bad((b) => (b.answers.commitments = Array.from({ length: 13 }, () => SCHOOL))), false);
+    assert.equal(bad((b) => (b.answers.commitments = [{ name: "?" }])), false);
+    assert.equal(bad((b) => (b.preferences.dayView = "month")), false);
     assert.equal(ob.parseSubmission(null).ok, false);
-    assert.equal(ob.parsePreferencesPatch({ dayView: "month" }).ok, false);
-    assert.equal(ob.parsePreferencesPatch({}).ok, false);
+    assert.equal(ob.parseSubmission({ preferences: {} }).ok, false);
+  });
+
+  test("distress never becomes a plan, a 'First up' line, or a fact", () => {
+    const d = { ...full(), bugging: "honestly I want to die" };
+    const sub = ob.submissionFromDraft(d);
+    assert.equal(sub.preferences.startingIntent, null);
+    assert.equal(ob.intentFrom(d.bugging), null);
+    assert.ok(!ob.readyLines(sub.answers).some((l) => l.startsWith("First up")));
+    assert.ok(!facts.onboardingFacts(sub.answers).some((f) => f.slotKey === "onbBugging"));
+    const more = facts.onboardingFacts({ ...sub.answers, more: { brain: "I can't go on like this" } });
+    assert.ok(!more.some((f) => f.slotKey === "onbMoreBrain"));
+  });
+
+  test("the ready screen: fixed lines from the answers, and only rows that say something", () => {
+    const a = ob.answersFromDraft(full());
+    assert.deepEqual(ob.readyLines(a), [
+      "We'll start big things early, in small pieces.",
+      "We'll tell you straight when you're falling behind.",
+      "First up: Finish my robotics proposal. We'll plan it together on Home.",
+    ]);
+    assert.deepEqual(ob.readyLines({ slips: [], push: null, bugging: "Study for chem." }), [
+      "First up: Study for chem. We'll plan it together on Home.",
+    ]);
+    assert.deepEqual(ob.readyLines({ slips: [], push: null, bugging: null }), ["We'll keep your next move clear."]);
+    assert.deepEqual(ob.readySummary(a), [
+      { label: "Busy with", value: "School" },
+      { label: "Works best", value: "Evenings · 45 min at a time" },
+      { label: "School nights", value: "2 hours" },
+      { label: "Push", value: "Straight-up accountability" },
+    ]);
+    assert.deepEqual(ob.readySummary(ob.answersFromDraft(ob.emptyDraft())), []);
+  });
+
+  // ─── Onboarding → said facts ─────────────────────────────────────────────
+
+  test("every answer becomes a fact in the student's own terms", () => {
+    const out = facts.onboardingFacts(ob.answersFromDraft(full()));
+    const by = (key: string) => out.filter((f) => f.slotKey === key).map((f) => f.fact);
+    assert.deepEqual(by("onbGrade"), ["You're in 10th grade"]);
+    assert.equal(by("onbBusy").length, 1);
+    assert.match(by("onbBusy")[0], /^You're busy with School: /);
+    assert.deepEqual(by("onbMatters"), ["This year you care most about AP exams and a personal project"]);
+    assert.deepEqual(by("onbMattersText"), ["Also on your list this year: Getting my driver's license"]);
+    assert.deepEqual(by("onbSlip"), ["You put things off until the last minute", "When there's too much, you freeze"]);
+    assert.deepEqual(by("onbBugging"), ["On your mind right now: Finish my robotics proposal"]);
+    assert.deepEqual(by("preferredWorkTimes"), ["You do your best work in the evening"]);
+    assert.deepEqual(by("focusLength"), ["You can focus for about 45 minutes at a time"]);
+    assert.deepEqual(by("onbSchoolNight"), ["You can handle about 2 hours of work on a school night"]);
+    assert.deepEqual(by("onbTowardMajor"), ["You're thinking about majoring in Computer science"]);
+    assert.deepEqual(by("onbTowardCareer"), ["You'd like to work as an engineer"]);
+    assert.deepEqual(by("onbTowardDream"), ["Your dream: Build a rover"]);
+    assert.deepEqual(by("onbTowardOpen"), []);
+    assert.deepEqual(by("onbPush"), ["You want straight-up accountability"]);
+    assert.deepEqual(by("onbMoreBrain"), ["Music helps me focus"]);
+    for (const f of out) {
+      assert.match(f.slotKey, /^[a-zA-Z]{1,32}$/);
+      assert.ok(f.factCategory && f.category, f.slotKey);
+    }
+  });
+
+  test("fact wording edge cases", () => {
+    const a = ob.answersFromDraft(ob.emptyDraft());
+    assert.deepEqual(facts.onboardingFacts(a), []);
+    const one = (patch: Partial<typeof a>) => facts.onboardingFacts({ ...a, ...patch }).map((f) => f.fact);
+    assert.deepEqual(one({ grade: "other" }), ["You're in high school, but not in grades 9 to 12"]);
+    assert.deepEqual(one({ focusLength: "60" }), ["You can focus for an hour or more at a time"]);
+    assert.deepEqual(one({ schoolNightHours: "1" }), ["You can handle about 1 hour of work on a school night"]);
+    assert.deepEqual(one({ schoolNightHours: "4" }), ["You can handle 4 or more hours of work on a school night"]);
+    assert.deepEqual(one({ matters: ["sat", "grades", "money"] }), [
+      "This year you care most about SAT/ACT, grades and money or a job",
+    ]);
+    assert.deepEqual(one({ toward: { major: null, career: "a nurse", dream: null, notSure: false } }), [
+      "You'd like to work as a nurse",
+    ]);
+    assert.deepEqual(one({ toward: { major: null, career: "teacher", dream: null, notSure: true } }), [
+      "You'd like to work as a teacher",
+    ]);
+    assert.deepEqual(one({ toward: { major: null, career: null, dream: null, notSure: true } }), [
+      "You're still figuring out what you're building toward, and that's fine",
+    ]);
+    // Vague answers carry nothing to plan with.
+    assert.deepEqual(one({ mattersText: "idk", bugging: "stuff", more: { slip: "nothing" } }), []);
+  });
+
+  test("onboarding fills the planner's work-time and focus slots in the shape it reads", () => {
+    assert.deepEqual(facts.onboardingSlots({ bestTime: null, focusLength: null }), {});
+    assert.deepEqual(facts.onboardingSlots({ bestTime: "lateNight", focusLength: "60" }), {
+      preferredWorkTimes: ["late night"],
+      focusLength: "1 hr",
+    });
+    assert.deepEqual(facts.onboardingSlots({ bestTime: "afterSchool", focusLength: "15" }), {
+      preferredWorkTimes: ["after school"],
+      focusLength: "15 min",
+    });
   });
 
   test("a profile holding stale or unknown values reads as unanswered", () => {
     assert.deepEqual(ob.preferencesFrom({ helpFocus: "legacy", dayView: 7, startingIntent: "   " }), ob.EMPTY_PREFERENCES);
   });
 
-  // ─── Unsupported integrations ────────────────────────────────────────────
-
-  test("no week-shape or integration question exists anywhere in the flow", () => {
-    const steps = ob.stepsFor(true);
-    assert.deepEqual(steps, ["name", "help", "slip", "view", "school", "toward", "intent", "ready"]);
-    assert.deepEqual(Object.keys(ob.EMPTY_PREFERENCES).sort(), ["dayView", "helpFocus", "slipPoint", "startingIntent", "workingToward"]);
-    assert.deepEqual(Object.keys(ob.emptyDraft()).sort(), [
-      "dayView",
-      "helpFocus",
-      "name",
-      "school",
-      "schoolMode",
-      "slipPoint",
-      "startingIntent",
-      "workingToward",
-    ]);
-    for (const key of ["weekShape", "integrationInterest", "canvas"]) {
-      assert.equal(ob.parsePreferencesPatch({ [key]: "canvas" }).ok, false, key);
-    }
-    // An unknown key in a submission never reaches the saved preferences.
-    const r = ob.parseSubmission({ preferences: { helpFocus: "school", integrationInterest: "canvas", weekShape: "busy" } });
-    assert.ok(r.ok);
-    if (r.ok) assert.deepEqual(Object.keys(r.value.preferences).sort(), Object.keys(ob.EMPTY_PREFERENCES).sort());
-  });
-
-  // ─── Flow and draft ──────────────────────────────────────────────────────
-
-  test("the name step only shows when there is no display name", () => {
-    assert.equal(ob.stepsFor(true)[0], "name");
-    assert.equal(ob.stepsFor(false)[0], "help");
-    assert.ok(!ob.stepsFor(false).includes("name"));
-  });
-
-  test("Back and Forward keep every answer; Continue gates only what it should", () => {
-    const steps = ob.stepsFor(false);
-    let draft = ob.emptyDraft();
-    assert.equal(ob.canContinue("help", draft), false);
-    draft = { ...draft, helpFocus: "goals", slipPoint: "ideas", dayView: "week" };
-    // Moving between steps never touches the draft; only answering does.
-    let i = steps.indexOf("view");
-    i -= 1; // Back to "slip"
-    assert.equal(steps[i], "slip");
-    assert.equal(draft.slipPoint, "ideas");
-    i -= 1; // Back to "help"
-    assert.equal(draft.helpFocus, "goals");
-    i += 2; // Forward again
-    assert.equal(steps[i], "view");
-    assert.equal(ob.canContinue("view", draft), true);
-    // School: "varies"/"skip" always continue; "set" needs a real schedule.
-    assert.equal(ob.canContinue("school", { ...draft, schoolMode: "skip" }), true);
-    assert.equal(ob.canContinue("school", { ...draft, schoolMode: "varies" }), true);
-    assert.equal(ob.canContinue("school", { ...draft, schoolMode: "set", school: { days: [], start: "08:00", end: "15:00" } }), false);
-    assert.equal(ob.canContinue("school", { ...draft, schoolMode: "set" }), true);
-    // The intent step is optional.
-    assert.equal(ob.canContinue("intent", draft), true);
-    assert.equal(ob.canContinue("name", draft), false);
-    assert.equal(ob.canContinue("name", { ...draft, name: "Ada" }), true);
-  });
-
-  test("a draft survives a refresh, and a broken one starts fresh", () => {
-    const draft = {
-      ...ob.emptyDraft(),
-      helpFocus: "school" as const,
-      slipPoint: "deadlines" as const,
-      schoolMode: "set" as const,
-      school: { days: [1, 3, 5], start: "07:45", end: "14:30" },
-      startingIntent: "Get ready for my chemistry test",
-    };
-    const back = ob.parseStoredDraft(ob.serializeDraft("school", draft));
-    assert.ok(back);
-    assert.equal(back.step, "school");
-    assert.deepEqual(back.draft, draft);
-
-    assert.equal(ob.parseStoredDraft(null), null);
-    assert.equal(ob.parseStoredDraft("{not json"), null);
-    assert.equal(ob.parseStoredDraft(JSON.stringify({ v: 2, step: "help", draft })), null);
-    // Unknown values inside an otherwise good draft are dropped individually.
-    const tampered = ob.parseStoredDraft(JSON.stringify({ v: 1, step: "nope", draft: { ...draft, helpFocus: "x", school: "bad" } }));
-    assert.ok(tampered);
-    assert.equal(tampered.step, "help");
-    assert.equal(tampered.draft.helpFocus, null);
-    assert.deepEqual(tampered.draft.school, ob.DEFAULT_SCHOOL_HOURS);
-    assert.equal(tampered.draft.slipPoint, "deadlines");
-  });
-
-  test("a resumed draft can't skip past an unanswered step", () => {
-    const steps = ob.stepsFor(false);
-    const draft = { ...ob.emptyDraft(), helpFocus: "balance" as const };
-    assert.equal(ob.resumeStep(steps, "toward", draft), "slip");
-    assert.equal(ob.resumeStep(steps, "help", draft), "help");
-    assert.equal(ob.resumeStep(steps, "name", draft), "help");
-  });
-
   test("the draft key is per signed-in student", () => {
     assert.notEqual(ob.draftStorageKey("a@x.com"), ob.draftStorageKey("b@x.com"));
     assert.equal(ob.draftStorageKey(" A@X.com "), ob.draftStorageKey("a@x.com"));
-  });
-
-  test("Redo setup prefills saved answers and school hours, but not the old intent", () => {
-    const d = ob.draftFromSaved({
-      displayName: "Ada",
-      preferences: { helpFocus: "goals", slipPoint: "projects", dayView: "goals", workingToward: "build", startingIntent: "Old" },
-      school: { days: [1, 2, 3, 4], start: "08:15", end: "15:10" },
-    });
-    assert.equal(d.helpFocus, "goals");
-    assert.equal(d.workingToward, "build");
-    assert.equal(d.schoolMode, "set");
-    assert.deepEqual(d.school, { days: [1, 2, 3, 4], start: "08:15", end: "15:10" });
-    assert.equal(d.startingIntent, "");
-    // Answered before without school hours: the school step shows "Skip" chosen.
-    assert.equal(ob.draftFromSaved({ preferences: { helpFocus: "school" }, school: null }).schoolMode, "skip");
-    // Never answered: nothing chosen.
-    assert.equal(ob.draftFromSaved({}).schoolMode, null);
-  });
-
-  // ─── Starting intent ─────────────────────────────────────────────────────
-
-  test("the starting intent is optional, trimmed, capped, and clearable", () => {
-    const base = { ...ob.emptyDraft(), helpFocus: "goals" as const };
-    assert.equal(ob.submissionFromDraft({ ...base, startingIntent: "" }, { includeName: false }).preferences.startingIntent, null);
-    assert.equal(
-      ob.submissionFromDraft({ ...base, startingIntent: "  Learn   Python \n" }, { includeName: false }).preferences.startingIntent,
-      "Learn Python"
-    );
-    assert.equal(ob.cleanStartingIntent("x".repeat(200))?.length, ob.STARTING_INTENT_MAX);
-    // Clearing after "Break it into steps", "Make it a Path" or dismiss:
-    const clear = ob.parsePreferencesPatch({ startingIntent: null });
-    assert.deepEqual(clear, { ok: true, value: { startingIntent: null } });
-    assert.equal(ob.parsePreferencesPatch({ startingIntent: "   " }).ok, true);
-    // Once cleared, the profile reads as having none.
-    assert.equal(ob.preferencesFrom({ startingIntent: null }).startingIntent, null);
-  });
-
-  test("the submission only carries a name when the name step was shown, and school only when set", () => {
-    const draft = { ...ob.emptyDraft(), name: " Ada ", schoolMode: "skip" as const };
-    assert.equal(ob.submissionFromDraft(draft, { includeName: false }).displayName, undefined);
-    assert.equal(ob.submissionFromDraft(draft, { includeName: true }).displayName, "Ada");
-    assert.equal(ob.submissionFromDraft(draft, { includeName: true }).school, null);
-    assert.equal(ob.submissionFromDraft({ ...draft, schoolMode: "varies" }, { includeName: true }).school, null);
-    assert.deepEqual(ob.submissionFromDraft({ ...draft, schoolMode: "set" }, { includeName: true }).school, ob.DEFAULT_SCHOOL_HOURS);
-  });
-
-  // ─── Final screen ────────────────────────────────────────────────────────
-
-  test("the final screen has two or three fixed lines and only meaningful summary rows", () => {
-    for (const dayView of ob.DAY_VIEWS)
-      for (const slipPoint of ob.SLIP_POINTS)
-        for (const workingToward of ob.WORKING_TOWARD) {
-          const lines = ob.readyLines({ dayView, slipPoint, workingToward });
-          assert.equal(lines.length, 3);
-          assert.equal(new Set(lines).size, 3);
-        }
-    assert.deepEqual(ob.readyLines({ dayView: "next", slipPoint: "ideas", workingToward: "build" }), [
-      "We'll keep your next move clear.",
-      "We'll make room for ideas before they disappear.",
-      "And we'll help bigger projects become something you can start.",
-    ]);
-    assert.ok(ob.readyLines({ dayView: null, slipPoint: null, workingToward: null }).length >= 1);
-
-    assert.deepEqual(ob.readySummary({ dayView: "next", workingToward: "build" }, ob.DEFAULT_SCHOOL_HOURS), [
-      { label: "Starts with", value: "What's next" },
-      { label: "Focus", value: "Build something" },
-      { label: "School hours", value: "Mon–Fri · 8:00 AM–3:00 PM" },
-    ]);
-    assert.deepEqual(ob.readySummary({ dayView: "day", workingToward: null }, null), [{ label: "Starts with", value: "Today's plan" }]);
   });
 
   test("school days read naturally", () => {

@@ -12,7 +12,7 @@ Branch `v3-core-loop`. Spec: `docs/tangent/CONTEXT-ENGINE.md` (copied from Part 
 | 3 Planning flow | Done (see Phase 3 log) |
 | 4 Tasks, calendar, Tangents | Done (see Phase 4 log), with the user's 2026-11-09 feedback folded in |
 | 5 Home, notifications, settings, You, mapped | Done (see Phase 5 log); 5.3, 5.4 and the notifications popover were done in Phase 4 |
-| 6 Onboarding | Not started |
+| 6 Onboarding | Done (see Phase 6 log) |
 | 7 Audit, screenshots, report | Not started |
 
 Baseline (start of Round 4): `git status` clean on `v3-core-loop`, head `f9d83b2`. Lint, typecheck, test and build were **not** run in Phase 0 (docs-only).
@@ -132,7 +132,7 @@ Proposed names use `20261108…`; all `if not exists`, own-row RLS. Final conten
 3. `20261108020000_rounds_and_outcomes.sql`: `plans.round`, `plans.round_started_on`; `tasks.expected_outcome` ("You'll have"), `tasks.personal_reason`; check-in answers go into `step_events.props`. *Reason: Layer 4.*
 4. `20261108030000_facts_used.sql`: `facts_used jsonb` on `change_sets` and `ai_decisions`. *Reason: show "Used: …" without storing prompts.*
 5. `20261108040000_profile_age_grade.sql`: `profiles.birth_year`, `profiles.grade`, `profiles.push_style`. *Reason: age gate and onboarding. Everything else from onboarding is stored as facts.*
-6. `20261108050000_commitments.sql`: new `commitments` (name, kind, repeat rule jsonb, blocks jsonb) with RLS. *Reason: Phase 6 recurring busy blocks with several time blocks and "1st Saturday" patterns, which the current recurring-task model cannot express.*
+6. `20261108050000_commitments.sql`: new `commitments` (name, kind, repeat rule jsonb, blocks jsonb) with RLS. *Reason: Phase 6 recurring busy blocks with several time blocks and "1st Saturday" patterns, which the current recurring-task model cannot express.* **Not needed after all (Phase 6):** each block is a recurring busy task, and its series id carries the commitment's kind and repeat, so the tasks are the record.
 7. `20261108060000_plan_prefs.sql`: `plans.suggest_after_add` (the per-project "Don't ask again" in Phase 4.2). *Reason: remembered choice.*
 
 Not needed: project chat thread (existing `chat_sessions.scope`/`plan_id` from `20261105040000` already give one thread per project); context box text (stored as messages in that thread); hiding Today's summary (a flag).
@@ -432,5 +432,39 @@ The user's feedback arrived with Phase 4. Their screenshots did not come through
 **Not checked live:**
 - The 12:15 AM view (covered by tests only).
 - A real goal task matched to its project (the dev preview has none).
+- Dark mode.
+- The real model answers. Run `npm run eval:pipeline` (paid).
+
+## Phase 6 log: onboarding, commitments, daily follow-up (2026-11-09)
+
+**Onboarding** (`lib/onboarding.ts`, `lib/onboarding-facts.ts`, `components/FirstRun.tsx`, `api/onboarding`):
+- **Eight short screens:** about you (grade), when you're already busy, what matters this year, where things slip, what's bugging you, how your brain works, where you're heading, and how hard to push, each with an optional "Tell me more" box. Warm, short copy; Back, Skip and the progress dots work on every screen.
+- **Facts:** every answer is saved as a `said` fact with an `onb…` slot key. Redoing onboarding (Settings → Onboarding → Setup answers, prefilled) replaces the old answers instead of adding to them. Sensitive or vague text is still refused by `addContextEntry`.
+- **The goal:** a goal typed in onboarding goes straight into planning on Home, so the first plan starts where the student is.
+
+**Commitments** (`lib/commitments.ts`, `api/commitments`, `components/schedule/*`, `components/settings/CommitmentsEditor.tsx`):
+- **What it is:** school, practice, work, lessons, family or other, each with a repeat and one or more time blocks ("Mon–Fri 7:45–2:50 plus Wed 3:30–5:30", "1st Saturday").
+- **On the calendar:** each block is a recurring busy task, so planning never puts work inside it (`dayBusy`).
+- **No table:** the series id carries the kind and repeat, so Settings → Schedule reads the commitments back from the calendar. Planned migration 6 wasn't needed.
+- **Editor:** the same editor in onboarding and Settings → Schedule ("When you're already busy"). It replaces `SchoolHoursEditor`, which is deleted. Saving replaces every commitment and its busy blocks; a commitment that doesn't parse is rejected, never dropped silently.
+
+**Daily follow-up** (`lib/student/follow-ups.ts`, `app/api/follow-up/route.ts`, `components/GetToKnowYou.tsx`):
+- **One typed question:** the post-onboarding bubble stays, with no quick-reply buttons. The student types (or speaks) the answer.
+- **Which question:** deeper questions about the slips they picked first ("You said things pile up. What usually piles up first, school or everything else?"), then what matters this year (AP exams, college apps, a sport, a project), then a check of something Tangent guessed ("Tangent picked up that … Is that right?"), then areas it knows nothing about. Never one already asked or answered.
+- **One a day:** opens on Home only after onboarding, at most once a day. It stays until answered or dismissed ("Not now"), even on later days. A failed save keeps it open.
+- **Answers:** saved as `said` facts with the question's slot key. A yes or no to a guess confirms or removes it; anything else replaces it. Real distress gets the kind reply and nothing is saved.
+- **From Settings:** Settings → Onboarding → "Ask me one" opens the same bubble on demand. Grill me (the Grill queue's grill mode) also lost its chips.
+
+**Checks:**
+- **Lint:** 3 warnings, all pre-existing (one fewer than Phase 5).
+- **Other checks:** typecheck clean, 788 tests pass, and the build passes.
+
+**Checked in the browser** (signed out, sample data):
+- `/dev/app/setup`: all eight screens and "You're all set".
+- `/dev/app/followup`: the bubble at desktop and 390 px (bottom sheet), no chips; answering and "Not now" both close it for the day.
+- Settings → Schedule commitments editor at phone width.
+
+**Not checked live:**
+- Saving facts and commitments signed in (the dev pages have no session, so saves show "That didn't save").
 - Dark mode.
 - The real model answers. Run `npm run eval:pipeline` (paid).

@@ -21,7 +21,7 @@ import { DEFAULT_BUDGET, KEEP, factLine, fitBudget, rankFacts, type ContextPurpo
 import { cleanCourse } from "@/lib/course";
 import { describeLoad, formatMinutes } from "@/lib/load";
 import { schoolHoursFromTasks } from "@/lib/school-block";
-import { isSchoolBlock } from "@/lib/schedule-slots";
+import { isBusyBlock } from "@/lib/schedule-slots";
 import { studentCapacity, studentNow } from "@/lib/spacing";
 import { addDaysYMD } from "@/lib/time";
 import { formatTime12 } from "@/lib/dates";
@@ -175,7 +175,7 @@ export async function buildStudentContext(opts: ContextPackOptions = {}): Promis
 
   // The actual work: what's overdue and what's open this week, so "plan my
   // week" starts from their real list instead of asking what's on it.
-  const work = tasks.filter((t) => !t.completed && !isSchoolBlock(t));
+  const work = tasks.filter((t) => !t.completed && !isBusyBlock(t));
   const overdue = work.filter((t) => t.date < now.date).sort((a, b) => a.date.localeCompare(b.date));
   if (overdue.length > 0) {
     push(

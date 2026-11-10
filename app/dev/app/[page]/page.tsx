@@ -13,11 +13,14 @@ import MotionProvider from "@/components/MotionProvider";
 import { PipelineFlagProvider } from "@/components/PipelineFlag";
 import AppShell from "@/components/AppShell";
 import TaskDetail from "@/components/TaskDetail";
+import FirstRun from "@/components/FirstRun";
 import TodayHome from "@/components/today/TodayHome";
 import PlanCalendarPreview from "@/components/preview/PlanCalendarPreview";
 import ColorPicker from "@/components/projects/ColorPicker";
 import SlotQuestionCard from "@/components/grill/SlotQuestionCard";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { GET_TO_KNOW_EVENT } from "@/components/GetToKnowYou";
+import { followUpById, followUpStorageKey } from "@/lib/student/follow-ups";
 import CalendarPage from "@/app/(app)/calendar/page";
 import ProjectsPage from "@/app/(app)/projects/page";
 import SchoolPage from "@/app/(app)/projects/school/page";
@@ -81,6 +84,19 @@ function GrillSample() {
   );
 }
 
+/** The daily follow-up bubble with a sample question (the API isn't reachable here). */
+function FollowUpSample() {
+  useEffect(() => {
+    const q = followUpById("fuSlipFreeze", []);
+    try {
+      window.localStorage.setItem(followUpStorageKey("anonymous"), JSON.stringify({ v: 1, day: null, current: q, asked: [] }));
+    } catch {}
+    const t = window.setTimeout(() => window.dispatchEvent(new Event(GET_TO_KNOW_EVENT)), 300);
+    return () => window.clearTimeout(t);
+  }, []);
+  return <TodayHome />;
+}
+
 /** The settings layout doesn't apply under /dev, so each page gets the frame here. */
 function framed(Inner: React.ComponentType): React.ComponentType {
   return function Framed() {
@@ -109,6 +125,10 @@ const PAGES: Record<string, React.ComponentType> = {
   preview: PreviewCalendarSample,
   color: ColorPickerSample,
   grill: GrillSample,
+  followup: FollowUpSample,
+  setup: function SetupSample() {
+    return <FirstRun onComplete={() => {}} />;
+  },
 };
 
 export default function AppPreview() {

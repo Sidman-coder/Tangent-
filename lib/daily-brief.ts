@@ -9,7 +9,7 @@
 // path, not two, and the Bell only ever shows one pinned "daily_brief" per day.
 
 import { tracksCompletion } from "@/lib/urgency";
-import { isSchoolBlock } from "@/lib/schedule-slots";
+import { isBusyBlock } from "@/lib/schedule-slots";
 import {
   addNotification,
   getAllTasks,
@@ -81,8 +81,8 @@ async function buildBriefContext(): Promise<string> {
   const tomorrow = addDaysYMD(getUserToday(timeZone, now), 1);
 
   // The School block is the timetable, not a task: it made "0 of 2 complete".
-  const todayTasks = tasks.filter((t) => t.date === today && !isSchoolBlock(t));
-  const tomorrowTasks = tasks.filter((t) => t.date === tomorrow && !isSchoolBlock(t));
+  const todayTasks = tasks.filter((t) => t.date === today && !isBusyBlock(t));
+  const tomorrowTasks = tasks.filter((t) => t.date === tomorrow && !isBusyBlock(t));
   // Same overdue rule as Today and every widget (lib/urgency.ts), so the brief
   // never says "seven overdue" while Home says five.
   const overdueTasks = tasks.filter((t) => !t.completed && t.date < today && tracksCompletion(t));

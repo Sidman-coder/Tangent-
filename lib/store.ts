@@ -4,7 +4,10 @@ import { DEFAULT_TIMEZONE, isValidTimezone } from "./dates";
 import { addDaysYMD, expandRecurrence, getUserToday, weekRange } from "./time";
 import { preferencesFrom } from "./onboarding";
 import type { OnboardingPreferences, OnboardingSubmission, PreferencesPatch, SchoolHours } from "./onboarding";
-import { SCHOOL_SERIES_WEEKS, planSchoolReplace, schoolHoursFromTasks } from "./school-block";
+import { ONBOARDING_SLOT_PREFIX, onboardingFacts, onboardingSlots } from "./onboarding-facts";
+import { slotValue } from "./context/slots";
+import { SCHOOL_SERIES_WEEKS, planSchoolReplace, schoolHoursFromTasks, schoolSeriesIds } from "./school-block";
+import { commitmentFromSchool, commitmentTasks, commitmentsFromTasks, isCommitmentTask, type Commitment } from "./commitments";
 import { CALENDARS, calendarGroupOf } from "./calendars";
 import { DEFAULT_CAPACITY, type Capacity } from "./load";
 import { changesPlan, factCategory, factFromAnswer, isStale, pickGrillQuestions, rankQueue, type GrillItem, type GrillStatus } from "./grill-queue";
@@ -931,13 +934,36 @@ export async function setWeeklyPlan(items: string[]): Promise<void> {
   await updateProfile("setWeeklyPlan", { weekly_plan: items.filter((i) => typeof i === "string") });
 }
 
-/** Marks onboarding done and saves every answer in one go: the profile
- *  preferences and the School block. Safe to run any number of times (Redo
- *  setup): the School block is replaced, never added to. */
+/** Marks onboarding done and saves every answer (Round 4 Phase 6): the
+ *  commitments as busy blocks on the calendar, each answer as a fact the
+ *  student said, the planner's work-time and focus slots, school-night
+ *  capacity, and the older profile preferences. Safe to run any number of
+ *  times (Redo setup): commitments and onboarding facts are replaced, never
+ *  added to. */
 export async function completeOnboarding(answers: OnboardingSubmission): Promise<UserProfile> {
   const timezone = isValidTimezone(answers.timezone) ? answers.timezone : DEFAULT_TIMEZONE;
-  // School first: if it fails, onboarding stays open and can simply be retried.
-  await replaceSchoolBlock(answers.school, timezone);
+  const a = answers.answers;
+  // Commitments first: if they fail, onboarding stays open and can be retried.
+  if (a.commitments) await replaceCommitments(a.commitments, timezone);
+  const facts = await saveOnboardingFacts(a);
+  const slots = onboardingSlots(a);
+  if (slots.preferredWorkTimes || slots.focusLength) {
+    try {
+      // Loaded here, not at the top: the context store uses "@/" imports that
+      // the plain-node tests importing this file can't resolve.
+      const { saveContextSlots } = await import("./context/store");
+      await saveContextSlots(null, {
+        ...(slots.preferredWorkTimes ? { preferredWorkTimes: slotValue(slots.preferredWorkTimes, "answer") } : {}),
+        ...(slots.focusLength ? { focusLength: slotValue(slots.focusLength, "answer") } : {}),
+      });
+    } catch (err) {
+      console.warn("[store] completeOnboarding — slots not saved:", err instanceof Error ? err.message : "unknown");
+    }
+  }
+  if (a.schoolNightHours) {
+    const weekday = Number(a.schoolNightHours) * 60;
+    await setCapacity({ weekday, weekend: Math.min(720, Math.round(weekday * 1.6)) });
+  }
   const row: Record<string, unknown> = {
     onboarded_at: new Date().toISOString(),
     timezone,
@@ -945,8 +971,49 @@ export async function completeOnboarding(answers: OnboardingSubmission): Promise
   };
   if (typeof answers.displayName === "string" && answers.displayName.trim()) row.display_name = answers.displayName.trim().slice(0, 100);
   await updateProfile("completeOnboarding", row);
-  console.log("[store] completeOnboarding — timezone:", timezone, "| school block:", answers.school ? "set" : "none");
+  console.log(
+    "[store] completeOnboarding — timezone:",
+    timezone,
+    "| commitments:",
+    a.commitments ? a.commitments.length : "unchanged",
+    "| facts:",
+    facts
+  );
   return userFromRow(await getProfileRow("completeOnboarding"));
+}
+
+/** Replaces the facts an earlier setup saved with this one's. Best effort:
+ *  facts never block finishing onboarding. Returns how many were kept. */
+async function saveOnboardingFacts(answers: OnboardingSubmission["answers"]): Promise<number> {
+  const facts = onboardingFacts(answers);
+  const { db, userId } = ctx();
+  try {
+    if (!missingFactColumns.isMissing("facts")) {
+      const { error } = await db
+        .from("context_entries")
+        .delete()
+        .eq("user_id", userId)
+        .is("project_id", null)
+        .or(`slot_key.like.${ONBOARDING_SLOT_PREFIX}%,slot_key.in.(preferredWorkTimes,focusLength)`);
+      if (error) noteMissingFactColumns(error);
+    }
+    let kept = 0;
+    for (const f of facts) {
+      const saved = await addContextEntry({
+        category: f.category,
+        fact: f.fact,
+        source: "manual",
+        factSource: "said",
+        factCategory: f.factCategory,
+        slotKey: f.slotKey,
+      });
+      if (saved) kept++;
+    }
+    return kept;
+  } catch (err) {
+    console.warn("[store] completeOnboarding — facts not saved:", err instanceof Error ? err.message : "unknown");
+    return 0;
+  }
 }
 
 /** Changes some onboarding answers without re-running setup (Settings, and
@@ -980,6 +1047,54 @@ export async function replaceSchoolBlock(hours: SchoolHours | null, timezone: st
     console.log("[store] replaceSchoolBlock — removed series:", stale.length, "| rows:", data?.length ?? 0);
   }
   if (plan.add) await addRecurringTask(plan.add.task, plan.add.recurring);
+}
+
+// ─── Commitments ("When are you already busy?") ─────────────────────────────
+// No table of their own: the recurring busy blocks on the calendar are the
+// record, and each series id says which commitment and repeat it came from
+// (lib/commitments.ts). Saving replaces every series, so the editor in
+// onboarding and Settings → Schedule can't stack duplicates.
+
+/** The student's commitments, read back from their busy blocks. A School
+ *  block saved before commitments existed shows up as a School commitment. */
+export async function getCommitments(): Promise<Commitment[]> {
+  const series = await selectTasks("getCommitments", (q) => q.like("recurring_parent_id", "cmt_%"));
+  const list = commitmentsFromTasks(series.filter(isCommitmentTask));
+  if (list.length) return list;
+  const school = await selectTasks("getCommitments school", (q) => q.not("recurring_parent_id", "is", null).eq("kind", "school"));
+  const hours = schoolHoursFromTasks(school);
+  return hours ? [commitmentFromSchool(hours)] : [];
+}
+
+/** Replaces every commitment series (and any older onboarding School series)
+ *  with `list`, starting today. Past rows of a removed series go too, as
+ *  "delete all" on a recurring task already does. */
+export async function replaceCommitments(list: Commitment[], timezone: string): Promise<number> {
+  const { db, userId } = ctx();
+  const [series, school] = await Promise.all([
+    selectTasks("replaceCommitments", (q) => q.like("recurring_parent_id", "cmt_%")),
+    selectTasks("replaceCommitments school", (q) => q.not("recurring_parent_id", "is", null).eq("kind", "school")),
+  ]);
+  const stale = Array.from(
+    new Set([...series.filter(isCommitmentTask).map((t) => t.recurring!.parentId!), ...schoolSeriesIds(school)])
+  );
+  for (let i = 0; i < stale.length; i += 100) {
+    const { error } = await db
+      .from("tasks")
+      .delete()
+      .eq("user_id", userId)
+      .in("recurring_parent_id", stale.slice(i, i + 100));
+    if (error) fail("replaceCommitments", error);
+  }
+  const today = getUserToday(timezone);
+  const rows = commitmentTasks(list, today, Date.now().toString(36)).map((t) => newTaskRow(userId, t));
+  for (let i = 0; i < rows.length; i += 500) {
+    const chunk = rows.slice(i, i + 500);
+    const { error } = await taskQuery(() => db.from("tasks").insert(chunk.map(withoutMissingColumns)).select("id"));
+    if (error) fail("replaceCommitments", error);
+  }
+  console.log("[store] replaceCommitments — removed series:", stale.length, "| commitments:", list.length, "| rows:", rows.length);
+  return rows.length;
 }
 
 /** "Restart onboarding": the first-run flow shows again on next load. */

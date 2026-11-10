@@ -200,6 +200,7 @@ const WINDOWS: Record<string, { start: number; end: number }> = {
   mornings: { start: 6 * 60, end: 9 * 60 },
   "after school": { start: 15 * 60, end: 18 * 60 },
   evenings: { start: 19 * 60, end: 22 * 60 },
+  "late night": { start: 21 * 60, end: 23 * 60 },
 };
 
 /** Minutes-of-day windows for lib/load.ts placement. Weekends alone set none. */

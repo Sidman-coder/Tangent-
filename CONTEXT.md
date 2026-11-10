@@ -130,6 +130,14 @@ _Avoid_: Field, form question
 The test that Tangent knows enough to make a first plan, scored from the filled context slots. Grill me stops asking once it passes.
 _Avoid_: Confidence, completeness
 
+**Commitment**:
+A regular time the Student is already busy, such as school, practice, work or lessons, with a repeat and one or more time blocks. It sits on the calendar as recurring busy blocks, Tangent never plans inside it, and it is edited in Settings → Schedule.
+_Avoid_: Class schedule, routine, availability
+
+**Daily follow-up**:
+One typed question a day after onboarding, picked from what Tangent knows least well, such as a slip the Student named or a guess to check. It stays until answered or dismissed.
+_Avoid_: Quick replies, survey, check-in
+
 **Grill queue**:
 A Student's waiting Grill me questions, ordered by how much each answer could change a plan.
 _Avoid_: Inbox, question backlog

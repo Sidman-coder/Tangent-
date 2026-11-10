@@ -266,3 +266,18 @@
 .knows-card .knows-add + .settings-row {
   border-top: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
 }
+
+/* When you're already busy (CommitmentsEditor): the list needs the full row. */
+.settings-edit-form:has(.cmt) {
+  max-width: 640px;
+  width: 100%;
+}
+.settings-commitments {
+  display: grid;
+  gap: 4px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-2);
+  font-size: 13.5px;
+}

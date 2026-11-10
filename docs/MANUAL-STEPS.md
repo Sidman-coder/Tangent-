@@ -184,3 +184,12 @@ Run these in the Supabase SQL Editor, in order. Each one is safe to run twice. T
    Before it runs, the new kinds are rejected by the old check: the app logs one server warning and carries on.
 
 **Evals** (paid, about $0.08; asks before spending): `npm run eval:pipeline -- --context` runs the swap test, which plans the same goal for two different students and checks the plans differ. The free check is `npm run eval:pipeline -- --context --check`. The full pipeline eval is still `npm run eval:pipeline`.
+
+### Phase 6: onboarding and commitments (no migrations)
+
+Nothing to run. Commitments are stored as recurring busy tasks, so the planned `commitments` table wasn't needed. Onboarding answers use the Phase 2 fact columns; before those migrations run, they save as plain facts.
+
+**Check it in the app** (signed in, phone and laptop):
+- Settings → Onboarding → **Setup answers**: the eight screens come back prefilled. Change one answer and finish; What Tangent knows shows the new answer, not both.
+- Add a commitment with two blocks (for example practice Mon/Wed 3:30–5:30 plus Sat 9–11). It shows on the calendar every week, and Settings → Schedule reads it back the same way. Ask Tangent to plan something: nothing lands inside those blocks.
+- On Home after onboarding, one question appears at most once a day. Type an answer: it shows in What Tangent knows. "Not now" closes it until tomorrow.
