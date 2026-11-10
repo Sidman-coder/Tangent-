@@ -63,7 +63,7 @@ export default function GrillDeck({
             variant="primary"
             onClick={() => {
               putAsk("ai", replanRequest(offer.question, offer.answer));
-              router.push(`${askAboutHref({ kind: "project", id: offer.projectId })}&ask=1`);
+              router.push(askAboutHref({ kind: "project", id: offer.projectId }));
             }}
           >
             See a new plan

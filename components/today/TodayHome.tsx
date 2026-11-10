@@ -9,7 +9,6 @@ import * as m from "motion/react-m";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import ActionReceipt from "@/components/ActionReceipt";
 import AddFlow from "@/components/add/AddFlow";
-import HomeChat from "@/components/chat/HomeChat";
 import FreshStart from "@/components/dashboard/FreshStart";
 import { CanvasCard, StartingIntentCard } from "@/components/dashboard/HomeCards";
 import QuestionsInbox from "@/components/dashboard/QuestionsInbox";
@@ -467,7 +466,6 @@ export default function TodayHome() {
         </m.details>
       )}
 
-      <HomeChat />
 
       {followUp && <StepFollowUp key={`${followUp.kind}-${followUp.task.id}`} followUp={followUp} onWhyNot={onWhyNot} onClose={() => setFollowUp(null)} />}
 

@@ -79,7 +79,7 @@ export default function DeletePathDialog({ path, counts, busy, onCancel, onConfi
             Keep it
           </button>
           <button type="button" className="path-btn is-danger" onClick={onConfirm} disabled={busy}>
-            {busy ? "Deleting" : "Delete path"}
+            {busy ? "Deleting" : "Delete Tangent"}
           </button>
         </footer>
       </m.div>

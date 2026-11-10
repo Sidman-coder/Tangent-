@@ -336,7 +336,7 @@
 
 /* ── Day panel ─────────────────────────────────────────────────────────── */
 
-.calendar-task-remove {
+.calendar-task-remove:not(.ui-button) {
   padding: 4px 10px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -348,7 +348,7 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .calendar-task-remove:hover {
+  .calendar-task-remove:not(.ui-button):hover {
     border-color: var(--red);
     color: var(--red);
   }
@@ -368,8 +368,6 @@
   display: block;
   -webkit-line-clamp: unset;
 }
-
-.calendar-task-more,
 
 .calendar-removed {
   margin-top: 10px;
@@ -853,4 +851,209 @@
   .calendar-layout .cal-rail-box textarea {
     transition: none;
   }
+}
+
+/* ── Round 4 Phase 4: project tints, month drag, a lighter day panel ─────── */
+
+/* A task is its project's colour, the whole tile, not a dot beside it, so the
+   steps of one project read as one family at a glance. */
+.calendar-page .cal-event {
+  align-items: flex-start;
+  gap: 0;
+  padding: 3px 6px 3px 5px;
+  border-left: 3px solid var(--chip, var(--accent));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--chip, var(--accent)) 18%, var(--surface));
+  transition: background var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease);
+}
+.calendar-page .cal-event-title {
+  display: -webkit-box;
+  white-space: normal;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+/* A due date stays the same family, drawn lighter: "by then", not "at then". */
+.calendar-page .cal-event.is-deadline {
+  border-left-style: dashed;
+  background: color-mix(in srgb, var(--chip, var(--accent)) 9%, var(--surface));
+}
+@media (hover: hover) and (pointer: fine) {
+  .calendar-page .cal-event:hover {
+    background: color-mix(in srgb, var(--chip, var(--accent)) 30%, var(--surface));
+  }
+}
+.calendar-page .cal-event.is-movable {
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+@media (pointer: fine) {
+  .calendar-page .cal-event.is-movable { cursor: grab; }
+}
+.calendar-page .cal-event.is-held {
+  opacity: 0.35;
+}
+.calendar-page .cal-event-more {
+  padding-left: 6px;
+}
+
+/* Month drag: the day under the pointer lights up; the task follows it. */
+.calendar-page .calendar-grid-shell .cal-cell.is-drop-target {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 2px var(--accent-line);
+}
+.cal-drag-ghost {
+  position: fixed;
+  z-index: 400;
+  max-width: 220px;
+  padding: 5px 10px 5px 8px;
+  overflow: hidden;
+  border-left: 3px solid var(--chip, var(--accent));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--chip, var(--accent)) 24%, var(--surface));
+  box-shadow: var(--shadow-lg);
+  color: var(--text);
+  font: 600 12.5px/1.3 var(--font-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(10px, -50%) rotate(-1.5deg);
+}
+
+/* Week and day: the same full tint, a little deeper, titles on two lines. */
+.calendar-page .wk-block {
+  background: color-mix(in srgb, var(--block) 22%, var(--surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--block) 26%, transparent);
+}
+.calendar-page .wk-block-title {
+  display: -webkit-box;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.wk-due-item {
+  border-left: 3px dashed var(--block, var(--accent));
+  background: color-mix(in srgb, var(--block, var(--accent)) 10%, var(--surface));
+}
+.wk-due-item::before {
+  display: none;
+}
+.wk-due-item:hover {
+  background: color-mix(in srgb, var(--block, var(--accent)) 22%, var(--surface));
+}
+
+/* Phones: no room for titles, so each task is a short bar in its colour. */
+@media (max-width: 720px) {
+  .calendar-page .cal-event {
+    width: 100%;
+    height: 5px;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: var(--chip, var(--accent));
+  }
+  .calendar-page .cal-event.is-deadline {
+    background: color-mix(in srgb, var(--chip, var(--accent)) 45%, var(--surface));
+  }
+  .calendar-page .cal-event-title {
+    display: none;
+  }
+}
+
+/* The day panel: beside the calendar, over a light scrim, under the top bar,
+   so the toolbar and Today stay in view. A bottom sheet on phones (Sheet). */
+.ui-sheet-layer.is-side:has(.calendar-day-sheet) {
+  top: var(--shell-top, 0px);
+  padding: 12px;
+}
+.ui-sheet-layer.is-side:has(.calendar-day-sheet) .ui-sheet-scrim {
+  background: rgb(20 15 30 / 0.08);
+}
+.ui-sheet--side.calendar-day-sheet {
+  height: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+
+/* "GOAL: … FOCUS: …" notes read as labelled parts. */
+.calendar-task-parts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+.calendar-task-parts:not(.is-open) .calendar-task-part:nth-child(n + 2) {
+  display: none;
+}
+.calendar-task-part dt {
+  color: var(--text-3);
+  font: 600 10.5px/1.3 var(--font-body);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.calendar-task-part dd {
+  margin: 1px 0 0;
+  color: var(--text-2);
+  font-size: 13.5px;
+  line-height: 1.45;
+  white-space: pre-line;
+}
+.calendar-modal-task-desc .calendar-task-more {
+  margin-top: 4px;
+  font-size: 12.5px;
+}
+
+.calendar-task-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+.calendar-task-move {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+}
+.calendar-task-move label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+.calendar-task-move input {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text);
+  font: 500 12.5px/1 var(--font-body);
+}
+.calendar-task-move input:focus-visible {
+  outline: 2px solid var(--focus, var(--accent));
+  outline-offset: 1px;
+}
+/* Remove is quiet: Undo is right there, so it needs no alarm. */
+.calendar-task-actions .calendar-task-remove {
+  margin-left: auto;
+  color: var(--text-3);
+}
+@media (hover: hover) and (pointer: fine) {
+  .calendar-task-actions .calendar-task-remove:hover {
+    border-color: transparent;
+    color: var(--text);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .calendar-page .cal-event { transition: none; }
+  .cal-drag-ghost { transform: translate(10px, -50%); }
 }

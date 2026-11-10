@@ -11,6 +11,7 @@ import {
   updateRecurringTask,
   getUserTimezone,
   recordAction,
+  getAllPlans,
 } from "@/lib/store";
 import { getUserToday } from "@/lib/time";
 import type { TaskCommitment, TaskKind } from "@/lib/types";
@@ -68,6 +69,8 @@ export const POST = withUser(async (req: Request) => {
       patch?: Record<string, unknown>;
       notes?: string;
       ids?: unknown;
+      /** Round 4 Phase 4.2: the add form's Project picker. */
+      planId?: string | null;
     };
 
     console.log("[api/tasks] POST action:", body.action);
@@ -78,6 +81,17 @@ export const POST = withUser(async (req: Request) => {
     const fieldError = taskFieldError(body);
     if (fieldError) return NextResponse.json({ ok: false, error: fieldError }, { status: 400 });
     if (typeof body.time === "string") body.time = normalizeTime(body.time);
+
+    // Round 4 Phase 4.2: the add form can put a task in a project and say what
+    // kind it is (Must-do / Goal step / Reminder). Only the student's own
+    // projects count; anything else stays Personal.
+    const addPlanId =
+      (action === "add_task" || action === "add_recurring_task") && typeof body.planId === "string" && body.planId
+        ? (await getAllPlans()).some((p) => p.id === body.planId)
+          ? body.planId
+          : null
+        : null;
+    const addCommitment = COMMITMENTS.includes(body.commitment as TaskCommitment) ? (body.commitment as TaskCommitment) : undefined;
 
     if (action === "add_task") {
       if (!body.title?.trim()) {
@@ -91,6 +105,8 @@ export const POST = withUser(async (req: Request) => {
         completed: false,
         calendarId: body.calendarId ?? null,
         notes: body.notes?.trim() || undefined,
+        ...(addPlanId ? { planId: addPlanId } : {}),
+        ...(addCommitment ? { commitment: addCommitment } : {}),
       });
       if (task.wasDuplicate) {
         console.log("[api/tasks] add_task skipped duplicate:", task.id);
@@ -237,6 +253,8 @@ export const POST = withUser(async (req: Request) => {
           completed: false,
           calendarId: body.calendarId ?? null,
           notes: body.notes?.trim() || undefined,
+          ...(addPlanId ? { planId: addPlanId } : {}),
+          ...(addCommitment ? { commitment: addCommitment } : {}),
         },
         {
           frequency: freq,

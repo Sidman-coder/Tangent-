@@ -4723,3 +4723,98 @@ body .gtk-sheet {
 .preview-week-tip span {
   color: var(--text-2);
 }
+
+/* ── Round 4 Phase 4.2: add a task (components/AddTaskModal.tsx) ─────────── */
+.add-task-when {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+.add-task-new-project {
+  margin-top: 8px;
+}
+.add-task-type {
+  min-width: 0;
+  margin-inline: 0;
+  padding: 0;
+  border: 0;
+}
+.add-task-type legend {
+  margin-bottom: 6px;
+  padding: 0;
+  color: var(--text-2);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.add-task-type-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-elevated);
+}
+.add-task-type .add-task-type-option {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 34px;
+  padding: 0 8px;
+  border-radius: calc(var(--r-md) - 3px);
+  color: var(--text-2);
+  font-size: 0.84rem;
+  font-weight: 550;
+  text-align: center;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.add-task-type-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.add-task-type .add-task-type-option.is-on {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgb(20 15 30 / 0.08), 0 0 0 1px var(--line);
+}
+.add-task-type-option:has(input:focus-visible) {
+  outline: 2px solid var(--focus, var(--accent));
+  outline-offset: 1px;
+}
+
+.add-build-ask {
+  text-align: left;
+}
+.add-build-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  margin-bottom: 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.add-build-copy {
+  margin: 6px 0 14px;
+  color: var(--text-2);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+.add-build-dont {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  color: var(--text-2);
+  font-size: 0.86rem;
+  cursor: pointer;
+}
+@media (max-width: 480px) {
+  .add-task-when { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .add-task-type-option { transition: none; }
+}

@@ -5,7 +5,6 @@ import { PipelineFlagProvider } from "@/components/PipelineFlag";
 import { TANGENT_PIPELINE_V2 } from "@/lib/pipeline/flags";
 import FeatureTour from "@/components/FeatureTour";
 import TaskDetail from "@/components/TaskDetail";
-import TaskChatSheet from "@/components/chat/TaskChatSheet";
 import RecentChanges from "@/components/RecentChanges";
 import UndoToast from "@/components/UndoToast";
 
@@ -22,7 +21,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           {/* Outside AppShell so they survive the Tangents takeover. */}
           <FeatureTour />
           <TaskDetail />
-          <TaskChatSheet />
           <RecentChanges />
           <UndoToast />
         </MotionProvider>

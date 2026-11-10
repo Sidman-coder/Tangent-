@@ -21,14 +21,17 @@ import SidePeek from "@/components/ui/SidePeek";
 import { handleResourceClick } from "@/lib/task-utils";
 import { toYMD, formatTime12 } from "@/lib/dates";
 import { isCanvasCleared } from "@/lib/canvas-clear";
-import { CATEGORY_COLOR, CATEGORY_LABEL, TASK_GROUPS, groupByCategory, planSeriesColor, seriesColor, taskGroup, taskSeries, type TaskGroup } from "@/lib/task-colors";
+import { CATEGORY_LABEL, TASK_GROUPS, planSeriesColor, seriesColor, taskCategory, taskGroup, taskSeries, type TaskGroup } from "@/lib/task-colors";
+import { noteParts } from "@/lib/note-parts";
+import { canDragTask } from "@/lib/calendar-drag";
+import { useMonthDrag } from "@/components/calendar/useMonthDrag";
 import { isOnboardingSchoolTask } from "@/lib/school-block";
 import { baseTitle, useShortTitles } from "@/lib/short-titles";
 import "./calendar.css";
 import { initialCalendarView, prefsOf } from "@/lib/personalize";
 import { announceUndo, openRecentChanges } from "@/lib/undo-events";
 import type { Plan, Task } from "@/lib/types";
-import { X, Check, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil, Undo2 } from "lucide-react";
+import { X, Check, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil, Undo2, Trash2 } from "lucide-react";
 import WeekView from "@/components/calendar/WeekView";
 import AgendaView from "@/components/calendar/AgendaView";
 import TaskTip from "@/components/calendar/TaskTip";
@@ -203,6 +206,29 @@ export default function CalendarPage() {
       setMoving(null);
     }
   }, [refresh]);
+
+  // Round 4 Phase 4.1: drag a task to another day in the month grid. Same
+  // reschedule (and Undo) as the week grid; it keeps its time.
+  const monthDrag = useMonthDrag((t, ymd) => void moveTask(t, ymd, t.time));
+
+  /** Round 4 Phase 4.3: the day panel groups by project, then by kind; what
+   *  used to be "Other" is "Personal". */
+  const dayGroups = (tasks: Task[]) => {
+    const groups: { key: string; label: string; color: string; tasks: Task[] }[] = [];
+    for (const t of tasks) {
+      const plan = getPlan(t.planId);
+      const category = taskCategory(t);
+      const key = plan ? `plan:${plan.id}` : t.pathOrigin ? `path:${t.pathOrigin.pathId}` : category;
+      let g = groups.find((x) => x.key === key);
+      if (!g) {
+        const label = plan ? plan.title : t.pathOrigin ? t.pathOrigin.pathTitle : category === "other" ? "Personal" : CATEGORY_LABEL[category];
+        g = { key, label, color: getTaskCategoryColor(t), tasks: [] };
+        groups.push(g);
+      }
+      g.tasks.push(t);
+    }
+    return groups;
+  };
 
   const wholeDayTasks = selectedDay
     ? tasksForDay(selectedDay).slice().sort((a, b) => a.time.localeCompare(b.time))
@@ -640,11 +666,17 @@ export default function CalendarPage() {
               const openCount = dayTasks.filter((t) => !t.completed).length;
               const load = inMonth && ymd >= todayYmd && openCount > 0 ? Math.min(1, Math.max(0.2, openCount / 5)) : 0;
               return (
-                <div key={`${ymd}-${idx}`} className={className} style={{ "--load": load.toFixed(2) } as React.CSSProperties}>
+                <div
+                  key={`${ymd}-${idx}`}
+                  className={`${className}${monthDrag.drag?.overYmd === ymd ? " is-drop-target" : ""}`}
+                  style={{ "--load": load.toFixed(2) } as React.CSSProperties}
+                  data-ymd={inMonth ? ymd : undefined}
+                >
                   <button
                     type="button"
                     className="cal-day"
                     onClick={() => {
+                      if (monthDrag.tookClick()) return;
                       if (!inMonth) return;
                       setSelectedDay(ymd === selectedDay ? null : ymd);
                     }}
@@ -661,17 +693,18 @@ export default function CalendarPage() {
                           return (
                             <span
                               key={t.id}
-                              className={`cal-event${t.completed ? " is-done" : ""}${isCanvasCleared(t, todayYmd) ? " is-cleared" : ""}${deadline ? " is-deadline" : ""}`}
+                              className={`cal-event${t.completed ? " is-done" : ""}${isCanvasCleared(t, todayYmd) ? " is-cleared" : ""}${deadline ? " is-deadline" : ""}${canDragTask(t) ? " is-movable" : ""}${monthDrag.drag?.taskId === t.id ? " is-held" : ""}`}
                               style={{ "--chip": getTaskCategoryColor(t) } as React.CSSProperties}
-                              data-task-tip={t.id}
+                              data-task-tip={monthDrag.drag ? undefined : t.id}
+                              {...monthDrag.dragProps(t)}
                               onClick={(e) => {
                                 // The event opens in the middle, like Google
                                 // Calendar; the date opens the day.
                                 e.stopPropagation();
+                                if (monthDrag.tookClick()) return;
                                 openTask(t.id);
                               }}
                             >
-                              <span className="cal-event-dot" aria-hidden="true" />
                               <span className="cal-event-title">{labelFor(t)}</span>
                             </span>
                           );
@@ -709,13 +742,27 @@ export default function CalendarPage() {
               );
             })}
           </m.div>
+          {moveError && <p className="calendar-move-error" role="alert">{moveError}</p>}
         </section>
       )}
+      {monthDrag.drag && (() => {
+        const held = (state?.tasks ?? []).find((t) => t.id === monthDrag.drag!.taskId);
+        if (!held) return null;
+        return (
+          <div
+            className="cal-drag-ghost"
+            aria-hidden="true"
+            style={{ left: monthDrag.drag.x, top: monthDrag.drag.y, "--chip": getTaskCategoryColor(held) } as React.CSSProperties}
+          >
+            {labelFor(held)}
+          </div>
+        );
+      })()}
       </div>
       <CalendarRail tasks={state?.tasks ?? []} today={todayYmd} />
       </div>
 
-      <SidePeek open={!!selectedDay} titleId="calendar-day-title" onClose={() => { setSelectedDay(null); setRemoved(null); }}>
+      <SidePeek open={!!selectedDay} titleId="calendar-day-title" className="calendar-day-sheet" onClose={() => { setSelectedDay(null); setRemoved(null); }}>
         {selectedDay && (
           <div className="calendar-peek-content">
             <div className="calendar-modal-header">
@@ -749,18 +796,19 @@ export default function CalendarPage() {
               <p className="calendar-modal-empty">Nothing scheduled yet.</p>
             ) : (
               <div>
-                {groupByCategory(selectedDayTasks).map(({ category, tasks }) => (
-                <div key={category} className="day-panel-kind-group">
+                {dayGroups(selectedDayTasks).map((g) => (
+                <div key={g.key} className="day-panel-kind-group">
                   <div className="day-panel-kind-header">
-                    <span className="day-panel-kind-pill" style={{ background: CATEGORY_COLOR[category] }} />
-                    <span className="day-panel-kind-label">{CATEGORY_LABEL[category]}</span>
+                    <span className="day-panel-kind-pill" style={{ background: g.color }} />
+                    <span className="day-panel-kind-label">{g.label}</span>
                   </div>
-                  {tasks.map((t) => {
+                  {g.tasks.map((t) => {
                   const plan = getPlan(t.planId);
+                  const parts = t.notes ? noteParts(t.notes, true) : null;
                   const freq = recurringLabel(t);
                   const categoryColor = getTaskCategoryColor(t);
                   return (
-                    <div key={t.id} className={`calendar-modal-task${t.completed ? " calendar-modal-task--done" : ""}`} style={{ borderLeftColor: categoryColor }}>
+                    <div key={t.id} className={`calendar-modal-task${t.completed ? " calendar-modal-task--done" : ""}`} style={{ borderLeftColor: categoryColor, "--chip": categoryColor } as React.CSSProperties}>
                       <div className="calendar-modal-task-top">
                         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0 }}>
                           <button
@@ -780,7 +828,7 @@ export default function CalendarPage() {
                         <span className="calendar-modal-task-time">{formatTime12(t.time)}</span>
                       </div>
                       {freq && <div className="recurring-freq-label">{freq}</div>}
-                      {plan && (
+                      {plan && g.key !== `plan:${plan.id}` && (
                         <button
                           className="plan-tag"
                           style={{
@@ -800,16 +848,30 @@ export default function CalendarPage() {
                           className="path-origin-link"
                           title={t.pathOrigin.nodeTitle}
                         >
-                          From your {t.pathOrigin.pathTitle} path
+                          From your {t.pathOrigin.pathTitle} Tangent
                         </Link>
                       )}
                       {t.notes && (
                         <div className="calendar-modal-task-desc">
-                          <p className={`calendar-task-notes${openNotes.has(t.id) ? " is-open" : ""}`}>{t.notes}</p>
-                          {t.notes.length > 140 && (
-                            <button
-                              type="button"
+                          {/* Round 4 Phase 4.3: "GOAL: … TIME: …" reads as labelled parts, never raw. */}
+                          {parts ? (
+                            <dl className={`calendar-task-parts${openNotes.has(t.id) ? " is-open" : ""}`}>
+                              {parts.map((part) => (
+                                <div key={part.label} className="calendar-task-part">
+                                  <dt>{part.label}</dt>
+                                  <dd>{part.text}</dd>
+                                </div>
+                              ))}
+                            </dl>
+                          ) : (
+                            <p className={`calendar-task-notes${openNotes.has(t.id) ? " is-open" : ""}`}>{t.notes}</p>
+                          )}
+                          {(parts ? parts.length > 1 || t.notes.length > 140 : t.notes.length > 140) && (
+                            <Button
+                              variant="quiet"
+                              size="sm"
                               className="calendar-task-more"
+                              aria-expanded={openNotes.has(t.id)}
                               onClick={() =>
                                 setOpenNotes((prev) => {
                                   const next = new Set(prev);
@@ -820,7 +882,7 @@ export default function CalendarPage() {
                               }
                             >
                               {openNotes.has(t.id) ? "Show less" : "Show more"}
-                            </button>
+                            </Button>
                           )}
                           {t.resources && t.resources.length > 0 && (
                             <div className="resource-links-section">
@@ -833,7 +895,7 @@ export default function CalendarPage() {
                           )}
                         </div>
                       )}
-                      <div style={{ display: "flex", gap: "0.4rem", marginTop: "0.5rem" }}>
+                      <div className="calendar-task-actions">
                         {t.recurring?.enabled ? (
                           <button
                             onClick={() => setRecurEditTarget({ taskId: t.id, parentId: t.recurring!.parentId!, task: t })}
@@ -844,15 +906,38 @@ export default function CalendarPage() {
                             <Pencil size={14} strokeWidth={1.75} />
                           </button>
                         ) : null}
-                        <button
-                          type="button"
+                        {/* Round 4 Phase 4.1: the keyboard way to move a task to another day. */}
+                        {canDragTask(t) && (
+                          <form
+                            className="calendar-task-move"
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              const to = new FormData(e.currentTarget).get("date");
+                              if (typeof to === "string" && /^\d{4}-\d{2}-\d{2}$/.test(to) && to !== t.date) {
+                                void moveTask(t, to, t.time);
+                                setSelectedDay(to);
+                              }
+                            }}
+                          >
+                            <label>
+                              <span>Move to</span>
+                              <input type="date" name="date" defaultValue={t.date} aria-label={`Move ${t.title} to`} />
+                            </label>
+                            <Button type="submit" variant="ghost" size="sm">Move</Button>
+                          </form>
+                        )}
+                        {/* Quiet: removing comes with Undo, so it needs no warning colour. */}
+                        <Button
+                          variant="quiet"
+                          size="sm"
                           className="calendar-task-remove"
+                          icon={<Trash2 size={14} strokeWidth={1.75} aria-hidden="true" />}
                           onClick={() => handleDeleteTask(t)}
                           aria-label={`Remove ${t.title}`}
                           aria-expanded={removePick === t.id}
                         >
                           Remove
-                        </button>
+                        </Button>
                       </div>
                       {removePick === t.id && (
                         <div className="calendar-remove-pick">

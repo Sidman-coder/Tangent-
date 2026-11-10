@@ -36,7 +36,7 @@ export type PathDraft = {
 type Props = {
   onCancel: () => void;
   onCreate: (draft: PathDraft) => Promise<boolean>;
-  /** The student's own words from Home ("Make it a Path"). Fills the goal,
+  /** The student's own words from Home ("Make it a Tangent"). Fills the goal,
    *  and the name when it is short enough to be one. Still editable. */
   initialTitle?: string | null;
   /** A kind suggested by onboarding. Shown selected; the student confirms. */
@@ -94,7 +94,7 @@ const REST = (labels: {
   constraintsEg: string;
 }): Step => ({
   question: "Anything else worth knowing?",
-  help: "All optional. Skip it and Tangent still builds the path; answering makes what it suggests fit you rather than fit anyone.",
+  help: "All optional. Skip it and Tangent still builds the Tangent; answering makes what it suggests fit you rather than fit anyone.",
   optional: true,
   fields: [
     { key: "deadline", label: labels.deadline, placeholder: labels.deadlineEg },
@@ -217,7 +217,7 @@ const QUESTIONS: Record<PathGoalKind, { name: string; steps: Step[] }> = {
 const NAME_STEP = (placeholder: string): Step => ({
   key: "title",
   question: "Give it a short name",
-  help: "Two or three words. It's the label you'll see on your path.",
+  help: "Two or three words. It's the label you'll see on your Tangent.",
   placeholder,
 });
 
@@ -396,7 +396,7 @@ export default function NewPathDialog({ onCancel, onCreate, initialTitle, initia
   const total = steps.length;
 
   return (
-    <div className="tangents-intake-scrim" role="dialog" aria-modal="true" aria-label="Start a path">
+    <div className="tangents-intake-scrim" role="dialog" aria-modal="true" aria-label="Start a Tangent">
       <m.div
         className="tangents-intake"
         initial={{ opacity: 0, y: 18, scale: 0.98 }}
@@ -405,7 +405,7 @@ export default function NewPathDialog({ onCancel, onCreate, initialTitle, initia
       >
         <header className="tangents-intake-head">
           <span className="tangents-intake-step">
-            {stage === -1 ? "New path" : `Question ${stage + 1} of ${total}`}
+            {stage === -1 ? "New Tangent" : `Question ${stage + 1} of ${total}`}
           </span>
           <button type="button" className="path-inspector-close" onClick={onCancel} aria-label="Cancel">
             <X size={16} aria-hidden="true" />
@@ -461,7 +461,7 @@ export default function NewPathDialog({ onCancel, onCreate, initialTitle, initia
             ) : isLast && sharpen && sharpen.length > 0 ? (
               <>
                 <h2>A few questions before Tangent maps it</h2>
-                <p>Answer what you can. Each one changes which paths it suggests.</p>
+                <p>Answer what you can. Each one changes which branches it suggests.</p>
                 <div className="tangents-intake-group">
                   {sharpen.map((q, i) => (
                     <div key={i} className="tangents-intake-field">
@@ -614,7 +614,7 @@ export default function NewPathDialog({ onCancel, onCreate, initialTitle, initia
           </button>
           {(stage >= 0 || picked) && (
             <button type="button" className="path-btn is-primary" onClick={() => void next()} disabled={submitting || loadingQs}>
-              {submitting ? "Creating" : loadingQs ? "Thinking…" : isLast ? (sharpen && sharpen.length ? "Create the path" : "Next") : "Next"}
+              {submitting ? "Creating" : loadingQs ? "Thinking…" : isLast ? (sharpen && sharpen.length ? "Create the Tangent" : "Next") : "Next"}
               {!isLast && <ArrowRight size={15} aria-hidden="true" />}
             </button>
           )}

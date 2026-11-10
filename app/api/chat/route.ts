@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import { withUser } from "@/lib/request-context";
 import { trackEvent } from "@/lib/analytics";
 import { DISTRESS_REPLY, looksDistressed } from "@/lib/student/sensitive";
-import { calendarReply, lastUserMessage, pendingAnswerReply, planReply, type CalendarReplyOptions } from "@/lib/chat-reply";
+import { answerReply, calendarReply, lastUserMessage, pendingAnswerReply, planReply, type CalendarReplyOptions } from "@/lib/chat-reply";
 import { parsePendingQuestion, PENDING_QUESTION_ID } from "@/lib/pending-question";
 import { TANGENT_PIPELINE_V2 } from "@/lib/pipeline/flags";
 import { handleRequest } from "@/lib/pipeline/intake";
 import { routeAnswerReply } from "@/lib/pipeline/understand";
+import { homeRoute, type HomeKind } from "@/lib/pipeline/home-route";
+import { extendPlan } from "@/lib/pipeline/extend-plan";
 import { addTask, getAllPlans, getAllTasks, getUserTimezone, recordAction, setCapacity } from "@/lib/store";
 import { quickCapture, type QuickCapture } from "@/lib/ai/router";
 import { inferCalendarGroup } from "@/lib/calendars";
@@ -120,6 +122,10 @@ export const POST = withUser(async (req: Request) => {
       slotTurn?: unknown;
       /** Round 4 §3.3: "Just talk" in the planning workspace. A reply only; nothing is added. */
       talk?: unknown;
+      /** Round 4 Phase 4: typed into Home's box (or a project's ask box).
+       *  Routed first (lib/pipeline/home-route.ts): answered, extended,
+       *  grilled, planned or added — never grilled about what's known. */
+      home?: unknown;
     };
     const mode: ChatMode = body.mode === "plan" ? "plan" : "calendar";
     const raw = body.messages;
@@ -210,10 +216,53 @@ export const POST = withUser(async (req: Request) => {
       });
     }
 
+    // Round 4 Phase 4: Home's box decides what this is before anything asks.
+    // A question is answered from their projects and finished steps; more
+    // steps for a project they have are previewed; only a new goal (or "grill
+    // me") is asked about.
+    let homeKind: HomeKind | null = null;
+    const firstTurn = parseAnswers(body.answers).length === 0 && body.slotTurn == null;
+    if (body.home === true && body.talk !== true && body.route !== "chat" && body.newProject !== true && firstTurn) {
+      const plans = await getAllPlans().catch(() => []);
+      const routed = homeRoute(userText, plans.map((p) => ({ id: p.id, title: p.title })), projectId || null);
+      homeKind = routed.kind;
+      if (routed.projectId && !projectId) projectId = routed.projectId;
+      console.log("[api/chat] home route:", routed.kind, routed.projectId ? "(project)" : "");
+      if (routed.kind === "answer") {
+        // The project it's about, or their newest few when it names none.
+        const ids = projectId
+          ? [projectId]
+          : [...plans].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 3).map((p) => p.id);
+        const notes = [
+          ...(aboutTask ? [`THE STEP THEY'RE ASKING ABOUT:\n${aboutTask.brief}`] : []),
+          ...(await Promise.all(ids.map((id) => projectBrief(id, threadSummary).catch(() => null)))).filter((n): n is string => !!n),
+        ];
+        const answer = async (onText?: (text: string) => void) => ({
+          ok: true,
+          action: "chat_reply",
+          message: await answerReply(messages, { projectNotes: notes, onText }),
+          ...(projectId ? { projectId } : {}),
+        });
+        if (body.stream !== true) return NextResponse.json(await answer());
+        return ndjson(async (send) => answer((text) => send({ type: "reply_text", text })));
+      }
+      if (routed.kind === "extend" && projectId) {
+        const extended = await extendPlan(projectId, userText, source);
+        if (!extended.ok) {
+          return NextResponse.json({ ok: true, action: extended.reason === "no_tasks" ? "chat_reply" : "error", message: extended.message });
+        }
+        const data = (await extended.response.json()) as Record<string, unknown>;
+        if (data.ok !== true) return NextResponse.json({ ok: true, action: "error", message: String(data.response ?? data.error ?? "Sorry, I couldn't prepare that.") });
+        return NextResponse.json({ ok: true, action: "preview", message: String(data.response ?? ""), changeSet: data.changeSet, preview: data.preview, projectId });
+      }
+    }
+    // A plain task or a change: never grilled. A new goal or "grill me": asked.
+    const mayAsk = homeKind === null || homeKind === "plan" || homeKind === "grill";
+
     // Instant capture: a plain to-do is saved straight away — no model in the
     // way — and polished a moment later by /api/questions (enrich). Anything
     // that might be a command goes through the full pipeline below.
-    if (body.capture === true && messages.length === 1) {
+    if (body.capture === true && messages.length === 1 && !projectId && homeKind !== "grill" && homeKind !== "plan") {
       const quick = quickCapture(userText, await getUserTimezone());
       if (quick) return NextResponse.json(await saveQuickCapture(quick));
     }
@@ -236,7 +285,8 @@ export const POST = withUser(async (req: Request) => {
       answers.length === 0 &&
       body.route !== "chat" &&
       body.clarify === true &&
-      (slotTurn !== null || body.newProject === true || !!projectId || shouldConsiderClarifying(userText))
+      mayAsk &&
+      (slotTurn !== null || body.newProject === true || homeKind === "grill" || !!projectId || shouldConsiderClarifying(userText))
     ) {
       // A request that may belong to an existing project keeps the older
       // "Part of your … project?" question (and so the older path).
@@ -244,7 +294,10 @@ export const POST = withUser(async (req: Request) => {
       const joinsExisting = !projectId && body.newProject !== true && slotTurn === null && matchProject(userText, plans) !== null;
       if (!joinsExisting) {
         const title = projectId ? (await getAllPlans().catch(() => [])).find((p) => p.id === projectId)?.title : undefined;
-        const chat = messages.slice(0, -1).filter((m) => m.role === "user").map((m) => m.content).join("\n").slice(-2000);
+        // A project they have tells the grill what it's about and what's done,
+        // so it never asks what the project already answers.
+        const known = projectId ? ((await projectBrief(projectId, threadSummary).catch(() => null)) ?? "") : "";
+        const chat = [known, messages.slice(0, -1).filter((m) => m.role === "user").map((m) => m.content).join("\n")].filter(Boolean).join("\n").slice(-3000);
         const turn = await grillTurn({ text: userText, chat, projectId: projectId || null, title, turn: slotTurn }).catch(() => ({ kind: "fallback" as const }));
         if (turn.kind === "ask") {
           const reply = {
@@ -253,6 +306,7 @@ export const POST = withUser(async (req: Request) => {
             message: turn.cards.length > 1 ? "A few quick questions so this fits you." : "One quick question so this fits you.",
             questions: turn.cards.map((c) => ({ id: `slot:${c.slot}`, question: c.question, options: c.options, ...(c.multi ? { multi: true } : {}), ...(c.assume ? { assume: c.assume } : {}) })),
             slotFlow: { slots: turn.cards.map((c) => c.slot), progress: turn.progress },
+            ...(projectId ? { projectId } : {}),
           };
           if (body.stream !== true) return NextResponse.json(reply);
           return new Response(JSON.stringify({ type: "result", ...reply }) + "\n", {
@@ -284,7 +338,7 @@ export const POST = withUser(async (req: Request) => {
         if (weekday) await setCapacity({ weekday, weekend: Math.min(720, Math.round(weekday * 1.6)) });
       }
       pipelineText = `${userText}\n\nMy answers to your questions:\n${answers.map((a) => `- ${a.question} ${a.answer}`).join("\n")}`;
-    } else if (body.route !== "chat" && body.clarify === true && (body.newProject === true || shouldConsiderClarifying(userText))) {
+    } else if (body.route !== "chat" && body.clarify === true && mayAsk && (body.newProject === true || homeKind === "grill" || shouldConsiderClarifying(userText))) {
       // A new project is always grilled first: it's the biggest ask there is.
       const picture = await buildStudentContext({ purpose: "grill", query: userText }).catch(() => null);
       const questions = picture

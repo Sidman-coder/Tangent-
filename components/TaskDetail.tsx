@@ -5,14 +5,15 @@
 // Today, projects) opens this through openTask(); the day panel is only for
 // clicking a date.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Check, MessageSquareText, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import IconButton from "@/components/ui/IconButton";
 import Sheet from "@/components/ui/Sheet";
 import ActionReceipt from "@/components/ActionReceipt";
-import { openTaskChat } from "@/components/chat/TaskChatSheet";
+import InlineAsk, { type InlineAskHandle } from "@/components/chat/InlineAsk";
+import { noteParts } from "@/lib/note-parts";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { splitCourse } from "@/lib/course";
 import { generateQuestions } from "@/lib/questions-client";
@@ -29,22 +30,6 @@ export function openTask(taskId: string) {
   window.dispatchEvent(new CustomEvent(OPEN_TASK_EVENT, { detail: { taskId } }));
 }
 
-/** Tangent's notes come as "GOAL: … FOCUS: … TIME: …"; show them as parts. */
-function noteParts(notes: string): { label: string; text: string }[] | null {
-  // Round 4 §3.4 adds "YOU'LL HAVE:" (the step's outcome) and "HOW IT WENT:"
-  // (the student's own check-in words).
-  const LABELS: Record<string, string> = { GOAL: "Goal", FOCUS: "What to do", TIME: "Time", "YOU'LL HAVE": "You'll have", "HOW IT WENT": "How it went" };
-  const re = /(GOAL|FOCUS|TIME|YOU'LL HAVE|HOW IT WENT):\s*/g;
-  const hits = Array.from(notes.matchAll(re));
-  const lead = notes.slice(0, hits[0]?.index ?? notes.length).trim();
-  if (hits.length < (lead ? 1 : 2)) return null;
-  const parts = hits.map((h, i) => ({
-    label: LABELS[h[1]],
-    text: notes.slice((h.index ?? 0) + h[0].length, i + 1 < hits.length ? hits[i + 1].index : undefined).trim(),
-  }));
-  return [...(lead ? [{ label: "What to do", text: lead }] : []), ...parts].filter((p) => p.text);
-}
-
 /** Tasks already given steps this session, so a card never asks twice. */
 const planned = new Set<string>();
 
@@ -53,6 +38,7 @@ export default function TaskDetail() {
   const { state, refresh } = useAppState();
   const timezone = useUserTimezone();
   const [taskId, setTaskId] = useState<string | null>(null);
+  const askRef = useRef<InlineAskHandle>(null);
   const [busy, setBusy] = useState(false);
   const [moreNotes, setMoreNotes] = useState(false);
   const [removed, setRemoved] = useState<{ actionId: string; title: string } | null>(null);
@@ -158,11 +144,8 @@ export default function TaskDetail() {
           <IconButton
             label="Ask about this"
             icon={<MessageSquareText strokeWidth={1.75} aria-hidden="true" />}
-            onClick={() => {
-              // One window at a time: the sheet steps aside for the chat.
-              setTaskId(null);
-              openTaskChat(task.id);
-            }}
+            // Round 4 Phase 4: asked right here, under the step. No chat panel.
+            onClick={() => askRef.current?.focus()}
           />
           <IconButton
             label="Remove task"
@@ -289,6 +272,15 @@ export default function TaskDetail() {
                 </ul>
               </div>
             )}
+
+            <InlineAsk
+              key={task.id}
+              ref={askRef}
+              className="td-section td-ask"
+              scope={{ taskId: task.id }}
+              label={`Ask about ${title}`}
+              placeholder="Stuck? Ask how to start, or anything about it…"
+            />
           </div>
         )
       )}

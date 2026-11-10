@@ -20,7 +20,7 @@ import Link from "next/link";
 import Button from "@/components/ui/Button";
 import ConfirmPanel from "@/components/ui/ConfirmPanel";
 import FormMessage from "@/components/ui/FormMessage";
-import YouOrbit from "./YouOrbit";
+import YouMapHero from "./YouMapHero";
 
 const ICON: Record<MapGroupKey, LucideIcon> = {
   goals: Target,
@@ -152,25 +152,19 @@ export default function WhatTangentKnows() {
 
   return (
     <section id="what-tangent-knows" className="settings-group you-map" aria-labelledby="knows-title">
-      <h2 id="knows-title" className="settings-group-title">You, mapped</h2>
       {entries === null ? (
-        <div className="settings-card knows-card">
-          <span className="settings-skeleton" aria-label="Loading" />
-        </div>
+        <>
+          <h2 id="knows-title" className="settings-group-title">You, mapped</h2>
+          <div className="settings-card knows-card">
+            <span className="settings-skeleton" aria-label="Loading" />
+          </div>
+        </>
       ) : (
         <>
+          {/* Round 4 Phase 4: the map fills the window, then the facts follow. */}
+          <YouMapHero grouped={grouped} initials={initials} summary={mapSummary(grouped)} focus={focus} onPick={pick} />
+
           <div className="you-map-head">
-            <p className="you-map-summary">{mapSummary(grouped)}</p>
-            <ul className="you-map-counts" aria-label="Facts per area">
-              {grouped.map(({ group, facts }) => (
-                <li key={group.key} style={{ "--c": `var(--series-${group.color})` } as React.CSSProperties}>
-                  <button type="button" onClick={() => pick(group.key)}>
-                    <span className="you-map-swatch" aria-hidden="true" />
-                    {group.label} <b>{facts.length}</b>
-                  </button>
-                </li>
-              ))}
-            </ul>
             <p className="settings-group-note">
               Tangent uses all of this for every plan, question and answer. Fix or forget anything that&apos;s wrong.
               {v2 && (
@@ -182,12 +176,7 @@ export default function WhatTangentKnows() {
             </p>
           </div>
 
-          <div className="you-map-body">
-            <div className="you-map-visual">
-              <YouOrbit grouped={grouped} initials={initials} focus={focus} onPick={pick} />
-              <p className="you-map-hint" aria-hidden="true">Drag to turn it. Tap an area to jump to it.</p>
-            </div>
-
+          <div className="you-map-body is-below">
             <div className="you-map-cards">
               {summary && (
                 <div className="you-card is-earlier">

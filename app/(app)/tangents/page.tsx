@@ -31,7 +31,7 @@ export default function TangentsPage() {
   const prefs = prefsOf(state?.user);
 
   // /tangents?new=1 comes from Home: open the dialog, with the student's
-  // starting point if they chose "Make it a Path", then drop the flag so a
+  // starting point if they chose "Make it a Tangent", then drop the flag so a
   // reload doesn't reopen it.
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("new") !== "1") return;
@@ -61,12 +61,12 @@ export default function TangentsPage() {
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/path", { cache: "no-store" });
-      if (!res.ok) throw new Error(`Couldn't load your paths (${res.status})`);
+      if (!res.ok) throw new Error(`Couldn't load your Tangents (${res.status})`);
       const data = (await res.json()) as { paths: PathWithCounts[] };
       setPaths(data.paths ?? []);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't load your paths.");
+      setError(e instanceof Error ? e.message : "Couldn't load your Tangents.");
       setPaths([]);
     }
   }, []);
@@ -83,12 +83,12 @@ export default function TangentsPage() {
         body: JSON.stringify({ action: "createPath", ...draft }),
       });
       const data = (await res.json().catch(() => ({}))) as { path?: { id: string }; error?: string };
-      if (!res.ok || !data.path) throw new Error(data.error ?? "Couldn't create the path.");
+      if (!res.ok || !data.path) throw new Error(data.error ?? "Couldn't create the Tangent.");
       // Straight into it: the reward for answering six questions is the tree.
       router.push(`/tangents/${data.path.id}`);
       return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't create the path.");
+      setError(e instanceof Error ? e.message : "Couldn't create the Tangent.");
       return false;
     }
   };
@@ -98,7 +98,7 @@ export default function TangentsPage() {
   return (
     <div className="tangents-gallery tangents-light">
       <PageHeader
-        title="Paths"
+        title="Tangents"
         description="Where you want to be in a year or more. Tangent maps the moves from what you already do."
         actions={
           paths && paths.length > 0 ? (
@@ -110,7 +110,7 @@ export default function TangentsPage() {
       />
 
       {paths === null ? (
-        <p className="pplan-loading">Loading your paths…</p>
+        <p className="pplan-loading">Loading your Tangents…</p>
       ) : paths.length === 0 ? (
         <section className="pplan-empty is-large">
           <strong>{empty.title}</strong>

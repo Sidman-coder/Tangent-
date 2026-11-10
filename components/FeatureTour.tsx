@@ -90,13 +90,7 @@ const STEPS: Step[] = [
     route: "/projects",
     target: [".project-card", ".projects-new", ".page-header-actions"],
     title: "Projects, and how they're going",
-    body: "A final, a science fair, starting a club. Tangent asks a few questions, then lays the steps across your calendar. Open a project to see your pace and next steps, or tap Ask about this to talk it through.",
-  },
-  {
-    route: "/ai",
-    target: [".chat-library"],
-    title: "Every chat in one place",
-    body: "Ask Tangent from Home, or tap Ask on a task or project to talk about just that. Each keeps its own thread, and they all land here. Tangent already knows your schedule, classes and projects, so it won't ask what it can see.",
+    body: "A final, a science fair, starting a club. Tangent asks a few questions, then lays the steps across your calendar. Open a project to see your pace and next steps, or ask about it right on the project page.",
   },
   {
     route: "/settings/context",

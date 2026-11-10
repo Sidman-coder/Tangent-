@@ -415,7 +415,8 @@
 .plan-ws-tabs { display: none; }
 .plan-ws-panes {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  /* The calendar gets a little more room than the talk. */
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
   gap: var(--s-4);
   align-items: start;
 }
@@ -433,6 +434,8 @@
 }
 .plan-ws-line.is-user { align-self: flex-end; background: var(--accent-soft); }
 .plan-ws-line.is-assistant { align-self: flex-start; background: color-mix(in srgb, var(--text) 5%, transparent); }
+/* "Round 1 for X: 4 steps…", "Assumed: …": what Tangent just planned. */
+.plan-ws-more { display: block; margin-top: 4px; color: var(--text-2); font-size: 13px; }
 
 .plan-ws-brief { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
 .plan-ws-brief textarea {
@@ -498,3 +501,33 @@
   .plan-ws-left[data-active="false"], .plan-ws-right[data-active="false"] { display: none; }
   .plan-ws-right { position: static; }
 }
+
+/* ── Round 4 Phase 4: Home answers in place ───────────────────────────────
+   A question's answer opens under the box and pushes Today down. No side
+   panel and no saved history: Clear ends it. */
+.add-answer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--elev-2);
+}
+.add-answer-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.add-answer-line { font-size: 14.5px; line-height: 1.55; }
+.add-answer-line.is-user { align-self: flex-end; max-width: 85%; padding: 6px 12px; border-radius: 12px; background: var(--accent-soft); color: var(--text); }
+.add-answer-line.is-assistant { color: var(--text); }
+.add-answer-line.is-assistant p { margin: 0 0 8px; white-space: pre-wrap; }
+.add-answer-line.is-assistant p:last-child { margin-bottom: 0; }
+.add-answer-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--line);
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+.add-answer-clear { display: inline-flex; align-items: center; gap: 4px; }

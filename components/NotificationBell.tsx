@@ -1,5 +1,10 @@
 "use client"
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from "react"
+import { createPortal } from "react-dom"
+import { AnimatePresence } from "motion/react"
+import * as m from "motion/react-m"
+import { PHONE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery"
+import { duration, ease } from "@/lib/motion"
 import { Sun, Lightbulb, AlertTriangle, Clock, Calendar, Bell, X, type LucideIcon } from "lucide-react"
 import { Notification } from "@/lib/types"
 import { notifyNewDesktopNotifications } from "@/lib/desktop-notifications"
@@ -253,7 +258,7 @@ export default function NotificationBell({ open, onOpenChange, onUnreadChange }:
         onAction={n => void handleReschedule(n)}
         onOpenInbox={() => setOpen(true)}
       />
-      <Sheet open={open} onClose={() => setOpen(false)} title="Notifications" className="notif-sheet">
+      <NotifSurface open={open} onClose={() => setOpen(false)}>
         <div className="notif-actions">
           {!pinnedBrief && (
             <Button
@@ -286,8 +291,134 @@ export default function NotificationBell({ open, onOpenChange, onUnreadChange }:
             {restNotifications.map(n => renderNotif(n))}
           </ul>
         )}
-      </Sheet>
+      </NotifSurface>
     </>
+  )
+}
+
+/**
+ * Round 4 Phase 4: the inbox opens where the bell is. A popover anchored to
+ * the bell on desktop (no sliding panel from the side), a bottom sheet on a
+ * phone. Escape and a click outside close it; focus goes back to the bell.
+ */
+function NotifSurface({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+  const isPhone = useMediaQuery(PHONE_QUERY, { sync: true })
+  if (!mounted) return null
+  if (isPhone) {
+    return (
+      <Sheet open={open} onClose={onClose} title="Notifications" className="notif-sheet">
+        {children}
+      </Sheet>
+    )
+  }
+  return createPortal(
+    <AnimatePresence>{open && <NotifPopover key="notif" onClose={onClose}>{children}</NotifPopover>}</AnimatePresence>,
+    document.body,
+  )
+}
+
+/** The bell that is on screen right now (sidebar on desktop, top bar on a phone). */
+function visibleBell(): HTMLElement | null {
+  const bells = Array.from(document.querySelectorAll<HTMLElement>("[data-notif-bell]"))
+  return bells.find(b => b.getClientRects().length > 0) ?? null
+}
+
+const GAP = 10
+const EDGE = 12
+
+function NotifPopover({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  const panelRef = useRef<HTMLDivElement>(null)
+  const openerRef = useRef<HTMLElement | null>(null)
+  const [pos, setPos] = useState<CSSProperties>({ visibility: "hidden" })
+  const [origin, setOrigin] = useState("left bottom")
+  // The parent passes a fresh onClose each render; the listeners below stay put.
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+
+  // Sit beside the bell: to its right when it is in the sidebar, under it when
+  // it is in a top bar. Keep inside the window either way.
+  useLayoutEffect(() => {
+    openerRef.current = visibleBell()
+    const place = () => {
+      const bell = openerRef.current ?? visibleBell()
+      const vw = window.innerWidth
+      const vh = window.innerHeight
+      if (!bell) {
+        setPos({ right: EDGE, top: EDGE })
+        setOrigin("right top")
+        return
+      }
+      const r = bell.getBoundingClientRect()
+      if (r.left < vw / 2) {
+        // Sidebar bell: open to its right. Low in the window, bottoms line up;
+        // higher up, tops line up and the list scrolls inside what is left.
+        const left = Math.min(r.right + GAP, vw - EDGE - 380)
+        if (r.top > vh / 2) {
+          setPos({ left, bottom: Math.max(EDGE, vh - r.bottom) })
+          setOrigin("left bottom")
+        } else {
+          setPos({ left, top: Math.max(EDGE, r.top), maxHeight: Math.min(560, vh - Math.max(EDGE, r.top) - EDGE) })
+          setOrigin("left top")
+        }
+      } else {
+        setPos({ right: Math.max(EDGE, vw - r.right), top: r.bottom + GAP })
+        setOrigin("right top")
+      }
+    }
+    place()
+    window.addEventListener("resize", place)
+    return () => window.removeEventListener("resize", place)
+  }, [])
+
+  useEffect(() => {
+    const opener = openerRef.current
+    const panel = panelRef.current
+    panel?.focus({ preventScroll: true })
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return
+      e.stopPropagation()
+      onCloseRef.current()
+    }
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node
+      if (panel?.contains(t)) return
+      // The bell toggles itself; don't close here and reopen there.
+      if (t instanceof Element && t.closest("[data-notif-bell]")) return
+      onCloseRef.current()
+    }
+    document.addEventListener("keydown", onKey)
+    document.addEventListener("pointerdown", onDown)
+    return () => {
+      document.removeEventListener("keydown", onKey)
+      document.removeEventListener("pointerdown", onDown)
+      if (opener && document.activeElement && panel?.contains(document.activeElement)) opener.focus()
+      else if (opener && document.activeElement === document.body) opener.focus()
+    }
+  }, [])
+
+  return (
+    <m.div
+      ref={panelRef}
+      className="notif-popover"
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby="notif-popover-title"
+      tabIndex={-1}
+      style={{ ...pos, transformOrigin: origin }}
+      initial={{ opacity: 0, scale: 0.96, y: 4 }}
+      animate={{ opacity: 1, scale: 1, y: 0, transition: { duration: duration.base, ease: ease.out } }}
+      exit={{ opacity: 0, scale: 0.97, y: 4, transition: { duration: duration.fast, ease: ease.in } }}
+    >
+      <div className="notif-popover-head">
+        <h2 id="notif-popover-title" className="notif-popover-title">Notifications</h2>
+        <button type="button" className="notif-popover-close" aria-label="Close notifications" onClick={onClose}>
+          <X size={16} strokeWidth={1.75} aria-hidden="true" />
+        </button>
+      </div>
+      <div className="notif-popover-body">{children}</div>
+    </m.div>
   )
 }
 
@@ -309,6 +440,7 @@ export function NotificationBellButton({
       <button
         type="button"
         className="app-topbar-bell"
+        data-notif-bell=""
         aria-label={label}
         aria-expanded={expanded}
         aria-haspopup="dialog"
@@ -323,6 +455,7 @@ export function NotificationBellButton({
     <button
       type="button"
       className="app-nav-item"
+      data-notif-bell=""
       aria-label={label}
       aria-expanded={expanded}
       aria-haspopup="dialog"

@@ -94,10 +94,10 @@ export default function ProjectsPage() {
         description="Bigger goals, broken into steps Tangent spaces out on your calendar."
         actions={
           <>
-            {/* Paths live inside Projects (the sidebar shows them too, from laptop width). */}
+            {/* Tangents live inside Projects (the sidebar shows them too, from laptop width). */}
             <Link href="/tangents" className="projects-paths-link">
               <Route size={16} strokeWidth={1.75} aria-hidden="true" />
-              Paths
+              Tangents
             </Link>
             {!showComposer && (
               <Button variant="primary" icon={<Plus size={16} aria-hidden="true" />} onClick={() => setComposing(true)}>

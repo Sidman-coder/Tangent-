@@ -3,9 +3,11 @@
 // Adding anything to Tangent, in one place. Used as the hero on Today and
 // inside the ⌘K sheet, so it works the same everywhere:
 //
-//   1. Type it or say it. The words are routed as you go (lib/ask-route.ts):
-//      to the calendar, into a project (new or existing), and - when it's
-//      really a question or a long-range goal - to Tangent AI or Tangents.
+//   1. Type it or say it. The server decides what it is first
+//      (lib/pipeline/home-route.ts): a question is answered right here, under
+//      the box, from the student's projects and finished steps; more steps
+//      for a project they have are previewed; a new goal gets a few questions;
+//      anything else goes on the calendar. A long-range goal goes to Tangents.
 //   2. Big or vague asks get a few questions first (/api/chat clarify). The
 //      student can answer, or skip: it's saved now and the questions wait on
 //      Today instead (lib/questions-client.ts), so grilling is never a wall.
@@ -19,7 +21,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
-import { ArrowRight, ArrowUp, AudioLines, Mic, Orbit, MessageSquareText } from "lucide-react";
+import { ArrowRight, ArrowUp, AudioLines, Mic, Orbit, X } from "lucide-react";
 import ActionReceipt from "@/components/ActionReceipt";
 import PreviewCard from "@/components/PreviewCard";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
@@ -34,7 +36,9 @@ const NO_TURN: SlotTurn = { answers: [], skipped: [], inARow: 0, stopped: false 
 import { useVoiceCapture } from "@/hooks/useVoiceCapture";
 import { routeAsk } from "@/lib/ask-route";
 import { heardSomethingToAdd } from "@/lib/voice-intent";
-import { askOnHome } from "@/lib/ask-handoff";
+import { ASK_EVENT, takeAsk } from "@/lib/ask-handoff";
+import { projectFor } from "@/lib/pipeline/home-route";
+import { planStoryText } from "@/lib/plan-story";
 import { putNewPathTitle } from "@/lib/path-handoff";
 import { HOME_INTENT_EVENT, planRequestFor, takeHomeIntent, takeHomePlan, type HomeIntent } from "@/lib/home-intent";
 import { generateQuestions } from "@/lib/questions-client";
@@ -42,13 +46,15 @@ import type { ChangeSet } from "@/lib/pipeline/changeset";
 import type { PreviewPayload } from "@/lib/pipeline/draft";
 import HelpPlanBetter from "@/components/grill/HelpPlanBetter";
 import PlanCalendarPreview from "@/components/preview/PlanCalendarPreview";
-import { seedProjectThread, type ThreadLine } from "@/lib/chat/seed-thread";
 import { getUserToday } from "@/lib/time";
 import DestPill, { type DestChoice } from "./DestPill";
 import PlanWorkspace, { CalendarPlaceholder, HowThisPlanWorks, ModeToggle, type Pane, type TalkMode } from "./PlanWorkspace";
 import "./add.css";
 
 type Dest = "calendar" | "project";
+
+/** One line of talk: the workspace's left pane, or Home's answer area. */
+type ThreadLine = { role: "user" | "assistant"; text: string };
 
 type Reply = {
   ok?: boolean;
@@ -74,7 +80,7 @@ type Reply = {
 
 type Phase =
   | { kind: "compose" }
-  | { kind: "working"; text: string }
+  | { kind: "working"; text: string; thinking?: boolean }
   | { kind: "asking"; text: string; questions: ClarifyQuestion[]; message: string; slot?: { slots: string[]; progress: number; at: number; turn: SlotTurn } }
   | { kind: "confirm"; id: string; message: string }
   | { kind: "preview"; changeSet: ChangeSet; preview: PreviewPayload; said: string; asked: number; note?: string }
@@ -153,6 +159,14 @@ export default function AddFlow({
   const talkModeRef = useRef(talkMode);
   talkModeRef.current = talkMode;
   const say = useCallback((line: ThreadLine) => setLog((l) => [...l, line]), []);
+  // What the workspace is about: the words that opened it.
+  const [topic, setTopic] = useState("");
+  // Round 4 Phase 4: Home answers in place. The talk shows under the box and
+  // pushes the page down; follow-ups carry it along. Nothing is saved: there's
+  // no chat history, and Clear (or leaving Home) ends it.
+  const [thread, setThread] = useState<ThreadLine[]>([]);
+  const threadRef = useRef(thread);
+  threadRef.current = thread;
   const endPlanning = useCallback(() => {
     setPlanning(false);
     setLog([]);
@@ -169,7 +183,10 @@ export default function AddFlow({
   const route = routeAsk(text);
   // The student's pick wins; on Auto the words decide.
   const dest: Dest = choice?.dest ?? (route === "project" ? "project" : "calendar");
-  const handoff = !choice && (route === "question" || route === "goal") ? route : null;
+  // Only a long-range goal leaves Home (for Tangents), and never one about a
+  // project they already have. Questions are answered right here.
+  const allPlans = state?.plans;
+  const handoff = !choice && route === "goal" && !projectFor(text, allPlans ?? []) ? "goal" : null;
   const targetProject = choice?.dest === "project" ? choice.projectId : "new";
 
   useEffect(() => {
@@ -230,17 +247,21 @@ export default function AddFlow({
       if (!words) return;
       // A draft or a question on screen stays there through a "Just talk" reply.
       const before = phaseRef.current;
-      setPhase({ kind: "working", text: words });
+      setPhase({ kind: "working", text: words, thinking: !followUp && (/\?\s*$/.test(words) || routeAsk(words) === "question") });
       setHelp(null);
       const toProject = dest === "project";
       // In the workspace: the talk so far rides along as context, and what the
       // student wrote in "Tell me anything" joins this request.
       const inWorkspace = planningRef.current;
-      if (!followUp && !inWorkspace) setLog([{ role: "user", text: words }]);
-      else if (!followUp) say({ role: "user", text: words });
+      // The answer area's talk so far carries into a plan that comes out of it.
+      const talked = inWorkspace ? [] : threadRef.current;
+      if (!followUp && !inWorkspace) {
+        setLog([...talked, { role: "user", text: words }]);
+        setTopic(words);
+      } else if (!followUp) say({ role: "user", text: words });
       const told = briefRef.current.trim();
       const content = told ? `${words}\n\nMore about this: ${told}` : words;
-      const earlier = inWorkspace ? logRef.current.filter((l) => l.text !== words).map((l) => ({ role: l.role, content: l.text })).slice(-12) : [];
+      const earlier = (inWorkspace ? logRef.current : talked).filter((l) => l.text !== words).map((l) => ({ role: l.role, content: l.text })).slice(-12);
       // "Just talk": a reply only. Nothing is added without the student asking.
       const talk = inWorkspace && !followUp && talkModeRef.current === "talk";
       try {
@@ -253,8 +274,10 @@ export default function AddFlow({
             stream: false,
             source,
             ...(talk ? { talk: true } : {}),
+            // Decided on the server before anything asks (lib/pipeline/home-route.ts).
+            home: true,
             // A plain to-do is saved instantly; anything bigger is considered for questions.
-            capture: !talk && !toProject && !followUp,
+            capture: !talk && !toProject && !followUp && earlier.length === 0,
             clarify: !talk && (!followUp || !!followUp.slotTurn),
             answers: followUp?.answers ?? undefined,
             // A few questions until Tangent knows enough (lib/context/goal-slots.ts).
@@ -265,9 +288,18 @@ export default function AddFlow({
         });
         const data = (await res.json()) as Reply;
         if (!res.ok || !data.ok) throw new Error(data.error || "That didn't go through. Try again.");
-        if (data.action === "plan_reply" || (inWorkspace && data.care)) {
+        if (data.action === "error") throw new Error(clean(data.message, "Sorry, I couldn't do that. Try again."));
+        const reply = (data.action === "plan_reply" || data.action === "chat_reply" || data.care === true) && !data.actionId;
+        if (reply && inWorkspace) {
           say({ role: "assistant", text: clean(data.message, "I'm here. Tell me more.") });
           setPhase(before.kind === "preview" || before.kind === "asking" ? before : { kind: "compose" });
+          reset();
+          return;
+        }
+        if (reply) {
+          // An answer: right under the box. Nothing was added.
+          setThread((t) => [...t, { role: "user" as const, text: words }, { role: "assistant" as const, text: clean(data.message ?? data.response, "I'm not sure. Can you say a bit more?") }].slice(-16));
+          setPhase({ kind: "compose" });
           reset();
           return;
         }
@@ -277,6 +309,7 @@ export default function AddFlow({
           // Questions mean planning: open the workspace (Home's composer only).
           if (variant === "hero") {
             setPlanning(true);
+            setThread([]);
             setText("");
           }
           return;
@@ -287,14 +320,16 @@ export default function AddFlow({
         }
         if (data.action === "preview" && data.changeSet && data.preview) {
           setPhase({ kind: "preview", changeSet: data.changeSet, preview: data.preview, said: words, asked: followUp?.answers?.length ?? followUp?.slotTurn?.answers.length ?? 0, note: data.grillNote });
-          // A plan (a new project, or several steps) is planning too.
-          const steps = data.changeSet.ops.filter((op) => op.op === "add_task").length;
-          const isPlan = data.changeSet.ops.some((op) => op.op === "create_plan") || steps > 1;
-          if (variant === "hero" && (inWorkspace || isPlan)) {
+          // Round 4 Phase 4: on Home, a preview opens up: the talk on the
+          // left, with what Tangent planned and why, the calendar on the right.
+          if (variant === "hero") {
+            const planId = data.projectId ?? data.changeSet.target_plan_id ?? null;
+            const planTitle = planId ? allPlans?.find((p) => p.id === planId)?.title : null;
             setPlanning(true);
+            setThread([]);
             setText("");
             setDraftOps(data.changeSet.ops);
-            say({ role: "assistant", text: clean(data.changeSet.summary, "Here's a plan to look over.") });
+            say({ role: "assistant", text: planStoryText(data.changeSet, planTitle) });
           }
           return;
         }
@@ -315,18 +350,12 @@ export default function AddFlow({
         setPhase({ kind: "error", message: e instanceof Error ? e.message : "Something went wrong." });
       }
     },
-    [dest, finish, onClose, reset, router, say, targetProject, variant]
+    [allPlans, dest, finish, onClose, reset, router, say, targetProject, variant]
   );
 
   const submit = useCallback(() => {
     const words = text.trim();
     if (!words) return;
-    if (handoff === "question") {
-      reset();
-      onClose?.();
-      askOnHome(words, router.push);
-      return;
-    }
     if (handoff === "goal") {
       putNewPathTitle(words);
       reset();
@@ -424,12 +453,29 @@ export default function AddFlow({
     return () => window.removeEventListener(HOME_INTENT_EVENT, act);
   }, [variant]);
 
+  // A question asked somewhere else (⌘K, the calendar, a Grill offer) is
+  // answered here, in the box, not in a side panel (lib/ask-handoff.ts).
+  useEffect(() => {
+    if (variant !== "hero") return;
+    const take = () => {
+      const asked = takeAsk("ai");
+      if (asked) void sendRef.current(asked);
+    };
+    if (new URLSearchParams(window.location.search).get("ask") === "1") {
+      take();
+      router.replace("/", { scroll: false });
+    }
+    const onAsk = (event: Event) => {
+      if (window.location.pathname !== "/") return;
+      event.preventDefault();
+      take();
+    };
+    window.addEventListener(ASK_EVENT, onAsk);
+    return () => window.removeEventListener(ASK_EVENT, onAsk);
+  }, [router, variant]);
+
   const busy = phase.kind === "working" || transcribing;
-  const hint = handoff === "question"
-    ? { icon: MessageSquareText, text: "Sounds like a question. Enter asks Tangent." }
-    : handoff === "goal"
-      ? { icon: Orbit, text: "Sounds like a long-range goal. Enter starts a Tangent." }
-      : null;
+  const hint = handoff === "goal" ? { icon: Orbit, text: "Sounds like a long-range goal. Enter starts a Tangent." } : null;
 
   const workspace = planning && variant === "hero";
   const composer = (
@@ -502,7 +548,7 @@ export default function AddFlow({
       <AnimatePresence mode="wait" initial={false}>
         {phase.kind === "working" && phase.text && (
           <m.p key="working" className="add-status" role="status" {...fade}>
-            <span className="add-spinner" aria-hidden="true" /> Placing “{phase.text}”…
+            <span className="add-spinner" aria-hidden="true" /> {phase.thinking ? "Thinking…" : <>Placing “{phase.text}”…</>}
           </m.p>
         )}
         {phase.kind === "asking" && (
@@ -575,16 +621,9 @@ export default function AddFlow({
               grill={{ said: phase.said, asked: phase.asked }}
               hideCalendar={workspace}
               onOps={workspace ? setDraftOps : undefined}
-              onConfirmed={(_actionId, info) => {
-                // Round 4 §3.2: the talk that made this plan opens its project's chat.
-                if (!workspace || !info?.planId) return;
-                const told = briefRef.current.trim();
-                const lines: ThreadLine[] = [
-                  ...logRef.current,
-                  ...(told ? [{ role: "user" as const, text: `More about this: ${told}` }] : []),
-                  { role: "assistant", text: `Planned round 1: ${steps ?? "a few"} step${steps === 1 ? "" : "s"} for about a week. When you finish them, tell me how they went and I'll plan the next round.` },
-                ];
-                void seedProjectThread(info.planId, lines, logRef.current[0]?.text.slice(0, 80));
+              onConfirmed={() => {
+                // What it just did, said in the talk beside the calendar.
+                if (workspace) say({ role: "assistant", text: `Added ${steps ? `${steps} step${steps === 1 ? "" : "s"}` : "it"} to your calendar. When you finish them, tell me how they went and I'll plan the next round.` });
               }}
               onSettled={() =>
                 window.setTimeout(() => {
@@ -624,10 +663,30 @@ export default function AddFlow({
   const helpCard = help && <HelpPlanBetter key={help.planId} planId={help.planId} said={help.said} asked={help.asked} onDone={() => setHelp(null)} />;
   const layoutMotion = reduce ? { layout: false as const } : { layout: true as const, transition: { layout: { type: "spring" as const, visualDuration: 0.3, bounce: 0 } } };
 
+  // Home's answer area: the talk, newest last, under the box.
+  const answers = thread.length > 0 && (
+    <section className="add-answer" aria-label="Tangent's answer" aria-live="polite">
+      <ol className="add-answer-log">
+        {thread.map((l, i) => (
+          <li key={i} className={`add-answer-line is-${l.role}`}>
+            {l.role === "assistant" ? l.text.split(/\n{2,}/).map((para, j) => <p key={j}>{para}</p>) : l.text}
+          </li>
+        ))}
+      </ol>
+      <div className="add-answer-foot">
+        <span>Ask a follow-up in the box, or add something.</span>
+        <button type="button" className="tg-clarify-quiet add-answer-clear" onClick={() => setThread([])}>
+          <X size={13} strokeWidth={2} aria-hidden="true" /> Clear
+        </button>
+      </div>
+    </section>
+  );
+
   if (!workspace) {
     return (
-      <m.section {...layoutMotion} className={`add-flow is-${variant}${listening ? " is-listening" : ""}`} aria-label="Add to Tangent">
+      <m.section {...layoutMotion} className={`add-flow is-${variant}${listening ? " is-listening" : ""}${thread.length ? " has-answer" : ""}`} aria-label="Add to Tangent">
         {composer}
+        {answers}
         {phases}
         {helpCard}
       </m.section>
@@ -635,12 +694,13 @@ export default function AddFlow({
   }
 
   // Round 4 §3.3: the planning workspace. Talk on the left, the plan on the right.
-  const title = log[0]?.text ?? (phase.kind === "asking" ? phase.text : "your plan");
+  const title = topic || (phase.kind === "asking" ? phase.text : "your plan");
   const basedOn = phase.kind === "preview" ? [...(phase.preview.factsUsed ?? []), ...(phase.changeSet.assumptions ?? []).map((a) => `Assumed: ${a}`)] : [];
   const today = getUserToday(timezone);
   const close = () => {
     setPhase({ kind: "compose" });
     endPlanning();
+    setTopic("");
     reset();
   };
   return (
@@ -662,7 +722,7 @@ export default function AddFlow({
             <ol className="plan-ws-log" aria-label="So far">
               {log.map((l, i) => (
                 <li key={i} className={`plan-ws-line is-${l.role}`}>
-                  {l.text}
+                  {l.text.split("\n").map((line, j) => (j === 0 ? line : <span key={j} className="plan-ws-more">{line}</span>))}
                 </li>
               ))}
             </ol>

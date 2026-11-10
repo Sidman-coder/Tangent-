@@ -95,20 +95,24 @@ The single composer for adding a task or planning a project.
 _Avoid_: Quick add, plan chat, project chat
 
 **Home chat**:
-The one place a new chat starts: the capture input on Today.
-_Avoid_: Ask Tangent, AI console, assistant
+The one place a new chat starts: the capture input on Today. Tangent decides first what the words are (an answer, more steps for a project, a new goal to plan, or something for the calendar) and answers in place, under the box. Round 4 removed every side chat panel.
+_Avoid_: Ask Tangent, AI console, assistant, chat panel
 
 **Task chat**:
-A chat attached to one task, with that task's context. Opened from the task.
+The ask box inside a task's sheet, answering with that task's context. Nothing is saved; closing the sheet ends it.
 _Avoid_: Comments, notes
 
 **Project chat**:
-A chat attached to one project, with that project's context and steps. Opened from the project.
+The ask box on a project's page, answering with that project's context and steps, and previewing more steps in place. Nothing is saved.
 _Avoid_: Plan chat when referring to the project's ongoing chat
 
 **Chats library**:
-The list of every chat (Home, task and project) with running summaries, at `/ai`.
+Retired in Round 4: there is no chat history. `/ai` redirects to Home. Kept here so older documents read correctly.
 _Avoid_: History, inbox, AI page
+
+**Tangent (long-range goal)**:
+A long-range goal shown as a branching map of possible directions, at `/tangents`. Starting a branch makes it a project. Called "Path" before Round 4; code identifiers still say `path`.
+_Avoid_: Path, roadmap, journey
 
 **Ask Tangent**:
 Replaced in Round 2 by Home chat and the Chats library. Kept here so older documents read correctly.

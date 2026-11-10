@@ -1,7 +1,10 @@
 "use client";
 
 import { AnimatePresence, m } from "motion/react";
-import { Check, Plus, Sparkles, Trash2, X } from "lucide-react";
+import { Check, Plus, Rocket, Sparkles, Trash2, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { askOnHome } from "@/lib/ask-handoff";
+import { startIdeaMessage } from "@/lib/tangent-start";
 import type { Path, PathNode, PathNodeSchedule } from "@/lib/types";
 import { splitNodeDetail } from "@/lib/path-format";
 import PathStepScheduler from "./PathStepScheduler";
@@ -59,6 +62,7 @@ export default function PathInspector({
   onSelectAncestor,
 }: Props) {
   const ask = useAskFirst(node?.id ?? null, onGenerate);
+  const router = useRouter();
   return (
     <AnimatePresence>
       {node && (
@@ -164,10 +168,21 @@ export default function PathInspector({
             )}
 
             {node.kind === "idea" && node.status === "accepted" && (
-              <button type="button" className="path-btn" onClick={() => onStatus(node.id, "done")}>
-                <Check size={15} aria-hidden="true" />
-                Mark done
-              </button>
+              <>
+                {/* Round 4 Phase 4.4: becomes a project with Round 1, planned on Home. */}
+                <button
+                  type="button"
+                  className="path-btn is-primary"
+                  onClick={() => askOnHome(startIdeaMessage(node, path), (href) => router.push(href))}
+                >
+                  <Rocket size={15} aria-hidden="true" />
+                  Start this
+                </button>
+                <button type="button" className="path-btn" onClick={() => onStatus(node.id, "done")}>
+                  <Check size={15} aria-hidden="true" />
+                  Mark done
+                </button>
+              </>
             )}
 
             <button

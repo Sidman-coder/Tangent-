@@ -358,3 +358,177 @@
     transition: none;
   }
 }
+
+/* ── Round 4 Phase 4: the scroll story (components/settings/YouMapHero.tsx) ──
+   A tall track with a sticky stage that fills the settings window. Scroll
+   progress drives the sphere's turn and size and swaps the title for the six
+   areas; the fact cards follow below, two across when there is room. */
+
+.you-hero {
+  position: relative;
+  height: 230svh;
+  margin-bottom: 8px;
+}
+.you-hero-stage {
+  position: sticky;
+  top: calc(var(--shell-top, 0px) + 12px);
+  display: grid;
+  height: calc(100svh - var(--shell-top, 0px) - 24px);
+  min-height: 460px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  border-radius: 28px;
+  background:
+    radial-gradient(120% 80% at 50% 45%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 60%),
+    radial-gradient(60% 50% at 85% 100%, color-mix(in srgb, var(--series-teal, var(--accent)) 10%, transparent), transparent 70%),
+    var(--surface);
+  isolation: isolate;
+}
+.you-hero-stage > * { grid-area: 1 / 1; }
+
+.you-hero-orbit {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  will-change: transform;
+}
+.you-orbit.is-hero {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  aspect-ratio: auto;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+.you-orbit.is-hero .you-orbit-ring { inset: auto; top: 50%; left: 50%; width: min(80%, 80vh); aspect-ratio: 1; transform: translate(-50%, -50%); }
+.you-orbit.is-hero .you-orbit-core { width: 112px; height: 112px; }
+.you-orbit.is-hero .you-orbit-core span { font-size: 34px; }
+.you-orbit.is-hero .you-orbit-core small { font-size: 12px; }
+
+.you-hero-intro {
+  z-index: 2;
+  align-self: end;
+  max-width: 34rem;
+  padding: 0 clamp(20px, 4vw, 40px) clamp(24px, 5vh, 48px);
+  pointer-events: none;
+}
+.you-hero-kicker {
+  margin: 0 0 6px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.you-hero-title {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(36px, 6vw, 64px);
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  line-height: 0.98;
+}
+.you-hero-summary {
+  margin: 12px 0 0;
+  color: var(--text-2);
+  font-size: clamp(15px, 1.6vw, 18px);
+  line-height: 1.45;
+  text-wrap: pretty;
+}
+
+.you-hero-cue {
+  z-index: 2;
+  display: inline-flex;
+  align-self: end;
+  justify-self: end;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0 clamp(20px, 4vw, 40px) clamp(24px, 5vh, 48px);
+  color: var(--text-3);
+  font-size: 12.5px;
+  pointer-events: none;
+}
+.you-hero-cue svg { animation: you-hero-nudge 1.6s var(--ease) infinite; }
+@keyframes you-hero-nudge {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(3px); }
+}
+
+.you-hero-areas {
+  z-index: 3;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  align-self: end;
+  margin: 0;
+  padding: 0 clamp(14px, 3vw, 28px) clamp(14px, 3vh, 28px);
+  list-style: none;
+}
+/* Keyboard users can reach the areas before they've scrolled them in. */
+.you-hero-areas:focus-within { opacity: 1 !important; transform: none !important; }
+.you-hero-areas button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid color-mix(in srgb, var(--c) 35%, var(--line));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--c) 9%, var(--surface));
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.you-hero-areas button:hover {
+  border-color: var(--c);
+  background: color-mix(in srgb, var(--c) 16%, var(--surface));
+  color: var(--text);
+}
+.you-hero-areas button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.you-hero-area-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.you-hero-areas b { color: var(--text); font-weight: 650; font-variant-numeric: tabular-nums; }
+
+/* The cards now sit under the story, two across when there is room. */
+.you-map-body.is-below { display: block; }
+.you-map-body.is-below .you-map-cards {
+  display: grid;
+  gap: 14px;
+}
+@container (min-width: 680px) {
+  .you-map-body.is-below { grid-template-columns: none; }
+  .you-map-body.is-below .you-map-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .you-map-body.is-below .you-card.is-earlier { grid-column: 1 / -1; }
+}
+
+@media (max-width: 767px) {
+  .you-hero { height: 200svh; }
+  .you-hero-stage { border-radius: 22px; min-height: 420px; }
+  .you-hero-areas { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .you-hero-areas button { min-height: 40px; padding: 0 10px; font-size: 12.5px; }
+  .you-orbit.is-hero .you-orbit-core { width: 88px; height: 88px; }
+  .you-orbit.is-hero .you-orbit-core span { font-size: 28px; }
+}
+
+/* Reduced motion: no track, no scroll-linked movement. */
+.you-hero.is-still { height: auto; }
+.you-hero.is-still .you-hero-stage {
+  position: relative;
+  top: auto;
+  grid-template-rows: minmax(320px, 1fr) auto auto;
+  height: auto;
+  min-height: 0;
+}
+.you-hero.is-still .you-hero-stage > * { grid-area: auto; }
+.you-hero.is-still .you-hero-orbit { height: 360px; }
+.you-hero.is-still .you-hero-intro { padding-bottom: 12px; }
+@media (prefers-reduced-motion: reduce) {
+  .you-hero-cue svg { animation: none; }
+}

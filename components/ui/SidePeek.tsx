@@ -8,12 +8,13 @@ type SidePeekProps = {
   titleId: string;
   onClose: () => void;
   children: ReactNode;
+  className?: string;
 };
 
 /** A side sheet whose title lives in its content. Kept for existing callers; new code uses Sheet. */
-export default function SidePeek({ open, titleId, onClose, children }: SidePeekProps) {
+export default function SidePeek({ open, titleId, onClose, children, className }: SidePeekProps) {
   return (
-    <Sheet open={open} titleId={titleId} onClose={onClose} variant="side" closeLabel="Close panel">
+    <Sheet open={open} titleId={titleId} onClose={onClose} variant="side" closeLabel="Close panel" className={className}>
       {children}
     </Sheet>
   );

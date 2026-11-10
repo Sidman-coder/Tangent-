@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAllPlans, deletePlan, deleteTask, getAllTasks, getAppState, recordAction, updatePlan } from "@/lib/store";
+import { addPlan, getAllPlans, deletePlan, deleteTask, getAllTasks, getAppState, recordAction, updatePlan } from "@/lib/store";
 import { SERIES_KEYS, type SeriesKey } from "@/lib/task-colors";
 import { withUser } from "@/lib/request-context";
 
@@ -21,6 +21,15 @@ export const POST = withUser(async (req: Request) => {
       color?: string;
     };
     const { action, planId } = body;
+
+    // Round 4 Phase 4.2: "+ New project" in the add form. An empty project the
+    // student names; Tangent can build on it afterwards if they ask.
+    if (action === "create") {
+      const title = typeof body.title === "string" ? body.title.trim().slice(0, 120) : "";
+      if (!title) return NextResponse.json({ ok: false, error: "Give the project a name" }, { status: 400 });
+      const plan = await addPlan({ title, description: "", taskIds: [], taskCount: 0 });
+      return NextResponse.json({ ok: true, plan });
+    }
 
     if (action === "delete") {
       if (!planId) return NextResponse.json({ ok: false, error: "Missing planId" }, { status: 400 });

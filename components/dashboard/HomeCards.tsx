@@ -64,7 +64,7 @@ export function StartingIntentCard({ intent, onCleared }: { intent: string; onCl
           Plan it
         </Button>
         <Button variant="secondary" size="sm" onClick={makePath} icon={<Route size={15} aria-hidden="true" />}>
-          Make it a Path
+          Make it a Tangent
         </Button>
       </div>
     </m.section>
@@ -177,7 +177,7 @@ export function PathsCard({ prefs }: { prefs: Prefs }) {
     return (
       <m.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="home-card home-paths" aria-labelledby="home-paths-title">
         <div className="home-paths-copy">
-          <p className="home-card-eyebrow">Paths</p>
+          <p className="home-card-eyebrow">Tangents</p>
           <h2 id="home-paths-title">{copy.title}</h2>
           <p>{copy.body}</p>
         </div>
@@ -195,11 +195,11 @@ export function PathsCard({ prefs }: { prefs: Prefs }) {
   return (
     <m.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="home-card home-paths" aria-labelledby="home-paths-title">
       <div className="home-paths-copy">
-        <p className="home-card-eyebrow">Your path{paths.length > 1 ? "s" : ""}</p>
+        <p className="home-card-eyebrow">Your Tangent{paths.length > 1 ? "s" : ""}</p>
         <h2 id="home-paths-title">{latest.title}</h2>
         <p>
           {kept > 0 ? `${done} of ${kept} steps done` : "No steps kept yet"}
-          {paths.length > 1 && ` · ${paths.length - 1} more path${paths.length > 2 ? "s" : ""}`}
+          {paths.length > 1 && ` · ${paths.length - 1} more Tangent${paths.length > 2 ? "s" : ""}`}
         </p>
         {kept > 0 && (
           <div className="home-paths-bar" role="progressbar" aria-label={`${latest.title} progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>

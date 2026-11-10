@@ -19,7 +19,7 @@ type Resolve = (specifier: string, context: unknown, next: (s: string, c: unknow
 
 
 type Mod = typeof import("./capture-list");
-void (import("./capture-list") as Promise<Mod>).then(({ buildCaptureList }) => {
+void (import("./capture-list") as Promise<Mod>).then(({ buildCaptureList, captureSections, parseCaptureLens }) => {
   const T = (o: Record<string, unknown>) => ({ id: String(o.title), date: "2026-10-26", time: "23:59", completed: false, ...o }) as never;
   const today = "2026-10-26";
   const plans = [{ id: "p1", title: "Robotics", description: "", taskIds: [], color: "#000", createdAt: "", taskCount: 1 }];
@@ -73,5 +73,45 @@ void (import("./capture-list") as Promise<Mod>).then(({ buildCaptureList }) => {
       today
     );
     assert.deepEqual(rows.map((r) => r.sub), ["Overdue", "Today", "Tomorrow · Canvas", "Thu · Robotics", "Nov 5"]);
+  });
+  test("groups: urgent, then assignments, then projects, then personal", () => {
+    const rows = buildCaptureList(
+      [
+        T({ title: "late step", date: "2026-10-25", planId: "p1", commitment: "flexible" }),
+        T({ title: "essay", date: "2026-10-30", source: "canvas", kind: "school", commitment: "fixed" }),
+        T({ title: "dentist", date: "2026-10-27", time: "15:00", commitment: "fixed" }),
+        T({ title: "step today", planId: "p1", commitment: "flexible" }),
+        T({ title: "laundry", date: "2026-10-29", commitment: "flexible" }),
+      ],
+      plans as never,
+      today
+    );
+    const sections = captureSections(rows, plans as never, today);
+    assert.deepEqual(
+      sections.map((s) => [s.label, s.rows.map((r) => r.task.title)]),
+      [
+        ["Urgent", ["late step", "dentist"]],
+        ["Assignments", ["essay"]],
+        ["Projects", ["step today"]],
+        ["Personal", ["laundry"]],
+      ]
+    );
+  });
+
+  test("the Urgent chip shows only urgent; Projects shows every step, by project", () => {
+    const rows = buildCaptureList(
+      [
+        T({ title: "late step", date: "2026-10-25", planId: "p1", commitment: "flexible" }),
+        T({ title: "step", date: "2026-10-28", planId: "p1", commitment: "flexible" }),
+        T({ title: "call mom", commitment: "reminder" }),
+      ],
+      plans as never,
+      today
+    );
+    assert.deepEqual(captureSections(rows, plans as never, today, "urgent").map((s) => s.rows.length), [2]);
+    const byProject = captureSections(rows, plans as never, today, "projects");
+    assert.deepEqual(byProject.map((s) => [s.label, s.rows.length]), [["Robotics", 2]]);
+    assert.equal(parseCaptureLens("nope"), "all");
+    assert.equal(parseCaptureLens("urgent"), "urgent");
   });
 });

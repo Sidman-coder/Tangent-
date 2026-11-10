@@ -574,6 +574,60 @@
 
 /* ── Notifications sheet (components/NotificationBell.tsx) ───────────────── */
 
+/* Round 4 Phase 4: desktop opens a popover beside the bell, not a side panel. */
+.notif-popover {
+  position: fixed;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  width: min(380px, calc(100vw - 24px));
+  max-height: min(560px, calc(100vh - 24px));
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  outline: none;
+  overflow: hidden;
+}
+.notif-popover:focus-visible { box-shadow: var(--shadow-lg), 0 0 0 2px var(--focus); }
+.notif-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-3) var(--s-2) var(--s-4);
+  border-bottom: 1px solid var(--line);
+}
+.notif-popover-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.notif-popover-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.notif-popover-close:hover { background: var(--elev-2); color: var(--text); }
+.notif-popover-close:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.notif-popover-body {
+  flex: 1;
+  min-height: 0;
+  padding: var(--s-3);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.notif-popover .notif-item { padding-right: 0; }
+.notif-popover .empty-state { padding-block: var(--s-5); }
+
 .notif-actions {
   display: flex;
   flex-wrap: wrap;

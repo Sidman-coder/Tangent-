@@ -11,7 +11,7 @@ import FormMessage from "@/components/ui/FormMessage";
 import { clearLocalAppData } from "@/lib/auth/clear-local";
 
 const STORES: { what: string; why: string }[] = [
-  { what: "Your tasks, projects, Paths and chats", why: "That's your planner." },
+  { what: "Your tasks, projects and Tangents", why: "That's your planner." },
   { what: "What Tangent knows about you", why: "The facts on What Tangent knows, so it doesn't ask twice. Forget any of them any time." },
   { what: "The words of your last 100 voice commands", why: "So it can act on them and you can undo. Your audio itself isn't kept." },
   { what: "Your Canvas calendar link", why: "To sync assignments. It's only ever shown masked." },

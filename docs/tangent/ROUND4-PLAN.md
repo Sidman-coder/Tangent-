@@ -10,8 +10,8 @@ Branch `v3-core-loop`. Spec: `docs/tangent/CONTEXT-ENGINE.md` (copied from Part 
 | 1 Bugs, sign-up, access | Done (see Phase 1 log) |
 | 2 Context engine foundation | Done (see Phase 2 log), plus behaviour reading (Phase 2b) |
 | 3 Planning flow | Done (see Phase 3 log) |
-| 4 Tasks, calendar, Paths | Not started (4.4 Paths pulled forward, done) |
-| 5 Home, notifications, settings, You, mapped | Not started (5.3 Settings layout and 5.4 You, mapped pulled forward, done) |
+| 4 Tasks, calendar, Tangents | Done (see Phase 4 log), with the user's 2026-11-09 feedback folded in |
+| 5 Home, notifications, settings, You, mapped | Not started (5.3 Settings layout, 5.4 You, mapped and the notifications popover pulled forward, done) |
 | 6 Onboarding | Not started |
 | 7 Audit, screenshots, report | Not started |
 
@@ -345,3 +345,59 @@ The user asked for two things before Phase 3. First, the context should read how
 - **Onboarding hand-off:** the onboarding goal plans in the Today composer (`/`). If the student opens the big-mic Home first, the goal waits in sessionStorage until they open Today in the same session.
 - **Workspace scope:** the workspace is Home-only. The ⌘K sheet and the Projects starter keep the compact flow, because a two-pane layout doesn't fit a sheet.
 - **Not checked live:** the real model path. Run `npm run eval:pipeline` (paid) to check the planning intent fixtures.
+
+## Phase 4 log: tasks, calendar, Tangents, plus the 2026-11-09 feedback (2026-11-09)
+
+The user's feedback arrived with Phase 4. Their screenshots did not come through, so the fixes below are written from the text alone.
+
+**Home answers in place (feedback a, b, g).**
+- **Inline answers:** a message on Home now gets its answer inline, under the composer, and pushes the page down.
+- **Routing:** `lib/pipeline/home-route.ts` (+ tests) tells apart a plain answer, adding to an existing project, a calendar add, a plan, and "grill me". Grilling is no longer the default.
+- **Context:** answers read the student's projects and finished steps. A question about a project they already have is answered from that project, not with questions back.
+- **Removed:**
+  - The AI chat side panel (`ChatSheet`, `ChatPanel`, `HomeChat`, `TaskChatSheet`, `ChatSidebar`).
+  - The Chats button and chat history. `components/chat/InlineAsk.tsx` replaces them.
+  - Other pages hand a question to Home through `lib/ask-handoff.ts`.
+
+**Capture (feedback e).** Items are grouped Urgent → Assignments → Projects (`lib/capture-list.ts`, tests). The filter chips are All / Urgent / Projects.
+
+**Calendar while chatting (feedback f).** When Home drafts steps, the preview opens wider, with the conversation beside it. The conversation ends with a plain account of the plan and what was just added (`lib/plan-story.ts`, tests).
+
+**4.1 Calendar (feedback i).**
+- **Project tint:** each tile is tinted with its project colour, edge to edge, instead of a dot.
+- **Week drag:** snaps to 15 minutes.
+- **Month drag:** moves items between days (`components/calendar/useMonthDrag.ts`). On a phone it starts with a long-press.
+- **Undo:** every move gets an Undo toast.
+- **Keyboard:** arrow keys move a focused week item by 15 minutes, and the day panel's "Move to" form moves an item to another day without a mouse.
+- **Day panel:** groups the day's items and splits notes into readable parts (`lib/note-parts.ts`, tests). Remove is a quiet button.
+
+**4.2 Add-task form.**
+- **Fields:** Project picker and Type (Must-do, Goal step, Reminder).
+- **Build-on prompt:** after a task is added to a project, "Want Tangent to build on this in [Project]?" opens Home's planning flow.
+- **"Don't ask again":** set per project and kept on this device (localStorage). Migration 7 (`plans.suggest_after_add`) is not needed for now.
+- **API:** `/api/tasks` accepts `planId` and `commitment`, and `/api/plans` has a `create` action.
+
+**4.3 Notifications (feedback d, pulled from Phase 5).** On desktop, the bell opens a popover anchored to it. The sidebar bell opens it to its right; a top-bar bell opens it below. It closes on Escape or an outside click, and focus returns to the bell. On a phone it is a bottom sheet. It no longer slides in from the side.
+
+**You, mapped (feedback c, pulled from Phase 5).**
+- **Scroll story:** `components/settings/YouMapHero.tsx` fills the settings window. Scrolling turns the sphere and settles it, and the title gives way to the six areas. The fact cards follow below, two across when there is room.
+- **Reduced motion:** a still layout, with the title and the areas both showing.
+- **Fix:** motion was handing the opacity fades to a native ViewTimeline, which snapped back to full opacity after the last keyframe. The scroll progress now goes through a function transform first, which keeps it on the JS path.
+
+**4.4 Tangents (feedback h).**
+- **Copy:** "Paths" reads "Tangents" in all user-facing text (`CONTEXT.md` updated).
+- **"Start this":** a kept move has a "Start this" button in the plan list and the inspector. It sends a short "Plan: …" message with what the Tangent already knows to Home's planning flow (`lib/tangent-start.ts`, tests), which creates the project with Round 1. It is not a second planner.
+
+**Checks:**
+- **Lint:** 4 warnings, all pre-existing `exhaustive-deps`, against a baseline of 5.
+- **Other checks:** typecheck clean, 754 tests pass, and the build passes.
+
+**Checked in the browser** (`/dev/app/*`, signed out, sample data):
+- Calendar week and month tints.
+- Notification popover placement and Escape with focus return.
+- The You, mapped scroll story at several scroll positions.
+
+**Not checked live:**
+- The real model answers on Home. Run `npm run eval:pipeline` (paid).
+- "Start this" on a real Tangent (the dev preview has no Tangents).
+- Phone long-press drag on a touch device.

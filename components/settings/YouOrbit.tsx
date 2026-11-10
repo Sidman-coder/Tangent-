@@ -9,7 +9,7 @@
 // draggable. The cards are the accessible list; this is a picture of them.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useReducedMotion } from "motion/react";
+import { useReducedMotion, type MotionValue } from "motion/react";
 import type { GroupedFacts, MapGroupKey } from "@/lib/you-map";
 
 type Node = {
@@ -62,12 +62,18 @@ export default function YouOrbit({
   initials,
   focus,
   onPick,
+  variant,
+  spin,
 }: {
   grouped: GroupedFacts;
   initials: string;
   /** The area the cards are showing: the sphere turns to face it. */
   focus: MapGroupKey | null;
   onPick: (group: MapGroupKey) => void;
+  /** "hero": fills its box (the scroll story in YouMapHero), no card frame. */
+  variant?: "hero";
+  /** Extra turn from outside (radians), e.g. driven by scrolling. */
+  spin?: MotionValue<number>;
 }) {
   const reduce = useReducedMotion();
   const { nodes, centers } = useMemo(() => layout(grouped), [grouped]);
@@ -108,8 +114,9 @@ export default function YouOrbit({
       }
       const box = stage.current;
       if (box) {
-        const r = Math.min(box.clientWidth, box.clientHeight) * 0.34;
-        const cy = Math.cos(yaw.current), sy = Math.sin(yaw.current);
+        const r = Math.min(box.clientWidth, box.clientHeight) * (variant === "hero" ? 0.4 : 0.34);
+        const turn = yaw.current + (spin?.get() ?? 0);
+        const cy = Math.cos(turn), sy = Math.sin(turn);
         const cp = Math.cos(pitch.current), sp = Math.sin(pitch.current);
         for (const n of nodes) {
           const el = els.current.get(n.id);
@@ -140,11 +147,14 @@ export default function YouOrbit({
     };
     const box = stage.current;
     box?.addEventListener("tg-orbit-kick", kick);
+    // Scrolling turns it too (and wakes the loop under reduced motion).
+    const unsubscribe = spin?.on("change", kick);
     return () => {
       cancelAnimationFrame(raf);
       box?.removeEventListener("tg-orbit-kick", kick);
+      unsubscribe?.();
     };
-  }, [nodes, reduce]);
+  }, [nodes, reduce, spin, variant]);
 
   useEffect(() => {
     stage.current?.dispatchEvent(new Event("tg-orbit-kick"));
@@ -155,7 +165,7 @@ export default function YouOrbit({
   return (
     <div
       ref={stage}
-      className="you-orbit"
+      className={`you-orbit${variant === "hero" ? " is-hero" : ""}`}
       role="img"
       aria-label={`A map of what Tangent knows: ${grouped.map((g) => `${g.group.label}, ${g.facts.length}`).join("; ")}.`}
       onPointerDown={(e) => {

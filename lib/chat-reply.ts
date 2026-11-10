@@ -75,6 +75,45 @@ export async function planReply(
   return cleanPlanText(text);
 }
 
+/** Round 4 Phase 4: Home's answers, shown under the box. */
+export const ANSWER_SYSTEM = `You are Tangent, a planning companion for a high-school student. They typed into Tangent's Home box, and your reply appears right under it.
+- Answer what they asked, directly, in the first sentence. Then give the specifics that make it useful to them.
+- Build the answer from their own work, given below: name their projects, the steps they've already finished, and what's next. Never ask about something the context already tells you (their goal, what a project is about, what they've done).
+- If they ask how they're doing, say what's finished, what's next, and whether they're on pace.
+- If the answer suggests new work for a project, end with one short line offering it, like "Want me to plan these as your next steps?" Never add anything yourself.
+- If something you need is truly missing, give your best answer first and ask one short question at the end.
+- Under 130 words. Plain sentences and simple "- " bullets. No headings, tables, bold or code. Warm and plain, like a sharp older friend; no hype.
+- Never give medical, legal or financial advice. If they seem in real distress, be kind and suggest talking to a trusted adult or calling or texting 988 (US).`;
+
+/** A question, answered from the student's context and the projects it's about. */
+export async function answerReply(
+  messages: { role: "user" | "assistant"; content: string }[],
+  opts: { projectNotes?: string[]; onText?: (textSoFar: string) => void } = {}
+): Promise<string> {
+  const lastAsk = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
+  const picture = await buildStudentContext({ purpose: "plan", query: lastAsk }).then((c) => c.text).catch(() => "");
+  const notes = (opts.projectNotes ?? []).filter(Boolean).join("\n\n");
+  const context = [picture, notes ? `THEIR PROJECTS (steps marked done are finished):\n${notes}` : ""].filter(Boolean).join("\n\n");
+  const request = {
+    system: context
+      ? [
+          { type: "text" as const, text: ANSWER_SYSTEM },
+          { type: "text" as const, text: `STUDENT CONTEXT — answer from this:\n${context}` },
+        ]
+      : ANSWER_SYSTEM,
+    messages: withDateLast(cacheHistory(messages.slice(-12)), promptDateContext(await getUserTimezone())),
+  };
+  const tier = chatTier(messages);
+  const onText = opts.onText;
+  const res = onText
+    ? await streamClaude("chatPlan", request, { tier, onText: (t) => onText(cleanPlanText(t)) })
+    : await callClaude("chatPlan", request, { tier });
+  if (!res.ok) throw new Error(res.budgetExceeded ? res.error : `Anthropic error ${res.status}`);
+  const text = messageText(res.message);
+  if (!text) throw new Error("Empty answer");
+  return cleanPlanText(text);
+}
+
 /** Code fences and bold are dropped: schedule lines must stay parseable
  *  (lib/pipeline/plan-text.ts). The chat renders the rest as Markdown. */
 function cleanPlanText(text: string): string {

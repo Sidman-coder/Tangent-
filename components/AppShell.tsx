@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import * as m from "motion/react-m";
 import { pageEnter } from "@/lib/motion";
-import { CalendarDays, FolderKanban, Home, MessageSquareText, Mic, Plus, Route, Settings, type LucideIcon } from "lucide-react";
+import { CalendarDays, FolderKanban, Home, Mic, Plus, Route, Settings, type LucideIcon } from "lucide-react";
 import NotificationBell, { NotificationBellButton } from "./NotificationBell";
 import CommandPalette from "./CommandPalette";
 import GetToKnowYou, { GET_TO_KNOW_EVENT } from "./GetToKnowYou";
@@ -21,13 +21,12 @@ import { planSeriesColor } from "@/lib/task-colors";
 import { requestHomeIntent, type HomeIntent } from "@/lib/home-intent";
 
 // docs/design/TANGENT-STYLE.md §8 Nav. Four places you work, plus Settings.
-// Paths (/tangents) sits under Projects in the sidebar, and on the Projects page on a phone.
+// Tangents (/tangents) sits under Projects in the sidebar, and on the Projects page on a phone.
 type NavLink = { href: string; label: string; icon: LucideIcon };
 const PLACES: NavLink[] = [
   { href: "/", label: "Home", icon: Home },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/projects", label: "Projects", icon: FolderKanban },
-  { href: "/ai", label: "Chats", icon: MessageSquareText },
 ];
 const SETTINGS: NavLink = { href: "/settings", label: "Settings", icon: Settings };
 const TABS: NavLink[] = [...PLACES, SETTINGS];
@@ -222,7 +221,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         <section className="app-sidebar-projects" aria-labelledby="app-sidebar-projects-heading">
           <h2 id="app-sidebar-projects-heading" className="app-sidebar-heading">Projects</h2>
-          {/* Paths: the long goals (a year or more) that projects branch from. */}
+          {/* Tangents: the long goals (a year or more) that projects branch from. */}
           <Link
             href="/tangents"
             className="app-project-item app-paths-link"
@@ -231,7 +230,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <span className="app-paths-icon" aria-hidden="true">
               <Route size={14} strokeWidth={1.75} />
             </span>
-            <span className="app-project-name">Paths</span>
+            <span className="app-project-name">Tangents</span>
           </Link>
           {projects.length > 0 && (
             <ul>
