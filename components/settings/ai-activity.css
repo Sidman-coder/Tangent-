@@ -331,3 +331,19 @@
     margin-left: 0;
   }
 }
+
+/* Round 4 Phase 7: 44px to tap on phones. */
+@media (max-width: 767px) {
+  .aia-select,
+  .aia-search {
+    min-height: 44px;
+  }
+  .aia-days button {
+    position: relative;
+  }
+  .aia-days button::after {
+    content: "";
+    position: absolute;
+    inset: -8px 0;
+  }
+}

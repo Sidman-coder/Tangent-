@@ -297,3 +297,13 @@
     gap: 14px;
   }
 }
+
+/* Round 4 Phase 7: the tab fills its 44px track to tap. */
+.auth-page .auth-tab {
+  position: relative;
+}
+.auth-page .auth-tab::after {
+  content: "";
+  position: absolute;
+  inset: -4px 0;
+}

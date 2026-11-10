@@ -13,7 +13,7 @@ Branch `v3-core-loop`. Spec: `docs/tangent/CONTEXT-ENGINE.md` (copied from Part 
 | 4 Tasks, calendar, Tangents | Done (see Phase 4 log), with the user's 2026-11-09 feedback folded in |
 | 5 Home, notifications, settings, You, mapped | Done (see Phase 5 log); 5.3, 5.4 and the notifications popover were done in Phase 4 |
 | 6 Onboarding | Done (see Phase 6 log) |
-| 7 Audit, screenshots, report | Not started |
+| 7 Audit, screenshots, report | Done (see Phase 7 log) |
 
 Baseline (start of Round 4): `git status` clean on `v3-core-loop`, head `f9d83b2`. Lint, typecheck, test and build were **not** run in Phase 0 (docs-only).
 
@@ -468,3 +468,102 @@ The user's feedback arrived with Phase 4. Their screenshots did not come through
 - Saving facts and commitments signed in (the dev pages have no session, so saves show "That didn't save").
 - Dark mode.
 - The real model answers. Run `npm run eval:pipeline` (paid).
+
+## Phase 7 log: audit, screenshots, report (2026-11-10)
+
+**How it was checked:**
+- **Pages:** 21 pages audited with a script in a real browser at 390 px and 1440 px, light and dark. That is 18 sample pages under `/dev/app/*` (Today, Calendar, Projects, a project, School, Tangents, plan preview, Grill, follow-up, setup, and every Settings tab) plus the signed-out `/signin`, `/waitlist` and `/not-yet`.
+- **What the script measures:** sideways scroll, text clipped by `overflow: hidden`, H1 count, controls without an accessible name, tap targets under 44 px on a phone (counting `::after` hit areas), and WCAG AA text contrast. Contrast is computed from the real colours, with opacity and translucent backgrounds blended.
+- **Focus:** tabbed through Today, Calendar, a project, Settings and Sign in in both themes, checking that each focused control shows an outline or ring.
+
+**Found and fixed:**
+- **Dark mode dropped on some pages.** The dev pages' server and client render different dates (UTC vs local), so React re-rendered the whole document and reset `data-theme` to light. `components/ThemeSync.tsx` (in `app/layout.tsx`) re-applies the stored theme after hydration. The underlying date mismatch on the dev pages is not fixed; see "Not verified".
+- **Contrast:**
+  - Empty Today parts ("12 – 5 PM") were at opacity 0.8, giving 3.42:1 in light. The fade is removed.
+  - Done-task titles were at opacity 0.6, giving 2.39:1 in light and 3.19:1 in dark. They now keep `--text-3` and the line-through without the fade.
+- **One H1:** the project page had none, because its name is an editable input. It now has a screen-reader H1 with the project name.
+- **Sideways scroll:** the Projects pages scrolled sideways by 11 px at 390. Fixed with a `minmax(0, 1fr)` grid column and a wrapping header on phones.
+- **Focus:** the project name and goal fields turned the focus outline off and showed only a faint border. Keyboard focus now gets the app's standard 2 px ring.
+- **Tap targets on phones.** All of these are now 44 px, mostly through invisible `::after` hit areas so nothing changes visually. Round 3 leftovers:
+  - The Calendar view switch was 30 px.
+  - The Calendar "Today" button already had a 44 px hit area (measured).
+  - The chat search (`.aia-search`) now has a 44 px minimum height. It isn't rendered on any sample page, so this one is unmeasured.
+- **Tap targets, also fixed:**
+  - Pill tabs (Today's view tabs, sign-in tabs): 36 px.
+  - Task titles: 20 px.
+  - Project back link, paths link, name, goal and group toggles: 16–40 px.
+  - Inline ask box and send button: 36–37 px.
+  - Tangents answer chips and Skip: 32 px, and Skip was 41 px wide.
+  - Plan preview Month/Week toggle and arrows: 28–30 px.
+  - Follow-up sheet close, mic, send, input, Skip and primary button: 14–38 px.
+  - Onboarding "Tell me more": 29 px.
+  - Settings selects: 34 px.
+  - "How to get this link": 36 px.
+  - You's area buttons, counts, fact edit buttons and add-a-fact row: 30–40 px.
+  - AI activity day filter: 28 px.
+
+**Results after the fixes:**
+- **Every page, both widths and themes:**
+  - no sideways scroll
+  - no clipped text
+  - no unlabelled controls
+  - no text below AA
+  - one H1, except the Grill sample (below)
+- **Accent contrast:**
+
+  | Colour | Light | Dark |
+  | --- | --- | --- |
+  | Accent text (`--accent-text`) on the page | 8.25:1 | 10.36:1 |
+  | `--accent` on the page | 6.87:1 | 8.53:1 |
+  | `--accent` on cards | 7.38:1 | 7.83:1 |
+  | Button text on the accent fill | 7.38:1 | 8.22:1 |
+  | Focus ring (`--focus`) | 6.87:1 | 8.53:1 |
+
+- **Exceptions left by design** (the only items the audit still lists):
+  - **Calendar time blocks** (`wk-block`): their height is the event's duration. A 30-minute block can't be 44 px without breaking the time grid.
+  - **Calendar due strip** (`wk-due-item`, "Fold due dates"): compact data inside a 96 px scroll strip. Items are now 24 px tall, meeting WCAG 2.5.8's 24 px minimum. Agenda view lists the same items at full size.
+  - **Plan preview month cells** (42×44): seven columns at 390 px leave 42 px each.
+  - **Plan preview step dots** (7×12): a decoration on the day cell. The cell opens the day, and on phones the full day list sits below the grid.
+  - **Grill sample page** (`/dev/app/grill`): no H1, because it's a component sample. In the app it sits inside a page that has one.
+
+**Seen but not changed (outside Round 4):**
+- On Today at desktop width, a row with the hover-only "Not today / Too big" actions keeps their space while they're hidden, so its time sits further left than other rows. This is from Round 3.
+
+**Screenshots:** `docs/design/screens/round4/<page>-<390|1440>-<light|dark>.png`. That is 84 files: every audited page, both widths and both themes, including the signed-out auth pages.
+
+**Checks:**
+- **Lint:** 3 warnings, all pre-existing.
+- **Other checks:** typecheck clean, 788 tests pass, and the build passes.
+
+**Not verified:**
+- **Anything signed in:** the dev pages have no session, so saves show "That didn't save".
+- **The dev pages' date mismatch:** they log a hydration warning because the server renders in UTC and the browser in local time. `ThemeSync` covers its effect on dark mode. Whether real signed-in pages hit the same mismatch late in the evening (UTC already tomorrow) is unchecked.
+- **The real model answers:** run `npm run eval:pipeline` (paid; not run).
+- **The chat search:** its tap target (above) isn't measured.
+- **Screen readers:** no screen reader pass was done (names and roles were checked by script only).
+
+### What to test signed in
+
+Run the four Round 4 migrations first (`docs/MANUAL-STEPS.md`, Round 4), then:
+
+1. **Sign-up and access:** create an account with an email not on `ALLOWED_EMAILS` → waitlist page. One on the list → code → age gate → onboarding.
+2. **Onboarding:** go through all eight screens, using Skip and Back once each. Add a commitment with two blocks and a "1st Saturday" repeat. Check the blocks appear on Calendar as busy and survive a reload.
+3. **First plan:** the goal typed in onboarding starts planning on Home. Answer one question, Skip one, then Stop. The plan still appears.
+4. **Today:**
+   - Add a task by typing and by voice.
+   - Tick one done: the title stays readable, struck through.
+   - Use "Not today" and "Too big" on a phone.
+5. **Calendar:** switch 3 days / Month / Agenda on a phone. Drag a movable block. "Today" jumps back.
+6. **Projects:**
+   - Rename a project and edit its goal; both survive a reload.
+   - Ask in the project chat.
+   - The "Used: …" line shows facts.
+7. **Tangents:** answer a clarify question with a chip, then with Skip.
+8. **Daily follow-up:** appears once on Home the next day. Answer by typing. "Not now" hides it until tomorrow. Settings → Onboarding → "Ask me one" opens it on demand.
+9. **Settings:**
+   - You: add, edit and delete a fact.
+   - Schedule: edit commitments.
+   - Notifications: change a select.
+   - AI activity: the search and day filter work.
+10. **Dark mode:** switch in Settings. Reload Today, Calendar and a project late in the evening; they stay dark.
+11. **Privacy:** typing something sensitive (a health detail) in a follow-up gets the kind reply and isn't saved as a fact.

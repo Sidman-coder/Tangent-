@@ -237,6 +237,8 @@ export default function ProjectView({ id }: { id: string }) {
       </div>
 
       <header className="project-head">
+        {/* The name is an editable input, so the page heading is for screen readers. */}
+        <h1 className="sr-only">{title.trim() || "Project"}</h1>
         <div className="project-title-row">
           <span
             className="project-pie"

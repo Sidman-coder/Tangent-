@@ -308,3 +308,10 @@
   color: var(--text);
   font-weight: 600;
 }
+
+/* Round 4 Phase 7: 44px to tap on phones. */
+@media (max-width: 767px) {
+  .settings-page .settings-row .settings-select:is(select) {
+    height: 44px;
+  }
+}

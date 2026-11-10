@@ -1,3 +1,4 @@
+import ThemeSync from "@/components/ThemeSync";
 import { SERIES_CSS } from "@/lib/task-colors";
 import type { Metadata, Viewport } from "next";
 // Tokens first: every stylesheet after this reads them and none redefines them.
@@ -53,6 +54,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         {/* App chrome lives in app/(app)/layout.tsx, so sign-in pages don't mount it. */}
+        <ThemeSync />
         {children}
       </body>
     </html>

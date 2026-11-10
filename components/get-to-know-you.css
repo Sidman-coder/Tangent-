@@ -355,3 +355,41 @@
   color: var(--red);
   font: 500 13px/1.4 var(--font-body);
 }
+
+/* Round 4 Phase 7: 44px to tap on phones. */
+@media (max-width: 767px) {
+  .gtk-close,
+  .gtk-send,
+  .gtk-mic {
+    position: relative;
+  }
+  .gtk-close::after,
+  .gtk-send::after,
+  .gtk-mic::after {
+    content: "";
+    position: absolute;
+    inset: -7px;
+  }
+  .gtk-send,
+  .gtk-mic {
+    width: 36px;
+    height: 36px;
+  }
+  .gtk-send::after,
+  .gtk-mic::after {
+    inset: -4px;
+  }
+  .gtk-input {
+    gap: 8px;
+    min-height: 46px;
+    padding-block: 0;
+  }
+  .gtk-sheet .gtk-foot .gtk-input input:is(input) {
+    align-self: stretch;
+    min-height: 44px;
+  }
+  .gtk-skip,
+  .gtk-primary {
+    min-height: 44px;
+  }
+}

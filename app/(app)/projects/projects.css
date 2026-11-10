@@ -1,9 +1,11 @@
 /* Projects (app/(app)/projects). Calm on purpose: hairline cards, one color
    per project used only as a dot and a progress line, plenty of space. */
 
+/* minmax(0, 1fr): a wide header row can't stretch the page past a phone. */
 .projects-page,
 .project-page {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 24px;
   padding-bottom: 48px;
 }
@@ -231,6 +233,14 @@
   box-shadow: none;
   border-color: var(--line-strong);
   background: var(--surface);
+}
+
+/* Round 4 Phase 7: keyboard focus gets the app's standard ring back; a faint
+   border alone is not a visible focus indicator. */
+.project-page .project-head .project-title-input:is(input):focus-visible,
+.project-page .project-head .project-goal-input:is(textarea):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .project-step-list {
@@ -621,3 +631,25 @@
 .round-review-quiet { padding: 4px 2px; border: 0; background: none; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
 .round-review-quiet:hover, .round-review-quiet:focus-visible { color: var(--text); text-decoration: underline; }
 .round-review-error { flex-basis: 100%; margin: 0; color: var(--danger, var(--text)); font-size: 13px; }
+
+/* Round 4 Phase 7: 44px tap targets on phones; the header wraps instead of
+   pushing the page sideways. */
+@media (max-width: 767px) {
+  .projects-page .page-header {
+    flex-wrap: wrap;
+  }
+  .project-back,
+  .projects-paths-link {
+    min-height: 44px;
+  }
+  .project-page .project-head .project-title-input:is(input) {
+    padding-block: 7px;
+  }
+  .project-page .project-head .project-goal-input:is(textarea),
+  .project-page .project-group-header .ui-group-header-toggle {
+    min-height: 44px;
+  }
+  .project-page .project-head .project-goal-input:is(textarea) {
+    padding-block: 9px;
+  }
+}

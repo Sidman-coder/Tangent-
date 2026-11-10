@@ -4818,3 +4818,25 @@ body .gtk-sheet {
 @media (prefers-reduced-motion: reduce) {
   .add-task-type-option { transition: none; }
 }
+
+/* Round 4 Phase 7: 44px to tap on phones (plan preview controls, You's add row). */
+@media (max-width: 767px) {
+  .preview-week-toggle button,
+  .preview-week-nav button {
+    position: relative;
+  }
+  .preview-week-toggle button::after {
+    content: "";
+    position: absolute;
+    inset: -8px 0;
+  }
+  .preview-week-nav button::after {
+    content: "";
+    position: absolute;
+    inset: -7px;
+  }
+  .knows-add input,
+  .knows-add-btn {
+    min-height: 44px;
+  }
+}

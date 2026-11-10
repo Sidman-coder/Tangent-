@@ -333,3 +333,10 @@
 @media (prefers-reduced-motion: reduce) {
   .onb, .onb-progress > span, .onb-choice, .onb-day, .onb-input, .onb-chip { transition: none; }
 }
+
+/* Round 4 Phase 7: 44px to tap on phones. */
+@media (max-width: 767px) {
+  .onb-more-toggle {
+    min-height: 44px;
+  }
+}

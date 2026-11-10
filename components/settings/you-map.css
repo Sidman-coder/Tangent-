@@ -532,3 +532,20 @@
 @media (prefers-reduced-motion: reduce) {
   .you-hero-cue svg { animation: none; }
 }
+
+/* Round 4 Phase 7: 44px to tap on phones. */
+@media (max-width: 767px) {
+  .you-hero-areas button,
+  .you-map-counts button,
+  .settings-page .you-fact-edit input {
+    min-height: 44px;
+  }
+  .you-fact-btn {
+    position: relative;
+  }
+  .you-fact-btn::after {
+    content: "";
+    position: absolute;
+    inset: -12px -4px;
+  }
+}

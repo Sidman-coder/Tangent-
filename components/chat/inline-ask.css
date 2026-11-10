@@ -81,3 +81,19 @@
   .inline-ask-spinner { animation-duration: 2s; }
   .inline-ask-box { transition: none; }
 }
+
+/* Round 4 Phase 7: 44px to tap on phones. */
+@media (max-width: 767px) {
+  .inline-ask-input {
+    min-height: 44px;
+    padding-block: 11px;
+  }
+  .inline-ask-send {
+    position: relative;
+  }
+  .inline-ask-send::after {
+    content: "";
+    position: absolute;
+    inset: -4px;
+  }
+}

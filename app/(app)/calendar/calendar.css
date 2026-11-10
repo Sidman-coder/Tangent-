@@ -1057,3 +1057,16 @@
   .calendar-page .cal-event { transition: none; }
   .cal-drag-ghost { transform: translate(10px, -50%); }
 }
+
+/* Round 4 Phase 7: the view switch gets the full 44px track on phones. The
+   due strip stays compact (Agenda lists the same items at full size) but each
+   item meets the 24px minimum of WCAG 2.5.8. */
+@media (max-width: 767px) {
+  .wk-due-item {
+    min-height: 24px;
+  }
+  .cal-bar .cal-bar-tabs.ui-tabs--pill {
+    height: 44px;
+    padding: 4px;
+  }
+}

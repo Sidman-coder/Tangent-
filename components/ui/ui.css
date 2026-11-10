@@ -743,7 +743,6 @@ span.ui-task-check {
   color: var(--text-3);
   text-decoration: line-through;
   text-decoration-thickness: 1px;
-  opacity: 0.6;
 }
 
 .ui-task-details {
@@ -1543,4 +1542,22 @@ span.ui-task-check {
   .ui-task-row:hover .ui-task-outcome,
   .ui-task-row:focus-within .ui-task-outcome,
   .ui-task-row.is-expanded .ui-task-outcome { display: block; }
+}
+
+/* Round 4 Phase 7: 44px tap targets on phones without changing the look.
+   A pill tab is 36px inside a 44px track; the hit area fills the track. */
+.ui-tabs--pill .ui-tab::after {
+  content: "";
+  position: absolute;
+  inset: -4px 0;
+}
+.ui-tabs--pill .ui-tab {
+  min-width: 44px;
+}
+@media (max-width: 767px) {
+  /* The title opens the task: 44px tall to tap, same line box to read. */
+  .ui-task-title-button {
+    padding-block: 12px;
+    margin-block: -12px;
+  }
 }

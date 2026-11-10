@@ -360,7 +360,6 @@
   transform: translateY(-50%);
 }
 .today-part.is-empty .ui-group-header { min-height: 44px; color: var(--text-3); font-weight: 500; }
-.today-part.is-empty .ui-group-header-range { opacity: 0.8; }
 .today-part-empty { color: var(--text-3); font-size: 13px; font-weight: 400; }
 /* The Now line starts on the rail: its dot sits on the line. */
 .today-timeline .today-now { margin-left: calc(var(--rail-x) - var(--rail-gutter) - 3px); }

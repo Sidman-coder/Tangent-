@@ -220,7 +220,7 @@
   .settings-page .cal-import-how::after {
     content: "";
     position: absolute;
-    inset: -8px -4px;
+    inset: -12px -4px;
   }
   .settings-page .cal-import-how {
     position: relative;
