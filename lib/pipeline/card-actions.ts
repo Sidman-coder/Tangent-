@@ -12,6 +12,8 @@ import { editOps, parseDraftEdit, summarize } from "./draft";
 import { previewFor } from "./drafting";
 import { logEvent } from "./events";
 import { trackEvent } from "../analytics";
+import { logStepEvent } from "../student/step-events";
+import { toCode } from "../student/observations";
 import { TANGENT_PIPELINE_V2 } from "./flags";
 import { nextStep, type CardAction } from "./lifecycle";
 
@@ -101,6 +103,7 @@ export async function confirmChangeSet(req: Request): Promise<NextResponse> {
       { changeSetId: cs.id, planId: result.createdPlanIds[0] ?? cs.target_plan_id }
     );
     if (result.createdTaskIds.length > 0) trackEvent("capture", { count: result.createdTaskIds.length, source: "pipeline" });
+    logStepEvent({ kind: "plan_accept", code: toCode(cs.intent) });
     trackEvent("plan_confirmed", { plan_id: result.createdPlanIds[0] ?? cs.target_plan_id ?? undefined, count: result.createdTaskIds.length });
     return json({
       ok: true,
@@ -132,6 +135,7 @@ export async function discardChangeSet(req: Request): Promise<NextResponse> {
     const body = (await req.json().catch(() => null)) as { reason?: unknown } | null;
     const reason = body?.reason === "just_chatting" ? "just_chatting" : undefined;
     logEvent("changeset_discarded", { intent: cs.intent, ops: cs.ops.length, ...(reason ? { reason } : {}) }, { changeSetId: cs.id });
+    logStepEvent({ kind: "plan_reject", code: reason ?? toCode(cs.intent) });
     return json({ ok: true });
   } catch (e) {
     return failed(e);
@@ -148,6 +152,7 @@ export async function undoChangeSet(req: Request): Promise<NextResponse> {
     const result = await undoAction(cs.action_id as string);
     if (!result.ok) return json({ ok: false, message: result.message }, 422);
     logEvent("changeset_undone", { intent: cs.intent, ops: cs.ops.length }, { changeSetId: cs.id });
+    logStepEvent({ kind: "plan_reject", code: "undo" });
     return json({ ok: true, message: result.message, state: await getAppState() });
   } catch (e) {
     return failed(e);
@@ -181,6 +186,7 @@ export async function editChangeSet(req: Request): Promise<NextResponse> {
     const saved = await saveChangeSet(parsed.changeSet);
     if (saved.status !== "draft") return json({ ok: false, status: saved.status, message: "That preview was already confirmed or discarded." }, 409);
     logEvent("preview_edited", { edit: edit.type, ops: saved.ops.length }, { changeSetId: saved.id });
+    logStepEvent({ kind: "plan_edit", code: toCode(edit.type) });
     const today = localNow(await getUserTimezone()).date;
     return json({ ok: true, changeSet: saved, preview: await previewFor(saved, today) });
   } catch (e) {

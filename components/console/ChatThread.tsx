@@ -166,7 +166,7 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
             const isLatest = !busy && i === shown.length - 1;
             const canRedo = isLatest && redoable(t);
             return (
-              <article key={t.id} className={`tg-turn${t.fresh ? " is-fresh" : ""}`} ref={isLatest ? latestRef : undefined}>
+              <article key={t.id} id={`turn-${t.id}`} className={`tg-turn${t.fresh ? " is-fresh" : ""}`} ref={isLatest ? latestRef : undefined}>
                 <div className="tg-msg-user">{t.request}</div>
                 <div className="tg-msg-assistant">
                   <PenMark className="tg-msg-mark" />

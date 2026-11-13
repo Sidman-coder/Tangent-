@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Create, reset or change the signed-in student's password. Proof is the
-// current password, a new 6-digit code, or a sign-in by email code in the last
+// current password, a new email code, or a sign-in by email code in the last
 // 10 minutes (the step right after the code on the sign-in page).
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as { password?: unknown; currentPassword?: unknown; code?: unknown };

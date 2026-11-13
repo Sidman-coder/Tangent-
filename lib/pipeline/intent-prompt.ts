@@ -25,6 +25,7 @@ INTENTS
 
 RULES
 - A single dated item is add_task, never new_plan.
+- "break down …", "make a plan/path for …", "help me …", "steps to …", "how do I get …" ask for planning: new_plan (or new_project), never add_task. The goal is never a task title.
 - new_plan and new_project only for multi-step goals.
 - A question that asks for nothing to change is question, even if it says "plan" or "schedule".
 - "take out", "remove", "delete", "clear" with tasks is delete_task or delete_plan_tasks. Never treat it as clearing the whole calendar unless they say everything or all tasks.

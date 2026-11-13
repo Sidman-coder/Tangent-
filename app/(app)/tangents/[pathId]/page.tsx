@@ -58,7 +58,7 @@ export default function PathDeepView() {
     if (!pathId) return;
     try {
       const res = await fetch(`/api/path?pathId=${encodeURIComponent(pathId)}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`Couldn't load this path (${res.status})`);
+      if (!res.ok) throw new Error(`Couldn't load this Tangent (${res.status})`);
       const data = (await res.json()) as {
         path: Path;
         nodes: PathNode[];
@@ -69,7 +69,7 @@ export default function PathDeepView() {
       setScheduled(data.scheduled ?? {});
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't load this path.");
+      setError(e instanceof Error ? e.message : "Couldn't load this Tangent.");
     } finally {
       setLoading(false);
     }
@@ -118,7 +118,7 @@ export default function PathDeepView() {
       await post({ action: "deletePath", id: path.id });
       router.replace("/tangents");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't delete this path.");
+      setError(e instanceof Error ? e.message : "Couldn't delete this Tangent.");
       setConfirmingDelete(false);
       setDeleting(false);
     }
@@ -193,7 +193,7 @@ export default function PathDeepView() {
   if (loading) {
     return (
       <div className="pplan-page tangents-light" aria-busy="true">
-        <p className="pplan-loading">Loading this path…</p>
+        <p className="pplan-loading">Loading this Tangent…</p>
       </div>
     );
   }
@@ -202,7 +202,7 @@ export default function PathDeepView() {
     return (
       <div className="pplan-page tangents-light">
         <div className="pplan-empty">
-          <strong>That path isn&apos;t here</strong>
+          <strong>That Tangent isn&apos;t here</strong>
           <span>It may have been removed, or the link is from another account.</span>
           <Link href="/tangents" className="pplan-back">Back to Tangents</Link>
         </div>
@@ -240,7 +240,7 @@ export default function PathDeepView() {
                 <Orbit size={14} aria-hidden="true" /> Map
               </button>
             </div>
-            <button type="button" className="pplan-icon" onClick={() => setConfirmingDelete(true)} aria-label="Delete this path" title="Delete this path">
+            <button type="button" className="pplan-icon" onClick={() => setConfirmingDelete(true)} aria-label="Delete this Tangent" title="Delete this Tangent">
               <Trash2 size={15} aria-hidden="true" />
             </button>
           </div>

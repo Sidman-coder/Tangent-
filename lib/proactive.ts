@@ -7,8 +7,9 @@
 // time-sensitive (an overdue-task nudge is only useful soon after it goes overdue),
 // so they don't fit Batch's up-to-an-hour turnaround the way the daily brief does.
 
-import { getAllTasks, getContextAsString, addNotification, getUserTimezone } from "@/lib/store";
-import { isSchoolBlock } from "@/lib/schedule-slots";
+import { getAllTasks, addNotification, getUserTimezone } from "@/lib/store";
+import { studentFactsText } from "@/lib/ai/student-context";
+import { isBusyBlock } from "@/lib/schedule-slots";
 import { isCanvasCleared } from "@/lib/canvas-clear";
 import { formatTime12 } from "@/lib/dates";
 import { addDaysYMD, currentInstant, getUserToday } from "@/lib/time";
@@ -79,8 +80,8 @@ export async function runProactiveCheck(trigger: string): Promise<ProactiveCheck
 
     // The School block is the student's timetable, not work they can fall
     // behind on: it produced "Overdue: School" nudges every day.
-    const tasks = (await getAllTasks()).filter((t) => !isSchoolBlock(t));
-    const userContext = await getContextAsString();
+    const tasks = (await getAllTasks()).filter((t) => !isBusyBlock(t));
+    const userContext = await studentFactsText("brief");
     const timeZone = await getUserTimezone();
     const now = currentInstant();
     const today = getUserToday(timeZone, now);

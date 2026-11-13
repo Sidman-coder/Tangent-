@@ -18,7 +18,7 @@ type Resolve = (specifier: string, context: unknown, next: (s: string, c: unknow
 });
 
 type Mod = typeof import("./today-sections");
-void (import("./today-sections") as Promise<Mod>).then(({ groupTodayTasks, overdueStyle, glanceLine, nowLine, dayPartOf }) => {
+void (import("./today-sections") as Promise<Mod>).then(({ groupTodayTasks, overdueStyle, glanceLine, nowLine, dayPartOf, nothingOnDay, goalPlanFor }) => {
   const TZ = "America/New_York";
   // Wed, Nov 4 2026, 2:00 PM in New York.
   const NOW = new Date("2026-11-04T19:00:00Z");
@@ -33,8 +33,10 @@ void (import("./today-sections") as Promise<Mod>).then(({ groupTodayTasks, overd
   });
   const ids = (list: { id: string }[]) => list.map((t) => t.id);
 
+  // The parts that have anything in them (the four timed parts always show).
   const parts = (groups: { parts: { part: string; tasks: { id: string }[] }[] }) =>
-    Object.fromEntries(groups.parts.map((p) => [p.part, ids(p.tasks)]));
+    Object.fromEntries(groups.parts.filter((p) => p.tasks.length > 0).map((p) => [p.part, ids(p.tasks)]));
+  const partOf = <G extends { part: string }>(groups: { parts: G[] }, id: string) => groups.parts.find((p) => p.part === id)!;
 
   test("today's items fall into time-of-day groups, timed first by time", () => {
     const breakfast = task({ commitment: "fixed", time: "07:30" });
@@ -53,9 +55,26 @@ void (import("./today-sections") as Promise<Mod>).then(({ groupTodayTasks, overd
     });
   });
 
-  test("empty time groups are left out", () => {
+  test("Morning, Afternoon, Evening and Late night always show; Anytime only when used", () => {
     const groups = groupTodayTasks([task({ commitment: "flexible", time: "18:00" })], NOW, TZ);
-    assert.deepEqual(groups.parts.map((p) => p.part), ["evening"]);
+    assert.deepEqual(groups.parts.map((p) => [p.part, p.tasks.length]), [
+      ["morning", 0],
+      ["afternoon", 0],
+      ["evening", 1],
+      ["night", 0],
+    ]);
+    assert.equal(nothingOnDay(groups), false);
+    assert.equal(nothingOnDay(groupTodayTasks([], NOW, TZ)), true);
+  });
+
+  test("Late night runs to 5 AM, so 1 AM comes after 11 PM", () => {
+    const one = task({ commitment: "flexible", time: "01:00" });
+    const eleven = task({ commitment: "flexible", time: "23:00" });
+    const early = task({ commitment: "flexible", time: "05:00" });
+    assert.deepEqual(parts(groupTodayTasks([one, early, eleven], NOW, TZ)), {
+      morning: [early.id],
+      night: [eleven.id, one.id],
+    });
   });
 
   test("inside a group, work sits under its project, School or Personal", () => {
@@ -63,7 +82,7 @@ void (import("./today-sections") as Promise<Mod>).then(({ groupTodayTasks, overd
     const canvas = task({ source: "canvas", kind: "school", title: "Lab 4", time: "15:30" });
     const bio2 = task({ commitment: "flexible", time: "16:00", planId: "bio" });
     const gym = task({ commitment: "fixed", time: "16:30" });
-    const [afternoon] = groupTodayTasks([gym, bio2, canvas, bio1], NOW, TZ).parts;
+    const afternoon = partOf(groupTodayTasks([gym, bio2, canvas, bio1], NOW, TZ), "afternoon");
     assert.deepEqual(
       afternoon.blocks.map((b) => [b.kind, b.planId, ids(b.tasks)]),
       [
@@ -75,12 +94,36 @@ void (import("./today-sections") as Promise<Mod>).then(({ groupTodayTasks, overd
     assert.deepEqual(ids(afternoon.tasks), [bio1.id, bio2.id, canvas.id, gym.id]);
   });
 
+  test("a goal's own task goes under the project made for it, not Personal", () => {
+    const plans = [
+      { id: "p1", title: "Get 10k followers" },
+      { id: "p2", title: "Learn guitar" },
+    ];
+    const goal = task({ commitment: "flexible", time: "15:00", title: "Break down plan: Get 10k followers" });
+    assert.equal(goalPlanFor(goal, plans)?.id, "p1");
+    assert.equal(goalPlanFor({ title: "Plan - learn guitar basics" }, plans)?.id, "p2");
+    assert.equal(goalPlanFor({ title: "Get 10k followers" }, plans), null);
+    assert.equal(goalPlanFor({ title: "Break down plan: Bake bread" }, plans), null);
+    const [block] = partOf(groupTodayTasks([goal], NOW, TZ, plans), "afternoon").blocks;
+    assert.deepEqual([block.kind, block.planId], ["project", "p1"]);
+  });
+
+  test("a step scheduled from a Path sits under that Path's name", () => {
+    const step = task({
+      commitment: "flexible",
+      time: "15:00",
+      pathOrigin: { pathId: "path1", pathTitle: "Start a podcast", nodeTitle: "Record episode 1" },
+    });
+    const [block] = partOf(groupTodayTasks([step], NOW, TZ), "afternoon").blocks;
+    assert.deepEqual([block.key, block.kind, block.title], ["path:path1", "project", "Start a podcast"]);
+  });
+
   test("done items stay in place, faded, and don't count as left", () => {
     const done = task({ commitment: "fixed", time: "09:00", completed: true });
     const open = task({ commitment: "flexible", time: "10:00" });
     const groups = groupTodayTasks([open, done], NOW, TZ);
     assert.deepEqual(parts(groups), { morning: [done.id, open.id] });
-    assert.equal(groups.parts[0].open, 1);
+    assert.equal(partOf(groups, "morning").open, 1);
     assert.deepEqual(groups.counts, { left: 1, must: 0, pastDue: 0, done: 1 });
   });
 
@@ -114,7 +157,8 @@ void (import("./today-sections") as Promise<Mod>).then(({ groupTodayTasks, overd
       recurring: { enabled: true, frequency: "weekly", parentId: "s" },
     });
     const groups = groupTodayTasks([school], NOW, TZ);
-    assert.deepEqual([groups.parts, groups.pastDue, groups.comingUp], [[], [], []]);
+    assert.equal(nothingOnDay(groups), true);
+    assert.deepEqual([groups.pastDue, groups.comingUp], [[], []]);
   });
 
   test("Coming up holds the next three days, grouped and in order, without done items", () => {
@@ -136,32 +180,42 @@ void (import("./today-sections") as Promise<Mod>).then(({ groupTodayTasks, overd
     const at = new Date("2026-11-04T07:30:00Z");
     const t = task({ commitment: "reminder", date: "2026-11-04" });
     assert.deepEqual(parts(groupTodayTasks([t], at, "America/New_York")), { anytime: [t.id] });
-    assert.deepEqual(groupTodayTasks([t], at, "America/Los_Angeles").parts, []);
+    assert.deepEqual(parts(groupTodayTasks([t], at, "America/Los_Angeles")), {});
     assert.equal(groupTodayTasks([t], at, "America/Los_Angeles").comingUp[0].date, "2026-11-04");
   });
 
-  test("the Now line sits before the first timed item that hasn't started", () => {
+  test("the Now line sits in the current part, before its first item that hasn't started", () => {
     const done = task({ commitment: "fixed", time: "09:00", completed: true });
     const lunch = task({ commitment: "fixed", time: "12:30" });
     const next = task({ commitment: "flexible", time: "14:00" });
     const evening = task({ commitment: "flexible", time: "19:00" });
     const groups = groupTodayTasks([evening, next, lunch, done, task({})], NOW, TZ);
-    assert.deepEqual(nowLine(groups, NOW, TZ), { before: next.id });
+    assert.deepEqual(nowLine(groups, NOW, TZ), { part: "afternoon", before: next.id });
   });
 
-  test("the Now line goes after the last timed group once everything has started", () => {
+  test("the Now line stays in the current part when the next item is later in the day", () => {
     const morning = task({ commitment: "fixed", time: "09:00" });
-    const groups = groupTodayTasks([morning, task({})], NOW, TZ);
-    assert.deepEqual(nowLine(groups, NOW, TZ), { after: "morning" });
+    const evening = task({ commitment: "flexible", time: "19:00" });
+    const groups = groupTodayTasks([morning, evening, task({})], NOW, TZ);
+    assert.deepEqual(nowLine(groups, NOW, TZ), { part: "afternoon", before: null });
   });
 
-  test("no Now line when nothing today has a time", () => {
-    assert.equal(nowLine(groupTodayTasks([task({})], NOW, TZ), NOW, TZ), null);
-    assert.equal(nowLine(groupTodayTasks([], NOW, TZ), NOW, TZ), null);
+  test("the Now line shows on an empty day too", () => {
+    assert.deepEqual(nowLine(groupTodayTasks([], NOW, TZ), NOW, TZ), { part: "afternoon", before: null });
   });
 
-  test("dayPartOf reads 24-hour times and treats no time as Anytime", () => {
-    assert.deepEqual(["00:00", "11:59", "12:00", "16:59", "17:00", "20:59", "21:00", "23:59", ""].map(dayPartOf), [
+  test("at 12:15 AM the Now line is in Late night", () => {
+    const at = new Date("2026-11-04T05:15:00Z"); // 12:15 AM in New York
+    const one = task({ commitment: "flexible", time: "01:00" });
+    const breakfast = task({ commitment: "fixed", time: "08:00" });
+    const groups = groupTodayTasks([breakfast, one], at, TZ);
+    assert.deepEqual(nowLine(groups, at, TZ), { part: "night", before: one.id });
+  });
+
+  test("dayPartOf reads 24-hour times, runs 5 AM to 5 AM and treats no time as Anytime", () => {
+    assert.deepEqual(["00:00", "04:59", "05:00", "11:59", "12:00", "16:59", "17:00", "20:59", "21:00", "23:59", ""].map(dayPartOf), [
+      "night",
+      "night",
       "morning",
       "morning",
       "afternoon",

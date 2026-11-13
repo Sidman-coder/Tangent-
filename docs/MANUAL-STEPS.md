@@ -128,3 +128,68 @@ On a test account, check the new `/` Today sections and `/capture` mic, includin
 Settings (signed in, phone and laptop, both themes): `/settings` shows the section list on a phone and opens Account on a laptop. Old `/settings#ai-activity`, `#onboarding` and `#connections` links should land on the matching page. Change your name, help focus, school hours, week start and quiet hours (after migration 6), then reload and check they stuck. Download my data should save one JSON file with no Canvas token or pen device key. Forget everything (type FORGET) should empty What Tangent knows. Do not try Delete all my data on an account you want to keep.
 
 Pilot analytics need no migration: events go to the existing `events` table. After a few signed-in actions (add a task, finish one, Not today, confirm a plan), run the queries in `docs/tangent/pilot-metrics.sql` in the SQL Editor and check rows appear with names, ids and counts only, never task titles or answers.
+
+## Round 4
+
+### Phase 1: sign-up, waitlist, codes (no migrations)
+
+Sign-up is now open: anyone can create an account, and only `ALLOWED_EMAILS` get in. Before sharing the link widely:
+
+1. **Email rate limits.** Supabase dashboard → Authentication → Rate Limits. Keep "emails sent per hour" low (the built-in email service allows only a few per hour; custom SMTP from section 2 raises it). Every Create account sends one email.
+2. **CAPTCHA.** Authentication → Attack Protection → enable CAPTCHA (hCaptcha or Turnstile). This needs a small code change to pass the token, so tell me when it's on and I'll wire it in.
+3. **Code length.** Authentication → Providers → Email → "Email OTP Length". Any value from 6 to 10 works; the form accepts all of them.
+4. **Email template copy.** The templates in section 1 say "Type this code on the sign-in page". That still fits; nothing to change unless the length changes the layout.
+
+**Check it** (signed in, phone and laptop):
+- `/signin` → **Create account** with a new address on `ALLOWED_EMAILS`: code → password (green hints, no Skip) → the age question → onboarding.
+- **Create account** with an address that already has a password: "You already have an account. Sign in instead." and the Sign in tab opens.
+- A new address **not** on the list: after the password, `/waitlist` shows "You're on the list" and the email. Try `/`, `/calendar` and `/api/tasks`: the pages come back to `/waitlist`, the API is 403. **Sign out** works.
+- On a throwaway account, choose an age under 13: `/not-yet` shows "Tangent is for students 13 and up". Undo it in the SQL Editor:
+  `update auth.users set raw_app_meta_data = raw_app_meta_data - 'under_13' where email = 'THE_TEST_EMAIL';`
+- Paste an 8-digit code with spaces: it fills in and waits for **Sign in**.
+
+### Phase 2: context engine (3 migrations)
+
+Run these in the Supabase SQL Editor, in order. Each one is safe to run twice. The app works before they're applied: it just plans without the new fact details, the observation log and the "Used: …" line, and logs one server warning for each.
+
+1. **`supabase/migrations/20261110000000_student_facts.sql`** adds student-model columns to `context_entries`. Check it (expect 8 rows):
+   ```sql
+   select column_name from information_schema.columns
+   where table_schema = 'public' and table_name = 'context_entries'
+     and column_name in ('fact_category','fact_source','confidence','last_confirmed_at','project_id','used_count','display_text','slot_key');
+   ```
+2. **`supabase/migrations/20261110010000_step_events.sql`** creates the `step_events` table with own-row RLS. Check it (expect `true`, then 3 policies):
+   ```sql
+   select relrowsecurity from pg_class where oid = 'public.step_events'::regclass;
+   select policyname, cmd from pg_policies where schemaname = 'public' and tablename = 'step_events';
+   ```
+3. **`supabase/migrations/20261110020000_facts_used.sql`** adds `facts_used` to `change_sets` and `ai_decisions`. Check it (expect 2 rows):
+   ```sql
+   select table_name from information_schema.columns
+   where table_schema = 'public' and column_name = 'facts_used' and table_name in ('change_sets','ai_decisions');
+   ```
+
+**Check it in the app** (signed in, after the migrations):
+- Tell Tangent something about yourself, then open Settings → What Tangent knows. The fact reads as "You …". If you typed something about health or family, it isn't saved.
+- Ask for "help me grow my Instagram". It asks 1–3 questions at a time (followers, niche, hours a week), at most 5 in total, and Skip and Stop always work. Ask for a second creator goal afterwards: it doesn't ask followers or niche again.
+- Open a plan preview: under the steps it shows "Used: …" with your own facts.
+- Finish a step, press "Not today" on another, then run `select kind, code, hour from step_events order by created_at desc limit 5;`. The rows have no titles.
+
+### Phase 2b: behaviour in the observation log (1 migration)
+
+4. **`supabase/migrations/20261111000000_step_events_behaviour.sql`** lets `step_events` also record how you plan and ask (chat question types, plan accepted/edited/discarded, planning questions answered/skipped/stopped). Still codes only. Run it after the Phase 2 step_events migration. Check it (the result lists `chat_ask` and `question_skip`):
+   ```sql
+   select pg_get_constraintdef(oid) from pg_constraint where conname = 'step_events_kind_check';
+   ```
+   Before it runs, the new kinds are rejected by the old check: the app logs one server warning and carries on.
+
+**Evals** (paid, about $0.08; asks before spending): `npm run eval:pipeline -- --context` runs the swap test, which plans the same goal for two different students and checks the plans differ. The free check is `npm run eval:pipeline -- --context --check`. The full pipeline eval is still `npm run eval:pipeline`.
+
+### Phase 6: onboarding and commitments (no migrations)
+
+Nothing to run. Commitments are stored as recurring busy tasks, so the planned `commitments` table wasn't needed. Onboarding answers use the Phase 2 fact columns; before those migrations run, they save as plain facts.
+
+**Check it in the app** (signed in, phone and laptop):
+- Settings → Onboarding → **Setup answers**: the eight screens come back prefilled. Change one answer and finish; What Tangent knows shows the new answer, not both.
+- Add a commitment with two blocks (for example practice Mon/Wed 3:30–5:30 plus Sat 9–11). It shows on the calendar every week, and Settings → Schedule reads it back the same way. Ask Tangent to plan something: nothing lands inside those blocks.
+- On Home after onboarding, one question appears at most once a day. Type an answer: it shows in What Tangent knows. "Not now" closes it until tomorrow.

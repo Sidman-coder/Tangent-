@@ -1,9 +1,12 @@
 "use client";
 
-import { useUserTimezone } from "@/components/AppStateProvider";
+import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { getUserToday } from "@/lib/time";
 import { useEffect, useMemo, useState } from "react";
-import { Repeat } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Repeat, Sparkles } from "lucide-react";
+import { putAsk } from "@/lib/ask-handoff";
+import type { TaskCommitment } from "@/lib/types";
 
 type Frequency = "daily" | "weekly" | "monthly" | "yearly";
 
@@ -18,6 +21,24 @@ interface Props {
 
 const DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+/** Round 4 Phase 4.2: what kind of task, in the student's words. */
+const TYPES: { value: TaskCommitment; label: string; hint: string }[] = [
+  { value: "fixed", label: "Must-do", hint: "Has to happen then" },
+  { value: "flexible", label: "Goal step", hint: "Moves you toward something bigger" },
+  { value: "reminder", label: "Reminder", hint: "Just a nudge" },
+];
+
+const NEW_PROJECT = "__new__";
+
+/** "Don't ask again" for one project, kept on this device. */
+const buildAskKey = (planId: string) => `tangent-build-ask-off:${planId}`;
+function buildAskOff(planId: string): boolean {
+  try {
+    return window.localStorage.getItem(buildAskKey(planId)) === "1";
+  } catch {
+    return false;
+  }
+}
 
 function countOccurrences(
   startDate: string,
@@ -49,6 +70,9 @@ function countOccurrences(
 
 export default function AddTaskModal({ initialDate, initialTime, initialCalendarId = null, onClose, onSuccess, onDuplicate }: Props) {
   const tz = useUserTimezone();
+  const router = useRouter();
+  const { state } = useAppState();
+  const plans = state?.plans ?? [];
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(() => initialDate ?? getUserToday(tz));
   const [time, setTime] = useState(initialTime ?? "09:00");
@@ -56,11 +80,26 @@ export default function AddTaskModal({ initialDate, initialTime, initialCalendar
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Round 4 Phase 4.2: which project, and what kind of task.
+  const [projectId, setProjectId] = useState<string>("");
+  const [newProject, setNewProject] = useState("");
+  const [type, setType] = useState<TaskCommitment>("fixed");
+  const [typeTouched, setTypeTouched] = useState(false);
+  /** After adding to a project: "Want Tangent to build on this?" */
+  const [buildAsk, setBuildAsk] = useState<{ planId: string; planTitle: string; taskTitle: string } | null>(null);
+  const [dontAsk, setDontAsk] = useState(false);
+
   // Recurring
   const [recurringEnabled, setRecurringEnabled] = useState(false);
   const [frequency, setFrequency] = useState<Frequency>("weekly");
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>([]);
   const [endDate, setEndDate] = useState(() => `${getUserToday(tz).slice(0, 4)}-12-31`);
+
+  // A step in a project is usually a goal step, a Personal task a must-do,
+  // until the student picks a type themself.
+  useEffect(() => {
+    if (!typeTouched) setType(projectId ? "flexible" : "fixed");
+  }, [projectId, typeTouched]);
 
   // Close on Escape
   useEffect(() => {
@@ -94,14 +133,37 @@ export default function AddTaskModal({ initialDate, initialTime, initialCalendar
 
   const handleSubmit = async () => {
     if (!title.trim()) return;
+    if (projectId === NEW_PROJECT && !newProject.trim()) {
+      setError("Name the new project, or pick Personal.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
+    let planId: string | null = projectId && projectId !== NEW_PROJECT ? projectId : null;
+    let planTitle = plans.find((p) => p.id === planId)?.title ?? "";
 
     // Every one of these used to be fire-and-forget: the response was never
     // checked, so a failed request still closed the modal and reported success,
     // and the task simply didn't exist. Failures now keep the modal open and say
     // what happened.
     try {
+      if (projectId === NEW_PROJECT) {
+        const res = await fetch("/api/plans", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "create", title: newProject.trim() }),
+        });
+        const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; plan?: { id: string; title: string } } | null;
+        if (!res.ok || !data?.plan) {
+          setError(data?.error ?? `Couldn't make the project (${res.status}).`);
+          return;
+        }
+        planId = data.plan.id;
+        planTitle = data.plan.title;
+        // A retry after a later failure uses this project, not a second one.
+        setProjectId(planId);
+        setNewProject("");
+      }
       if (recurringEnabled) {
         if (frequency === "weekly" && daysOfWeek.length === 0) {
           setError("Pick at least one day of the week.");
@@ -120,6 +182,8 @@ export default function AddTaskModal({ initialDate, initialTime, initialCalendar
             daysOfWeek: frequency === "weekly" ? daysOfWeek : undefined,
             endDate,
             notes: notes.trim() || undefined,
+            planId,
+            commitment: type,
           }),
         });
         const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; count?: number } | null;
@@ -142,6 +206,8 @@ export default function AddTaskModal({ initialDate, initialTime, initialCalendar
             time,
             calendarId: initialCalendarId,
             notes: notes.trim() || undefined,
+            planId,
+            commitment: type,
           }),
         });
         const data = (await res.json().catch(() => null)) as
@@ -161,13 +227,77 @@ export default function AddTaskModal({ initialDate, initialTime, initialCalendar
     }
 
     onSuccess?.();
+    // Added to a project: offer to build on it, unless they said not to ask.
+    if (planId && !buildAskOff(planId)) {
+      setBuildAsk({ planId, planTitle, taskTitle: title.trim() });
+      return;
+    }
     onClose();
   };
 
+  const answerBuild = (yes: boolean) => {
+    if (!buildAsk) return;
+    if (dontAsk) {
+      try {
+        window.localStorage.setItem(buildAskKey(buildAsk.planId), "1");
+      } catch {
+        /* storage blocked: it just asks again next time */
+      }
+    }
+    if (yes) {
+      // The project's own ask box shows the extend-plan preview, with Add and Undo.
+      putAsk("ai", `I just added "${buildAsk.taskTitle}" to ${buildAsk.planTitle}. Build on it: suggest the next steps after it.`);
+      router.push(`/projects/${encodeURIComponent(buildAsk.planId)}?ask=1`);
+    }
+    onClose();
+  };
+
+  if (buildAsk) {
+    return (
+      <div className="modal-overlay" onClick={() => answerBuild(false)}>
+        <div
+          className="modal add-build-ask"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="add-build-title"
+          style={{ maxWidth: 420 }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span className="add-build-icon" aria-hidden="true">
+            <Sparkles size={18} strokeWidth={1.75} />
+          </span>
+          <h3 id="add-build-title">Want Tangent to build on this in {buildAsk.planTitle}?</h3>
+          <p className="add-build-copy">
+            It suggests the next steps after &ldquo;{buildAsk.taskTitle}&rdquo;. You see them first; nothing is added until you say so.
+          </p>
+          <label className="add-build-dont">
+            <input type="checkbox" checked={dontAsk} onChange={(e) => setDontAsk(e.target.checked)} />
+            Don&apos;t ask again for this project
+          </label>
+          <div className="modal-actions">
+            <button type="button" className="btn-ghost surface-action-secondary" onClick={() => answerBuild(false)}>
+              No thanks
+            </button>
+            <button type="button" className="btn surface-action-primary" autoFocus onClick={() => answerBuild(true)}>
+              Yes, build on it
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 500 }} onClick={(e) => e.stopPropagation()}>
-        <h3>Add Task</h3>
+      <div
+        className="modal add-task-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="add-task-heading"
+        style={{ maxWidth: 500 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 id="add-task-heading">Add a task</h3>
 
         <div className="field">
           <label htmlFor="add-task-title">Title</label>
@@ -175,22 +305,68 @@ export default function AddTaskModal({ initialDate, initialTime, initialCalendar
             id="add-task-title"
             name="title"
             autoFocus
-            placeholder="Task title"
+            placeholder="What needs doing?"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !recurringEnabled) void handleSubmit(); }}
           />
         </div>
 
-        <div className="field">
-          <label htmlFor="add-task-date">{recurringEnabled ? "Start date" : "Date"}</label>
-          <input id="add-task-date" name="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <div className="add-task-when">
+          <div className="field">
+            <label htmlFor="add-task-date">{recurringEnabled ? "Start date" : "Date"}</label>
+            <input id="add-task-date" name="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+
+          <div className="field">
+            <label htmlFor="add-task-time">Time</label>
+            <input id="add-task-time" name="time" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+          </div>
         </div>
 
         <div className="field">
-          <label htmlFor="add-task-time">Time</label>
-          <input id="add-task-time" name="time" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+          <label htmlFor="add-task-project">Project</label>
+          <select id="add-task-project" name="project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+            <option value="">Personal</option>
+            {plans.map((p) => (
+              <option key={p.id} value={p.id}>{p.title}</option>
+            ))}
+            <option value={NEW_PROJECT}>+ New project…</option>
+          </select>
+          {projectId === NEW_PROJECT && (
+            <input
+              className="add-task-new-project"
+              name="new-project"
+              autoFocus
+              placeholder="Name the project"
+              aria-label="New project name"
+              maxLength={120}
+              value={newProject}
+              onChange={(e) => setNewProject(e.target.value)}
+            />
+          )}
         </div>
+
+        <fieldset className="field add-task-type">
+          <legend>Type</legend>
+          <div className="add-task-type-options">
+            {TYPES.map((t) => (
+              <label key={t.value} className={`add-task-type-option${type === t.value ? " is-on" : ""}`} title={t.hint}>
+                <input
+                  type="radio"
+                  name="task-type"
+                  value={t.value}
+                  checked={type === t.value}
+                  onChange={() => {
+                    setType(t.value);
+                    setTypeTouched(true);
+                  }}
+                />
+                {t.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
 
         <div className="field">
           <label htmlFor="add-task-notes">Description (optional)</label>
@@ -292,8 +468,8 @@ export default function AddTaskModal({ initialDate, initialTime, initialCalendar
             {submitting
               ? "Adding…"
               : recurringEnabled
-                ? `Add ${occurrenceCount > 0 ? occurrenceCount : ""} Task${occurrenceCount !== 1 ? "s" : ""}`
-                : "Add Task"}
+                ? `Add ${occurrenceCount > 0 ? occurrenceCount : ""} task${occurrenceCount !== 1 ? "s" : ""}`
+                : "Add task"}
           </button>
         </div>
       </div>

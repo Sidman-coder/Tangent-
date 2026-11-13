@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { safeNext } from "@/lib/auth/safe-next";
 import { clientIp } from "@/lib/auth/password";
 import { passwordSignIn } from "@/lib/auth/password-flow";
+import { recordWaitlist } from "@/lib/auth/waitlist-server";
 import { accountHasPassword, markPasswordSet, passwordLimiter } from "@/lib/auth/password-server";
 
 export const runtime = "nodejs";
@@ -31,6 +32,7 @@ export async function POST(request: Request) {
         await supabase.auth.signOut();
       },
       markPasswordSet,
+      joinWaitlist: recordWaitlist,
     },
     passwordLimiter
   );

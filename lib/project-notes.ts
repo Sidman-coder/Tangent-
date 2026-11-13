@@ -15,7 +15,11 @@ export type ProjectNotes = {
   assumed: string[];
   /** The brief lines as stored, put back after the goal on save. */
   briefLines: string[];
+  /** Round 4 §3.4: the project's current round, when it was planned in rounds. */
+  round: RoundInfo | null;
 };
+
+import { parseRoundLine, type RoundInfo } from "./rounds";
 
 const BRIEF = /^Brief\s*[—–-]\s*(.*)$/;
 const ASSUMED = /^Assumed\s*[—–-]\s*(.*)$/;
@@ -32,8 +36,15 @@ export function splitProjectNotes(description: string | null | undefined): Proje
   const known: ProjectNotes["known"] = [];
   const assumed: string[] = [];
   const briefLines: string[] = [];
+  let round: RoundInfo | null = null;
   for (const line of (description ?? "").split(/\r?\n/)) {
     const trimmed = line.trim();
+    const r = parseRoundLine(trimmed);
+    if (r) {
+      briefLines.push(trimmed);
+      round = r;
+      continue;
+    }
     const brief = BRIEF.exec(trimmed);
     const assume = ASSUMED.exec(trimmed);
     if (brief) {
@@ -50,7 +61,7 @@ export function splitProjectNotes(description: string | null | undefined): Proje
       goal.push(line);
     }
   }
-  return { goal: goal.join("\n").trim(), known, assumed, briefLines };
+  return { goal: goal.join("\n").trim(), known, assumed, briefLines, round };
 }
 
 /** The description to store when the goal changes: the new goal, then the brief lines as they were. */

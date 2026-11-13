@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { addContextEntry, clearContextEntries, getUserContext, getContextAsString, removeContextEntry } from "@/lib/store";
+import { addContextEntry, clearContextEntries, confirmContextEntry, getUserContext, getContextAsString, removeContextEntry } from "@/lib/store";
 import { extractContextFacts } from "@/lib/context-extract";
 import { factsFromText } from "@/lib/ai/import-context";
 import { withUser } from "@/lib/request-context";
@@ -8,6 +8,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 // Extracts and compresses remembered context.
 export const maxDuration = 60;
+
+const NOT_KEPT = "Tangent doesn't keep that one. Personal details like health or family stay out of what it remembers, and it needs something specific to plan with.";
 
 export const GET = withUser(async () => {
   return NextResponse.json({
@@ -27,6 +29,8 @@ export const POST = withUser(async (request: Request) => {
       const CATEGORIES = ["preference", "habit", "commitment", "goal", "person", "work", "general"] as const;
       const category = CATEGORIES.find((c) => c === body.category) ?? "general";
       const entry = await addContextEntry({ category, fact, source: "manual" });
+      // Sensitive or too vague to plan with: not kept (lib/student/facts.ts).
+      if (!entry) return NextResponse.json({ ok: false, error: NOT_KEPT }, { status: 422 });
       return NextResponse.json({ ok: true, entry });
     }
     // "Bring your context": preview facts from pasted text; nothing is saved.
@@ -44,10 +48,15 @@ export const POST = withUser(async (request: Request) => {
       for (const f of items) {
         const fact = String(f.fact ?? "").trim().slice(0, 300);
         if (!fact) continue;
-        await addContextEntry({ category: CATS.find((c) => c === f.category) ?? "general", fact, source: "manual" });
-        saved++;
+        const entry = await addContextEntry({ category: CATS.find((c) => c === f.category) ?? "general", fact, source: "manual" });
+        if (entry) saved++;
       }
       return NextResponse.json({ ok: true, saved });
+    }
+    // A guess Tangent made: the student says it's right.
+    if (body.action === "confirm") {
+      const confirmed = await confirmContextEntry(String(body.id ?? ""));
+      return NextResponse.json({ ok: confirmed }, { status: confirmed ? 200 : 404 });
     }
     if (body.action === "forget") {
       const removed = await removeContextEntry(String(body.id ?? ""));

@@ -106,7 +106,7 @@ void (import("./task-kind") as Promise<Mod>).then(
     test("preview labels", () => {
       assert.equal(commitmentLabel("fixed"), "Appointment");
       assert.equal(commitmentLabel("reminder"), "Reminder");
-      assert.equal(commitmentLabel("flexible"), "Plan step");
+      assert.equal(commitmentLabel("flexible"), "Goal step");
     });
 
     const weak = { title: "piano lesson", hasFixedTime: false, source: "capture" as const };

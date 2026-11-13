@@ -7,6 +7,7 @@ import "server-only";
 import { callClaude } from "@/lib/ai/call";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import type { ContextEntry } from "@/lib/types";
+import { prepareFact } from "@/lib/student/facts";
 
 const CHUNK = 20000;
 const MAX_CHUNKS = 4;
@@ -34,9 +35,9 @@ const SCHEMA = {
 const SYSTEM = `A high school student pasted what another AI assistant knows about them (or a chat export). Pull out durable facts that would help a planner that schedules their schoolwork, activities and goals.
 
 Keep: their school and grade, classes, activities and when they happen, goals (college, career, skills, projects), deadlines that matter, how they like to work, constraints (job, family, transport), people who matter for their plans.
-Drop: anything about the AI itself, one-off chat topics, sensitive health/financial details unless they directly affect scheduling, and guesses.
+Drop: anything about the AI itself, one-off chat topics, guesses, and anything sensitive: health, mental health, family conflict, relationships, sexuality, religion, substances, money troubles. Leave those out even when they affect scheduling.
 
-Each fact is one short sentence in third person ("Takes AP Calculus BC", "Has robotics Tue/Thu until 6"). No duplicates. At most 40.
+Each fact is one short sentence written to the student, in the second person ("You take AP Calculus BC", "You have robotics Tue/Thu until 6"). Be specific; skip anything too vague to plan with. No duplicates. At most 40.
 
 Categories: goal, commitment (recurring schedule), work (classes, school work, jobs), habit (how they work), preference, person, general.`;
 
@@ -63,11 +64,13 @@ export async function factsFromText(text: string): Promise<ImportedFact[]> {
   const seen = new Set<string>();
   const out: ImportedFact[] = [];
   for (const f of results.flat()) {
-    const fact = f.fact?.trim();
-    const key = fact?.toLowerCase();
-    if (!fact || !key || seen.has(key)) continue;
+    // The same filter as saving: the preview never offers what can't be kept.
+    const prepared = prepareFact({ category: f.category, fact: f.fact ?? "", source: "manual" });
+    if (!prepared.ok) continue;
+    const key = prepared.display.toLowerCase();
+    if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ category: f.category, fact: fact.slice(0, 300) });
+    out.push({ category: f.category, fact: prepared.display });
   }
   return out.slice(0, 60);
 }

@@ -4,7 +4,7 @@
 // (lib/dev/sample-state.ts), for design review without an account.
 // /dev/app/today, /dev/app/calendar, /dev/app/projects, /dev/app/project, /dev/app/school, /dev/app/settings, /dev/app/settings-account (…-security, -schedule,
 // -notifications, -context, -activity, -data),
-// /dev/app/ai, /dev/app/preview, /dev/app/color, /dev/app/grill. 404s in production. API calls fail here (no session), so
+// /dev/app/tangents, /dev/app/preview, /dev/app/color, /dev/app/grill. 404s in production. API calls fail here (no session), so
 // anything loaded from the server shows its empty or error state.
 
 import { notFound, useParams } from "next/navigation";
@@ -13,12 +13,14 @@ import MotionProvider from "@/components/MotionProvider";
 import { PipelineFlagProvider } from "@/components/PipelineFlag";
 import AppShell from "@/components/AppShell";
 import TaskDetail from "@/components/TaskDetail";
-import TaskChatSheet from "@/components/chat/TaskChatSheet";
+import FirstRun from "@/components/FirstRun";
 import TodayHome from "@/components/today/TodayHome";
 import PlanCalendarPreview from "@/components/preview/PlanCalendarPreview";
 import ColorPicker from "@/components/projects/ColorPicker";
 import SlotQuestionCard from "@/components/grill/SlotQuestionCard";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { GET_TO_KNOW_EVENT } from "@/components/GetToKnowYou";
+import { followUpById, followUpStorageKey } from "@/lib/student/follow-ups";
 import CalendarPage from "@/app/(app)/calendar/page";
 import ProjectsPage from "@/app/(app)/projects/page";
 import SchoolPage from "@/app/(app)/projects/school/page";
@@ -32,7 +34,7 @@ import NotificationSettings from "@/app/(app)/settings/notifications/page";
 import ContextSettings from "@/app/(app)/settings/context/page";
 import ActivitySettings from "@/app/(app)/settings/activity/page";
 import DataSettings from "@/app/(app)/settings/data/page";
-import AiPage from "@/app/(app)/ai/page";
+import TangentsPage from "@/app/(app)/tangents/page";
 import { SAMPLE_STATE } from "@/lib/dev/sample-state";
 import { addDaysYMD, getUserToday } from "@/lib/time";
 
@@ -82,6 +84,19 @@ function GrillSample() {
   );
 }
 
+/** The daily follow-up bubble with a sample question (the API isn't reachable here). */
+function FollowUpSample() {
+  useEffect(() => {
+    const q = followUpById("fuSlipFreeze", []);
+    try {
+      window.localStorage.setItem(followUpStorageKey("anonymous"), JSON.stringify({ v: 1, day: null, current: q, asked: [] }));
+    } catch {}
+    const t = window.setTimeout(() => window.dispatchEvent(new Event(GET_TO_KNOW_EVENT)), 300);
+    return () => window.clearTimeout(t);
+  }, []);
+  return <TodayHome />;
+}
+
 /** The settings layout doesn't apply under /dev, so each page gets the frame here. */
 function framed(Inner: React.ComponentType): React.ComponentType {
   return function Framed() {
@@ -105,10 +120,15 @@ const PAGES: Record<string, React.ComponentType> = {
   "settings-context": framed(ContextSettings),
   "settings-activity": framed(ActivitySettings),
   "settings-data": framed(DataSettings),
-  ai: AiPage,
+  tangents: TangentsPage,
+  paths: TangentsPage,
   preview: PreviewCalendarSample,
   color: ColorPickerSample,
   grill: GrillSample,
+  followup: FollowUpSample,
+  setup: function SetupSample() {
+    return <FirstRun onComplete={() => {}} />;
+  },
 };
 
 export default function AppPreview() {
@@ -126,7 +146,6 @@ export default function AppPreview() {
             </main>
           </AppShell>
           <TaskDetail />
-          <TaskChatSheet />
         </MotionProvider>
       </MockAppStateProvider>
     </PipelineFlagProvider>

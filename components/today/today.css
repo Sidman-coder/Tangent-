@@ -2,7 +2,7 @@
 
 .today-v2 {
   width: 100%;
-  max-width: 720px;
+  max-width: 880px; /* Round 4: wider, still one scannable column */
   margin-inline: auto;
   gap: 16px;
 }
@@ -199,6 +199,12 @@
   .today-row .today-row-actions[data-open] { opacity: 1; order: 10; flex-basis: 100%; justify-content: flex-end; padding-top: 4px; }
   .today-row-btn { min-height: 44px; }
 }
+/* Desktop: the hover actions keep their space while hidden, so they sit before
+   the time. Every row's time then lines up on the right edge. */
+@media (min-width: 768px) and (hover: hover) and (pointer: fine) {
+  .today-row .today-row-actions { order: 1; }
+  .today-row .today-row-when { order: 2; }
+}
 .today-row .today-step-split { margin: 0 12px 12px 46px; overflow: hidden; }
 .today-step-actions { display: flex; flex-wrap: wrap; gap: 4px; }
 
@@ -252,3 +258,121 @@
 .today-now-time { order: 2; }
 .today-section-bar .today-fresh { margin-top: 0; padding-top: 0; border-top: 0; }
 .today-section-bar.is-fresh-only { justify-content: flex-end; }
+
+/* Round 4 §3.4: the check-in after Done and the why behind Not today. Sits
+   above the receipt, one tap, always skippable. */
+.step-follow {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 148px);
+  z-index: 61;
+  display: grid;
+  gap: var(--s-2);
+  width: min(420px, calc(100vw - 32px));
+  padding: var(--s-3);
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 18px 44px -18px rgb(0 0 0 / 0.45);
+  translate: -50% 0;
+}
+.step-follow-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s-2); }
+.step-follow-head p { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.step-follow-x { flex: none; display: grid; place-items: center; width: 32px; height: 32px; margin: -6px -6px 0 0; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
+.step-follow-x:hover { background: var(--surface-2); color: var(--text); }
+.step-follow-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.step-follow-chip {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.step-follow-chip:hover { border-color: var(--accent); }
+.step-follow-chip[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.step-follow-note { min-height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: transparent; color: var(--text); font: inherit; font-size: 14px; }
+.step-follow-note:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.step-follow-actions { display: flex; justify-content: flex-end; align-items: center; gap: var(--s-2); }
+.step-follow-quiet { justify-self: start; min-height: 36px; padding: 0 8px; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
+.step-follow-quiet:hover { color: var(--text); text-decoration: underline; }
+.step-follow-save { min-height: 36px; padding: 0 16px; border: 0; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.step-follow-save:disabled { opacity: 0.6; cursor: default; }
+.step-follow-reply { margin: 0; font-size: 14px; line-height: 1.5; }
+
+/* Round 4 §5.1: the day on a timeline rail. A thin line runs down the left
+   with a marker and start time per part; a faint full-width divider separates
+   the parts. Empty parts stay as one faint row so the day's shape is always
+   the same; the part the clock is in gets a filled marker and the Now line. */
+.today-timeline {
+  --rail-gutter: 56px;
+  --rail-x: 44px;
+  position: relative;
+  display: grid;
+  padding-left: var(--rail-gutter);
+}
+.today-timeline::before {
+  content: "";
+  position: absolute;
+  top: 26px;
+  bottom: 26px;
+  left: var(--rail-x);
+  width: 1px;
+  background: var(--line);
+}
+.today-timeline .today-part {
+  position: relative;
+  gap: 4px;
+  padding-block: 4px 12px;
+}
+.today-timeline .today-part.is-empty { padding-bottom: 4px; }
+.today-timeline .today-part + .today-part::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: calc(-1 * var(--rail-gutter));
+  height: 1px;
+  background: color-mix(in srgb, var(--line) 70%, transparent);
+}
+.today-rail-mark {
+  position: absolute;
+  top: 26px;
+  left: calc(var(--rail-x) - var(--rail-gutter) - 4px);
+  width: 9px;
+  height: 9px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--text-3);
+  border-radius: 50%;
+  background: var(--bg, var(--surface));
+  transform: translateY(-50%);
+}
+.today-part.is-current .today-rail-mark { border-color: var(--red); background: var(--red); }
+.today-part.is-empty:not(.is-current) .today-rail-mark { border-color: var(--line); }
+.today-rail-time {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+  transform: translateY(-50%);
+}
+.today-part.is-empty .ui-group-header { min-height: 44px; color: var(--text-3); font-weight: 500; }
+.today-part-empty { color: var(--text-3); font-size: 13px; font-weight: 400; }
+/* The Now line starts on the rail: its dot sits on the line. */
+.today-timeline .today-now { margin-left: calc(var(--rail-x) - var(--rail-gutter) - 3px); }
+.today-timeline .today-now-dot { width: 7px; height: 7px; }
+
+@media (max-width: 767px) {
+  .today-timeline { --rail-gutter: 24px; --rail-x: 6px; }
+  .today-rail-time { display: none; }
+  .today-part.is-empty .ui-group-header-range { display: none; }
+}

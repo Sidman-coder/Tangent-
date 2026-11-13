@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { updateTask, recordAction } from "@/lib/store";
 import { withUser } from "@/lib/request-context";
+import { logStepEvent } from "@/lib/student/step-events";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +32,7 @@ export const POST = withUser(async (request: Request) => {
     return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
   }
 
+  logStepEvent({ kind: "rescheduled", task });
   const action = await recordAction(
     "reschedule_task",
     `Moved "${task.title}" to ${suggestedDate} ${suggestedTime}`,

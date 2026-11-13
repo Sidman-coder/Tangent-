@@ -87,7 +87,8 @@
   --rail-w: 232px;
   --topbar-h: 56px;
   --bottom-nav-h: calc(64px + env(safe-area-inset-bottom));
-  --content-max: 760px;
+  --content-max: 1120px; /* Round 4: pages use the width (was 760) */
+  --content-read: 760px; /* a column of text: chat transcripts, forms */
   --content-wide: 1180px;
   --page-gutter: 16px;
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { exportUserData } from "@/lib/store";
+import { exportUserData, getUserTimezone } from "@/lib/store";
+import { getUserToday } from "@/lib/time";
 import { withUser } from "@/lib/request-context";
 
 export const runtime = "nodejs";
@@ -13,7 +14,8 @@ export const GET = withUser(async () => {
   try {
     const tables = await exportUserData();
     const body = JSON.stringify({ exportedAt: new Date().toISOString(), app: "Tangent", tables }, null, 2);
-    const day = new Date().toISOString().slice(0, 10);
+    // The student's own date, not UTC: an export at 10 pm is still today's.
+    const day = getUserToday(await getUserTimezone());
     return new Response(body, {
       headers: {
         "Content-Type": "application/json; charset=utf-8",

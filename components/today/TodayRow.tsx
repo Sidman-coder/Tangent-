@@ -110,7 +110,7 @@ export default function TodayRow({ task, plans, now, today, timezone, busy, hasQ
         <div className="ui-task-copy">
           <button type="button" className="ui-task-title-button today-row-title" onClick={() => openTask(task.id)}>
             <TaskTitle task={task} projectName={planTitle} />
-            {hasQuestions && <span className="task-question-dot" title="Tangent has a question about this" />}
+            {hasQuestions && <span className="sr-only"> (Tangent has a question about this)</span>}
           </button>
           {project && <span className="ui-task-meta">{project}</span>}
         </div>

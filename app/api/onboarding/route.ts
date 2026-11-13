@@ -6,8 +6,9 @@ import { parsePreferencesPatch, parseSubmission } from "@/lib/onboarding";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Finishes the first-run flow: the one server save for every answer, the
- *  timezone, and the School block (replaced, never duplicated). */
+/** Finishes the first-run flow: the one server save for every answer. The
+ *  commitments replace the busy blocks on the calendar, and each answer is
+ *  saved as a fact the student said (replaced on Redo setup, never stacked). */
 export const POST = withUser(async (req: Request) => {
   const parsed = parseSubmission(await req.json().catch(() => null));
   if (!parsed.ok) return NextResponse.json({ ok: false, error: parsed.error }, { status: 400 });

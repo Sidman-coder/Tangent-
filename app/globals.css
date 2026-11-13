@@ -1758,6 +1758,15 @@ textarea:focus {
   accent-color: var(--accent);
 }
 
+.preview-card-used {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.preview-card-used > span {
+  font-weight: 600;
+}
 .preview-card-note,
 .preview-card-muted {
   margin: 0;
@@ -3739,7 +3748,7 @@ textarea:focus {
   flex-direction: column;
   gap: 4px;
   width: 100%;
-  max-width: 820px;
+  max-width: 960px;
   margin: 0 auto;
   padding: 20px 20px 48px;
 }
@@ -4086,6 +4095,14 @@ textarea:focus {
 }
 .knows-group li:last-child {
   border-bottom: 0;
+}
+.knows-group li > span {
+  flex: 1;
+  min-width: 0;
+}
+.knows-guess {
+  color: var(--text-3);
+  font-style: normal;
 }
 .knows-summary,
 .knows-empty {
@@ -4471,6 +4488,9 @@ body .gtk-sheet {
   font-size: .75rem;
 }
 .plan-month-cell:nth-child(7n) .plan-month-tip, .plan-month-cell:nth-child(7n - 1) .plan-month-tip { inset-inline: auto 0; }
+/* Round 4 §3.3: placeTip() nudges it back on screen or flips it above. */
+.plan-month-tip { translate: var(--tip-dx, 0) 0; box-shadow: 0 6px 20px color-mix(in srgb, #000 14%, transparent); }
+.plan-month-tip.is-above { inset-block: auto 100%; }
 @media (hover: hover) {
   .plan-month-step:hover .plan-month-tip, .plan-month-step:focus-visible .plan-month-tip { display: grid; gap: 4px; }
 }
@@ -4702,4 +4722,121 @@ body .gtk-sheet {
 }
 .preview-week-tip span {
   color: var(--text-2);
+}
+
+/* ── Round 4 Phase 4.2: add a task (components/AddTaskModal.tsx) ─────────── */
+.add-task-when {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+.add-task-new-project {
+  margin-top: 8px;
+}
+.add-task-type {
+  min-width: 0;
+  margin-inline: 0;
+  padding: 0;
+  border: 0;
+}
+.add-task-type legend {
+  margin-bottom: 6px;
+  padding: 0;
+  color: var(--text-2);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.add-task-type-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-elevated);
+}
+.add-task-type .add-task-type-option {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 34px;
+  padding: 0 8px;
+  border-radius: calc(var(--r-md) - 3px);
+  color: var(--text-2);
+  font-size: 0.84rem;
+  font-weight: 550;
+  text-align: center;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.add-task-type-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.add-task-type .add-task-type-option.is-on {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgb(20 15 30 / 0.08), 0 0 0 1px var(--line);
+}
+.add-task-type-option:has(input:focus-visible) {
+  outline: 2px solid var(--focus, var(--accent));
+  outline-offset: 1px;
+}
+
+.add-build-ask {
+  text-align: left;
+}
+.add-build-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  margin-bottom: 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.add-build-copy {
+  margin: 6px 0 14px;
+  color: var(--text-2);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+.add-build-dont {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  color: var(--text-2);
+  font-size: 0.86rem;
+  cursor: pointer;
+}
+@media (max-width: 480px) {
+  .add-task-when { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .add-task-type-option { transition: none; }
+}
+
+/* Round 4 Phase 7: 44px to tap on phones (plan preview controls, You's add row). */
+@media (max-width: 767px) {
+  .preview-week-toggle button,
+  .preview-week-nav button {
+    position: relative;
+  }
+  .preview-week-toggle button::after {
+    content: "";
+    position: absolute;
+    inset: -8px 0;
+  }
+  .preview-week-nav button::after {
+    content: "";
+    position: absolute;
+    inset: -7px;
+  }
+  .knows-add input,
+  .knows-add-btn {
+    min-height: 44px;
+  }
 }

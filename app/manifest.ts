@@ -10,7 +10,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Tangent",
     short_name: "Tangent",
     description: "Say it. Capture it. Build it.",
-    start_url: "/",
+    start_url: "/capture",
     display: "standalone",
     background_color: "#f7f6fb",
     theme_color: "#f7f6fb",

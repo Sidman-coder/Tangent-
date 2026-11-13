@@ -11,11 +11,15 @@ import {
   updateRecurringTask,
   getUserTimezone,
   recordAction,
+  getAllPlans,
 } from "@/lib/store";
 import { getUserToday } from "@/lib/time";
 import type { TaskCommitment, TaskKind } from "@/lib/types";
 import { withUser } from "@/lib/request-context";
 import { trackEvent } from "@/lib/analytics";
+import { logServerError } from "@/lib/server-log";
+import { normalizeTime, taskFieldError } from "@/lib/task-input";
+import { logStepEvent } from "@/lib/student/step-events";
 
 const TASK_KINDS: TaskKind[] = ["school", "academic-ec", "side-ec", "personal", "commitment"];
 const COMMITMENTS: TaskCommitment[] = ["fixed", "reminder", "flexible"];
@@ -26,14 +30,26 @@ export const revalidate = 0;
 
 /** GET — returns full AppState for polling by the frontend */
 export const GET = withUser(async () => {
-  const state = await getAppState();
-  return NextResponse.json(state);
+  try {
+    const state = await getAppState();
+    return NextResponse.json(state);
+  } catch (e) {
+    // Polled every few seconds; a failure here used to surface as a bare 500
+    // with nothing in the logs. The client keeps its last state and retries.
+    logServerError("api/tasks", e, { method: "GET" });
+    return NextResponse.json({ ok: false, error: "Couldn't load your tasks. Trying again shortly." }, { status: 500 });
+  }
 });
 
 /** POST — executes a task action against the store */
 export const POST = withUser(async (req: Request) => {
+  let action: string | undefined;
   try {
-    const body = (await req.json()) as {
+    const parsed: unknown = await req.json().catch(() => null);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return NextResponse.json({ ok: false, error: "Send a JSON object" }, { status: 400 });
+    }
+    const body = parsed as {
       action?: string;
       id?: string;
       title?: string;
@@ -53,11 +69,29 @@ export const POST = withUser(async (req: Request) => {
       patch?: Record<string, unknown>;
       notes?: string;
       ids?: unknown;
+      /** Round 4 Phase 4.2: the add form's Project picker. */
+      planId?: string | null;
     };
 
     console.log("[api/tasks] POST action:", body.action);
 
-    const action = body.action;
+    action = typeof body.action === "string" ? body.action.slice(0, 40) : undefined;
+
+    // Values Postgres would reject become a 400 here, not a 500 from the insert.
+    const fieldError = taskFieldError(body);
+    if (fieldError) return NextResponse.json({ ok: false, error: fieldError }, { status: 400 });
+    if (typeof body.time === "string") body.time = normalizeTime(body.time);
+
+    // Round 4 Phase 4.2: the add form can put a task in a project and say what
+    // kind it is (Must-do / Goal step / Reminder). Only the student's own
+    // projects count; anything else stays Personal.
+    const addPlanId =
+      (action === "add_task" || action === "add_recurring_task") && typeof body.planId === "string" && body.planId
+        ? (await getAllPlans()).some((p) => p.id === body.planId)
+          ? body.planId
+          : null
+        : null;
+    const addCommitment = COMMITMENTS.includes(body.commitment as TaskCommitment) ? (body.commitment as TaskCommitment) : undefined;
 
     if (action === "add_task") {
       if (!body.title?.trim()) {
@@ -71,6 +105,8 @@ export const POST = withUser(async (req: Request) => {
         completed: false,
         calendarId: body.calendarId ?? null,
         notes: body.notes?.trim() || undefined,
+        ...(addPlanId ? { planId: addPlanId } : {}),
+        ...(addCommitment ? { commitment: addCommitment } : {}),
       });
       if (task.wasDuplicate) {
         console.log("[api/tasks] add_task skipped duplicate:", task.id);
@@ -78,6 +114,7 @@ export const POST = withUser(async (req: Request) => {
       }
       console.log("[api/tasks] add_task success:", task.id);
       trackEvent("capture", { task_id: task.id, source: "manual" });
+      logStepEvent({ kind: "created", task });
       return NextResponse.json({ ok: true, task, state: await getAppState() });
     }
 
@@ -89,6 +126,7 @@ export const POST = withUser(async (req: Request) => {
       if (!task) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
       console.log("[api/tasks] complete_task success:", body.id);
       trackEvent("task_done", { task_id: task.id });
+      logStepEvent({ kind: "done", task });
       return NextResponse.json({ ok: true, task, state: await getAppState() });
     }
 
@@ -131,7 +169,10 @@ export const POST = withUser(async (req: Request) => {
       const task = await toggleTask(body.id);
       if (!task) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
       console.log("[api/tasks] toggle_task success:", body.id, "->", task.completed);
-      if (task.completed) trackEvent("task_done", { task_id: task.id });
+      if (task.completed) {
+        trackEvent("task_done", { task_id: task.id });
+        logStepEvent({ kind: "done", task });
+      }
       return NextResponse.json({ ok: true, task, state: await getAppState() });
     }
 
@@ -147,10 +188,14 @@ export const POST = withUser(async (req: Request) => {
         patch.kind = body.kind as TaskKind;
       }
       if (body.completed !== undefined) patch.completed = body.completed;
+      const moved = body.date !== undefined || body.time !== undefined;
       const task = await updateTask(body.id, patch);
       if (!task) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
       console.log("[api/tasks] update_task success:", body.id);
-      if (body.completed === true) trackEvent("task_done", { task_id: task.id });
+      if (body.completed === true) {
+        trackEvent("task_done", { task_id: task.id });
+        logStepEvent({ kind: "done", task });
+      } else if (moved) logStepEvent({ kind: "rescheduled", task });
       return NextResponse.json({ ok: true, task, state: await getAppState() });
     }
 
@@ -182,6 +227,7 @@ export const POST = withUser(async (req: Request) => {
       const task = await updateTask(body.id, { overdueDismissedAt: new Date().toISOString() });
       if (!task) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
       const saved = Boolean(task.overdueDismissedAt);
+      if (saved) logStepEvent({ kind: "skipped", task });
       const record = saved
         ? await recordAction("reschedule_task", `Dismissed "${task.title}"`, {
             restoredFields: [{ taskId: task.id, fields: { overdueDismissedAt: before.overdueDismissedAt ?? null } }],
@@ -207,6 +253,8 @@ export const POST = withUser(async (req: Request) => {
           completed: false,
           calendarId: body.calendarId ?? null,
           notes: body.notes?.trim() || undefined,
+          ...(addPlanId ? { planId: addPlanId } : {}),
+          ...(addCommitment ? { commitment: addCommitment } : {}),
         },
         {
           frequency: freq,
@@ -232,15 +280,18 @@ export const POST = withUser(async (req: Request) => {
       if (!body.id) {
         return NextResponse.json({ ok: false, error: "id is required" }, { status: 400 });
       }
+      const patchError = body.patch && typeof body.patch === "object" ? taskFieldError(body.patch) : body.patch == null ? null : "patch must be an object";
+      if (patchError) return NextResponse.json({ ok: false, error: patchError }, { status: 400 });
+      if (body.patch && typeof body.patch.time === "string") body.patch.time = normalizeTime(body.patch.time);
       const updated = await updateRecurringTask(body.id, body.patch ?? {}, body.updateAll ?? false);
       console.log("[api/tasks] update_recurring — id:", body.id, "| updateAll:", body.updateAll, "| updated:", updated);
       return NextResponse.json({ ok: true, updated, state: await getAppState() });
     }
 
-    return NextResponse.json({ ok: false, error: `Unknown action: ${action}` }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "Unknown action" }, { status: 400 });
   } catch (e) {
-    const message = e instanceof Error ? e.message : "Unknown error";
-    console.error("[api/tasks] POST error:", message);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    // The real error stays on the server, without the request's content.
+    logServerError("api/tasks", e, { method: "POST", action });
+    return NextResponse.json({ ok: false, error: "That didn't save. Try again." }, { status: 500 });
   }
 });

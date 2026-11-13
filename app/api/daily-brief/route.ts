@@ -5,12 +5,14 @@
 // button wants an answer now, not in up to an hour. Both routes publish through the
 // same publishDailyBrief() so the Bell only ever shows one pinned brief per day.
 import { NextResponse } from "next/server";
-import { getAllTasks, getContextAsString, getUserTimezone } from "@/lib/store";
+import { getAllTasks, getUserTimezone } from "@/lib/store";
+import { studentFactsText } from "@/lib/ai/student-context";
 import { addDaysYMD, currentInstant, getUserToday } from "@/lib/time";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import { DAILY_BRIEF_SCHEMA, DEFAULT_DAILY_BRIEF, publishDailyBrief, type DailyBrief } from "@/lib/daily-brief";
 import { withUser } from "@/lib/request-context";
 import { callClaude } from "@/lib/ai/call";
+import { TODAYS_SUMMARY_ENABLED } from "@/lib/feature-flags";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,12 +20,14 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export const POST = withUser(async () => {
+  // Hidden for now (Round 4 §5.2); nothing in the app calls this while it's off.
+  if (!TODAYS_SUMMARY_ENABLED) return NextResponse.json({ ok: false, error: "Today's summary is off" }, { status: 404 });
   try {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) return NextResponse.json({ ok: false, error: "No API key" });
 
     const tasks = await getAllTasks();
-    const userContext = await getContextAsString();
+    const userContext = await studentFactsText("brief");
     const timeZone = await getUserTimezone();
     const now = currentInstant();
     const today = getUserToday(timeZone, now);

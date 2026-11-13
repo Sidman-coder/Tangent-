@@ -30,7 +30,7 @@ export async function extendPlan(planId: string, request: string, source: "typed
   const tz = await getUserTimezone();
   const today = localNow(tz).date;
   const existing = (await getAllTasks()).filter((t) => t.planId === planId).sort((a, b) => a.date.localeCompare(b.date));
-  const picture = await buildStudentContext().catch(() => null);
+  const picture = await buildStudentContext({ purpose: "extend", projectId: planId, query: request }).catch(() => null);
 
   const listed = existing
     .slice(-40)

@@ -215,9 +215,9 @@ Flag-on items are marked **(on)**; everything else applies with the flag on and 
 
 **Sign-in (Phase 1B)**
 
-3. **Code sign-in.** Enter an invited email: "Check your email" shows six boxes. Type the 6-digit code from the email: it signs in without pressing a button.
+3. **Code sign-in.** Enter an invited email: "Check your email" shows one code field. Type or paste the code from the email (6 to 10 digits), then press **Sign in**. Nothing submits on its own.
 4. **Resend.** The button reads "Resend code in Ns" and unlocks at 60s. After a resend, "New code sent. Older codes no longer work." and the first code is refused.
-5. **Not invited.** An email outside `ALLOWED_EMAILS` gets the "isn't invited" message and no email is sent.
+5. **Not invited (Round 4).** An email outside `ALLOWED_EMAILS` gets an account and lands on `/waitlist` ("You're on the list"), still signed in. Every page leads back there and every API returns 403.
 6. **Slow link.** Open the email link with the network throttled to offline after the page loads: "Signing you in…" turns into "Tangent didn't hear back in time…" after 10 seconds, with **Try again** and **Use a code instead**.
 7. **Alias email.** A `name+test@…` address that is on the invite list signs in (by code and by link).
 8. **Right site.** On a Vercel preview URL, the email link returns to that same preview, not localhost or production.

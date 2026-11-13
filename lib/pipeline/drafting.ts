@@ -5,8 +5,8 @@
 
 import "server-only";
 import { NextResponse } from "next/server";
-import { addVoiceLog, getAllPlans, getAllTasks, likelyDuplicateTitles, saveChangeSet } from "../store";
-import { getRequestContext } from "../request-context";
+import { addVoiceLog, attachFactsUsed, getAllPlans, getAllTasks, likelyDuplicateTitles, saveChangeSet } from "../store";
+import { factsUsedThisRequest, getRequestContext } from "../request-context";
 import { describeChangeSet, type ChangeOp, type ChangeSet } from "./changeset";
 import { buildDraft, type DraftInput, type PreviewPayload } from "./draft";
 import { logEvent } from "./events";
@@ -63,6 +63,12 @@ export async function respondWithDraft(
     { changeSetId: changeSet.id, planId: changeSet.target_plan_id }
   );
   const preview = await previewFor(changeSet, meta.today);
+  // "Used: …" on the card: the facts the AI was shown, never the prompt.
+  const used = factsUsedThisRequest();
+  if (used.length) {
+    preview.factsUsed = used.slice(0, 6).map((f) => f.text);
+    await attachFactsUsed("change_sets", changeSet.id, used);
+  }
   await addVoiceLog({ text: meta.text, response: changeSet.summary, action: "preview", ok: true });
   return NextResponse.json({ ok: true, action: "preview", changeSet, preview, response: changeSet.summary });
 }

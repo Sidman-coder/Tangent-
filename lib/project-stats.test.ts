@@ -20,7 +20,7 @@ let n = 0;
 const step = (date: string, over: Partial<StatTask> = {}): StatTask => ({ id: `t${n++}`, title: "Step", date, time: "16:00", completed: false, ...over });
 
 void (import("./project-stats") as Promise<typeof import("./project-stats")>).then(
-  ({ assignmentWeight, bottleneckStep, courseGroups, dueThisWeek, nextDeadline, nextSteps, paceOf, progressOf, recommendedPace, schoolFocus, stepsByWeek, weekdayDate, weekSessions, workloadByWeek }) => {
+  ({ assignmentWeight, hoursLabel, startsLabel, bottleneckStep, courseGroups, dueThisWeek, nextDeadline, nextSteps, paceOf, progressOf, recommendedPace, schoolFocus, stepsByWeek, weekdayDate, weekSessions, workloadByWeek }) => {
     test("progress counts done over total and copes with nothing", () => {
       assert.deepEqual(progressOf([step(TODAY, { completed: true }), step(TODAY), step(TODAY)]), { done: 1, total: 3, percent: 33 });
       assert.deepEqual(progressOf([]), { done: 0, total: 0, percent: 0 });
@@ -36,6 +36,29 @@ void (import("./project-stats") as Promise<typeof import("./project-stats")>).th
 
     test("a brand-new plan with nothing due yet is on track", () => {
       assert.equal(paceOf([step("2026-11-10"), step("2026-11-20")], TODAY).status, "On track");
+    });
+
+    test("day one: a plan whose first step is today starts today, never Behind (Round 4 §3.6)", () => {
+      const fresh = paceOf([step(TODAY), step("2026-11-05"), step("2026-11-07")], TODAY);
+      assert.equal(fresh.status, "On track");
+      assert.equal(fresh.startsOn, TODAY);
+      assert.equal(startsLabel(fresh.startsOn!, TODAY), "Starts today");
+      const later = paceOf([step("2026-11-05"), step("2026-11-09")], TODAY);
+      assert.equal(later.startsOn, "2026-11-05");
+      assert.equal(startsLabel(later.startsOn!, TODAY), "Starts Thu, Nov 5");
+      // Once a step is missed it has started, and it can be behind.
+      const missed = paceOf([step("2026-11-02"), step(TODAY)], TODAY);
+      assert.equal(missed.startsOn, null);
+      assert.notEqual(missed.status, "On track");
+    });
+
+    test("workload reads in whole or half hours", () => {
+      assert.equal(hoursLabel(0), "nothing planned");
+      assert.equal(hoursLabel(20), "about 15 min");
+      assert.equal(hoursLabel(40), "about 45 min");
+      assert.equal(hoursLabel(60), "about 1 hr");
+      assert.equal(hoursLabel(290), "about 5 hrs");
+      assert.equal(hoursLabel(150), "about 2.5 hrs");
     });
 
     test("keeping up with what's needed is on track", () => {
@@ -86,7 +109,8 @@ void (import("./project-stats") as Promise<typeof import("./project-stats")>).th
     test("a project whose first step is ahead and nothing done hasn't started", () => {
       assert.equal(paceOf([step("2026-11-17"), step("2026-11-20")], TODAY).startsOn, "2026-11-17");
       assert.equal(paceOf([step("2026-11-17"), step("2026-11-01", { completed: true })], TODAY).startsOn, null);
-      assert.equal(paceOf([step(TODAY), step("2026-11-20")], TODAY).startsOn, null);
+      // Round 4 §3.6: a first step dated today still reads "Starts today".
+      assert.equal(paceOf([step(TODAY), step("2026-11-20")], TODAY).startsOn, TODAY);
       assert.equal(weekdayDate("2026-11-17"), "Tue, Nov 17");
     });
 

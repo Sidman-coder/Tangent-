@@ -52,6 +52,22 @@ export function passwordProblem(password: string, email?: string | null): string
   return null;
 }
 
+export type PasswordRule = { id: "length" | "common" | "email"; label: string; met: boolean };
+
+/** The rules as calm hints that turn green one by one (Round 4, Phase 1.3).
+ *  Same checks as passwordProblem; all met means it passes. */
+export function passwordRules(password: string, email?: string | null): PasswordRule[] {
+  const lower = password.trim().toLowerCase();
+  const e = (email ?? "").trim().toLowerCase();
+  const local = e.split("@")[0] ?? "";
+  const isEmail = !!e && (lower === e || (local.length >= 3 && lower === local));
+  return [
+    { id: "length", label: `At least ${MIN_PASSWORD_LENGTH} characters`, met: password.length >= MIN_PASSWORD_LENGTH && password.length <= MAX_PASSWORD_LENGTH },
+    { id: "common", label: "Not a common password", met: !!password && !COMMON.has(lower) },
+    { id: "email", label: "Not your email", met: !!password && !isEmail },
+  ];
+}
+
 export type Strength = { score: 0 | 1 | 2 | 3; label: string };
 
 /** A rough hint while typing. It never blocks; passwordProblem does. */

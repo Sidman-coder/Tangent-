@@ -9,7 +9,6 @@ import * as m from "motion/react-m";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import ActionReceipt from "@/components/ActionReceipt";
 import AddFlow from "@/components/add/AddFlow";
-import HomeChat from "@/components/chat/HomeChat";
 import FreshStart from "@/components/dashboard/FreshStart";
 import { CanvasCard, StartingIntentCard } from "@/components/dashboard/HomeCards";
 import QuestionsInbox from "@/components/dashboard/QuestionsInbox";
@@ -25,11 +24,12 @@ import { prefsOf } from "@/lib/personalize";
 import { isOnboardingSchoolTask } from "@/lib/school-block";
 import { inView } from "@/lib/task-filters";
 import { localNow, wallClockNow } from "@/lib/time";
-import { readReplanDay, readSetAside, writeReplanDay, writeSetAside } from "@/lib/today-local";
+import { bumpPutOff, readReplanDay, readSetAside, writeReplanDay, writeSetAside } from "@/lib/today-local";
 import { glanceLine, groupTodayTasks } from "@/lib/today-sections";
 import { MAX_AUTO_MOVES, canMoveStep, freshStartSteps, missedSteps, type SmallerStep } from "@/lib/today-steps";
 import type { ActionRecord, Task } from "@/lib/types";
 import TodayFilter, { useTodayView } from "./TodayFilter";
+import StepFollowUp, { type FollowUp } from "./StepFollowUp";
 import TodayNudge from "./TodayNudge";
 import TodaySections from "./TodaySections";
 import { useSetupLeft } from "./useSetupLeft";
@@ -160,13 +160,13 @@ export default function TodayHome() {
     [today]
   );
   const onToday = useMemo(() => doable.filter((t) => !setAside.has(t.id)), [doable, setAside]);
-  const groups = useMemo(() => groupTodayTasks(onToday, instant, tz), [instant, onToday, tz]);
+  const groups = useMemo(() => groupTodayTasks(onToday, instant, tz, plans), [instant, onToday, tz, plans]);
 
   // The view tabs narrow the list; the greeting and glance still speak for the whole day.
   const [view, setView] = useTodayView();
   const shownGroups = useMemo(
-    () => (view === "all" ? groups : groupTodayTasks(onToday.filter((t) => inView(t, view)), instant, tz)),
-    [groups, instant, onToday, tz, view]
+    () => (view === "all" ? groups : groupTodayTasks(onToday.filter((t) => inView(t, view)), instant, tz, plans)),
+    [groups, instant, onToday, tz, view, plans]
   );
 
   const displayName = state?.user.displayName?.trim() ?? "";
@@ -229,10 +229,19 @@ export default function TodayHome() {
       await postJson("/api/tasks", { action: "update_task", id: task.id, completed });
     });
 
+  // Round 4 §3.4: after Done, a skippable check-in; the second Not today on a
+  // step asks why first.
+  const [followUp, setFollowUp] = useState<FollowUp | null>(null);
+
   const onDone = (task: Task) => {
-    void setCompleted(task, true).then((ok) =>
-      ok ? showReceipt(`Completed “${task.title}”`, () => void setCompleted(task, false)) : showReceipt("That didn't save. Try again.")
-    );
+    void setCompleted(task, true).then((ok) => {
+      if (!ok) return showReceipt("That didn't save. Try again.");
+      showReceipt(`Completed “${task.title}”`, () => {
+        setFollowUp((f) => (f?.task.id === task.id ? null : f));
+        void setCompleted(task, false);
+      });
+      setFollowUp({ kind: "check_in", task });
+    });
   };
 
   const onUndone = (task: Task) => {
@@ -247,10 +256,20 @@ export default function TodayHome() {
   };
 
   const onNotToday = (task: Task) => {
+    if (bumpPutOff(task.id) >= 2) return setFollowUp({ kind: "why_not", task });
+    moveOffToday(task, null);
+  };
+
+  const onWhyNot = (task: Task, reason: string | null) => {
+    setFollowUp(null);
+    moveOffToday(task, reason);
+  };
+
+  const moveOffToday = (task: Task, reason: string | null) => {
     if (!canMoveStep(task)) return setAsideForToday(task);
     let result: Record<string, unknown> = {};
     void withOverride(task, {}, async () => {
-      result = await postJson("/api/today", { action: "not_today", taskId: task.id });
+      result = await postJson("/api/today", { action: "not_today", taskId: task.id, reason });
     }).then((ok) => {
       if (!ok) return showReceipt("That didn't move. Try again.");
       const { actionId, date } = result;
@@ -447,7 +466,8 @@ export default function TodayHome() {
         </m.details>
       )}
 
-      <HomeChat />
+
+      {followUp && <StepFollowUp key={`${followUp.kind}-${followUp.task.id}`} followUp={followUp} onWhyNot={onWhyNot} onClose={() => setFollowUp(null)} />}
 
       {receipt && (
         <div key={receipt.id} className="today-receipt" role="status">

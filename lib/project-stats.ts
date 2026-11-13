@@ -79,7 +79,9 @@ export function paceOf(tasks: StatTask[], today: string): Pace {
     return t.date >= weekAgo;
   }).length;
   const overdue = dated.filter((t) => t.date < today).length;
-  const wasDue = tasks.some((t) => t.date >= weekAgo && t.date <= today);
+  // Round 4 §3.6: a step dated today isn't missed until today is over, so a
+  // plan made this morning never opens on "Behind: 0 steps done".
+  const wasDue = tasks.some((t) => t.date && t.date >= weekAgo && t.date < today);
 
   let status: PaceStatus = "On track";
   // Nothing has come due yet: a brand-new plan isn't behind for having no
@@ -88,8 +90,24 @@ export function paceOf(tasks: StatTask[], today: string): Pace {
     status = doneLast7 / neededThisWeek >= BEHIND_BELOW ? "Slightly behind" : "Behind";
   }
   const first = dated[0]?.date;
-  const startsOn = first && first > today && !tasks.some((t) => t.completed) ? first : null;
+  const startsOn = first && first >= today && overdue === 0 && !tasks.some((t) => t.completed) ? first : null;
   return { remaining: open.length, daysLeft, neededThisWeek, doneLast7, approximate, overdue, status, startsOn };
+}
+
+/** "Starts today", "Starts tomorrow", "Starts Tue, Nov 10". */
+export function startsLabel(startsOn: string, today: string): string {
+  if (startsOn === today) return "Starts today";
+  if (startsOn === addDaysYMD(today, 1)) return "Starts tomorrow";
+  return `Starts ${weekdayDate(startsOn)}`;
+}
+
+/** Round 4 §3.6: workload in whole or half hours, never "4.7 hrs" or
+ *  "283 min": "about 30 min", "about 1 hr", "about 2.5 hrs". */
+export function hoursLabel(minutes: number): string {
+  if (!Number.isFinite(minutes) || minutes <= 0) return "nothing planned";
+  if (minutes < 45) return `about ${Math.max(15, Math.round(minutes / 15) * 15)} min`;
+  const half = Math.max(1, Math.round(minutes / 30) / 2);
+  return `about ${half} hr${half === 1 ? "" : "s"}`;
 }
 
 export function nextSteps<T extends StatTask>(tasks: T[], count = 3): T[] {

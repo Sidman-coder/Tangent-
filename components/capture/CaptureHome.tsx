@@ -18,9 +18,7 @@ import { OPEN_PALETTE_EVENT, useVoiceCapture } from "@/hooks/useVoiceCapture";
 import { useQuestionSets } from "@/hooks/useQuestionSets";
 import { useBrowserCaption } from "@/hooks/useBrowserCaption";
 import { captionWords, liveCaption } from "@/lib/live-caption";
-import { buildCaptureList, type CaptureRow } from "@/lib/capture-list";
-import { NO_TIME_LABEL, applyTaskFilter, type TaskFilter } from "@/lib/task-filters";
-import TaskFilterChips, { useTaskFilter } from "@/components/TaskFilterChips";
+import { CAPTURE_LENSES, buildCaptureList, captureSections, parseCaptureLens, type CaptureLens } from "@/lib/capture-list";
 import { holdReducer, initialHold, listeningWithoutPress, spaceStartsHold, type Hold, type HoldEvent } from "@/lib/hold-gesture";
 import { heardSomethingToAdd, soundsLikeATask } from "@/lib/voice-intent";
 import { putAsk } from "@/lib/ask-handoff";
@@ -35,6 +33,7 @@ import CaptureIsland from "./CaptureIsland";
 import FocusView, { saveFocus } from "./FocusView";
 import SortedCard from "./SortedCard";
 import { useCapture } from "./useCapture";
+import { markEntered } from "@/lib/entry";
 import "./capture.css";
 
 const TICK_MS = 50;
@@ -42,9 +41,7 @@ const TICK_MS = 50;
  *  Covers only the wait for the transcript; the save itself has no cap. */
 const SEND_TIMEOUT_MS = 9000;
 
-/** The whole list until the student narrows it. */
-const ALL_TASKS: TaskFilter = { day: "all", time: "any" };
-const rowTask = (row: CaptureRow) => row.task;
+const LENS_KEY = "tangent-capture-lens";
 
 const EASE_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
 const EASE_IN: [number, number, number, number] = [0.5, 0, 0.75, 0];
@@ -89,6 +86,8 @@ export default function CaptureHome() {
   // route changes, so the hop into the app is one continuous motion.
   const [leaving, setLeaving] = useState(false);
   useEffect(() => {
+    // Seen the capture home this session: / is Today from here on (lib/entry.ts).
+    markEntered();
     router.prefetch("/");
   }, [router]);
   const openApp = useCallback(
@@ -261,9 +260,26 @@ export default function CaptureHome() {
     [state?.tasks, done]
   );
   const allRows = useMemo(() => buildCaptureList(tasks, state?.plans ?? [], today), [tasks, state?.plans, today]);
-  const [filter, setFilter] = useTaskFilter("capture", ALL_TASKS);
-  const filtered = useMemo(() => applyTaskFilter(allRows, rowTask, filter, today, state?.user.weekStart ?? 0), [allRows, filter, today, state?.user.weekStart]);
-  const rows = useMemo(() => [...filtered.main, ...filtered.noTime], [filtered]);
+  // Round 4 Phase 4: three chips, remembered in this browser. All, Urgent
+  // (has to happen now), Projects (goal steps, by project).
+  const [lens, setLensState] = useState<CaptureLens>("all");
+  useEffect(() => {
+    try {
+      setLensState(parseCaptureLens(localStorage.getItem(LENS_KEY)));
+    } catch {
+      /* storage blocked: All it is */
+    }
+  }, []);
+  const setLens = useCallback((next: CaptureLens) => {
+    setLensState(next);
+    try {
+      localStorage.setItem(LENS_KEY, next);
+    } catch {
+      /* still applies until reload */
+    }
+  }, []);
+  const sections = useMemo(() => captureSections(allRows, state?.plans ?? [], today, lens), [allRows, state?.plans, today, lens]);
+  const firstId = sections[0]?.rows[0]?.task.id;
 
   const complete = useCallback(
     async (task: Task) => {
@@ -337,7 +353,8 @@ export default function CaptureHome() {
 
   const washOn = listening;
   const wash = revealCircle(origin, typeof window === "undefined" ? { width: 0, height: 0 } : { width: window.innerWidth, height: window.innerHeight });
-  const count = rows.length;
+  const count = sections.reduce((n, sec) => n + sec.rows.length, 0);
+  const urgentCount = lens === "all" ? sections.find((sec) => sec.group === "urgent")?.rows.length ?? 0 : 0;
 
   return (
     <div className="capture-home">
@@ -359,45 +376,65 @@ export default function CaptureHome() {
         </header>
 
         <h1 className="capture-title">To do</h1>
-        <p className="capture-count">{count === 1 ? "1 thing" : `${count} things`}</p>
+        <p className="capture-count">
+          {count === 1 ? "1 thing" : `${count} things`}
+          {urgentCount > 0 && <span className="capture-count-urgent"> · {urgentCount} urgent</span>}
+        </p>
 
-        {allRows.length > 0 && <TaskFilterChips filter={filter} onChange={setFilter} />}
+        {allRows.length > 0 && (
+          <div className="capture-lenses" role="group" aria-label="Show">
+            {CAPTURE_LENSES.map(({ id, label }) => (
+              <button key={id} type="button" className="capture-lens" aria-pressed={lens === id} onClick={() => setLens(id)}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {state && allRows.length === 0 ? (
           <p className="capture-empty">Nothing to do. Hold to add something.</p>
         ) : state && count === 0 ? (
-          <p className="capture-empty">Nothing here. Try another filter.</p>
+          <p className="capture-empty">{lens === "urgent" ? "Nothing urgent. Nice." : "No project steps in the next two weeks."}</p>
         ) : (
-          <ul className="capture-list">
-            <AnimatePresence initial={false}>
-              {rows.flatMap(({ task, sub, overdue }, i) => [
-                ...(i === filtered.main.length ? [<li key="no-time" className="task-filter-group">{NO_TIME_LABEL}</li>] : []),
-                <m.li
-                  key={task.id}
-                  layout={!reduced}
-                  className={`capture-row${overdue ? " is-overdue" : ""}`}
-                  initial={reduced ? { opacity: 0 } : { opacity: 0, y: -14, scale: 0.9, boxShadow: "0 0 0 6px rgb(91 75 196 / 0.22)" }}
-                  animate={{ opacity: 1, y: 0, scale: 1, boxShadow: "0 0 0 0px rgb(91 75 196 / 0)" }}
-                  exit={reduced ? { opacity: 0 } : { opacity: 0, x: 24, transition: { duration: 0.22 } }}
-                  transition={{ type: "spring", visualDuration: 0.55, bounce: 0.35, boxShadow: { duration: 0.9 } }}
-                >
-                  <button type="button" className="capture-check" aria-label={`Complete ${task.title}`} onClick={() => void complete(task)}>
-                    <Check size={12} strokeWidth={3} aria-hidden="true" />
-                  </button>
-                  <button type="button" className="capture-row-body" onClick={() => openTask(task.id)}>
-                    <span className="capture-row-title">{task.title}</span>
-                    {sub && <span className="capture-row-sub">{sub}</span>}
-                  </button>
-                  {i === 0 && (
-                    <button type="button" className="capture-start" onClick={(e) => startFocusOn(task, e.currentTarget)}>
-                      Start
-                    </button>
-                  )}
-                  <i className="capture-dot" style={{ background: seriesColor(taskSeries(task, state?.plans ?? [])) }} aria-hidden="true" />
-                </m.li>,
-              ])}
-            </AnimatePresence>
-          </ul>
+          <div className="capture-sections">
+            {sections.map((sec) => (
+              <section key={sec.id} className={`capture-section is-${sec.group}`} aria-label={sec.label}>
+                <h2 className="capture-section-head">
+                  <span>{sec.label}</span>
+                  <span className="capture-section-count">{sec.rows.length}</span>
+                </h2>
+                <ul className="capture-list">
+                  <AnimatePresence initial={false}>
+                    {sec.rows.map(({ task, sub, overdue }) => (
+                      <m.li
+                        key={task.id}
+                        layout={!reduced}
+                        className={`capture-row${overdue ? " is-overdue" : ""}`}
+                        style={{ "--row-tint": seriesColor(taskSeries(task, state?.plans ?? [])) } as React.CSSProperties}
+                        initial={reduced ? { opacity: 0 } : { opacity: 0, y: -10, scale: 0.96 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={reduced ? { opacity: 0 } : { opacity: 0, x: 24, transition: { duration: 0.22 } }}
+                        transition={{ type: "spring", visualDuration: 0.45, bounce: 0.25 }}
+                      >
+                        <button type="button" className="capture-check" aria-label={`Complete ${task.title}`} onClick={() => void complete(task)}>
+                          <Check size={12} strokeWidth={3} aria-hidden="true" />
+                        </button>
+                        <button type="button" className="capture-row-body" onClick={() => openTask(task.id)}>
+                          <span className="capture-row-title">{task.title}</span>
+                          {sub && <span className="capture-row-sub">{sub}</span>}
+                        </button>
+                        {task.id === firstId && (
+                          <button type="button" className="capture-start" onClick={(e) => startFocusOn(task, e.currentTarget)}>
+                            Start
+                          </button>
+                        )}
+                      </m.li>
+                    ))}
+                  </AnimatePresence>
+                </ul>
+              </section>
+            ))}
+          </div>
         )}
       </m.div>
 

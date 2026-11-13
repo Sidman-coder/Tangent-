@@ -7,7 +7,7 @@
 
 .settings-page .settings-layout {
   display: grid;
-  grid-template-columns: 180px minmax(0, 720px);
+  grid-template-columns: 220px minmax(0, 760px); /* Round 4 §5.3 */
   gap: 40px;
   align-items: start;
 }
@@ -307,4 +307,11 @@
 .data-processors strong {
   color: var(--text);
   font-weight: 600;
+}
+
+/* Round 4 Phase 7: 44px to tap on phones. */
+@media (max-width: 767px) {
+  .settings-page .settings-row .settings-select:is(select) {
+    height: 44px;
+  }
 }

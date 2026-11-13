@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import { pollPendingBriefBatch, submitDailyBriefBatch } from "@/lib/daily-brief";
 import { forEachCronUser } from "@/lib/cron-users";
+import { TODAYS_SUMMARY_ENABLED } from "@/lib/feature-flags";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,6 +37,8 @@ export async function GET(request: Request) {
   if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
+  // Today's summary is hidden for now (Round 4 §5.2): no new briefs, no model calls.
+  if (!TODAYS_SUMMARY_ENABLED) return NextResponse.json({ ok: true, skipped: "todays_summary_off" });
 
   try {
     const results = await forEachCronUser("daily-brief", async () => {

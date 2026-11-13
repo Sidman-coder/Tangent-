@@ -8,7 +8,7 @@
 // the create_plan / add_task cases already in app/api/voice/route.ts.
 import { inferCalendarGroup, parseCalendarGroup } from "@/lib/calendars";
 import { placeNewTask } from "@/lib/spacing";
-import { addTask, addPlan, updateTask, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, getAllTasks, getTasksByDate, addPendingConfirmation, getUserTimezone } from "@/lib/store";
+import { addTask, addPlan, updateTask, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, recordAction, getAllTasks, getTasksByDate, addPendingConfirmation, getUserTimezone } from "@/lib/store";
 import type { Task, TaskKind } from "@/lib/types";
 import { getRecentEmails, getEmailById } from "@/lib/gmail";
 import { addDaysYMD, getUserToday, promptDateContext } from "@/lib/time";
@@ -17,6 +17,7 @@ import { currentUserIsOwner } from "@/lib/request-context";
 import { resolvePlanTitle } from "@/lib/plan-title";
 import { perfCount, perfSpan } from "@/lib/perf";
 import { callClaude } from "@/lib/ai/call";
+import { studentFactsText } from "@/lib/ai/student-context";
 import { cacheLastMessage, layeredSystem } from "@/lib/ai/cache";
 import type Anthropic from "@anthropic-ai/sdk";
 import { cleanTitle } from "@/lib/quick-add";
@@ -641,7 +642,7 @@ export async function runVoiceAgentToolLoop(userText: string, requestText = user
   if (!apiKey) throw new Error("Missing ANTHROPIC_API_KEY");
 
   const tz = await getUserTimezone();
-  const userContext = await getContextAsString();
+  const userContext = await studentFactsText("voice");
   const messages: AnthropicMessage[] = [{ role: "user", content: userText }];
 
   let finalText = "";

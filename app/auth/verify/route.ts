@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
-import { NOT_INVITED, isEmailAllowed, normalizeEmail } from "@/lib/auth/access";
-import { codeFailure } from "@/lib/auth/messages";
+import { normalizeEmail } from "@/lib/auth/access";
+import { CODE_INCOMPLETE, codeFailure, isCodeLength } from "@/lib/auth/messages";
+import { WAITLIST_PATH, isAllowedUser } from "@/lib/auth/gate";
+import { recordWaitlist } from "@/lib/auth/waitlist-server";
+import { logServerError } from "@/lib/server-log";
 import { safeNext } from "@/lib/auth/safe-next";
 import { hasPasswordFlag } from "@/lib/auth/password";
 
@@ -13,7 +16,7 @@ const EMAIL_TYPES: EmailOtpType[] = ["email", "magiclink", "signup", "invite", "
 
 type Body = { email?: unknown; token?: unknown; token_hash?: unknown; type?: unknown; next?: unknown; purpose?: unknown };
 
-// Finishes email sign-in with either the 6-digit code ({email, token}) or the
+// Finishes email sign-in with either the 6–10 digit code ({email, token}) or the
 // link's token hash ({token_hash, type}, posted by /auth/confirm). A POST, so an
 // email scanner that prefetches the link can't use up the token.
 export async function POST(request: Request) {
@@ -26,11 +29,8 @@ export async function POST(request: Request) {
   if (typeof body.token === "string") {
     const email = typeof body.email === "string" ? normalizeEmail(body.email) : "";
     const token = body.token.replace(/\D/g, "");
-    if (!email || token.length !== 6) {
-      return NextResponse.json({ ok: false, error: "Enter the 6-digit code from the email." }, { status: 400 });
-    }
-    if (!isEmailAllowed(email)) {
-      return NextResponse.json({ ok: false, notInvited: true, error: NOT_INVITED }, { status: 403 });
+    if (!email || !isCodeLength(token)) {
+      return NextResponse.json({ ok: false, error: CODE_INCOMPLETE }, { status: 400 });
     }
     // A forgot-password code comes from the Reset Password email.
     result = await supabase.auth.verifyOtp({ email, token, type: body.purpose === "reset" ? "recovery" : "email" });
@@ -44,18 +44,22 @@ export async function POST(request: Request) {
 
   const { data, error } = result;
   if (error) {
-    console.warn("[auth/verify] failed:", error.code ?? error.status ?? "error");
+    logServerError("auth/verify", error);
     const failure = codeFailure(error);
     return NextResponse.json({ ok: false, error: failure.error }, { status: failure.status });
   }
 
   // Use the user verifyOtp returned instead of another round-trip to Supabase.
-  if (!data.user || !isEmailAllowed(data.user.email)) {
-    await supabase.auth.signOut();
-    return NextResponse.json({ ok: false, notInvited: true, next: "/invite-only", error: NOT_INVITED }, { status: 403 });
+  if (!data.user) {
+    return NextResponse.json({ ok: false, error: codeFailure({}).error }, { status: 400 });
   }
   // The sign-in page offers "Create a password" to a new account that has none.
   const created = Date.parse(data.user.created_at ?? "");
   const newAccount = Number.isFinite(created) && Date.now() - created < 60 * 60 * 1000;
-  return NextResponse.json({ ok: true, next, passwordSet: hasPasswordFlag(data.user.app_metadata), newAccount });
+  // Not invited yet: signed in all the same; middleware keeps them on the waitlist page.
+  // Not allowed: they join the waitlist once (lib/auth/waitlist.ts).
+  const allowed = isAllowedUser(data.user);
+  if (!allowed) await recordWaitlist(data.user);
+  const dest = allowed ? next : WAITLIST_PATH;
+  return NextResponse.json({ ok: true, next: dest, passwordSet: hasPasswordFlag(data.user.app_metadata), newAccount });
 }

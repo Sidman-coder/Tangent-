@@ -1,39 +1,31 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { isEmailAllowed } from "@/lib/auth/access";
+import { accessOf, gate, skipsSessionCheck } from "@/lib/auth/gate";
 import { safeNext } from "@/lib/auth/safe-next";
 
 // Runs on every app route (see matcher). Refreshes the Supabase session cookie,
-// then gates access:
-//   * public paths — sign-in, auth callback/sign-out, invite-only page, cron
-//     (cron routes keep their own CRON_SECRET check)
-//   * signed-out   — pages redirect to /signin, API routes get 401
-//   * not invited  — signed out server-side and sent to /invite-only
-
-const PUBLIC_PATHS = ["/signin", "/invite-only", "/auth/", "/api/cron/"];
-
-// Routes that finish sign-in or run on a schedule handle the session
-// themselves, so they skip the getUser() round-trip to Supabase Auth.
-const NO_SESSION_CHECK = ["/auth/", "/api/cron/"];
-
-function isPublic(pathname: string): boolean {
-  return PUBLIC_PATHS.some((p) => (p.endsWith("/") ? pathname.startsWith(p) : pathname === p));
-}
+// then applies lib/auth/gate.ts:
+//   * /auth/*, /api/cron/*  skip the session check (they handle their own)
+//   * /dev/*                development only; 404 in production
+//   * signed out            pages go to /signin, APIs get 401
+//   * waitlist              not on ALLOWED_EMAILS: session kept, pages go to
+//                           /waitlist, APIs get 403
+//   * under 13              pages go to /not-yet, APIs get 403
 
 /** Redirect that keeps any session cookies Supabase just set or cleared. */
-function redirectWithCookies(url: URL, from: NextResponse): NextResponse {
-  const res = NextResponse.redirect(url);
+function withCookies<T extends NextResponse>(res: T, from: NextResponse): T {
   from.cookies.getAll().forEach((c) => res.cookies.set(c));
   return res;
 }
 
 export async function middleware(request: NextRequest) {
-  if (NO_SESSION_CHECK.some((p) => request.nextUrl.pathname.startsWith(p))) return NextResponse.next({ request });
+  const { pathname, search } = request.nextUrl;
+  if (skipsSessionCheck(pathname)) return NextResponse.next({ request });
 
-  // Local design previews (app/dev/*, sample data, no account). The pages
-  // themselves 404 outside development too.
-  if (process.env.NODE_ENV === "development" && request.nextUrl.pathname.startsWith("/dev/")) {
-    return NextResponse.next({ request });
+  const isDev = process.env.NODE_ENV === "development";
+  // Local design previews (app/dev/*, sample data, no account).
+  if (pathname === "/dev" || pathname.startsWith("/dev/")) {
+    return isDev ? NextResponse.next({ request }) : new NextResponse("Not found", { status: 404 });
   }
 
   let response = NextResponse.next({ request });
@@ -62,37 +54,24 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { pathname, search } = request.nextUrl;
-  const isApi = pathname.startsWith("/api/");
+  const decision = gate({
+    pathname,
+    search,
+    access: accessOf(user),
+    isDev,
+    next: safeNext(request.nextUrl.searchParams.get("next")),
+  });
 
-  if (user && !isEmailAllowed(user.email)) {
-    await supabase.auth.signOut();
-    if (isApi) {
-      const res = NextResponse.json({ ok: false, error: "Tangent is invite-only right now" }, { status: 403 });
-      response.cookies.getAll().forEach((c) => res.cookies.set(c));
-      return res;
-    }
-    if (pathname === "/invite-only") return response;
-    return redirectWithCookies(new URL("/invite-only", request.url), response);
+  switch (decision.kind) {
+    case "next":
+      return response;
+    case "not_found":
+      return new NextResponse("Not found", { status: 404 });
+    case "json":
+      return withCookies(NextResponse.json({ ok: false, error: decision.error }, { status: decision.status }), response);
+    case "redirect":
+      return withCookies(NextResponse.redirect(new URL(decision.to, request.url)), response);
   }
-
-  if (isPublic(pathname)) {
-    if (user && pathname === "/signin") {
-      return redirectWithCookies(new URL(safeNext(request.nextUrl.searchParams.get("next")), request.url), response);
-    }
-    return response;
-  }
-
-  if (!user) {
-    if (isApi) {
-      return NextResponse.json({ ok: false, error: "Not signed in" }, { status: 401 });
-    }
-    const signin = new URL("/signin", request.url);
-    if (pathname !== "/") signin.searchParams.set("next", pathname + search);
-    return redirectWithCookies(signin, response);
-  }
-
-  return response;
 }
 
 export const config = {

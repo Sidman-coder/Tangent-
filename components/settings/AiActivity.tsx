@@ -8,7 +8,6 @@ import "@/components/settings/ai-activity.css";
 // Only rendered while TANGENT_PIPELINE_V2 is on (the API answers 404 when
 // it's off). Details links elsewhere open a row with ?activity=<by>:<id>.
 
-import Link from "next/link";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import ActionReceipt from "@/components/ActionReceipt";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
@@ -376,11 +375,6 @@ function Why({ row, onUndone, onDelete }: { row: ActivityRow; onUndone: () => vo
 
       <div className="aia-why-actions">
         {w.undo && <ActionReceipt actionId={w.undo.actionId} label={w.undo.label} onUndone={onUndone} />}
-        {w.draftOpen && (
-          <Link className="aia-link" href="/ai">
-            Find it in Chats
-          </Link>
-        )}
         <button type="button" className="aia-delete" onClick={onDelete}>
           Delete from log
         </button>

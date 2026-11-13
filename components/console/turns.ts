@@ -23,6 +23,8 @@ export type Turn = {
   planDraft?: boolean;
   /** Pipeline V2 (A4): talked through after "Just talking" (components/console/talking.ts). */
   talking?: boolean;
+  /** Round 4 §3.2: when the request was saved, for a project chat's history list. */
+  at?: string;
   /** Pipeline V2 (A4): the reply is a complete schedule; the chip offers it. */
   planReady?: boolean;
   /** Pipeline V2 (A4): that schedule was drafted into a preview or dismissed. */
@@ -121,7 +123,7 @@ export type ChatMode = "plan" | "calendar";
  *  The last turn's saved question card comes back live (its pending question
  *  only until it expires); older cards were answered, so only their text shows. */
 export function turnsFromMessages(
-  messages: { role: "user" | "assistant"; content: string; actionId?: string; changeSetId?: string }[],
+  messages: { role: "user" | "assistant"; content: string; actionId?: string; changeSetId?: string; timestamp?: string }[],
   openConfirms: { id: string; message: string }[] = [],
   now: Date = new Date()
 ): Turn[] {
@@ -129,6 +131,7 @@ export function turnsFromMessages(
   for (let i = 0; i < messages.length; i++) {
     if (messages[i].role !== "user") continue;
     const request = messages[i].content;
+    const at = messages[i].timestamp;
     let response = "";
     // The saved change ids come back with the reply, so Undo survives a reload.
     let actionId: string | undefined;
@@ -146,6 +149,7 @@ export function turnsFromMessages(
       tools: [],
       sourcesChecked: [],
       response,
+      ...(at ? { at } : {}),
       ...(actionId ? { actionId } : {}),
       ...(changeSetId ? { changeSetId } : {}),
       ...(card && i === messages.length - 1 ? liveCard(card, now) : {}),

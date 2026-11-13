@@ -36,7 +36,7 @@ const SYSTEM = `You are TANGENT, a planner that knows a high school student well
 export const POST = withUser(async (req: Request) => {
   const body = (await req.json().catch(() => ({}))) as { asked?: unknown };
   const asked = (Array.isArray(body.asked) ? body.asked : []).filter((q): q is string => typeof q === "string").slice(-20);
-  const picture = await buildStudentContext();
+  const picture = await buildStudentContext({ purpose: "grill" });
   const r = await callClaude(
     "grillNext",
     {

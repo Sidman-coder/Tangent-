@@ -22,6 +22,7 @@ import {
   updateTask,
 } from "../store";
 import { applyChangeSetWith, type ApplyResult, type ApplyStore } from "./apply-core";
+import { logStepEvents } from "@/lib/student/step-events";
 import type { ChangeSet } from "./changeset";
 
 export type { ApplyResult } from "./apply-core";
@@ -44,6 +45,14 @@ const store: ApplyStore = {
 };
 
 /** See applyChangeSetWith (apply-core.ts). */
-export function applyChangeSet(input: ChangeSet): Promise<ApplyResult> {
-  return applyChangeSetWith(store, input);
+export async function applyChangeSet(input: ChangeSet): Promise<ApplyResult> {
+  const result = await applyChangeSetWith(store, input);
+  // The observation log (lib/student/step-events.ts): each new step, once.
+  if (result.ok && result.createdTaskIds.length) {
+    const ids = new Set(result.createdTaskIds);
+    void getAllTasks()
+      .then((all) => logStepEvents(all.filter((t) => ids.has(t.id)).map((task) => ({ kind: "created" as const, task }))))
+      .catch(() => undefined);
+  }
+  return result;
 }

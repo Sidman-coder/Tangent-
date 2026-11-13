@@ -74,11 +74,11 @@ export default function OnboardingSection({
         <div className="settings-row">
           <div className="settings-row-copy">
             <strong>Let Tangent get to know you</strong>
-            <span>Six quick questions about school, goals and how you work. About two minutes.</span>
+            <span>One question at a time, about what Tangent doesn&apos;t know yet. You type the answer.</span>
             <Status done={known >= ENOUGH_FACTS}>{facts === null ? "Checking…" : `Tangent knows ${known} thing${known === 1 ? "" : "s"} about you`}</Status>
           </div>
           <Button size="sm" variant={known >= ENOUGH_FACTS ? "secondary" : "primary"} onClick={() => window.dispatchEvent(new Event(GET_TO_KNOW_EVENT))}>
-            Start
+            Ask me one
           </Button>
         </div>
 
@@ -98,7 +98,7 @@ export default function OnboardingSection({
         <div className="settings-row">
           <div className="settings-row-copy">
             <strong>Setup answers</strong>
-            <span>School hours, what you want help with, and where you&apos;re starting. Go through them again, prefilled.</span>
+            <span>Your grade, your regular commitments, what matters this year and how you work. Go through them again, prefilled.</span>
           </div>
           <Button size="sm" loading={redoing} loadingLabel="Opening…" onClick={onRedoSetup}>
             Redo setup

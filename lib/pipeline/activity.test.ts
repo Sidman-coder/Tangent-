@@ -14,6 +14,7 @@ const FAKE_CONTEXT =
       "export const requestMemo = (_k, f) => f();" +
       "export const forgetMemo = () => {};" +
       "export const trackPending = () => {};" +
+      "export const factsUsedThisRequest = () => [];" +
       "export const currentUserIsOwner = () => !!globalThis.__aiaOwner;"
   );
 // The service-role client: only the decision-write test hands one out.

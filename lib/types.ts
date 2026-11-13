@@ -149,8 +149,21 @@ export interface ContextEntry {
   id: string;
   timestamp: string;
   category: "preference" | "habit" | "commitment" | "goal" | "person" | "work" | "general";
+  /** What to show: the cleaned-up second-person line when there is one. */
   fact: string; // the extracted key point
   source: "chat" | "voice" | "manual";
+  // Round 4 student model (absent until the migration runs).
+  /** The student's own words, as stored. */
+  original?: string;
+  factCategory?: import("./student/facts").FactCategory;
+  factSource?: import("./student/facts").FactSource;
+  confidence?: number;
+  lastConfirmedAt?: string | null;
+  projectId?: string | null;
+  usedCount?: number;
+  slotKey?: string | null;
+  /** Tangent guessed it; never shown as true until confirmed. */
+  unconfirmed?: boolean;
 }
 
 export interface UserContext {

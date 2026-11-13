@@ -307,7 +307,7 @@ export default function PathScene({
       ref={camera.stageRef}
       className={`path-stage${camera.isDragging ? " is-dragging" : ""}`}
       role="application"
-      aria-label="Your path, as circles and tangents. Drag to move; scroll or pinch to zoom."
+      aria-label="Your Tangent, as circles and branches. Drag to move; scroll or pinch to zoom."
     >
       <PathAmbient read={camera.read} reduced={reduced} />
 
@@ -607,7 +607,7 @@ export default function PathScene({
           data-path-interactive
           className="path-zoombar-btn"
           onClick={fitAll}
-          aria-label="Fit the whole path"
+          aria-label="Fit the whole Tangent"
           title="Fit the whole path"
         >
           <Maximize2 size={14} aria-hidden="true" />

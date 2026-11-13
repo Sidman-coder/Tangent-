@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { forwardRef, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
@@ -59,8 +59,10 @@ type ToastProps = {
   className?: string;
 };
 
-/** docs/design/TANGENT-STYLE.md §8 Toast. Render inside a ToastPortal. */
-export default function Toast({
+/** docs/design/TANGENT-STYLE.md §8 Toast. Render inside a ToastPortal.
+ *  Forwards its ref: AnimatePresence mode="popLayout" measures the exiting
+ *  toast through it, and warns if a child can't take one. */
+const Toast = forwardRef<HTMLDivElement, ToastProps>(function Toast({
   tone = "neutral",
   icon,
   title,
@@ -70,7 +72,7 @@ export default function Toast({
   duration = 5000,
   dismissLabel = "Dismiss",
   className = "",
-}: ToastProps) {
+}, ref) {
   const onDismissRef = useRef(onDismiss);
   onDismissRef.current = onDismiss;
   const timer = useRef<number | null>(null);
@@ -113,6 +115,7 @@ export default function Toast({
 
   return (
     <m.div
+      ref={ref}
       layout
       className={`ui-toast is-${tone} ${className}`.trim()}
       role={tone === "error" ? "alert" : "status"}
@@ -151,4 +154,6 @@ export default function Toast({
       )}
     </m.div>
   );
-}
+});
+
+export default Toast;

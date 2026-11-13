@@ -59,6 +59,14 @@ export function isSchoolBlock(t: Task): boolean {
   return schoolEndFromNotes(t.notes) !== null || t.title.trim().toLowerCase() === "school";
 }
 
+/** Time the student is already spoken for: the School block, or any block
+ *  from "When are you already busy?" (lib/commitments.ts series ids start
+ *  "cmt_"). Not work: it never counts as homework. */
+export function isBusyBlock(t: Task): boolean {
+  if (isSchoolBlock(t)) return true;
+  return t.source !== "canvas" && !!t.recurring?.parentId?.startsWith("cmt_") && schoolEndFromNotes(t.notes) !== null;
+}
+
 function dayBusy(tasks: Task[], date: string, bufferMinutes = 0): { busy: Block[]; schoolEnd: number | null } {
   const busy: Block[] = [];
   let schoolEnd: number | null = null;
@@ -72,6 +80,10 @@ function dayBusy(tasks: Task[], date: string, bufferMinutes = 0): { busy: Block[
       const end = parsed !== null && parsed > start ? parsed : start + SCHOOL_FALLBACK_MIN;
       busy.push([start, end]);
       schoolEnd = Math.max(schoolEnd ?? 0, end);
+    } else if (isBusyBlock(t)) {
+      // Practice, work, lessons: busy for the whole block, start to "Until".
+      const end = schoolEndFromNotes(t.notes)!;
+      if (end > start) busy.push([start - bufferMinutes, end + bufferMinutes]);
     } else if (!t.completed) {
       const buffer = bufferMinutes > 0 && commitmentOf(t) === "fixed" ? bufferMinutes : 0;
       busy.push([start - buffer, start + STEP_BLOCK_MIN + buffer]);

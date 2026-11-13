@@ -91,7 +91,9 @@ export default function PathAmbient({ read, reduced }: Props) {
 
       // Dust, parallaxed at a fraction of the camera so it reads as further away.
       const parallax = 0.45;
-      ctx.fillStyle = "#ffffff";
+      // Light motes on the night sky, ink-coloured ones on the light sky
+      // (--path-dust, app/(app)/tangents/tangents.css).
+      ctx.fillStyle = getComputedStyle(canvas).getPropertyValue("--path-dust").trim() || "#ffffff";
       for (const mote of motes) {
         const wander = reduced ? 0 : Math.sin(t * 0.0002 * mote.drift + mote.x) * 6;
         const sx = width / 2 + (mote.x - camX * parallax) * s * 0.6 + wander;

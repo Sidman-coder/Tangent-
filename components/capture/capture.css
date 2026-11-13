@@ -69,23 +69,109 @@
   color: var(--text-2);
 }
 
+/* Round 4 Phase 4: three chips, then the list in groups (Urgent, then
+   Assignments, Projects, Personal). Each group is one panel; rows inside it
+   are split by hairlines and carry their project's colour on the left. */
+.capture-count-urgent {
+  color: var(--danger-text);
+  font-weight: 600;
+}
+.capture-lenses {
+  display: inline-flex;
+  gap: 2px;
+  margin: 0 0 18px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--elev-2);
+}
+.capture-lens {
+  min-height: 34px;
+  padding: 6px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  font: 600 13.5px var(--font-body);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.capture-lens[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgb(28 24 48 / 0.12);
+}
+.capture-lens:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.capture-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.capture-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 6px 8px;
+  color: var(--text-2);
+  font: 700 12px var(--font-body);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.capture-section-count {
+  min-width: 20px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--elev-2);
+  color: var(--text-2);
+  font-size: 11.5px;
+  letter-spacing: 0;
+  text-align: center;
+}
+.capture-section.is-urgent .capture-section-head {
+  color: var(--danger-text);
+}
+.capture-section.is-urgent .capture-section-count {
+  background: var(--red-soft);
+  color: var(--danger-text);
+}
+
 .capture-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
   margin: 0;
   padding: 0;
+  overflow: hidden;
   list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg, 16px);
+  background: var(--surface);
+}
+.capture-section.is-urgent .capture-list {
+  border-color: color-mix(in srgb, var(--red) 35%, var(--line));
 }
 .capture-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 6px 14px 6px 12px;
-  border-radius: var(--r-lg, 18px);
+  padding: 4px 14px 4px 16px;
   background: var(--surface);
-  box-shadow: 0 1px 2px rgb(28 24 48 / 0.05);
   transform-origin: 50% 0;
+}
+.capture-row + .capture-row {
+  border-top: 1px solid var(--line);
+}
+/* The project's colour, as a bar down the row's left edge. */
+.capture-row::before {
+  content: "";
+  position: absolute;
+  inset: 8px auto 8px 0;
+  width: 4px;
+  border-radius: 0 4px 4px 0;
+  background: var(--row-tint, transparent);
 }
 .capture-check {
   display: grid;
@@ -112,7 +198,7 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
-  padding: 8px 0;
+  padding: 10px 0;
   border: 0;
   background: none;
   color: inherit;
@@ -134,11 +220,8 @@
 .capture-row.is-overdue .capture-row-sub {
   color: var(--danger-text);
 }
-.capture-dot {
-  flex: none;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
+@media (prefers-reduced-motion: reduce) {
+  .capture-lens { transition: none; }
 }
 
 /* ── The lavender takeover ─────────────────────────────────────────── */

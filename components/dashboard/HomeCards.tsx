@@ -13,9 +13,9 @@ import * as m from "motion/react-m";
 import { ArrowRight, CalendarPlus, ListChecks, Route, X } from "lucide-react";
 import Button from "@/components/ui/Button";
 import CanvasConnectGuide from "@/components/CanvasConnectGuide";
-import { OPEN_PALETTE_EVENT, type OpenPaletteDetail } from "@/hooks/useVoiceCapture";
 import { riseIn } from "@/lib/motion";
 import { putNewPathTitle } from "@/lib/path-handoff";
+import { requestHomePlan } from "@/lib/home-intent";
 import { pathsStarterCopy, type Prefs } from "@/lib/personalize";
 import type { Path } from "@/lib/types";
 
@@ -37,11 +37,10 @@ export function StartingIntentCard({ intent, onCleared }: { intent: string; onCl
     void clearStartingIntent().then(onCleared);
   };
 
-  // Prefills capture; the student still reads it and presses send.
+  // Round 4 §3.1: plans it right here in Home's composer (questions first,
+  // each skippable), never a task named after the goal.
   const breakDown = () => {
-    window.dispatchEvent(
-      new CustomEvent<OpenPaletteDetail>(OPEN_PALETTE_EVENT, { detail: { prefill: `Break this into steps: ${intent}` } })
-    );
+    requestHomePlan(intent);
     done();
   };
 
@@ -62,10 +61,10 @@ export function StartingIntentCard({ intent, onCleared }: { intent: string; onCl
       <p className="home-intent-text">“{intent}”</p>
       <div className="home-card-actions">
         <Button variant="secondary" size="sm" onClick={breakDown} icon={<ListChecks size={15} aria-hidden="true" />}>
-          Break it into steps
+          Plan it
         </Button>
         <Button variant="secondary" size="sm" onClick={makePath} icon={<Route size={15} aria-hidden="true" />}>
-          Make it a Path
+          Make it a Tangent
         </Button>
       </div>
     </m.section>
@@ -178,7 +177,7 @@ export function PathsCard({ prefs }: { prefs: Prefs }) {
     return (
       <m.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="home-card home-paths" aria-labelledby="home-paths-title">
         <div className="home-paths-copy">
-          <p className="home-card-eyebrow">Paths</p>
+          <p className="home-card-eyebrow">Tangents</p>
           <h2 id="home-paths-title">{copy.title}</h2>
           <p>{copy.body}</p>
         </div>
@@ -196,11 +195,11 @@ export function PathsCard({ prefs }: { prefs: Prefs }) {
   return (
     <m.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="home-card home-paths" aria-labelledby="home-paths-title">
       <div className="home-paths-copy">
-        <p className="home-card-eyebrow">Your path{paths.length > 1 ? "s" : ""}</p>
+        <p className="home-card-eyebrow">Your Tangent{paths.length > 1 ? "s" : ""}</p>
         <h2 id="home-paths-title">{latest.title}</h2>
         <p>
           {kept > 0 ? `${done} of ${kept} steps done` : "No steps kept yet"}
-          {paths.length > 1 && ` · ${paths.length - 1} more path${paths.length > 2 ? "s" : ""}`}
+          {paths.length > 1 && ` · ${paths.length - 1} more Tangent${paths.length > 2 ? "s" : ""}`}
         </p>
         {kept > 0 && (
           <div className="home-paths-bar" role="progressbar" aria-label={`${latest.title} progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>

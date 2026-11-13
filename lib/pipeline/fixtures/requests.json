@@ -2301,6 +2301,121 @@
         "new_topic": false,
         "title": "Add bio homework tomorrow at 5"
       }
+    },
+    {
+      "id": "r4-break-down-instagram",
+      "text": "Break down plan: get 10k followers on Instagram",
+      "source": "typed",
+      "note": "Round 4 3.1: was saved as a task titled with the whole request. Must plan round 1 instead.",
+      "seed": {
+        "plans": [],
+        "tasks": []
+      },
+      "expected": {
+        "intent": "new_plan",
+        "target_plan": "NEW",
+        "min_ops": 3,
+        "max_ops": 7,
+        "must_have": [
+          "create_plan"
+        ]
+      },
+      "router": {
+        "intent": "new_plan",
+        "route": "draft"
+      }
+    },
+    {
+      "id": "r4-make-a-path",
+      "text": "make a path for learning guitar",
+      "source": "typed",
+      "note": "Round 4 3.1: \"make a path for\" plans.",
+      "seed": {
+        "plans": [],
+        "tasks": []
+      },
+      "expected": {
+        "intent": "new_plan",
+        "target_plan": "NEW",
+        "min_ops": 3,
+        "max_ops": 7,
+        "must_have": [
+          "create_plan"
+        ]
+      },
+      "router": {
+        "intent": "new_plan",
+        "route": "draft"
+      }
+    },
+    {
+      "id": "r4-help-me-sat",
+      "text": "help me get a 1400 on the SAT",
+      "source": "typed",
+      "note": "Round 4 3.1: \"help me\" with a goal plans.",
+      "seed": {
+        "plans": [],
+        "tasks": []
+      },
+      "expected": {
+        "intent": "new_plan",
+        "target_plan": "NEW",
+        "min_ops": 3,
+        "max_ops": 7,
+        "must_have": [
+          "create_plan"
+        ]
+      },
+      "router": {
+        "intent": "new_plan",
+        "route": "draft"
+      }
+    },
+    {
+      "id": "r4-steps-to",
+      "text": "steps to start a podcast",
+      "source": "typed",
+      "note": "Round 4 3.1: \"steps to\" plans.",
+      "seed": {
+        "plans": [],
+        "tasks": []
+      },
+      "expected": {
+        "intent": "new_plan",
+        "target_plan": "NEW",
+        "min_ops": 3,
+        "max_ops": 7,
+        "must_have": [
+          "create_plan"
+        ]
+      },
+      "router": {
+        "intent": "new_plan",
+        "route": "draft"
+      }
+    },
+    {
+      "id": "r4-how-do-i-get",
+      "text": "how do I get better at chess",
+      "source": "voice",
+      "note": "Round 4 3.1: \"how do I get\" plans, even with a question shape.",
+      "seed": {
+        "plans": [],
+        "tasks": []
+      },
+      "expected": {
+        "intent": "new_plan",
+        "target_plan": "NEW",
+        "min_ops": 3,
+        "max_ops": 7,
+        "must_have": [
+          "create_plan"
+        ]
+      },
+      "router": {
+        "intent": "new_plan",
+        "route": "draft"
+      }
     }
   ]
 }

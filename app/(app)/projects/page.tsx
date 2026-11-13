@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { Plus, Route } from "lucide-react";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { planSeriesColor } from "@/lib/task-colors";
 import Button from "@/components/ui/Button";
@@ -93,11 +93,18 @@ export default function ProjectsPage() {
         title="Projects"
         description="Bigger goals, broken into steps Tangent spaces out on your calendar."
         actions={
-          !showComposer && (
-            <Button variant="primary" icon={<Plus size={16} aria-hidden="true" />} onClick={() => setComposing(true)}>
-              New project
-            </Button>
-          )
+          <>
+            {/* Tangents live inside Projects (the sidebar shows them too, from laptop width). */}
+            <Link href="/tangents" className="projects-paths-link">
+              <Route size={16} strokeWidth={1.75} aria-hidden="true" />
+              Tangents
+            </Link>
+            {!showComposer && (
+              <Button variant="primary" icon={<Plus size={16} aria-hidden="true" />} onClick={() => setComposing(true)}>
+                New project
+              </Button>
+            )}
+          </>
         }
       />
 

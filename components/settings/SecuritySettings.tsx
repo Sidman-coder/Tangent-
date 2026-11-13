@@ -2,13 +2,15 @@
 
 // Settings › Security: set or change the optional password, and sign out of
 // every device. Changing needs the current password; setting one for the
-// first time (or after forgetting it) needs a fresh 6-digit email code. The
+// first time (or after forgetting it) needs a fresh email code. The
 // link in that email lands back here with ?reset=1, and counts as the proof.
 
 import { useEffect, useRef, useState } from "react";
 import Button from "@/components/ui/Button";
 import ConfirmPanel from "@/components/ui/ConfirmPanel";
+import { CODE_INCOMPLETE, CODE_MAX_LENGTH, codeDigits, isCodeLength } from "@/lib/auth/messages";
 import NewPasswordFields, { PasswordInput, newPasswordProblem } from "@/components/auth/PasswordFields";
+import { isMismatchProblem } from "@/lib/auth/confirm-state";
 import { createClient } from "@/lib/supabase/client";
 import { amrFromAccessToken, hasPasswordFlag, signedInByEmailCodeRecently } from "@/lib/auth/password";
 import { clearLocalAppData } from "@/lib/auth/clear-local";
@@ -27,6 +29,7 @@ export default function SecuritySettings({ email }: { email: string }) {
   const [codeSent, setCodeSent] = useState(false);
   const [resendIn, setResendIn] = useState(0);
   const [password, setPassword] = useState("");
+  const [submitTick, setSubmitTick] = useState(0);
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState<"send" | "save" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +65,7 @@ export default function SecuritySettings({ email }: { email: string }) {
     setPassword("");
     setConfirm("");
     setError(null);
+    setSubmitTick(0);
   };
 
   const start = () => {
@@ -99,10 +103,12 @@ export default function SecuritySettings({ email }: { email: string }) {
     if (busy) return;
     const problem =
       (proof === "current" && !current ? "Enter your current password." : null) ??
-      (proof === "code" && code.replace(/\D/g, "").length !== 6 ? "Enter the 6-digit code from the email." : null) ??
+      (proof === "code" && !isCodeLength(code) ? CODE_INCOMPLETE : null) ??
       newPasswordProblem(password, confirm, email);
     if (problem) {
-      setError(problem);
+      setSubmitTick((t) => t + 1);
+      // A mismatch is shown once, under the confirm box, not again down here.
+      setError(isMismatchProblem(problem) ? null : problem);
       return;
     }
     setBusy("save");
@@ -178,19 +184,19 @@ export default function SecuritySettings({ email }: { email: string }) {
                 </>
               ) : codeSent ? (
                 <div className="pw-field">
-                  <label className="pw-label" htmlFor="sec-code">6-digit code</label>
+                  <label className="pw-label" htmlFor="sec-code">Code from the email</label>
                   <p className="security-note">
-                    We sent a 6-digit code to {email}. Can&apos;t find it? Check spam, or tap the link in the email.
+                    We sent a sign-in code to {email}. Can&apos;t find it? Check spam, or tap the link in the email.
                   </p>
                   <input
                     id="sec-code"
                     className="pw-input security-code"
                     inputMode="numeric"
                     autoComplete="one-time-code"
-                    maxLength={6}
+                    maxLength={CODE_MAX_LENGTH}
                     autoFocus
                     value={code}
-                    onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    onChange={(e) => setCode(codeDigits(e.target.value))}
                   />
                   <button type="button" className="security-link" disabled={resendIn > 0 || busy !== null} onClick={() => void sendCode()}>
                     {busy === "send" ? "Sending…" : resendIn > 0 ? `Resend code in ${resendIn}s` : "Resend code"}
@@ -198,7 +204,7 @@ export default function SecuritySettings({ email }: { email: string }) {
                 </div>
               ) : (
                 <div className="security-send">
-                  <span>First, confirm it&apos;s you. We&apos;ll email a 6-digit code to {email}.</span>
+                  <span>First, confirm it&apos;s you. We&apos;ll email a code to {email}.</span>
                   <Button type="button" size="sm" loading={busy === "send"} loadingLabel="Sending…" onClick={() => void sendCode()}>
                     Email me a code
                   </Button>
@@ -213,6 +219,7 @@ export default function SecuritySettings({ email }: { email: string }) {
                   confirm={confirm}
                   onPassword={setPassword}
                   onConfirm={setConfirm}
+                  submitTick={submitTick}
                 />
               )}
 

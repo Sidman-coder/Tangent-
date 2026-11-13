@@ -11,7 +11,7 @@ import FormMessage from "@/components/ui/FormMessage";
 import { clearLocalAppData } from "@/lib/auth/clear-local";
 
 const STORES: { what: string; why: string }[] = [
-  { what: "Your tasks, projects, Tangents and chats", why: "That's your planner." },
+  { what: "Your tasks, projects and Tangents", why: "That's your planner." },
   { what: "What Tangent knows about you", why: "The facts on What Tangent knows, so it doesn't ask twice. Forget any of them any time." },
   { what: "The words of your last 100 voice commands", why: "So it can act on them and you can undo. Your audio itself isn't kept." },
   { what: "Your Canvas calendar link", why: "To sync assignments. It's only ever shown masked." },
@@ -32,6 +32,29 @@ export default function YourDataSection() {
   const [note, setNote] = useState<Msg>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmingAccount, setConfirmingAccount] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+
+  // Round 5A 1.4: the data, then the sign-in itself. The server decides who from
+  // the session; only the word goes in the body.
+  const deleteAccount = async () => {
+    setDeletingAccount(true);
+    setNote(null);
+    try {
+      const res = await fetch("/api/account/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "DELETE" }),
+      });
+      if (!res.ok) throw new Error("delete failed");
+      clearLocalAppData();
+      window.location.assign("/goodbye");
+    } catch {
+      setDeletingAccount(false);
+      setConfirmingAccount(false);
+      setNote({ tone: "error", text: "Couldn't delete your account. You're still signed in. Try again." });
+    }
+  };
 
   const deleteAll = async () => {
     setDeleting(true);
@@ -122,12 +145,37 @@ export default function YourDataSection() {
               onConfirm={() => void deleteAll()}
             >
               <p>
-                This permanently removes your tasks, projects, chats, notifications, AI history, what Tangent knows and your Canvas
-                connection, and restarts setup. You stay signed in. Download a copy first if you want one. This can&apos;t be undone.
+                This permanently removes your tasks, projects, chats, notifications, voice commands, what Tangent knows, how you
+                work and your Canvas connection, and restarts setup. You stay signed in. Download a copy first if you want one. This can&apos;t be undone.
               </p>
             </ConfirmPanel>
           ) : (
             <Button size="sm" variant="danger" onClick={() => setConfirmingDelete(true)}>Delete data</Button>
+          )}
+        </div>
+        <div className={`settings-row${confirmingAccount ? " is-stacked" : ""}`}>
+          <div className="settings-row-copy">
+            <strong>Delete my account</strong>
+            <span>Removes all of the above and your sign-in. You&apos;ll be signed out for good.</span>
+          </div>
+          {confirmingAccount ? (
+            <ConfirmPanel
+              title="Delete your Tangent account?"
+              word="DELETE"
+              actionLabel="Delete my account"
+              busyLabel="Deleting…"
+              busy={deletingAccount}
+              onCancel={() => setConfirmingAccount(false)}
+              onConfirm={() => void deleteAccount()}
+            >
+              <p>
+                This permanently removes your account and everything in it: tasks, projects, chats, what Tangent knows, your
+                history and your sign-in. You&apos;ll need to sign up again to come back. Download a copy first if you want one.
+                This can&apos;t be undone.
+              </p>
+            </ConfirmPanel>
+          ) : (
+            <Button size="sm" variant="danger" onClick={() => setConfirmingAccount(true)}>Delete account</Button>
           )}
         </div>
       </div>

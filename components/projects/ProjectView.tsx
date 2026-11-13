@@ -5,7 +5,7 @@
 // step (docs/design/WIREFRAMES.md §3). Steps added from the
 // project chat join this project and are spaced around the student's week.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence } from "motion/react";
@@ -14,10 +14,10 @@ import { ChevronLeft, MessageSquareText, Plus } from "lucide-react";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { openTask } from "@/components/TaskDetail";
 import { takeAsk } from "@/lib/ask-handoff";
-import ChatSheet from "@/components/chat/ChatSheet";
-import { openTaskChat } from "@/components/chat/TaskChatSheet";
+import InlineAsk, { type InlineAskHandle } from "@/components/chat/InlineAsk";
 import ColorPicker from "@/components/projects/ColorPicker";
 import ProjectStats from "@/components/projects/ProjectStats";
+import RoundReview from "@/components/projects/RoundReview";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Chip from "@/components/ui/Chip";
@@ -26,7 +26,8 @@ import GroupHeader from "@/components/ui/GroupHeader";
 import ProgressPace from "@/components/ui/ProgressPace";
 import TaskRow from "@/components/ui/TaskRow";
 import { joinProjectNotes, splitProjectNotes, type ProjectNotes } from "@/lib/project-notes";
-import { paceOf, stepsByWeek, weekdayDate, weekSessions, type Pace, type WeekSession } from "@/lib/project-stats";
+import { paceOf, startsLabel, stepsByWeek, weekdayDate, weekSessions, type Pace, type WeekSession } from "@/lib/project-stats";
+import { roundChip } from "@/lib/rounds";
 import { rowPresence, spring } from "@/lib/motion";
 import { planSeriesColor } from "@/lib/task-colors";
 import { getUserToday } from "@/lib/time";
@@ -38,9 +39,9 @@ function plural(n: number, word: string): string {
 }
 
 /** One sentence, whole numbers only (docs/design/TANGENT-STYLE.md §8 Progress / pace). */
-function paceSentence(pace: Pace, week: WeekSession[]): string {
+function paceSentence(pace: Pace, week: WeekSession[], today: string): string {
   if (pace.remaining === 0) return "Every step is done.";
-  if (pace.startsOn) return `Starts ${weekdayDate(pace.startsOn)}.`;
+  if (pace.startsOn) return `${startsLabel(pace.startsOn, today)}.`;
   const doneThisWeek = week.filter((w) => w === "done").length;
   let line: string;
   if (pace.status !== "On track") {
@@ -64,8 +65,10 @@ const MAX_CHIPS = 5;
 function briefChips(notes: ProjectNotes, lastDate: string | null): { key: string; text: string; title?: string }[] {
   const chips: { key: string; text: string; title?: string }[] = [];
   const deadline = notes.known.find((k) => DEADLINE_LABEL.test(k.label));
+  // Round 4 §3.6: a project planned in rounds shows its round, not an end date.
+  if (notes.round) chips.push({ key: "round", text: roundChip(notes.round), title: "Tangent plans the next round from how this one goes" });
   if (deadline) chips.push({ key: "due", text: `Due ${deadline.value}`, title: deadline.label });
-  else if (lastDate) chips.push({ key: "ends", text: `Ends ${weekdayDate(lastDate)}`, title: "Last step" });
+  else if (lastDate && !notes.round) chips.push({ key: "ends", text: `Ends ${weekdayDate(lastDate)}`, title: "Last step" });
   notes.known.forEach((k, i) => {
     if (k === deadline) return;
     // "5" alone says nothing; "5 hours per week" does.
@@ -94,18 +97,20 @@ export default function ProjectView({ id }: { id: string }) {
   const [deleteError, setDeleteError] = useState(false);
   const [laterOpen, setLaterOpen] = useState<boolean | null>(null);
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
-  const [chatOpen, setChatOpen] = useState(false);
-  const [askOnOpen, setAskOnOpen] = useState<string | null>(null);
+  // Round 4 Phase 4: no chat panel. The project's ask box is on the page.
+  const askRef = useRef<InlineAskHandle>(null);
+  const loaded = !!state;
 
-  // /projects/<id>?chat=1 opens the project's chat (the library, Grill, old
-  // links); &ask=1 also asks what Cmd-K handed over.
+  // /projects/<id>?ask=1 asks what was handed over (⌘K, a Grill offer);
+  // ?chat=1 (old links) just goes to the box.
   useEffect(() => {
+    if (!loaded) return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get("chat") !== "1") return;
-    if (params.get("ask") === "1") setAskOnOpen(takeAsk("ai"));
-    setChatOpen(true);
+    if (params.get("chat") !== "1" && params.get("ask") !== "1") return;
+    const asked = params.get("ask") === "1" ? takeAsk("ai") : null;
+    window.setTimeout(() => (asked ? askRef.current?.ask(asked) : askRef.current?.focus()), 60);
     router.replace(`/projects/${encodeURIComponent(id)}`, { scroll: false });
-  }, [id, router]);
+  }, [id, loaded, router]);
 
   const weekStart = state?.user.weekStart ?? 0;
   // The description holds the goal and the planner's brief; only the goal is
@@ -213,7 +218,7 @@ export default function ProjectView({ id }: { id: string }) {
         onOpen={() => openTask(task.id)}
         revealActions
         actions={
-          <button type="button" className="ui-task-help" onClick={() => openTaskChat(task.id)} aria-label={`Ask about ${task.title}`}>
+          <button type="button" className="ui-task-help" onClick={() => askRef.current?.focus(`About “${task.title}”: `)} aria-label={`Ask about ${task.title}`}>
             <MessageSquareText size={13} aria-hidden="true" />
             <span>Ask</span>
           </button>
@@ -226,12 +231,14 @@ export default function ProjectView({ id }: { id: string }) {
     <div className="project-page" style={{ "--project-color": color } as React.CSSProperties}>
       <div className="project-topbar">
         <Link href="/projects" className="project-back"><ChevronLeft size={16} aria-hidden="true" /> Projects</Link>
-        <Button size="sm" icon={<MessageSquareText size={15} strokeWidth={1.75} aria-hidden="true" />} onClick={() => setChatOpen(true)} aria-haspopup="dialog">
-          Chat
+        <Button size="sm" icon={<MessageSquareText size={15} strokeWidth={1.75} aria-hidden="true" />} onClick={() => askRef.current?.focus()}>
+          Ask
         </Button>
       </div>
 
       <header className="project-head">
+        {/* The name is an editable input, so the page heading is for screen readers. */}
+        <h1 className="sr-only">{title.trim() || "Project"}</h1>
         <div className="project-title-row">
           <span
             className="project-pie"
@@ -290,18 +297,19 @@ export default function ProjectView({ id }: { id: string }) {
                   <ul>
                     {notes.assumed.map((a, i) => <li key={i}>{a}</li>)}
                   </ul>
-                  <p className="project-planned-note">Change any of it in the project chat.</p>
+                  <p className="project-planned-note">Change any of it by asking below.</p>
                 </>
               )}
             </Card>
           </details>
         )}
       </header>
+      {notes.round && <RoundReview projectId={id} stepsKey={`${done.length}/${steps.length}`} onChanged={() => void refresh()} />}
 
       <div className="project-layout project-layout--steps">
         <div className="project-main">
           {open.length === 0 && (
-            <p className="project-empty">Every step is done. Add more in the project chat, or call it finished.</p>
+            <p className="project-empty">Every step is done. Ask for more below, or call it finished.</p>
           )}
           {sections.map((g) => {
             const folds = g.id === "later" && sections.length > 1;
@@ -331,11 +339,18 @@ export default function ProjectView({ id }: { id: string }) {
             size="sm"
             className="project-add"
             icon={<Plus size={16} strokeWidth={1.75} aria-hidden="true" />}
-            onClick={() => setChatOpen(true)}
-            aria-haspopup="dialog"
+            onClick={() => askRef.current?.focus("Add a step: ")}
           >
             Add a step
           </Button>
+
+          <InlineAsk
+            ref={askRef}
+            className="project-ask"
+            scope={{ projectId: plan.id }}
+            label={`Ask about ${plan.title}`}
+            placeholder={`Ask about ${plan.title}, or ask for more steps…`}
+          />
 
           {done.length > 0 && (
             <details className="project-done">
@@ -356,7 +371,7 @@ export default function ProjectView({ id }: { id: string }) {
             done={done.length}
             total={steps.length}
             week={pace.startsOn ? undefined : week}
-            sentence={paceSentence(pace, week)}
+            sentence={paceSentence(pace, week, today)}
           />
         </Card>
 
@@ -392,16 +407,6 @@ export default function ProjectView({ id }: { id: string }) {
         </div>
       </div>
 
-      <ChatSheet
-        open={chatOpen}
-        scope={{ type: "project", projectId: plan.id }}
-        askOnOpen={askOnOpen}
-        label={`Chat about ${plan.title}`}
-        onClose={() => {
-          setChatOpen(false);
-          setAskOnOpen(null);
-        }}
-      />
     </div>
   );
 }

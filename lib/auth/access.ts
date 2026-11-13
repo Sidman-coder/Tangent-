@@ -50,6 +50,3 @@ export function isOwnerEmail(email: string | null | undefined): boolean {
   const owner = normalizeEmail(process.env.OWNER_EMAIL);
   return !!e && !!owner && e === owner;
 }
-
-/** Shown when an uninvited email asks for a sign-in code (before anything is sent). */
-export const NOT_INVITED = "This email isn't invited yet. Ask Tangent's team for an invite, or try another address.";

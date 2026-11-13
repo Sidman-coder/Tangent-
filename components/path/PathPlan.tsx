@@ -10,7 +10,10 @@
 // the server.
 
 import { useMemo, useState } from "react";
-import { Check, CornerDownRight, Plus, Sparkles, Trash2, X } from "lucide-react";
+import { Check, CornerDownRight, Plus, Rocket, Sparkles, Trash2, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { askOnHome } from "@/lib/ask-handoff";
+import { startIdeaMessage } from "@/lib/tangent-start";
 import Button from "@/components/ui/Button";
 import type { Path, PathNode, PathNodeSchedule } from "@/lib/types";
 import { splitNodeDetail } from "@/lib/path-format";
@@ -177,9 +180,14 @@ function IdeaRow({
   onStatus,
   onScheduleChanged,
   depth = 0,
+  path,
   ...rest
-}: Omit<Props, "path" | "nodes"> & { idea: PathNode; alive: PathNode[]; depth?: number }) {
+}: Omit<Props, "nodes"> & { idea: PathNode; alive: PathNode[]; depth?: number }) {
   const ask = useAskFirst(idea.id, onGenerate);
+  const router = useRouter();
+  // Round 4 Phase 4.4: a kept move becomes a project through Home's planning
+  // flow (Round 1), with what this Tangent knows handed along.
+  const startThis = () => askOnHome(startIdeaMessage(idea, path), (href) => router.push(href));
   const { summary, firstStep } = splitNodeDetail(idea.detail);
   const children = alive.filter((n) => n.parentId === idea.id);
   const status = idea.status;
@@ -234,6 +242,9 @@ function IdeaRow({
             <PathStepScheduler node={idea} schedule={scheduled[idea.id]} autoOpen={justKept === idea.id} onChanged={onScheduleChanged} />
           </div>
           <div className="pplan-idea-actions">
+            <Button size="sm" variant="primary" icon={<Rocket size={14} aria-hidden="true" />} onClick={startThis}>
+              Start this
+            </Button>
             <Button size="sm" onClick={() => onStatus(idea.id, "done")}>
               <Check size={14} aria-hidden="true" /> Mark done
             </Button>
@@ -259,6 +270,7 @@ function IdeaRow({
               onStatus={onStatus}
               onScheduleChanged={onScheduleChanged}
               depth={depth + 1}
+              path={path}
               {...rest}
             />
           ))}
