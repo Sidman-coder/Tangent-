@@ -199,6 +199,12 @@
   .today-row .today-row-actions[data-open] { opacity: 1; order: 10; flex-basis: 100%; justify-content: flex-end; padding-top: 4px; }
   .today-row-btn { min-height: 44px; }
 }
+/* Desktop: the hover actions keep their space while hidden, so they sit before
+   the time. Every row's time then lines up on the right edge. */
+@media (min-width: 768px) and (hover: hover) and (pointer: fine) {
+  .today-row .today-row-actions { order: 1; }
+  .today-row .today-row-when { order: 2; }
+}
 .today-row .today-step-split { margin: 0 12px 12px 46px; overflow: hidden; }
 .today-step-actions { display: flex; flex-wrap: wrap; gap: 4px; }
 

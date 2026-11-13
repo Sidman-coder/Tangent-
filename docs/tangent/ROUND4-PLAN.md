@@ -487,7 +487,7 @@ The user's feedback arrived with Phase 4. Their screenshots did not come through
 - **Tap targets on phones.** All of these are now 44 px, mostly through invisible `::after` hit areas so nothing changes visually. Round 3 leftovers:
   - The Calendar view switch was 30 px.
   - The Calendar "Today" button already had a 44 px hit area (measured).
-  - The chat search (`.aia-search`) now has a 44 px minimum height. It isn't rendered on any sample page, so this one is unmeasured.
+  - The chat search is gone with the Chats page; the one search box left is AI activity's (`.aia-search`). Measured on a phone: 45 px, its filter select 44 px, and its day buttons 44 px with their hit area.
 - **Tap targets, also fixed:**
   - Pill tabs (Today's view tabs, sign-in tabs): 36 px.
   - Task titles: 20 px.
@@ -526,8 +526,10 @@ The user's feedback arrived with Phase 4. Their screenshots did not come through
   - **Plan preview step dots** (7×12): a decoration on the day cell. The cell opens the day, and on phones the full day list sits below the grid.
   - **Grill sample page** (`/dev/app/grill`): no H1, because it's a component sample. In the app it sits inside a page that has one.
 
-**Seen but not changed (outside Round 4):**
-- On Today at desktop width, a row with the hover-only "Not today / Too big" actions keeps their space while they're hidden, so its time sits further left than other rows. This is from Round 3.
+**Follow-up fixes (2026-11-12):**
+- **Today row times line up (from Round 3).** On desktop the hover-only "Not today / Too big" actions keep their space while hidden, which pushed that row's time left. They now sit before the time (`today.css`), so every time is 12 px from the right edge. On hover they show beside it.
+- **Export filename date.** The data export named its file with the UTC date, so an export at 10 pm said tomorrow. It now uses the student's own date (`getUserToday`).
+- **Late-evening dates.** Checked at 10:16 pm New York, when UTC was already the 13th: Today showed Thursday the 12th with no hydration warning. Real pages work out "today" from the saved timezone on both server and client (`lib/time.ts`); the other `toISOString().slice(0, 10)` calls only do day maths on dates, which is safe.
 
 **Screenshots:** `docs/design/screens/round4/<page>-<390|1440>-<light|dark>.png`. That is 84 files: every audited page, both widths and both themes, including the signed-out auth pages.
 
@@ -537,9 +539,8 @@ The user's feedback arrived with Phase 4. Their screenshots did not come through
 
 **Not verified:**
 - **Anything signed in:** the dev pages have no session, so saves show "That didn't save".
-- **The dev pages' date mismatch:** they log a hydration warning because the server renders in UTC and the browser in local time. `ThemeSync` covers its effect on dark mode. Whether real signed-in pages hit the same mismatch late in the evening (UTC already tomorrow) is unchecked.
+- **Late-evening dates signed in:** checked on the sample Today and in code (see the follow-up fixes), not on a signed-in account. Check Today and Calendar after 8 pm once.
 - **The real model answers:** run `npm run eval:pipeline` (paid; not run).
-- **The chat search:** its tap target (above) isn't measured.
 - **Screen readers:** no screen reader pass was done (names and roles were checked by script only).
 
 ### What to test signed in
