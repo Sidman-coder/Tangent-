@@ -14,8 +14,10 @@ import {
   deleteEmptiedPlans,
   deleteTask,
   deleteTasks,
+  deleteAllChats,
   updateTask,
 } from "@/lib/store";
+import { isBulkPayload, runBulkConfirm } from "@/lib/pipeline/bulk-action-run";
 import { withUser } from "@/lib/request-context";
 
 export const runtime = "nodejs";
@@ -71,6 +73,16 @@ export const POST = withUser(async (req: Request) => {
 
     if (!confirm) {
       return NextResponse.json({ ok: true, cancelled: true, response: "Cancelled." });
+    }
+
+    // Round 5A 1.6: a bulk action from chat ("delete all my tasks and projects",
+    // "move all today's tasks to tomorrow", "mark all done"). Existing kinds
+    // carry it; `bulk: true` tells it apart (lib/pipeline/bulk-action-run.ts).
+    if (isBulkPayload(pending.payload)) {
+      const result = await runBulkConfirm(pending.payload, { getAllTasks, deleteTasks, deleteEmptiedPlans, deleteAllChats, updateTask, recordAction });
+      if (!result.ok) return NextResponse.json({ ok: false, error: result.error }, { status: 422 });
+      await addVoiceLog({ text: "(confirmed) bulk action", response: result.response, action: result.action, ok: true });
+      return NextResponse.json({ ok: true, action: result.action, response: result.response, ...(result.actionId ? { actionId: result.actionId } : {}), state: await getAppState() });
     }
 
     if (pending.kind === "delete_all_tasks") {

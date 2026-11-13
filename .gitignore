@@ -10,3 +10,6 @@ scripts/dev-tests/.build/
 
 # Playwright MCP screenshots and snapshots
 .playwright-mcp/
+
+# Local-only Claude Code instructions
+CLAUDE.local.md

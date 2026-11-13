@@ -11,15 +11,19 @@
 //   grill   they asked to be asked ("grill me on my chem plan").
 //   plan    a new goal to plan. Questions until enough, then round 1.
 //   add     everything else: a task, an event, a change. The calendar pipeline.
+//   action  a bulk command: delete or clear all, move all, mark all done.
+//           A confirm card with counts; never planned, never grilled.
 //
 // Pure and instant (no model), so it's testable and never costs a call.
 
 import { CALENDAR_QUESTION, GOAL_CUE, QUESTION_START } from "../ask-route";
 import { matchProject } from "../project-match";
+import { parseBulkAction, type BulkAction } from "./bulk-action";
 import { isPlanningRequest } from "./planning-intent";
 
-export type HomeKind = "answer" | "extend" | "grill" | "plan" | "add";
-export type HomeRoute = { kind: HomeKind; projectId: string | null };
+export type HomeKind = "answer" | "extend" | "grill" | "plan" | "add" | "action";
+/** `action` carries the parsed bulk action (lib/pipeline/bulk-action.ts). */
+export type HomeRoute = { kind: HomeKind; projectId: string | null; action?: BulkAction };
 
 type Project = { id: string; title: string };
 
@@ -64,6 +68,10 @@ export function projectFor(text: string, projects: readonly Project[]): Project 
 export function homeRoute(text: string, projects: readonly Project[], scoped: string | null = null): HomeRoute {
   const s = tidy(text);
   if (!s) return { kind: "add", projectId: scoped };
+  // Round 5A 1.6: "delete all my tasks and projects", "mark all done" and the
+  // like are commands, checked first: they never plan and never grill.
+  const bulk = parseBulkAction(s);
+  if (bulk) return { kind: "action", projectId: null, action: bulk };
   const project = scoped ? { id: scoped } : projectFor(s, projects);
   const projectId = project?.id ?? null;
 

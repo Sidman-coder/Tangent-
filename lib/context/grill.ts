@@ -18,6 +18,7 @@ import { parseSlotAnswer } from "./flow";
 import { computeSufficiency, isGlobalSlotKey, valueText, SLOT_KEYS, type AnySlot, type SlotMap, type SlotValue } from "./slots";
 import {
   ENOUGH_MESSAGE,
+  SLOT_CATEGORY,
   SLOT_FACT_LABEL,
   defaultFor,
   goalTypeOf,
@@ -119,6 +120,7 @@ export async function grillTurn(input: { text: string; chat: string; projectId: 
         fact: text.text,
         source: "manual",
         factSource: "said",
+        factCategory: SLOT_CATEGORY[slot],
         projectId: student ? null : input.projectId,
         slotKey: slot,
       }).then(

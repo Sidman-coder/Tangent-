@@ -8,6 +8,7 @@
 // says "I have enough to start round 1" and drafts. 1–3 questions a turn,
 // 2–5 in all, never a loop.
 
+import type { FactCategory } from "../student/facts";
 import { SLOT_DEFAULTS, isGlobalSlotKey, isSlotKey, slotValue, type GlobalSlotKey, type SlotKey, type SlotMap, type SlotValue } from "./slots";
 
 export const GOAL_TYPES = ["general", "exam", "creator", "club", "essay"] as const;
@@ -254,6 +255,35 @@ export function defaultFor(slot: QuestionSlot, now: Date = new Date()): SlotValu
   if (slot === "hoursPerWeek") return slotValue(SLOT_DEFAULTS.hoursPerWeek, "default", now);
   return null;
 }
+
+/** Where each slot's answer is filed in What Tangent knows. A slot answer is a
+ *  fact about the student's goal, time, working style, struggles or activities;
+ *  it is never "general". */
+export const SLOT_CATEGORY: Record<QuestionSlot, FactCategory> = {
+  outcome: "goals",
+  why: "goals",
+  pastAttempts: "goals",
+  followers: "goals",
+  essayPrompt: "goals",
+  drafts: "goals",
+  deadline: "schedule",
+  hoursPerWeek: "schedule",
+  constraints: "schedule",
+  weekendAvailability: "schedule",
+  approvalSteps: "schedule",
+  bestTimeForThis: "how_you_work",
+  preferredWorkTimes: "how_you_work",
+  focusLength: "how_you_work",
+  postingFrequency: "how_you_work",
+  whatWorks: "how_you_work",
+  hardestPart: "whats_hard",
+  weakTopics: "whats_hard",
+  currentLevel: "classes_activities",
+  platform: "classes_activities",
+  niche: "classes_activities",
+  members: "classes_activities",
+  advisor: "classes_activities",
+};
 
 /** The form label a slot answer is filed under (lib/student/facts.ts turns it
  *  into a second-person sentence). */

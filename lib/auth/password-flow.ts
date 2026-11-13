@@ -3,8 +3,8 @@
 // the limiter before Supabase, one message for a wrong password whether or not
 // the account exists, and (Round 4) waitlisted accounts signed in but sent to
 // the waitlist page instead of refused.
-import { isEmailAllowed, normalizeEmail } from "./access";
-import { WAITLIST_PATH } from "./gate";
+import { normalizeEmail } from "./access";
+import { WAITLIST_PATH, isAllowedUser } from "./gate";
 import { CODE_INCOMPLETE, codeFailure, isCodeLength } from "./messages";
 import {
   AttemptLimiter,
@@ -30,6 +30,8 @@ export type SignInDeps = {
   hasPassword(email: string): Promise<boolean>;
   signOut(): Promise<void>;
   markPasswordSet(userId: string): Promise<void>;
+  /** Adds a not-yet-allowed account to the waitlist (once). Optional. */
+  joinWaitlist?(user: { id: string; email?: string | null }): Promise<void>;
 };
 
 export async function passwordSignIn(
@@ -60,8 +62,11 @@ export async function passwordSignIn(
 
   limiter.clear(`email:${email}`);
   if (!hasPasswordFlag(user.app_metadata)) await deps.markPasswordSet(user.id).catch(() => undefined);
-  // Not invited yet: the session stays, and middleware keeps them on the waitlist page.
-  return { status: 200, body: { ok: true, next: isEmailAllowed(user.email) ? input.next : WAITLIST_PATH } };
+  // Not invited yet: the session stays, they join the waitlist once, and
+  // middleware keeps them on the waitlist page.
+  if (isAllowedUser(user)) return { status: 200, body: { ok: true, next: input.next } };
+  await deps.joinWaitlist?.({ id: user.id, email: user.email }).catch(() => undefined);
+  return { status: 200, body: { ok: true, next: WAITLIST_PATH } };
 }
 
 export type SetDeps = {

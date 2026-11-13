@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
-import { isEmailAllowed, normalizeEmail } from "@/lib/auth/access";
+import { normalizeEmail } from "@/lib/auth/access";
 import { CODE_INCOMPLETE, codeFailure, isCodeLength } from "@/lib/auth/messages";
-import { WAITLIST_PATH } from "@/lib/auth/gate";
+import { WAITLIST_PATH, isAllowedUser } from "@/lib/auth/gate";
+import { recordWaitlist } from "@/lib/auth/waitlist-server";
 import { logServerError } from "@/lib/server-log";
 import { safeNext } from "@/lib/auth/safe-next";
 import { hasPasswordFlag } from "@/lib/auth/password";
@@ -56,6 +57,9 @@ export async function POST(request: Request) {
   const created = Date.parse(data.user.created_at ?? "");
   const newAccount = Number.isFinite(created) && Date.now() - created < 60 * 60 * 1000;
   // Not invited yet: signed in all the same; middleware keeps them on the waitlist page.
-  const dest = isEmailAllowed(data.user.email) ? next : WAITLIST_PATH;
+  // Not allowed: they join the waitlist once (lib/auth/waitlist.ts).
+  const allowed = isAllowedUser(data.user);
+  if (!allowed) await recordWaitlist(data.user);
+  const dest = allowed ? next : WAITLIST_PATH;
   return NextResponse.json({ ok: true, next: dest, passwordSet: hasPasswordFlag(data.user.app_metadata), newAccount });
 }

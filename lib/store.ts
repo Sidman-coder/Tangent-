@@ -42,7 +42,9 @@ import type {
 } from "./types";
 import { commitmentOf } from "./task-kind";
 import { createColumnMemo, schemaErrorKind, warnSchemaOnce } from "./schema-compat";
-import { factCategoryFor, factView, isFactCategory, isFactSource, prepareFact, type FactView } from "./student/facts";
+import { dedupeFacts, factCategoryFor, factKey, factView, isFactCategory, isFactSource, prepareFact, type FactView } from "./student/facts";
+import { isStudentSlot } from "./context/goal-slots";
+import { isGlobalSlotKey } from "./context/slots";
 import { parseNotificationPrefs, type NotificationPrefs } from "./settings/notification-prefs";
 import { EXPORT_TABLES, redactExportRow } from "./settings/data-export";
 import { assignProjectColor, projectSeries, type SeriesKey } from "./task-colors";
@@ -149,11 +151,14 @@ function withoutMissingColumns(row: Record<string, unknown>): Record<string, unk
   return kept;
 }
 
-/** True when the error names an optional column, now remembered as missing. */
+/** True when the error names an optional column, now remembered as missing.
+ *  Still true when a parallel request already remembered it, so this request
+ *  retries without the column too instead of failing. */
 function noteMissingTaskColumn(error: { code?: string; message?: string }): boolean {
   if (schemaErrorKind(error) !== "missing_column") return false;
-  const named = OPTIONAL_TASK_COLUMNS.filter((c) => error.message?.includes(c) && !missingTaskColumns.isMissing(c));
+  const named = OPTIONAL_TASK_COLUMNS.filter((c) => error.message?.includes(c));
   for (const c of named) {
+    if (missingTaskColumns.isMissing(c)) continue;
     missingTaskColumns.markMissing(c);
     warnSchemaOnce(`tasks.${c}`, `tasks.${c} is missing; apply the migrations in docs/MANUAL-STEPS.md`);
   }
@@ -1215,6 +1220,7 @@ export async function addPlanWithTasks(
     .eq("id", created.id);
   if (linkError) fail("addPlanWithTasks", linkError);
   console.log("[store] addPlanWithTasks:", created.id, "tasks:", taskIds.length, "| duplicates skipped:", skippedDuplicates);
+  await attachFlowFacts(created.id, created.title).catch(() => undefined);
   return { plan: { ...created, taskIds, taskCount: taskIds.length }, tasks: inserted, skippedDuplicates };
 }
 
@@ -2213,6 +2219,27 @@ export async function deleteChatSession(sessionId: string): Promise<boolean> {
   return true;
 }
 
+/** How many chats the student has (Round 5A 1.6: the count on "Delete all my chats"). */
+export async function countChatSessions(): Promise<number> {
+  const { db, userId } = ctx();
+  const { count, error } = await db.from("chat_sessions").select("id", { count: "exact", head: true }).eq("user_id", userId);
+  if (error) fail("countChatSessions", error);
+  return count ?? 0;
+}
+
+/** Deletes every chat the student has: `chat_messages` first, then `chat_sessions`
+ *  (Round 5A 1.6). There is no undo. Returns how many chats went. */
+export async function deleteAllChats(): Promise<number> {
+  const { db, userId } = ctx();
+  const { error: msgError } = await db.from("chat_messages").delete().eq("user_id", userId);
+  if (msgError) fail("deleteAllChats (messages)", msgError);
+  const { data, error } = await db.from("chat_sessions").delete().eq("user_id", userId).select("id");
+  if (error) fail("deleteAllChats (sessions)", error);
+  const removed = data?.length ?? 0;
+  console.log("[store] deleteAllChats — removed", removed, "chats");
+  return removed;
+}
+
 // ─── Full state helpers ───────────────────────────────────────────────────────
 
 export async function getAppState(): Promise<AppState> {
@@ -2300,11 +2327,16 @@ function contextColumns(): string {
   return missingFactColumns.isMissing("facts") ? BASE_CONTEXT_COLUMNS : `${BASE_CONTEXT_COLUMNS}, ${FACT_COLUMNS}`;
 }
 
-/** True when the error is the student-model columns not being there yet. */
+/** True when the error is the student-model columns not being there yet, so the
+ *  caller should retry with the base columns. True every time, not just the first:
+ *  two requests can fail on the same missing column at once, and the second one
+ *  arrives after the first has already remembered it. */
 function noteMissingFactColumns(error: { code?: string; message?: string } | null | undefined): boolean {
-  if (!error || schemaErrorKind(error) !== "missing_column" || missingFactColumns.isMissing("facts")) return false;
-  missingFactColumns.markMissing("facts");
-  warnSchemaOnce("context_entries.facts", "context_entries student-model columns are missing; apply 20261110000000_student_facts.sql (docs/MANUAL-STEPS.md)");
+  if (!error || schemaErrorKind(error) !== "missing_column") return false;
+  if (!missingFactColumns.isMissing("facts")) {
+    missingFactColumns.markMissing("facts");
+    warnSchemaOnce("context_entries.facts", "context_entries student-model columns are missing; apply 20261110000000_student_facts.sql (docs/MANUAL-STEPS.md)");
+  }
   return true;
 }
 
@@ -2357,7 +2389,7 @@ export async function getUserContext(): Promise<UserContext> {
   const views = rows.map(contextFromRow);
   void tidyFacts(views).catch(() => undefined);
   return {
-    entries: views.filter((v) => !v.view.hidden).map((v) => v.entry),
+    entries: dedupeFacts(views.filter((v) => !v.view.hidden).map((v) => v.entry)),
     compressedSummary: profile.context_summary ?? "",
     lastUpdated: iso(profile.context_updated_at),
     totalInteractions: profile.context_interactions ?? 0,
@@ -2377,7 +2409,8 @@ async function tidyFacts(views: ContextView[]): Promise<void> {
   const { db, userId } = ctx();
   if (tidiedThisProcess.has(userId)) return;
   tidiedThisProcess.add(userId);
-  const toClean = views.filter((v) => v.view.needsCleanup && !v.row.display_text && "display_text" in v.row).slice(0, 25);
+  // Rows with no saved wording, and rows whose saved wording still reads in the first person.
+  const toClean = views.filter((v) => v.view.needsCleanup && "display_text" in v.row).slice(0, 25);
   for (const v of toClean) {
     const { error } = await db.from("context_entries").update({ display_text: v.view.display }).eq("user_id", userId).eq("id", v.entry.id);
     if (error) {
@@ -2385,12 +2418,19 @@ async function tidyFacts(views: ContextView[]): Promise<void> {
       return;
     }
   }
-  const followUps = Array.from(new Set(views.filter((v) => v.view.followUp).map((v) => v.view.followUp as string))).slice(0, 3);
-  if (!followUps.length) return;
+  await queueFollowUps(views.filter((v) => v.view.followUp).map((v) => v.view.followUp as string));
+}
+
+/** Puts follow-up questions in the queue, skipping any already there. Best
+ *  effort: a missing grill_questions table just means "ask another time". */
+async function queueFollowUps(questions: string[]): Promise<void> {
+  const wanted = Array.from(new Set(questions.map((q) => q.trim()).filter(Boolean))).slice(0, 3);
+  if (!wanted.length) return;
+  const { db, userId } = ctx();
   const { data: existing, error } = await db.from("grill_questions").select("question").eq("user_id", userId).eq("kind", "followup");
-  if (error) return; // grill_questions isn't there yet: ask another time
+  if (error) return;
   const asked = new Set((existing ?? []).map((r: { question: string }) => r.question));
-  const fresh = followUps.filter((q) => !asked.has(q));
+  const fresh = wanted.filter((q) => !asked.has(q));
   if (!fresh.length) return;
   const { error: insertError } = await db
     .from("grill_questions")
@@ -2418,6 +2458,8 @@ export async function addContextEntry(entry: NewContextEntry): Promise<ContextEn
   });
   if (!prepared.ok) {
     if (prepared.reason === "sensitive") console.log("[store] Context entry not kept: sensitive");
+    // A vague answer isn't saved; the question that would make it useful is.
+    if (prepared.reason === "vague" && prepared.followUp) await queueFollowUps([prepared.followUp]).catch(() => undefined);
     return null;
   }
   const { db, userId } = ctx();
@@ -2435,15 +2477,14 @@ export async function addContextEntry(entry: NewContextEntry): Promise<ContextEn
   };
 
   if (!missingFactColumns.isMissing("facts")) {
-    const { data: same, error: sameError } = await db
-      .from("context_entries")
-      .select(contextColumns())
-      .eq("user_id", userId)
-      .eq("display_text", prepared.display)
-      .limit(1);
+    // The same fact worded another way ("4 hours a week", "4 hrs a week.") is the same fact.
+    const projectId = extra.project_id;
+    const { data: known, error: sameError } = await db.from("context_entries").select(contextColumns()).eq("user_id", userId).order("created_at").limit(1000);
     if (sameError) noteMissingFactColumns(sameError);
-    else if (same && same.length) {
-      const row = same[0] as unknown as ContextRow;
+    const row = ((known ?? []) as unknown as ContextRow[]).find(
+      (r) => factKey(r.display_text || r.fact, r.project_id ?? null) === factKey(prepared.display, projectId),
+    );
+    if (!sameError && row) {
       if (confirmed) {
         await db
           .from("context_entries")
@@ -2511,6 +2552,50 @@ export async function markFactsUsed(ids: string[]): Promise<void> {
   } catch {
     // Counting is a nicety; the answer already went out.
   }
+}
+
+/**
+ * What the student said while this project was being set up ("done by end of
+ * term", "4 hrs a week") is saved before the project exists, so it has no
+ * project_id. Once the project exists, those facts move onto it: they're about
+ * the project, not about the student. Facts about the student (when they work
+ * best, how long they focus, anything about them) stay where they are.
+ * Best effort: a failure leaves the facts global, which is the old behaviour.
+ */
+export async function attachFlowFacts(planId: string, title: string): Promise<number> {
+  if (!isUuid(planId) || missingFactColumns.isMissing("facts")) return 0;
+  const { db, userId } = ctx();
+  const since = new Date(Date.now() - 24 * 3600_000).toISOString();
+  const { data, error } = await db
+    .from("context_entries")
+    .select("id, fact, display_text, slot_key, created_at")
+    .eq("user_id", userId)
+    .is("project_id", null)
+    .gte("created_at", since)
+    .limit(200);
+  if (error) {
+    noteMissingFactColumns(error);
+    return 0;
+  }
+  type Row = { id: string; fact: string; display_text: string | null; slot_key: string | null; created_at: string };
+  const mine = ((data ?? []) as Row[]).filter((r) => r.slot_key && !isStudentSlot(r.slot_key) && !isGlobalSlotKey(r.slot_key));
+  if (!mine.length) return 0;
+  const name = title.trim().toLowerCase();
+  const named = name ? mine.filter((r) => `${r.fact} ${r.display_text ?? ""}`.toLowerCase().includes(name)) : [];
+  // Some slot facts don't carry the title ("Due by end of term"); those were saved moments ago.
+  const recent = Date.now() - 2 * 3600_000;
+  const chosen = named.length ? named : mine.filter((r) => new Date(r.created_at).getTime() >= recent);
+  if (!chosen.length) return 0;
+  const { error: updateError } = await db
+    .from("context_entries")
+    .update({ project_id: planId })
+    .eq("user_id", userId)
+    .in("id", chosen.map((r) => r.id));
+  if (updateError) {
+    noteMissingFactColumns(updateError);
+    return 0;
+  }
+  return chosen.length;
 }
 
 /** Removes one remembered fact (the student said it's wrong). */
@@ -3431,7 +3516,8 @@ export async function resetUserData(): Promise<void> {
     if (error) fail(`resetUserData ${table}`, error);
   }
   // Newer tables: skipped quietly on a database that doesn't have them yet.
-  for (const table of ["change_sets", "ai_decisions", "context_slots", "grill_questions"]) {
+  // step_events: the observation log (Round 4). It was missed here before.
+  for (const table of ["change_sets", "ai_decisions", "context_slots", "grill_questions", "step_events", "plan_aliases"]) {
     const { error } = await db.from(table).delete().eq("user_id", userId);
     if (error && schemaErrorKind(error) !== "missing_table") fail(`resetUserData ${table}`, error);
   }

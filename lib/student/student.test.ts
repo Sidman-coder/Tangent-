@@ -19,7 +19,7 @@ type Obs = typeof import("./observations");
 
 void Promise.all([import("./facts") as Promise<Facts>, import("./sensitive") as Promise<Sensitive>, import("./observations") as Promise<Obs>]).then(
   ([facts, sensitive, obs]) => {
-    const { formatFact, slotFactText, isVagueValue, factCategoryFor, legacyCategoryOf, FACT_CATEGORIES, prepareFact, factView } = facts;
+    const { formatFact, slotFactText, isVagueValue, factCategoryFor, legacyCategoryOf, FACT_CATEGORIES, prepareFact, factView, dedupeFacts, normalizeFactText } = facts;
     const { sensitiveKind, isSensitive, looksDistressed, DISTRESS_REPLY } = sensitive;
     const { timeMultiplier, completionByHour, preferredStepSize, calibrationLines, hourLabel } = obs;
 
@@ -177,7 +177,7 @@ void Promise.all([import("./facts") as Promise<Facts>, import("./sensitive") as 
 
     test("prepareFact: sensitive and vague facts are never saved", () => {
       assert.deepEqual(prepareFact({ category: "general", fact: "I have anxiety before tests", source: "chat" }), { ok: false, reason: "sensitive" });
-      assert.deepEqual(prepareFact({ category: "goal", fact: "Working toward: stuff", source: "manual" }), { ok: false, reason: "vague" });
+      assert.deepEqual(prepareFact({ category: "goal", fact: "Working toward: stuff", source: "manual" }), { ok: false, reason: "vague", followUp: "What are you working toward right now?" });
       assert.deepEqual(prepareFact({ category: "general", fact: "   ", source: "chat" }), { ok: false, reason: "empty" });
     });
 
@@ -205,6 +205,66 @@ void Promise.all([import("./facts") as Promise<Facts>, import("./sensitive") as 
       const vague = factView({ fact: "Coming up that matters: A big test", displayText: null, factSource: "said" });
       assert.equal(vague.hidden, true);
       assert.ok(vague.followUp);
+    });
+
+    // ─── Round 5A, 1.3: fact quality ────────────────────────────────────────
+
+    test("1.3 grammar: 'you do I take…' is 'you take…'", () => {
+      const r = formatFact("Activities outside class: I take volunteering, TSA, soccer, and a job of tutoring");
+      assert.equal(r.text, "Outside class, you take volunteering, TSA, soccer, and a job of tutoring");
+      // A bare list still gets a verb.
+      assert.equal(formatFact("Activities outside class: Soccer and TSA").text, "Outside class, you do soccer and TSA");
+      // "I" inside a name is left alone.
+      assert.match(formatFact("Activities outside class: World War I club").text, /War I club$/);
+    });
+
+    test("1.3 grammar: wording saved before the fix is restated when shown", () => {
+      const old = factView({ fact: "Activities outside class: I take soccer", displayText: "Outside class, you do I take soccer", factSource: "said" });
+      assert.equal(old.display, "Outside class, you take soccer");
+      assert.equal(old.needsCleanup, true, "tidyFacts will save the new wording");
+      const fine = factView({ fact: "Does their best work: Late at night", displayText: "You do your best work late at night", factSource: "said" });
+      assert.equal(fine.needsCleanup, false);
+    });
+
+    test("1.3 duplicates: the same fact worded two ways is one fact", () => {
+      assert.equal(normalizeFactText("You can give 4 hrs a week"), normalizeFactText("You can give 4 hours per week."));
+      const list = [
+        { fact: "You can give 4 hrs a week", projectId: null },
+        { fact: "You can give 4 hours a week.", projectId: null },
+        { fact: "You can give 4 hrs a week", projectId: "plan-1" },
+        { fact: "You can give 3 hrs a week", projectId: null },
+      ];
+      assert.deepEqual(dedupeFacts(list).map((f) => `${f.fact}|${f.projectId}`), ["You can give 4 hrs a week|null", "You can give 4 hrs a week|plan-1", "You can give 3 hrs a week|null"]);
+    });
+
+    test("1.3 vague: 'a top result' is not saved, and becomes a question", () => {
+      assert.equal(isVagueValue("a top result"), true);
+      assert.equal(isVagueValue("good grades"), true);
+      assert.equal(isVagueValue("a 1450 on the SAT"), false);
+      const r = prepareFact({ category: "goal", fact: "Goal: a top result", source: "manual" });
+      assert.deepEqual(r, { ok: false, reason: "vague", followUp: "What would a top result look like: a score, a place, a rank?" });
+      const forProject = slotFactText("Goal", "a top result", "SAT prep");
+      assert.equal(forProject.vague, true);
+      assert.equal(forProject.followUp, "What would a top result look like for SAT prep: a score, a place, a rank?");
+      assert.equal(slotFactText("Goal", "a 1450", "SAT prep").vague, false);
+    });
+
+    test("1.3 project facts read as facts about the project, with no dangling 'It'", () => {
+      assert.equal(slotFactText("Deadline", "end of term", "Science fair").text, "Science fair needs to be done by end of term");
+      assert.equal(slotFactText("Deadline", "end of term").text, "Due by end of term");
+      assert.equal(slotFactText("Deadline", "by Friday", "Science fair").text, "Science fair needs to be done by Friday");
+      assert.equal(slotFactText("Hours a week", "4 a week", "Science fair").text, "You can give 4 hrs a week to Science fair");
+      assert.equal(formatFact("Science fair, hours a week: 4 a week").text, "You can give 4 hrs a week to Science fair");
+    });
+
+    test("1.3 category: school-night capacity is How you work, not a Commitment", () => {
+      const line = "You can handle about 3 hrs of work on a school night";
+      // Whatever legacy category the caller sends, the wording decides.
+      for (const legacy of ["commitment", "habit", "general", "work"] as const) assert.equal(factCategoryFor(legacy, line), "how_you_work", legacy);
+      const r = prepareFact({ category: "commitment", fact: line, source: "manual" });
+      assert.equal(r.ok && r.factCategory, "how_you_work");
+      // Real schedule facts stay Commitments.
+      assert.equal(factCategoryFor("commitment", "Soccer practice Mon/Wed until 6"), "schedule");
     });
   },
 );

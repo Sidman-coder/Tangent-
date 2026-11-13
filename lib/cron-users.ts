@@ -1,7 +1,8 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { runAsUser } from "@/lib/request-context";
-import { isEmailAllowed } from "@/lib/auth/access";
+import { isEmailAllowed, normalizeEmail } from "@/lib/auth/access";
+import { approvedEmails, type WaitlistAdmin } from "@/lib/auth/waitlist";
 
 export type CronUserResult<T> = { userId: string; ok: boolean; result?: T; error?: string };
 
@@ -17,7 +18,9 @@ export async function forEachCronUser<T>(job: string, fn: () => Promise<T>): Pro
     .order("created_at");
   if (error) throw new Error(`[cron/${job}] listing students failed: ${error.message}`);
 
-  const users = (data ?? []).filter((p: { email: string }) => isEmailAllowed(p.email));
+  // On the allowlist, or approved from the waitlist (Round 5A, 1.5).
+  const approved = await approvedEmails(admin as unknown as WaitlistAdmin);
+  const users = (data ?? []).filter((p: { email: string }) => isEmailAllowed(p.email) || approved.has(normalizeEmail(p.email)));
   const results: CronUserResult<T>[] = [];
   for (const { user_id: userId } of users as { user_id: string }[]) {
     try {

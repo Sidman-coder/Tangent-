@@ -18,6 +18,8 @@ export type Access = "signed_out" | "waitlist" | "under13" | "allowed";
 export const WAITLIST_PATH = "/waitlist";
 export const UNDER_13_PATH = "/not-yet";
 export const SIGNIN_PATH = "/signin";
+/** Where "Delete my account" ends. Public: the account and its session are gone. */
+export const GOODBYE_PATH = "/goodbye";
 
 export const WAITLIST_API_ERROR = "You're on the waitlist. We'll email you when your spot opens.";
 export const UNDER_13_API_ERROR = "Tangent is for students 13 and up.";
@@ -30,10 +32,22 @@ export function isUnder13(appMetadata: unknown): boolean {
   return (appMetadata as { under_13?: unknown } | null)?.under_13 === true;
 }
 
+/** True when the owner approved this account from the waitlist page. Only the
+ *  service role can write app_metadata, so the student can't set it. */
+export function isWaitlistApproved(appMetadata: unknown): boolean {
+  return (appMetadata as { waitlist?: unknown } | null)?.waitlist === "approved";
+}
+
+/** In by ALLOWED_EMAILS or approved from the waitlist (Round 5A, 1.5). */
+export function isAllowedUser(user: { email?: string | null; app_metadata?: unknown } | null | undefined): boolean {
+  if (!user) return false;
+  return isEmailAllowed(user.email) || isWaitlistApproved(user.app_metadata);
+}
+
 export function accessOf(user: GateUser): Access {
   if (!user) return "signed_out";
   if (isUnder13(user.app_metadata)) return "under13";
-  if (!isEmailAllowed(user.email)) return "waitlist";
+  if (!isAllowedUser(user)) return "waitlist";
   return "allowed";
 }
 
@@ -67,6 +81,8 @@ export function gate(opts: {
   const { pathname, access, isDev } = opts;
   if (skipsSessionCheck(pathname)) return { kind: "next" };
   if (pathname === "/dev" || pathname.startsWith("/dev/")) return isDev ? { kind: "next" } : { kind: "not_found" };
+
+  if (pathname === GOODBYE_PATH) return { kind: "next" };
 
   const isApi = pathname === "/api" || pathname.startsWith("/api/");
 

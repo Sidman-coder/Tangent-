@@ -71,6 +71,33 @@ void (import("./home-route") as Promise<typeof import("./home-route")>).then(({ 
     }
   });
 
+  test("1.6 bulk commands are actions: never planned, never grilled, even with a project open", () => {
+    for (const s of [
+      "delete all my tasks and projects",
+      "Delete all my tasks and projects",
+      "delete all my chats",
+      "clear my chat history",
+      "move all today's tasks to tomorrow",
+      "mark all done",
+      "delete everything",
+      "clear my schedule",
+      "mark everything as done",
+    ]) {
+      for (const projects of [[], [IG], [IG, CHEM]]) {
+        const r = homeRoute(s, projects);
+        assert.equal(r.kind, "action", s);
+        assert.ok(r.action, s);
+      }
+      assert.equal(homeRoute(s, [IG], "p-ig").kind, "action", `${s} (inside a project)`);
+    }
+  });
+
+  test("1.6 a topic or a plain task is still not an action", () => {
+    assert.notEqual(homeRoute("delete my SAT tasks", []).kind, "action");
+    assert.notEqual(homeRoute("move chem to friday", [CHEM]).kind, "action");
+    assert.equal(homeRoute("help me get 10k followers on tiktok", [IG]).kind, "plan");
+  });
+
   test("inside a project page, everything is about that project", () => {
     assert.deepEqual(homeRoute("what should I do next?", [IG, CHEM], "p-chem"), { kind: "answer", projectId: "p-chem" });
     assert.deepEqual(homeRoute("add two practice tests", [IG, CHEM], "p-chem"), { kind: "extend", projectId: "p-chem" });

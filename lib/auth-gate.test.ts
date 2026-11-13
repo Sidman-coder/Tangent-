@@ -44,6 +44,19 @@ void Promise.all([import("./auth/gate"), import("./auth/signup"), import("./auth
       assert.equal(accessOf({ email: INVITED, app_metadata: { under_13: "true" } }), "allowed");
     });
 
+    test("1.5 waitlist: approved is allowed, waiting is not, env-allowed still is", () => {
+      const stranger = "stranger@else.com";
+      assert.equal(accessOf({ email: stranger, app_metadata: { waitlist: "approved" } }), "allowed", "approved");
+      assert.equal(accessOf({ email: stranger, app_metadata: {} }), "waitlist", "waiting");
+      assert.equal(accessOf({ email: stranger, app_metadata: { waitlist: "waiting" } }), "waitlist", "any other value");
+      assert.equal(accessOf({ email: stranger, app_metadata: { waitlist: true } }), "waitlist", "only the real string counts");
+      assert.equal(accessOf({ email: INVITED, app_metadata: {} }), "allowed", "env-allowed");
+      // Under 13 still wins over an approval.
+      assert.equal(accessOf({ email: stranger, app_metadata: { waitlist: "approved", under_13: true } }), "under13");
+      // Approval is per account: the user_metadata copy (which a student can edit) grants nothing.
+      assert.equal(accessOf({ email: stranger, app_metadata: {}, user_metadata: { waitlist: "approved" } } as never), "waitlist");
+    });
+
     test("signed out: app pages redirect to /signin with next; APIs 401; cron passes", () => {
       for (const page of ["/", "/today", "/calendar", "/settings/security", "/waitlist", "/not-yet"]) {
         const d = prod(page, "signed_out");
@@ -58,6 +71,14 @@ void Promise.all([import("./auth/gate"), import("./auth/signup"), import("./auth
       }
       assert.deepEqual(prod("/api/cron/daily", "signed_out"), { kind: "next" });
       assert.deepEqual(prod("/auth/verify", "signed_out"), { kind: "next" });
+    });
+
+    test("1.4 /goodbye is public: signed out, waitlisted, under 13 and allowed all see it", () => {
+      for (const access of ["signed_out", "waitlist", "under13", "allowed"] as const) {
+        assert.deepEqual(prod("/goodbye", access), { kind: "next" }, access);
+      }
+      // Only that page: the rest still redirect when signed out.
+      assert.equal(prod("/goodbye/extra", "signed_out").kind, "redirect");
     });
 
     test("waitlist: every page goes to /waitlist, every API is 403, the session is kept", () => {

@@ -4,5 +4,8 @@
       "PowerShell(New-Item -ItemType Directory -Force \"d:\\\\TANGENT showcase\\\\TANGENT demo\\\\app\\\\api\\\\sessions\")",
       "WebFetch(domain:github.com)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "playwright"
+  ]
 }

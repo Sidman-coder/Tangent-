@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Button from "@/components/ui/Button";
 import SegmentedTabs from "@/components/ui/SegmentedTabs";
 import NewPasswordFields, { PasswordInput, newPasswordProblem } from "@/components/auth/PasswordFields";
+import { isMismatchProblem } from "@/lib/auth/confirm-state";
 import { createClient } from "@/lib/supabase/client";
 import { safeNext } from "@/lib/auth/safe-next";
 import { isCodeLength } from "@/lib/auth/messages";
@@ -51,7 +52,7 @@ export default function SignInForm({
 }) {
   const [mode, setMode] = useState<Mode>(initialMode);
   const [notice, setNotice] = useState<string | null>(null);
-  const [submitted, setSubmitted] = useState(false);
+  const [submitTick, setSubmitTick] = useState(0);
   const [email, setEmail] = useState(initialEmail);
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(initialError);
@@ -210,7 +211,7 @@ export default function SignInForm({
         if (purpose === "reset" || purpose === "create" || (data.newAccount && !data.passwordSet)) {
           setNewPassword("");
           setConfirm("");
-          setSubmitted(false);
+          setSubmitTick(0);
           setAfterPassword(data.next ?? dest);
           setStep("newPassword");
           setBusy(null);
@@ -231,10 +232,11 @@ export default function SignInForm({
   const saveNewPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (busy) return;
-    setSubmitted(true);
+    setSubmitTick((t) => t + 1);
     const problem = newPasswordProblem(newPassword, confirm, email);
     if (problem) {
-      setError(problem);
+      // A mismatch is shown once, under the confirm box, not again down here.
+      if (!isMismatchProblem(problem)) setError(problem);
       return;
     }
     setBusy("save");
@@ -290,7 +292,7 @@ export default function SignInForm({
             if (error) clearError();
           }}
           autoFocus
-          submitted={submitted}
+          submitTick={submitTick}
           label={reset ? "New password" : "Password"}
           inputClassName="auth-input"
           labelClassName="auth-label"

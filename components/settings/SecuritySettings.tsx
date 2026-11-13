@@ -10,6 +10,7 @@ import Button from "@/components/ui/Button";
 import ConfirmPanel from "@/components/ui/ConfirmPanel";
 import { CODE_INCOMPLETE, CODE_MAX_LENGTH, codeDigits, isCodeLength } from "@/lib/auth/messages";
 import NewPasswordFields, { PasswordInput, newPasswordProblem } from "@/components/auth/PasswordFields";
+import { isMismatchProblem } from "@/lib/auth/confirm-state";
 import { createClient } from "@/lib/supabase/client";
 import { amrFromAccessToken, hasPasswordFlag, signedInByEmailCodeRecently } from "@/lib/auth/password";
 import { clearLocalAppData } from "@/lib/auth/clear-local";
@@ -28,6 +29,7 @@ export default function SecuritySettings({ email }: { email: string }) {
   const [codeSent, setCodeSent] = useState(false);
   const [resendIn, setResendIn] = useState(0);
   const [password, setPassword] = useState("");
+  const [submitTick, setSubmitTick] = useState(0);
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState<"send" | "save" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +65,7 @@ export default function SecuritySettings({ email }: { email: string }) {
     setPassword("");
     setConfirm("");
     setError(null);
+    setSubmitTick(0);
   };
 
   const start = () => {
@@ -103,7 +106,9 @@ export default function SecuritySettings({ email }: { email: string }) {
       (proof === "code" && !isCodeLength(code) ? CODE_INCOMPLETE : null) ??
       newPasswordProblem(password, confirm, email);
     if (problem) {
-      setError(problem);
+      setSubmitTick((t) => t + 1);
+      // A mismatch is shown once, under the confirm box, not again down here.
+      setError(isMismatchProblem(problem) ? null : problem);
       return;
     }
     setBusy("save");
@@ -214,7 +219,7 @@ export default function SecuritySettings({ email }: { email: string }) {
                   confirm={confirm}
                   onPassword={setPassword}
                   onConfirm={setConfirm}
-                  submitted={!!error}
+                  submitTick={submitTick}
                 />
               )}
 

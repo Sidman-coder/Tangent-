@@ -12,7 +12,7 @@ import "server-only";
 // with one server warning and reads return nothing.
 
 import { getRequestContext, trackPending } from "@/lib/request-context";
-import { schemaErrorKind, warnSchemaOnce } from "@/lib/schema-compat";
+import { createColumnMemo, schemaErrorKind, warnSchemaOnce } from "@/lib/schema-compat";
 import { getUserTimezone } from "@/lib/store";
 import { localNow, weekdayOf } from "@/lib/time";
 import { minutesFromNotes } from "@/lib/load";
@@ -22,12 +22,15 @@ import { isBehaviourKind, isStepEventKind, type StepEvent, type StepEventKind } 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CODE_RE = /^[a-z_]{1,24}$/;
 
-let tableMissing = false;
-let behaviourKindsMissing = false;
+// Remembered for a minute, not forever, so running a migration takes effect
+// without a restart.
+const missing = createColumnMemo();
+const tableMissing = () => missing.isMissing("table");
+const behaviourKindsMissing = () => missing.isMissing("behaviour_kinds");
 
 function noteMissing(error: { code?: string; message?: string }): boolean {
   if (schemaErrorKind(error) !== "missing_table") return false;
-  tableMissing = true;
+  if (!tableMissing()) missing.markMissing("table");
   warnSchemaOnce("step_events", "step_events table missing; apply 20261110010000_step_events.sql (docs/MANUAL-STEPS.md). Tangent plans without the observation log until then.");
   return true;
 }
@@ -42,7 +45,7 @@ export type StepEventInput = {
 const minutes = (n: number | null | undefined) => (typeof n === "number" && Number.isFinite(n) ? Math.max(0, Math.min(1440, Math.round(n))) : null);
 
 async function insert(events: StepEventInput[]): Promise<void> {
-  if (tableMissing || !events.length) return;
+  if (tableMissing() || !events.length) return;
   const { db, userId } = getRequestContext();
   const tz = await getUserTimezone().catch(() => "UTC");
   const now = localNow(tz);
@@ -67,14 +70,15 @@ async function insert(events: StepEventInput[]): Promise<void> {
         code: e.code && CODE_RE.test(e.code) ? e.code : null,
       };
     });
-  const kept = behaviourKindsMissing ? rows.filter((r) => !isBehaviourKind(r.kind)) : rows;
+  const kept = behaviourKindsMissing() ? rows.filter((r) => !isBehaviourKind(r.kind)) : rows;
   if (!kept.length) return;
   const { error } = await db.from("step_events").insert(kept);
   if (!error || noteMissing(error)) return;
   // 23514: the old kind check, before 20261111000000_step_events_behaviour.sql.
   // Drop the behaviour kinds from now on and keep the step rows.
-  if (error.code === "23514" && !behaviourKindsMissing && kept.some((r) => isBehaviourKind(r.kind))) {
-    behaviourKindsMissing = true;
+  // Two inserts can fail on this at once, so the second one must still retry.
+  if (error.code === "23514" && kept.some((r) => isBehaviourKind(r.kind))) {
+    if (!behaviourKindsMissing()) missing.markMissing("behaviour_kinds");
     warnSchemaOnce("step_events_behaviour", "step_events can't take the behaviour kinds yet; apply 20261111000000_step_events_behaviour.sql (docs/MANUAL-STEPS.md). Tangent logs steps only until then.");
     const steps = kept.filter((r) => !isBehaviourKind(r.kind));
     if (steps.length) await db.from("step_events").insert(steps);
@@ -85,7 +89,7 @@ async function insert(events: StepEventInput[]): Promise<void> {
 
 /** Logs what happened to one or more steps. Never throws, never blocks. */
 export function logStepEvents(events: StepEventInput[]): void {
-  if (tableMissing || !events.length) return;
+  if (tableMissing() || !events.length) return;
   let p: Promise<void>;
   try {
     p = insert(events).catch(() => undefined);
@@ -106,7 +110,7 @@ export function logStepEvent(event: StepEventInput): void {
 /** The student's recent observations, newest first (the last 120 days, up to
  *  500). Empty before the migration. */
 export async function readStepEvents(): Promise<StepEvent[]> {
-  if (tableMissing) return [];
+  if (tableMissing()) return [];
   try {
     const { db, userId } = getRequestContext();
     const since = new Date(Date.now() - 120 * 86_400_000).toISOString();
@@ -140,7 +144,7 @@ export async function readStepEvents(): Promise<StepEvent[]> {
  *  for the round review. Codes only, grouped by step. Empty before the
  *  migration or on any error. */
 export async function readPlanStepCodes(planId: string, sinceYmd: string): Promise<{ taskId: string | null; kind: StepEventKind; code: string }[]> {
-  if (tableMissing || !UUID_RE.test(planId)) return [];
+  if (tableMissing() || !UUID_RE.test(planId)) return [];
   try {
     const { db, userId } = getRequestContext();
     const { data, error } = await db

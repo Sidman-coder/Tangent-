@@ -10,9 +10,9 @@ import "./you-map.css";
 // accessible list; the map is a picture of them.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarClock, Compass, Gauge, GraduationCap, Mountain, Target, type LucideIcon } from "lucide-react";
+import { CalendarClock, Compass, FolderOpen, Gauge, GraduationCap, Mountain, Target, type LucideIcon } from "lucide-react";
 import type { ContextEntry } from "@/lib/types";
-import { groupFacts, initialsOf, mapSummary, ORIGIN_LABEL, originOf, type MapGroupKey } from "@/lib/you-map";
+import { groupFacts, initialsOf, mapSummary, ORIGIN_LABEL, originOf, projectFacts, type MapGroupKey } from "@/lib/you-map";
 import { GET_TO_KNOW_DONE_EVENT } from "@/components/GetToKnowYou";
 import { useAppState } from "@/components/AppStateProvider";
 import { usePipelineV2 } from "@/components/PipelineFlag";
@@ -78,6 +78,7 @@ export default function WhatTangentKnows() {
   }, [load]);
 
   const grouped = useMemo(() => groupFacts(entries ?? []), [entries]);
+  const projects = useMemo(() => projectFacts(entries ?? [], (state?.plans ?? []).map((p) => ({ id: p.id, title: p.title }))), [entries, state?.plans]);
 
   // Scroll-driven: the card nearest the middle of the screen turns the map.
   useEffect(() => {
@@ -148,6 +149,58 @@ export default function WhatTangentKnows() {
     el?.focus({ preventScroll: true });
   };
 
+  // One fact per row, with where it came from and what you can do about it.
+  const factList = (facts: ContextEntry[]) => (
+    <ul>
+      {facts.map((e) => {
+        const origin = originOf(e);
+        const isEditing = editing?.id === e.id;
+        return (
+          <li key={e.id} className={`you-fact is-${origin}`}>
+            {isEditing ? (
+              <form
+                className="you-fact-edit"
+                onSubmit={(ev) => {
+                  ev.preventDefault();
+                  void saveEdit();
+                }}
+              >
+                <input
+                  value={editing.text}
+                  onChange={(ev) => setEditing({ id: e.id, text: ev.target.value })}
+                  onKeyDown={(ev) => ev.key === "Escape" && setEditing(null)}
+                  aria-label={`Edit: ${e.fact}`}
+                  maxLength={300}
+                  autoFocus
+                />
+                <button type="submit" className="you-fact-btn is-strong">Save</button>
+                <button type="button" className="you-fact-btn" onClick={() => setEditing(null)}>Cancel</button>
+              </form>
+            ) : (
+              <>
+                <p>{e.fact}</p>
+                <div className="you-fact-meta">
+                  <span className="you-fact-origin">{ORIGIN_LABEL[origin]}</span>
+                  {origin === "guess" && (
+                    <button type="button" className="you-fact-btn is-strong" onClick={() => void confirm(e.id)} aria-label={`That's right: ${e.fact}`}>
+                      Confirm
+                    </button>
+                  )}
+                  <button type="button" className="you-fact-btn" onClick={() => setEditing({ id: e.id, text: e.fact })} aria-label={`Edit: ${e.fact}`}>
+                    Edit
+                  </button>
+                  <button type="button" className="you-fact-btn" onClick={() => void forget(e.id)} aria-label={`Forget: ${e.fact}`}>
+                    {origin === "guess" ? "Not right" : "Forget"}
+                  </button>
+                </div>
+              </>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+
   const initials = initialsOf(state?.user.displayName ?? "");
 
   return (
@@ -206,58 +259,24 @@ export default function WhatTangentKnows() {
                     {facts.length === 0 ? (
                       <p className="you-card-empty">{group.empty} Nothing yet.</p>
                     ) : (
-                      <ul>
-                        {facts.map((e) => {
-                          const origin = originOf(e);
-                          const isEditing = editing?.id === e.id;
-                          return (
-                            <li key={e.id} className={`you-fact is-${origin}`}>
-                              {isEditing ? (
-                                <form
-                                  className="you-fact-edit"
-                                  onSubmit={(ev) => {
-                                    ev.preventDefault();
-                                    void saveEdit();
-                                  }}
-                                >
-                                  <input
-                                    value={editing.text}
-                                    onChange={(ev) => setEditing({ id: e.id, text: ev.target.value })}
-                                    onKeyDown={(ev) => ev.key === "Escape" && setEditing(null)}
-                                    aria-label={`Edit: ${e.fact}`}
-                                    maxLength={300}
-                                    autoFocus
-                                  />
-                                  <button type="submit" className="you-fact-btn is-strong">Save</button>
-                                  <button type="button" className="you-fact-btn" onClick={() => setEditing(null)}>Cancel</button>
-                                </form>
-                              ) : (
-                                <>
-                                  <p>{e.fact}</p>
-                                  <div className="you-fact-meta">
-                                    <span className="you-fact-origin">{ORIGIN_LABEL[origin]}</span>
-                                    {origin === "guess" && (
-                                      <button type="button" className="you-fact-btn is-strong" onClick={() => void confirm(e.id)} aria-label={`That's right: ${e.fact}`}>
-                                        Confirm
-                                      </button>
-                                    )}
-                                    <button type="button" className="you-fact-btn" onClick={() => setEditing({ id: e.id, text: e.fact })} aria-label={`Edit: ${e.fact}`}>
-                                      Edit
-                                    </button>
-                                    <button type="button" className="you-fact-btn" onClick={() => void forget(e.id)} aria-label={`Forget: ${e.fact}`}>
-                                      {origin === "guess" ? "Not right" : "Forget"}
-                                    </button>
-                                  </div>
-                                </>
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
+                      factList(facts)
                     )}
                   </section>
                 );
               })}
+
+              {projects.map(({ projectId, title, facts }) => (
+                <section key={projectId} className="you-card is-project" aria-labelledby={`you-card-project-${projectId}`}>
+                  <header>
+                    <span className="you-card-icon" aria-hidden="true">
+                      <FolderOpen size={16} strokeWidth={1.75} />
+                    </span>
+                    <h3 id={`you-card-project-${projectId}`}>{title}</h3>
+                    <span className="you-card-count">{facts.length}</span>
+                  </header>
+                  {factList(facts)}
+                </section>
+              ))}
 
               <div className="settings-card knows-card">
                 <form

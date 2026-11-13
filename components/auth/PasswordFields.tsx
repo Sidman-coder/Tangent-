@@ -1,15 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { passwordProblem, passwordRules, passwordStrength } from "@/lib/auth/password";
+import { PASSWORD_MISMATCH, confirmReducer, confirmView, initialConfirmState } from "@/lib/auth/confirm-state";
 import "./password-fields.css";
 
-/** One password box with a Show/Hide toggle. */
+/** One password box with a Show/Hide toggle. `onBlur` fires when focus leaves
+ *  the text box itself, not when it moves to the Show/Hide button. */
 export function PasswordInput({
   id,
   label,
   value,
   onChange,
+  onBlur,
   autoComplete,
   autoFocus,
   invalid,
@@ -21,6 +24,7 @@ export function PasswordInput({
   label: string;
   value: string;
   onChange: (v: string) => void;
+  onBlur?: () => void;
   autoComplete: "current-password" | "new-password";
   autoFocus?: boolean;
   invalid?: boolean;
@@ -46,6 +50,7 @@ export function PasswordInput({
           aria-invalid={invalid || undefined}
           aria-describedby={describedBy}
           onChange={(e) => onChange(e.target.value)}
+          onBlur={onBlur}
         />
         <button
           type="button"
@@ -64,12 +69,14 @@ export function PasswordInput({
 
 /** Why the new password + confirm pair can't be saved yet, or null. */
 export function newPasswordProblem(password: string, confirm: string, email?: string | null): string | null {
-  return passwordProblem(password, email) ?? (password !== confirm ? "The two passwords don't match." : null);
+  return passwordProblem(password, email) ?? (password !== confirm ? PASSWORD_MISMATCH : null);
 }
 
 /** New password + confirm. The rules show as calm hints that turn green as
- *  each is met; the confirm box is checked only once it loses focus or the form
- *  is submitted (`submitted`), never while the student is still typing. */
+ *  each is met. The confirm box complains only once it loses focus or the form
+ *  is submitted (`submitTick` goes up), hides again the moment either box is
+ *  edited, and says "Passwords match" in green when they do. The rule lives in
+ *  lib/auth/confirm-state.ts. */
 export default function NewPasswordFields({
   idPrefix,
   email,
@@ -78,7 +85,7 @@ export default function NewPasswordFields({
   onPassword,
   onConfirm,
   autoFocus,
-  submitted = false,
+  submitTick = 0,
   label = "New password",
   inputClassName,
   labelClassName,
@@ -90,24 +97,38 @@ export default function NewPasswordFields({
   onPassword: (v: string) => void;
   onConfirm: (v: string) => void;
   autoFocus?: boolean;
-  /** The form tried to submit: show the confirm mismatch even without a blur. */
-  submitted?: boolean;
+  /** Goes up by one each time the form tries to submit: show the confirm
+   *  mismatch even without a blur. */
+  submitTick?: number;
   label?: string;
   inputClassName?: string;
   labelClassName?: string;
 }) {
-  const [confirmTouched, setConfirmTouched] = useState(false);
+  const [confirmState, dispatch] = useReducer(confirmReducer, initialConfirmState);
+  const lastTick = useRef(submitTick);
+  useEffect(() => {
+    if (submitTick !== lastTick.current) {
+      lastTick.current = submitTick;
+      dispatch("submit");
+    }
+  }, [submitTick]);
+
   const rules = passwordRules(password, email);
   const strength = passwordStrength(password, email);
   const allMet = rules.every((r) => r.met);
-  const mismatch = (confirmTouched || submitted) && confirm.length > 0 && confirm !== password;
+  const view = confirmView(password, confirm, confirmState);
+  const mismatch = view === "mismatch";
+  const hintId = view === "idle" ? undefined : `${idPrefix}-confirm-hint`;
   return (
     <div className="pw-fields">
       <PasswordInput
         id={`${idPrefix}-new`}
         label={label}
         value={password}
-        onChange={onPassword}
+        onChange={(v) => {
+          dispatch("editPassword");
+          onPassword(v);
+        }}
         autoComplete="new-password"
         autoFocus={autoFocus}
         describedBy={`${idPrefix}-rules`}
@@ -129,20 +150,27 @@ export default function NewPasswordFields({
           </li>
         )}
       </ul>
-      <div onBlur={() => setConfirmTouched(true)}>
-        <PasswordInput
-          id={`${idPrefix}-confirm`}
-          label="Confirm password"
-          value={confirm}
-          onChange={onConfirm}
-          autoComplete="new-password"
-          invalid={mismatch}
-          describedBy={mismatch ? `${idPrefix}-mismatch` : undefined}
-          inputClassName={inputClassName}
-          labelClassName={labelClassName}
-        />
-      </div>
-      {mismatch && <p id={`${idPrefix}-mismatch`} className="pw-hint pw-hint--error" role="alert">The two passwords don&apos;t match.</p>}
+      <PasswordInput
+        id={`${idPrefix}-confirm`}
+        label="Confirm password"
+        value={confirm}
+        onChange={(v) => {
+          dispatch("editConfirm");
+          onConfirm(v);
+        }}
+        onBlur={() => dispatch("blur")}
+        autoComplete="new-password"
+        invalid={mismatch}
+        describedBy={hintId}
+        inputClassName={inputClassName}
+        labelClassName={labelClassName}
+      />
+      {mismatch && <p id={hintId} className="pw-hint pw-hint--error" role="alert">{PASSWORD_MISMATCH}</p>}
+      {view === "match" && (
+        <p id={hintId} className="pw-hint pw-hint--ok" role="status">
+          <span aria-hidden="true">✓</span> Passwords match
+        </p>
+      )}
     </div>
   );
 }

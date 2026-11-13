@@ -3,6 +3,7 @@
 // came from. Pure and client-safe: no fact rules or prompts in here.
 
 import type { ContextEntry } from "./types";
+import { dedupeFacts } from "./student/facts";
 
 export type MapGroupKey = "goals" | "classes" | "commitments" | "work" | "hard" | "future";
 
@@ -67,9 +68,25 @@ export function originOf(entry: Pick<ContextEntry, "factSource" | "unconfirmed">
 
 export type GroupedFacts = { group: MapGroup; facts: ContextEntry[] }[];
 
-/** Every area in a fixed order, empty ones included (the map shows them dim). */
+/** Every area in a fixed order, empty ones included (the map shows them dim).
+ *  Only facts about you: a fact about one project is shown under that project
+ *  (projectFacts), and the same fact never appears twice. */
 export function groupFacts(entries: ContextEntry[]): GroupedFacts {
-  return MAP_GROUPS.map((group) => ({ group, facts: entries.filter((e) => groupOf(e) === group.key) }));
+  const about = dedupeFacts(entries.filter((e) => !e.projectId));
+  return MAP_GROUPS.map((group) => ({ group, facts: about.filter((e) => groupOf(e) === group.key) }));
+}
+
+export type ProjectFacts = { projectId: string; title: string; facts: ContextEntry[] };
+
+/** Facts saved against one project, under that project's name. A fact whose
+ *  project no longer exists is left out. */
+export function projectFacts(entries: ContextEntry[], projects: { id: string; title: string }[]): ProjectFacts[] {
+  const out: ProjectFacts[] = [];
+  for (const p of projects) {
+    const facts = dedupeFacts(entries.filter((e) => e.projectId === p.id));
+    if (facts.length) out.push({ projectId: p.id, title: p.title, facts });
+  }
+  return out;
 }
 
 const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);

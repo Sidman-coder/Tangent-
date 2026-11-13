@@ -9,7 +9,8 @@ import { handleRequest } from "@/lib/pipeline/intake";
 import { routeAnswerReply } from "@/lib/pipeline/understand";
 import { homeRoute, type HomeKind } from "@/lib/pipeline/home-route";
 import { extendPlan } from "@/lib/pipeline/extend-plan";
-import { addTask, getAllPlans, getAllTasks, getUserTimezone, recordAction, setCapacity } from "@/lib/store";
+import { addPendingConfirmation, addTask, addVoiceLog, countChatSessions, getAllPlans, getAllTasks, getUserTimezone, recordAction, setCapacity } from "@/lib/store";
+import { proposeBulk } from "@/lib/pipeline/bulk-action-run";
 import { quickCapture, type QuickCapture } from "@/lib/ai/router";
 import { inferCalendarGroup } from "@/lib/calendars";
 import { dayName } from "@/lib/load";
@@ -228,6 +229,17 @@ export const POST = withUser(async (req: Request) => {
       homeKind = routed.kind;
       if (routed.projectId && !projectId) projectId = routed.projectId;
       console.log("[api/chat] home route:", routed.kind, routed.projectId ? "(project)" : "");
+      if (routed.kind === "action" && routed.action) {
+        // Round 5A 1.6: a bulk command. A confirm card with counts; never
+        // planned, never asked about.
+        const today = localNow(await getUserTimezone()).date;
+        const reply = await proposeBulk(routed.action, today, { getAllTasks, getAllPlans, countChatSessions, addPendingConfirmation });
+        await addVoiceLog({ text: userText, response: String(reply.response ?? reply.message ?? ""), action: String(reply.action), ok: true }).catch(() => {});
+        if (body.stream !== true) return NextResponse.json(reply);
+        return new Response(JSON.stringify({ type: "result", ...reply }) + "\n", {
+          headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" },
+        });
+      }
       if (routed.kind === "answer") {
         // The project it's about, or their newest few when it names none.
         const ids = projectId
