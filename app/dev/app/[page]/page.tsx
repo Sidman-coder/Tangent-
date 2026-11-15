@@ -4,7 +4,7 @@
 // (lib/dev/sample-state.ts), for design review without an account.
 // /dev/app/today, /dev/app/calendar, /dev/app/projects, /dev/app/project, /dev/app/school, /dev/app/settings, /dev/app/settings-account (…-security, -schedule,
 // -notifications, -context, -activity, -data),
-// /dev/app/tangents, /dev/app/draft (an unconfirmed plan; leave the page and the draft pill shows), /dev/app/preview, /dev/app/color, /dev/app/grill. 404s in production. API calls fail here (no session), so
+// /dev/app/tangents, /dev/app/notifications (…-empty), /dev/app/draft (an unconfirmed plan; leave the page and the draft pill shows), /dev/app/preview, /dev/app/color, /dev/app/grill. 404s in production. API calls fail here (no session), so
 // anything loaded from the server shows its empty or error state.
 
 import { notFound, useParams } from "next/navigation";
@@ -12,6 +12,8 @@ import { MockAppStateProvider, useUserTimezone } from "@/components/AppStateProv
 import MotionProvider from "@/components/MotionProvider";
 import { PipelineFlagProvider } from "@/components/PipelineFlag";
 import AppShell from "@/components/AppShell";
+import { SampleNotificationsContext } from "@/components/NotificationBell";
+import type { Notification } from "@/lib/types";
 import TaskDetail from "@/components/TaskDetail";
 import DraftDock from "@/components/drafts/DraftDock";
 import PreviewCard from "@/components/PreviewCard";
@@ -171,6 +173,25 @@ function FollowUpSample() {
   return <TodayHome />;
 }
 
+/** Round 5A Phase 6: sample notifications for the bell (the API isn't
+ *  reachable here). Three single overdue items show the merge into "Six
+ *  tasks are overdue". Times are relative to now. */
+function sampleNotifications(): Notification[] {
+  const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
+  const n = (id: string, min: number, type: Notification["type"], title: string, body: string, extra: Partial<Notification> = {}): Notification => ({
+    id, timestamp: ago(min), type, title, body, read: false, dismissed: false, ...extra,
+  });
+  return [
+    n("n1", 4, "reschedule_offer", "Move Reel post task", "Tomorrow is packed. Move \"Post the Reel\" to Thursday at 4:30 PM?", { actionLabel: "Move it" }),
+    n("n2", 38, "upcoming_deadline", "Reel analytics due tomorrow", "Nothing is planned for it yet. Add 30 minutes of prep today?", { actionLabel: "Add prep time" }),
+    n("n3", 95, "overdue_task", "Six tasks are overdue", "The oldest is \"Outline the history essay\" from Monday."),
+    n("n4", 100, "overdue_task", "\"Outline the history essay\" is overdue", "It was due Monday."),
+    n("n5", 101, "overdue_task", "\"Chem lab write-up\" is overdue", "It was due Tuesday."),
+    n("n6", 60 * 26, "proactive_suggestion", "Thursday looks light", "You could get ahead on the robotics CAD.", { read: true }),
+    n("n7", 60 * 24 * 3, "upcoming_deadline", "SAT practice test on Saturday", "You planned two review sessions before it.", { read: true }),
+  ];
+}
+
 /** The settings layout doesn't apply under /dev, so each page gets the frame here. */
 function framed(Inner: React.ComponentType): React.ComponentType {
   return function Framed() {
@@ -213,20 +234,30 @@ const PAGES: Record<string, React.ComponentType> = {
   },
 };
 
+/** /dev/app/notifications (sample list) and /dev/app/notifications-empty: the
+ *  Today page with the bell fed from SampleNotificationsContext. */
+const NOTIFICATION_PAGES: Record<string, () => Notification[]> = {
+  notifications: sampleNotifications,
+  "notifications-empty": () => [],
+};
+
 export default function AppPreview() {
   const { page } = useParams<{ page: string }>();
+  const notifSample = useMemo(() => NOTIFICATION_PAGES[page]?.() ?? null, [page]);
   if (process.env.NODE_ENV !== "development") notFound();
-  const Page = PAGES[page];
+  const Page = notifSample ? TodayHome : PAGES[page];
   if (!Page) notFound();
   return (
     <PipelineFlagProvider value={false}>
       <MockAppStateProvider state={SAMPLE_STATE}>
         <MotionProvider>
-          <AppShell>
-            <main id="main-content">
-              <Page />
-            </main>
-          </AppShell>
+          <SampleNotificationsContext.Provider value={notifSample}>
+            <AppShell>
+              <main id="main-content">
+                <Page />
+              </main>
+            </AppShell>
+          </SampleNotificationsContext.Provider>
           <TaskDetail />
           <DraftDock />
         </MotionProvider>

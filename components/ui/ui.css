@@ -113,6 +113,17 @@
   background: var(--layer-3);
 }
 
+.ui-button--soft {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.ui-button--soft:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 18%, var(--accent-soft));
+}
+.ui-button--soft:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
 .ui-button--ghost,
 .ui-button--quiet {
   color: var(--text-2);

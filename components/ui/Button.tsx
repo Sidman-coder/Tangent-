@@ -1,7 +1,8 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
-/** "quiet" is the old name for "ghost" and still works. */
-export type ButtonVariant = "primary" | "secondary" | "ghost" | "quiet" | "danger" | "danger-quiet";
+/** "quiet" is the old name for "ghost" and still works. "soft" is a filled
+ *  accent-tint pill for small in-list actions (Round 5A notifications). */
+export type ButtonVariant = "primary" | "secondary" | "soft" | "ghost" | "quiet" | "danger" | "danger-quiet";
 export type ButtonSize = "sm" | "md";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {

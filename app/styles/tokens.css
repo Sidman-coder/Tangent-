@@ -50,6 +50,8 @@
   --shadow-sm: 0 1px 2px rgb(28 26 38 / 0.06);
   --shadow-md: 0 4px 16px rgb(28 26 38 / 0.08);
   --shadow-lg: 0 12px 40px rgb(28 26 38 / 0.14);
+  /* The notifications popover only (Round 5A Phase 6). */
+  --shadow-pop: 0 18px 48px rgb(28 26 38 / 0.16), 0 2px 8px rgb(28 26 38 / 0.06);
   --scrim: rgb(18 17 25 / 0.32);
   --tint-amount: 14%;
 
@@ -69,6 +71,7 @@
   --r-sm: 8px;
   --r-md: 12px;
   --r-lg: 16px;
+  --r-xl: 22px;
   --r-pill: 999px;
 
   /* spacing */
@@ -137,6 +140,7 @@
   --shadow-sm: none;
   --shadow-md: 0 0 0 1px var(--line);
   --shadow-lg: 0 0 0 1px var(--line-strong);
+  --shadow-pop: 0 18px 48px rgb(0 0 0 / 0.5), 0 0 0 1px var(--line-strong);
   --scrim: rgb(0 0 0 / 0.55);
   --tint-amount: 20%;
 }

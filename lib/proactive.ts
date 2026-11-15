@@ -145,6 +145,8 @@ actionLabel "Move it" and actionData containing exactly:
 Only offer one reschedule_offer per overdue task, and only when you can name a specific
 free slot — do not offer it if you cannot suggest a concrete date and time.
 
+Overdue tasks get one overdue_task notification in total. With two or more overdue, send a single summary ("3 tasks are overdue", naming the one to start with), never the summary plus one per task.
+
 When you mention when something is, copy the day label exactly as given above ("tomorrow (Wed, Oct 7)", "Thu, Oct 8"). Never work out "today", "tomorrow" or a weekday yourself, and never write raw dates like 2026-10-08 or 24-hour times. Use 12-hour times like 3:30 PM.
 
 Each notification's title should be short, under 8 words. Each body should be a specific actionable message under 30 words. actionLabel is an optional button label like 'Reschedule' or 'Add prep time'.
