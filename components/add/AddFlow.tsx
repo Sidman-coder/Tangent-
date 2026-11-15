@@ -58,6 +58,7 @@ import PlanCalendarPreview from "@/components/preview/PlanCalendarPreview";
 import { getUserToday } from "@/lib/time";
 import DestPill, { type DestChoice } from "./DestPill";
 import PlanWorkspace, { CalendarPlaceholder, type Pane } from "./PlanWorkspace";
+import { findDraft } from "@/lib/drafts/draft-store";
 import "./add.css";
 
 type Dest = "calendar" | "project";
@@ -583,6 +584,20 @@ export default function AddFlow({
         talkRef.current = lines;
         setTalk(lines);
         void sendRef.current("Plan this into my calendar", undefined, "typed", { planThis: true, planGoal: handoff.goal });
+      }
+    }
+    // Round 5A 4.2: "Open full view" on a draft pill comes back here with
+    // ?draft=<id>; the plan reopens in the split, the box text untouched.
+    const draftId = params.get("draft");
+    if (draftId) {
+      router.replace("/", { scroll: false });
+      const d = findDraft(draftId);
+      if (d) {
+        setPhase({ kind: "preview", changeSet: d.changeSet, preview: d.preview, said: d.changeSet.request_text, asked: 0, brief: null });
+        setTopic(d.title);
+        setPlanning(true);
+        setPane("brief");
+        setDraftOps(d.changeSet.ops);
       }
     }
     const onAsk = (event: Event) => {

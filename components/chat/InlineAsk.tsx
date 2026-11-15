@@ -9,11 +9,16 @@
 // so the server answers from what that project already knows
 // (lib/pipeline/home-route.ts) and never asks what it can see.
 //
+// Round 5A 4.1: the Calendar rail uses it too (scope "rail"): answers stay in
+// the rail, and a drafted plan's ops go up through onOps so the main
+// calendar can show them (null once it's gone).
+//
 // Round 5A 2.5: the same talk-first router as Home (lib/pipeline/talk-route.ts).
 // Answers are markdown; a goal's answer offers "Plan this into my calendar",
 // and the plan's one question can be answered in the box or skipped.
 
-import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { findDraft } from "@/lib/drafts/draft-store";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
@@ -71,12 +76,14 @@ function clean(text: string | undefined, fallback: string): string {
 }
 
 const InlineAsk = forwardRef<InlineAskHandle, {
-  scope: { projectId?: string; taskId?: string };
+  scope: { projectId?: string; taskId?: string; rail?: boolean };
   /** For screen readers: "Ask about Instagram Growth to 10K". */
   label: string;
   placeholder?: string;
   className?: string;
-}>(function InlineAsk({ scope, label, placeholder = "Ask anything, or ask for more steps…", className }, ref) {
+  /** The drafted plan's ops while one is showing; null when it's gone. */
+  onOps?: (ops: ChangeSet["ops"] | null) => void;
+}>(function InlineAsk({ scope, label, placeholder = "Ask anything, or ask for more steps…", className, onOps }, ref) {
   const router = useRouter();
   const { refresh } = useAppState();
   const reduce = useReducedMotion();
@@ -85,6 +92,25 @@ const InlineAsk = forwardRef<InlineAskHandle, {
   const [extra, setExtra] = useState<Extra>({ kind: "none" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Round 5A 4.2: "Open full view" on a draft pill drafted in this chat
+  // comes back with ?draft=<id>; the plan reopens here.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const id = url.searchParams.get("draft");
+    if (!id) return;
+    const d = findDraft(id);
+    if (!d || d.origin !== url.pathname) return;
+    url.searchParams.delete("draft");
+    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+    setExtra({ kind: "preview", changeSet: d.changeSet, preview: d.preview });
+  }, []);
+  const opsRef = useRef(onOps);
+  opsRef.current = onOps;
+  useEffect(() => {
+    if (extra.kind !== "preview") opsRef.current?.(null);
+  }, [extra.kind]);
+  useEffect(() => () => opsRef.current?.(null), []);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const boxRef = useRef<HTMLElement>(null);
   const linesRef = useRef(lines);
@@ -116,7 +142,7 @@ const InlineAsk = forwardRef<InlineAskHandle, {
             home: true,
             capture: false,
             clarify: false,
-            scope: scope.taskId ? "task" : "project",
+            scope: scope.rail ? "rail" : scope.taskId ? "task" : "project",
             ...(ask ?? {}),
             ...(scope.taskId ? { taskId: scope.taskId } : {}),
             ...(scope.projectId ? { projectId: scope.projectId } : {}),
@@ -156,7 +182,7 @@ const InlineAsk = forwardRef<InlineAskHandle, {
         setBusy(false);
       }
     },
-    [busy, refresh, router, scope.projectId, scope.taskId]
+    [busy, refresh, router, scope.projectId, scope.taskId, scope.rail]
   );
 
   const resolveConfirm = useCallback(
@@ -286,7 +312,12 @@ const InlineAsk = forwardRef<InlineAskHandle, {
                 changeSet={extra.changeSet}
                 preview={extra.preview}
                 onChanged={() => void refresh()}
-                onSettled={() => window.setTimeout(() => setExtra({ kind: "none" }), 2500)}
+                onOps={(ops) => opsRef.current?.(ops)}
+                hideCalendar={!!scope.rail}
+                onSettled={() => {
+                  opsRef.current?.(null);
+                  window.setTimeout(() => setExtra({ kind: "none" }), 2500);
+                }}
               />
             )}
             {extra.kind === "confirm" && (

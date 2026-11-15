@@ -181,6 +181,11 @@ A fresh session continues from this file: read the **Progress log** at the botto
   - Hidden on the draft's origin page.
   - "Open full view" goes to `origin?draft=<id>`; new GET `app/api/changesets/[id]/route.ts` rehydrates it.
   - Home also restores open drafts after a reload (`fetchOpenDrafts`; today only ⌘K does).
+- **4.3 Multi-day tasks (Sid, 2026-11-14: "drag out the duration of a task throughout other days too and make durations for tasks or just a single date option"):**
+  - Migration `supabase/migrations/20261114010000_task_span.sql`: `tasks.end_date date null` and `tasks.duration_min int null`. Schema-compat: before it runs, range and duration are dropped and a task stays single-day.
+  - `lib/task-span.ts` (pure: `addDays`, `coversDay`, `formatDuration`, the resize rule), 8 tests in `lib/task-span.test.ts`.
+  - Add task modal: "Single date | Date range", an "Until" date in range mode, and "How long" ("How long each day" in range mode).
+  - Week view: a `.wk-resize` handle on each block; dragging across columns sets the end date (`resize_task` in `app/api/tasks/route.ts`), with ghosts on the covered days. A range task shows on every day it covers.
 - **Accept check:** a Playwright MCP run by `ui-checker` (no new `@playwright/test` dependency): draft on Home → Calendar → pill → open → confirm, Home's text unchanged. It needs Sid signed in and the AI live; otherwise it is marked "needs Sid signed in".
 
 ## Phase 5: Round review
@@ -298,3 +303,13 @@ None (Q2 = Supabase SMTP).
   - spec-verifier (base `029e516`): 12/12 MET; `node --test lib/capture-list.test.ts lib/school-work.test.ts` 15/15 pass. EXTRA: the "Your steps" section on `/projects/school`, the capture CSS, the `/dev/app/tasks` preview, undated personal tasks in Now, the unique index, and the "School & Work" heading and card copy.
   - ui-checker: **not done.** It stopped on the usage limit, after finding that `/dev/app/*` returned 500. Cause: `npm run build` overwrote the running dev server's `.next` (`Cannot find module './vendor-chunks/@fontsource-variable.js'`). Lesson: stop the dev server before `npm run build`, or build after it. Screenshots of /capture, /tasks and /projects are still needed.
   - **Phase 3 committed** (pre-approved). Next: restart the dev server, take the Phase 3 screenshots, then Phase 4 (4.1 rail in place, 4.2 draft pill, 4.3 multi-day tasks).
+- 2026-11-14 **Phase 3 committed as `566fa57`. Phase 4 done in code (not yet committed):**
+  - 4.1 rail (local TalkThread, no `askOnHome`; draft ops shown on the main calendar), 4.2 draft pill and card (`lib/drafts/draft-store.ts`, `components/drafts/DraftDock.tsx`; the existing `app/api/changesets/[id]` route was enough, so no new GET route), 4.3 multi-day tasks (above).
+  - Known gaps (recorded, not fixed): Today and other date-filtered queries only see a range task on its start date; in the month grid, dragging a range task from a later day moves its start to the drop day.
+  - EXTRA: Alt+Shift+arrow keyboard resize; the duration shown in block time labels; a sample range task ("Science fair poster") in `lib/dev/sample-state.ts`; the `/dev/app/draft` sample page; `isPlanDraft` (only a new project or 2+ steps becomes a draft, which narrows "any unconfirmed plan"); a 62-day range cap and 15-min snap; the `lib/drafts/*.test.ts` test glob.
+  - spec-verifier (base `566fa57`): 4.1 and 4.3 all MET; 4.2 MET except the accept check (4.2h), which has no artifact because it needs Sid signed in.
+  - Fix during checks: the add modal scrolled sideways (scrollWidth 499 > 473) because the hidden radio input had no inset; fixed in `app/globals.css` (473 = 473 at 1440, 351 = 351 at 390, signed-out /dev/app/calendar).
+  - Validation: `npm run lint` 0 errors (3 warnings, already there); `npm run build` exit 0; `npm test` 907 pass / 0 fail. The first run ran out of JS heap because stale dev servers held memory; Sid freed memory and the rerun passed.
+  - Screenshots (signed-out /dev/app/calendar): `docs/design/screens/round5a/phase4-resize-ghost-1440-light.png`, `phase4-resize-span-1440-light.png`, `phase4-range-task-1440-light.png`, `phase4-add-range-1440-dark.png`, `phase4-add-range-390-light.png`, `phase4-draft-card-*`, `phase4-draft-pill-1440-light.png`, `phase4-calendar-1440-light.png`.
+  - The draft-bubble accept run (Home → Calendar → pill → confirm) needs Sid signed in with the AI live: **needs Sid signed in**.
+  - ui-checker (signed-out /dev/app/calendar, 390 and 1440, light and dark): no sideways scroll on the page or in the add modal; console has only the expected signed-out 401s. Fixed after it ran: short week blocks cut titles mid-word (now one line with an ellipsis, `.wk-block.is-short`, screenshot `phase4-calendar-1440-ellipsis-check.png`), and on phones the "1/3" day tag was hidden with the time line (now a small `.wk-block-part` tag). Left as known: at 390 the 3-day view pages Sat–Mon then Tue–Thu, so a Sun–Tue range is never on one screen (existing paging); `.calendar-page` hides 17px sideways at 390 (existing, source not found); the modal toggle labels sit slightly high.

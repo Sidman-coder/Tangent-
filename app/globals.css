@@ -4771,8 +4771,16 @@ body .gtk-sheet {
 }
 .add-task-type-option input {
   position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   opacity: 0;
   pointer-events: none;
+}
+/* Round 5A 4.3: Single date | Date range has two options, not three. */
+.add-task-span .add-task-type-options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .add-task-type .add-task-type-option.is-on {
   background: var(--surface);

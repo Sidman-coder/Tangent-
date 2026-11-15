@@ -12,7 +12,10 @@ import PreviewCard from "@/components/PreviewCard";
 import type { ChangeSet } from "@/lib/pipeline/changeset";
 import type { PreviewPayload } from "@/lib/pipeline/draft";
 import { PENDING_QUESTION_ID, type PendingQuestion } from "@/lib/pending-question";
-import { openTask } from "@/components/TaskDetail";
+import { openTask as openTaskById } from "@/components/TaskDetail";
+import { draftTasks, isDraftTask, type DraftStep } from "@/lib/calendar-draft";
+import type { ChangeOp } from "@/lib/pipeline/changeset";
+import { addedColor, opDates } from "@/lib/preview-week";
 import Button from "@/components/ui/Button";
 import Chip from "@/components/ui/Chip";
 import IconButton from "@/components/ui/IconButton";
@@ -24,6 +27,7 @@ import { isCanvasCleared } from "@/lib/canvas-clear";
 import { CATEGORY_LABEL, TASK_GROUPS, planSeriesColor, seriesColor, taskCategory, taskGroup, taskSeries, type TaskGroup } from "@/lib/task-colors";
 import { noteParts } from "@/lib/note-parts";
 import { canDragTask } from "@/lib/calendar-drag";
+import { coversDay, formatDuration, shiftedEndDate } from "@/lib/task-span";
 import { useMonthDrag } from "@/components/calendar/useMonthDrag";
 import { isOnboardingSchoolTask } from "@/lib/school-block";
 import { baseTitle, useShortTitles } from "@/lib/short-titles";
@@ -140,7 +144,8 @@ export default function CalendarPage() {
   // Clicking one event opens just that event; clicking the date opens the day.
   const [removed, setRemoved] = useState<{ actionId: string; title: string; label?: string } | null>(null);
   /** A dragged block stays where it was dropped while the save is in flight. */
-  const [moving, setMoving] = useState<{ id: string; date: string; time: string } | null>(null);
+  // A move or resize in flight, shown before the server answers.
+  const [moving, setMoving] = useState<{ id: string; date: string; time: string; endDate?: string | null; durationMin?: number | null } | null>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
   /** Master fix Phase 5: Remove on a busy day picks tasks with the B6 chips;
    *  this is the task that was clicked (chosen to start with). */
@@ -162,6 +167,15 @@ export default function CalendarPage() {
 
   const plans: Plan[] = useMemo(() => state?.plans ?? [], [state?.plans]);
 
+  // Round 5A 4.1: a plan drafted in the rail shows here before it's
+  // confirmed: its steps in colour, everything else grey. Draft steps can't
+  // be opened or dragged; Confirm / Edit / Discard stay in the rail.
+  const [railOps, setRailOps] = useState<ChangeOp[] | null>(null);
+  const draftSteps: DraftStep[] = useMemo(() => (railOps ? draftTasks(railOps, { datesOf: opDates, colorOf: (op) => addedColor(op, plans) }) : []), [railOps, plans]);
+  const openTask = useCallback((id: string) => {
+    if (!isDraftTask({ id })) openTaskById(id);
+  }, []);
+
   const getPlan = useCallback((planId: string | null | undefined): Plan | null => {
     if (!planId) return null;
     return plans.find((p) => p.id === planId) ?? null;
@@ -169,8 +183,12 @@ export default function CalendarPage() {
 
   const getTaskCategoryColor = useCallback(
     // Handled Canvas work (lib/canvas-clear) stays to look back on, in grey.
-    (t: Task): string => (isCanvasCleared(t, todayYmd) ? seriesColor("neutral") : seriesColor(taskSeries(t, plans))),
-    [todayYmd, plans]
+    (t: Task): string => {
+      if (isDraftTask(t)) return (t as DraftStep).draftColor;
+      if (railOps || isCanvasCleared(t, todayYmd)) return seriesColor("neutral");
+      return seriesColor(taskSeries(t, plans));
+    },
+    [todayYmd, plans, railOps]
   );
 
   const tasksForDay = useCallback((ymd: string): Task[] => {
@@ -179,12 +197,26 @@ export default function CalendarPage() {
     let tasks = (state?.tasks ?? []).filter((t) => !isOnboardingSchoolTask(t));
     if (group !== "all") tasks = tasks.filter((t) => taskGroup(t) === group);
     if (planFilter) tasks = tasks.filter((t) => t.planId === planFilter);
-    if (moving) tasks = tasks.map((t) => (t.id === moving.id ? { ...t, date: moving.date, time: moving.time } : t));
-    return tasks.filter((t) => t.date === ymd);
-  }, [state, group, planFilter, moving]);
+    if (moving) {
+      tasks = tasks.map((t) =>
+        t.id === moving.id
+          ? {
+              ...t,
+              date: moving.date,
+              time: moving.time,
+              endDate: moving.endDate !== undefined ? moving.endDate : shiftedEndDate(t, moving.date),
+              ...(moving.durationMin !== undefined ? { durationMin: moving.durationMin } : {}),
+            }
+          : t
+      );
+    }
+    // Round 5A 4.3: a range task shows on every day it covers.
+    return [...tasks.filter((t) => coversDay(t, ymd)), ...draftSteps.filter((t) => t.date === ymd)];
+  }, [state, group, planFilter, moving, draftSteps]);
 
   // Same record as any reschedule, so the Undo toast and Recent changes revert it.
   const moveTask = useCallback(async (t: Task, date: string, time: string) => {
+    if (isDraftTask(t)) return;
     setMoveError(null);
     setMoving({ id: t.id, date, time });
     try {
@@ -202,6 +234,34 @@ export default function CalendarPage() {
       }
     } catch {
       setMoveError(`Couldn't move “${t.title}”. It's back where it was.`);
+    } finally {
+      setMoving(null);
+    }
+  }, [refresh]);
+
+  // Round 5A 4.3: the week grid's bottom-edge handle. Undo puts the old length
+  // and end date back.
+  const resizeTask = useCallback(async (t: Task, span: { durationMin: number; endDate: string | null }) => {
+    if (isDraftTask(t)) return;
+    setMoveError(null);
+    setMoving({ id: t.id, date: t.date, time: t.time, endDate: span.endDate, durationMin: span.durationMin });
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resize_task", id: t.id, durationMin: span.durationMin, rangeEnd: span.endDate }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; saved?: boolean; actionId?: string | null; error?: string };
+      if (!res.ok || !data.ok) throw new Error(data.error ?? "resize failed");
+      await refresh();
+      if (data.saved === false) {
+        setMoveError("Task lengths and multi-day tasks need a database update first (docs/MANUAL-STEPS.md).");
+      } else if (data.actionId) {
+        const until = span.endDate ? `, until ${new Date(`${span.endDate}T12:00:00`).toLocaleDateString(undefined, { weekday: "short" })}` : "";
+        announceUndo({ actionId: data.actionId, label: `“${t.title}” now takes ${formatDuration(span.durationMin)}${until}` });
+      }
+    } catch {
+      setMoveError(`Couldn't change “${t.title}”. It's back how it was.`);
     } finally {
       setMoving(null);
     }
@@ -604,6 +664,7 @@ export default function CalendarPage() {
             onOpenDay={setSelectedDay}
             onAddAt={(ymd, time) => openAddAt(ymd, time)}
             onMoveTask={(t, ymd, time) => void moveTask(t, ymd, time)}
+            onResizeTask={(t, span) => void resizeTask(t, span)}
             toYMD={toYMD}
             startHour={startHour}
           />
@@ -759,7 +820,7 @@ export default function CalendarPage() {
         );
       })()}
       </div>
-      <CalendarRail tasks={state?.tasks ?? []} today={todayYmd} />
+      <CalendarRail tasks={state?.tasks ?? []} today={todayYmd} onDraftOps={setRailOps} />
       </div>
 
       <SidePeek open={!!selectedDay} titleId="calendar-day-title" className="calendar-day-sheet" onClose={() => { setSelectedDay(null); setRemoved(null); }}>

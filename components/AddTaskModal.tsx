@@ -7,6 +7,10 @@ import { useRouter } from "next/navigation";
 import { Repeat, Sparkles } from "lucide-react";
 import { putAsk } from "@/lib/ask-handoff";
 import type { TaskCommitment } from "@/lib/types";
+import { addDays, formatDuration } from "@/lib/task-span";
+
+/** Round 5A 4.3: "How long" choices; "" is the calendar's default block. */
+const DURATIONS = [15, 30, 45, 60, 90, 120, 180, 240];
 
 type Frequency = "daily" | "weekly" | "monthly" | "yearly";
 
@@ -77,6 +81,10 @@ export default function AddTaskModal({ initialDate, initialTime, initialCalendar
   const [date, setDate] = useState(() => initialDate ?? getUserToday(tz));
   const [time, setTime] = useState(initialTime ?? "09:00");
   const [notes, setNotes] = useState("");
+  // Round 5A 4.3: a single date, or a range that shows on every day it covers.
+  const [spanMode, setSpanMode] = useState<"single" | "range">("single");
+  const [rangeEnd, setRangeEnd] = useState("");
+  const [durationMin, setDurationMin] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -196,6 +204,11 @@ export default function AddTaskModal({ initialDate, initialTime, initialCalendar
           return;
         }
       } else {
+        const end = spanMode === "range" ? rangeEnd || addDays(date, 1) : "";
+        if (end && end <= date) {
+          setError("Pick an end date after the start date.");
+          return;
+        }
         const res = await fetch("/api/tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -208,6 +221,8 @@ export default function AddTaskModal({ initialDate, initialTime, initialCalendar
             notes: notes.trim() || undefined,
             planId,
             commitment: type,
+            durationMin: durationMin ? Number(durationMin) : undefined,
+            rangeEnd: end || undefined,
           }),
         });
         const data = (await res.json().catch(() => null)) as
@@ -323,6 +338,62 @@ export default function AddTaskModal({ initialDate, initialTime, initialCalendar
             <input id="add-task-time" name="time" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
           </div>
         </div>
+
+        {/* Round 5A 4.3: one date, or a range (not for repeating tasks). */}
+        {!recurringEnabled && (
+          <fieldset className="field add-task-type add-task-span">
+            <legend>Dates</legend>
+            <div className="add-task-type-options">
+              {(
+                [
+                  ["single", "Single date"],
+                  ["range", "Date range"],
+                ] as const
+              ).map(([value, text]) => (
+                <label key={value} className={`add-task-type-option${spanMode === value ? " is-on" : ""}`}>
+                  <input
+                    type="radio"
+                    name="task-span"
+                    value={value}
+                    checked={spanMode === value}
+                    onChange={() => {
+                      setSpanMode(value);
+                      if (value === "range" && (!rangeEnd || rangeEnd <= date)) setRangeEnd(addDays(date, 1));
+                    }}
+                  />
+                  {text}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
+
+        {!recurringEnabled && (
+          <div className="add-task-when">
+            {spanMode === "range" && (
+              <div className="field">
+                <label htmlFor="add-task-end">Until</label>
+                <input
+                  id="add-task-end"
+                  name="range-end"
+                  type="date"
+                  min={addDays(date, 1)}
+                  value={rangeEnd}
+                  onChange={(e) => setRangeEnd(e.target.value)}
+                />
+              </div>
+            )}
+            <div className="field">
+              <label htmlFor="add-task-duration">{spanMode === "range" ? "How long each day" : "How long"}</label>
+              <select id="add-task-duration" name="duration" value={durationMin} onChange={(e) => setDurationMin(e.target.value)}>
+                <option value="">Not set</option>
+                {DURATIONS.map((d) => (
+                  <option key={d} value={String(d)}>{formatDuration(d)}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
 
         <div className="field">
           <label htmlFor="add-task-project">Project</label>

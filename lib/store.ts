@@ -42,6 +42,7 @@ import type {
   PlanKind,
 } from "./types";
 import { commitmentOf } from "./task-kind";
+import { shiftedEndDate } from "./task-span";
 import { createColumnMemo, schemaErrorKind, warnSchemaOnce } from "./schema-compat";
 import { AREA_TITLE, areasFor, missingAreas, type AreaSignals } from "./school-work";
 import { dedupeFacts, factCategoryFor, factKey, factView, isFactCategory, isFactSource, prepareFact, type FactView } from "./student/facts";
@@ -131,6 +132,9 @@ type TaskRow = {
   overdue_dismissed_at?: string | null;
   /** Absent until migration 20261105060000 has run. */
   completed_at?: string | null;
+  /** Absent until migration 20261114010000 has run. */
+  duration_min?: number | null;
+  end_date?: string | null;
 };
 const BASE_TASK_COLUMNS =
   "id, title, date, time, completed, kind, calendar_id, plan_id, notes, recurring, resources, start_action, source, external_id, path_node_id";
@@ -139,7 +143,7 @@ const BASE_TASK_COLUMNS =
 // database doesn't have yet is left out of reads and writes until a re-check
 // finds it, and the app reads the missing value through the same rules
 // (commitmentOf in lib/task-kind.ts).
-const OPTIONAL_TASK_COLUMNS = ["commitment_type", "overdue_dismissed_at", "completed_at"] as const;
+const OPTIONAL_TASK_COLUMNS = ["commitment_type", "overdue_dismissed_at", "completed_at", "duration_min", "end_date"] as const;
 const missingTaskColumns = createColumnMemo();
 
 function taskColumns(): string {
@@ -192,6 +196,8 @@ function taskFromRow(r: TaskRow): Task {
   if (r.commitment_type) t.commitment = r.commitment_type;
   if (r.overdue_dismissed_at) t.overdueDismissedAt = r.overdue_dismissed_at;
   if (r.completed_at) t.completedAt = r.completed_at;
+  if (typeof r.duration_min === "number") t.durationMin = r.duration_min;
+  if (r.end_date && r.end_date > r.date) t.endDate = r.end_date;
   // Old ids (Personal/Work/Study/custom) become School or No school here, so
   // nothing above the store sees them (lib/calendars.ts).
   t.calendarId = calendarGroupOf({ ...t, calendarId: r.calendar_id ?? undefined });
@@ -225,6 +231,8 @@ function taskPatchToRow(patch: Partial<Omit<Task, "id">>): Record<string, unknow
   if (has("externalId")) row.external_id = patch.externalId ?? null;
   if (has("commitment")) row.commitment_type = patch.commitment ?? null;
   if (has("overdueDismissedAt")) row.overdue_dismissed_at = patch.overdueDismissedAt ?? null;
+  if (has("durationMin")) row.duration_min = patch.durationMin ?? null;
+  if (has("endDate")) row.end_date = patch.endDate ?? null;
   return row;
 }
 
@@ -483,6 +491,12 @@ export async function toggleTask(id: string): Promise<Task | null> {
 
 export async function updateTask(id: string, patch: Partial<Omit<Task, "id">>): Promise<Task | null> {
   if (!isUuid(id)) return null;
+  // Round 5A 4.3: a range task moved by any path (calendar, AI, Today, undo)
+  // keeps its length in days, and its end never lands before its start.
+  if (patch.date != null && !Object.prototype.hasOwnProperty.call(patch, "endDate") && !missingTaskColumns.isMissing("end_date")) {
+    const current = await getTask(id);
+    if (current?.endDate && current.date !== patch.date) patch = { ...patch, endDate: shiftedEndDate(current, patch.date) };
+  }
   const row = taskPatchToRow(patch);
   if (Object.keys(row).length === 0) return getTask(id);
   const { db, userId } = ctx();
@@ -3094,7 +3108,14 @@ async function applyUndo(record: ActionRecord): Promise<void> {
     }
     case "reschedule_task": {
       const r = snap.rescheduled;
-      if (r) await updateTask(r.taskId, { date: r.fromDate, time: r.fromTime });
+      if (r) {
+        await updateTask(r.taskId, {
+          date: r.fromDate,
+          time: r.fromTime,
+          // Only a move that also shifted a range's end records it.
+          ...(r.fromEndDate !== undefined ? { endDate: r.fromEndDate } : {}),
+        });
+      }
       for (const move of snap.rescheduledMany ?? []) {
         await updateTask(move.taskId, { date: move.fromDate, time: move.fromTime });
       }

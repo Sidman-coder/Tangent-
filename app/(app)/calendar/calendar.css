@@ -574,6 +574,50 @@
   color: var(--red);
   font-weight: 500;
 }
+
+/* Round 5A 4.3: the bottom-edge handle sets how long a task takes; dragged
+   into a later day, the task runs until then. */
+.calendar-page .wk-resize {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 8px;
+  cursor: ns-resize;
+  touch-action: none;
+}
+.calendar-page .wk-resize::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  width: 18px;
+  height: 3px;
+  margin-left: -9px;
+  border-radius: var(--r-pill);
+  background: var(--block);
+  opacity: 0;
+  transition: opacity var(--dur-fast, 120ms) ease-out;
+}
+.calendar-page .wk-block:hover .wk-resize::after,
+.calendar-page .wk-block:focus-visible .wk-resize::after {
+  opacity: 0.6;
+}
+@media (pointer: coarse) {
+  .calendar-page .wk-resize {
+    height: 14px;
+  }
+  .calendar-page .wk-resize::after {
+    opacity: 0.45;
+  }
+}
+/* A day in the middle or end of a range task. */
+.calendar-page .wk-block.is-span {
+  border-left-style: dashed;
+}
+.wk-ghost--resize {
+  border-style: solid;
+}
 .calendar-move-error {
   margin: 10px 0 0;
   color: var(--red);
@@ -798,59 +842,21 @@
   padding-top: 14px;
   border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
 }
-.cal-rail-ask label {
+.cal-rail-ask-label {
+  margin: 0;
   color: var(--text-2);
   font-size: 12.5px;
   font-weight: 550;
 }
-.cal-rail-box {
-  position: relative;
-}
-.calendar-layout .cal-rail-box textarea {
-  width: 100%;
-  min-height: 84px;
-  padding: 10px 44px 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--bg);
-  color: var(--text);
-  font: inherit;
-  font-size: 14px;
-  resize: none;
-  transition: min-height 260ms cubic-bezier(0.2, 0.8, 0.2, 1), border-color 160ms ease;
-}
-.calendar-layout .cal-rail-box textarea:focus {
-  min-height: 132px;
-  border-color: var(--accent);
-  outline: none;
-}
-.cal-rail-box button {
-  position: absolute;
-  right: 8px;
-  bottom: 10px;
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border: 0;
-  border-radius: 50%;
-  background: var(--accent);
-  color: var(--accent-ink);
-  cursor: pointer;
-}
-.cal-rail-box button:disabled {
-  opacity: 0.4;
-  cursor: default;
+/* Round 5A 4.1: the talk lives in the rail; the plan's steps show on the
+   main calendar, so the rail's preview skips its own mini calendar. */
+.cal-rail-talk {
+  min-width: 0;
 }
 .cal-rail-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-}
-@media (prefers-reduced-motion: reduce) {
-  .calendar-layout .cal-rail-box textarea {
-    transition: none;
-  }
 }
 
 /* ── Round 4 Phase 4: project tints, month drag, a lighter day panel ─────── */
@@ -934,6 +940,23 @@
   overflow-wrap: anywhere;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+/* Short blocks fit one title line: end it with an ellipsis, not a cut word. */
+.calendar-page .wk-block.is-short .wk-block-title {
+  -webkit-line-clamp: 1;
+}
+/* A multi-day task's "2/3": in the time line on wide screens, a small tag on
+   phones (where the time line is hidden). */
+.calendar-page .wk-block-part {
+  display: none;
+}
+@media (max-width: 720px) {
+  .calendar-page .wk-block-part {
+    display: block;
+    color: var(--text-2);
+    font: 600 10px/1.2 var(--font-body);
+    font-variant-numeric: tabular-nums;
+  }
 }
 .wk-due-item {
   border-left: 3px dashed var(--block, var(--accent));

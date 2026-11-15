@@ -1,0 +1,236 @@
+/* Round 5A 4.2: the draft pill and its floating card, bottom-right. */
+
+.draft-dock {
+  position: fixed;
+  right: var(--s-6);
+  bottom: var(--s-6);
+  z-index: 56;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--s-2);
+  max-width: calc(100vw - 2 * var(--s-4));
+  pointer-events: none;
+}
+.draft-dock > * {
+  pointer-events: auto;
+}
+/* The desktop-alert prompt also sits bottom-right; stack the drafts above it. */
+@media (min-width: 768px) {
+  body:has(.desktop-notif-prompt) .draft-dock {
+    bottom: calc(var(--s-6) + 140px);
+  }
+}
+@media (max-width: 767px) {
+  /* Above the phone nav and the + button. */
+  .draft-dock {
+    right: var(--s-4);
+    bottom: calc(var(--bottom-nav-h) + 56px + 2 * var(--s-4));
+  }
+  body:has(.desktop-notif-prompt) .draft-dock {
+    bottom: calc(var(--bottom-nav-h) + 140px + 2 * var(--s-4));
+  }
+}
+
+.draft-pills {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--s-2);
+}
+
+.draft-pill {
+  display: flex;
+  align-items: center;
+  max-width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  box-shadow: var(--shadow-md);
+}
+.draft-pill.is-open {
+  border-color: var(--accent-line);
+}
+
+.draft-pill-open {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 var(--s-2) 0 var(--s-4);
+  background: none;
+  border: 0;
+  border-radius: var(--r-pill);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--t-label);
+  cursor: pointer;
+}
+.draft-pill-open svg {
+  flex: none;
+  color: var(--accent-text);
+}
+.draft-pill-kind {
+  flex: none;
+  color: var(--text-2);
+}
+.draft-pill-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  max-width: 22ch;
+}
+.draft-pill-kind::after,
+.draft-pill-title::after {
+  content: " ·";
+  color: var(--text-3);
+  font-weight: 400;
+}
+.draft-pill-count {
+  flex: none;
+  color: var(--text-2);
+}
+
+.draft-pill-x {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  margin-right: var(--s-1);
+  background: none;
+  border: 0;
+  border-radius: var(--r-pill);
+  color: var(--text-3);
+  cursor: pointer;
+}
+.draft-pill-x:hover,
+.draft-pill-open:hover {
+  color: var(--text);
+}
+.draft-pill-x:hover {
+  background: var(--surface-2);
+}
+.draft-pill-open:focus-visible,
+.draft-pill-x:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* "Replace the oldest?" */
+.draft-ask {
+  width: min(340px, 100%);
+  padding: var(--s-4);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+  font-size: var(--t-label);
+  color: var(--text);
+}
+.draft-ask p {
+  margin: 0 0 var(--s-3);
+}
+.draft-ask-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+/* The floating card: the brief layered over a calendar card, like two
+   stacked cards with a slight offset. */
+.draft-card {
+  position: relative;
+  width: min(440px, 100%);
+  padding: 0 0 0 var(--s-4);
+  margin-bottom: var(--s-1);
+}
+.draft-card-cal {
+  max-height: 260px;
+  overflow: hidden;
+  padding: var(--s-3);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+  margin-right: var(--s-4);
+}
+.draft-card-brief {
+  position: relative;
+  margin-top: -140px;
+  padding: var(--s-4);
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+}
+.draft-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: calc(-1 * var(--s-2)) calc(-1 * var(--s-2)) 0 0;
+}
+.draft-card-kicker {
+  font-size: var(--t-caption);
+  font-weight: 600;
+  color: var(--accent-text);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.draft-card-title {
+  margin: var(--s-1) 0 var(--s-2);
+  font-size: var(--t-head);
+  font-weight: 600;
+  color: var(--text);
+}
+.draft-card-why {
+  margin: 0 0 var(--s-3);
+  font-size: var(--t-label);
+  color: var(--text-2);
+}
+.draft-card-lines {
+  margin: 0 0 var(--s-4);
+  padding-left: var(--s-4);
+  font-size: var(--t-label);
+  color: var(--text);
+}
+.draft-card-lines li + li {
+  margin-top: var(--s-1);
+}
+.draft-card-lines .is-more {
+  list-style: none;
+  margin-left: calc(-1 * var(--s-4));
+  color: var(--text-3);
+}
+.draft-card-status {
+  margin: 0 0 var(--s-3);
+  font-size: var(--t-label);
+  color: var(--text-2);
+}
+.draft-card-status.is-error {
+  color: var(--danger-text);
+}
+.draft-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+@media (max-width: 767px) {
+  .draft-card {
+    padding-left: 0;
+  }
+  .draft-card-cal {
+    max-height: 150px;
+    margin-right: var(--s-3);
+  }
+  .draft-card-brief {
+    margin-top: -90px;
+    max-height: 50vh;
+  }
+}

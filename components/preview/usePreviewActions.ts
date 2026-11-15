@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeSet } from "@/lib/pipeline/changeset";
 import type { DraftEdit, PreviewPayload } from "@/lib/pipeline/draft";
+import { findDraft, forgetDraft, keepDraft, markOpen } from "@/lib/drafts/draft-store";
 
 export type PreviewPhase = "draft" | "confirmed" | "discarded" | "undone";
 
@@ -54,6 +55,19 @@ export function usePreviewActions({
   const opsRef = useRef(onOps);
   opsRef.current = onOps;
   useEffect(() => opsRef.current?.(cs.ops), [cs.ops]);
+
+  // Round 5A 4.2: an unconfirmed plan is kept as a draft
+  // (lib/drafts/draft-store.ts) from the moment it shows, so it survives
+  // navigating away, Clear, or a reload. While it's on screen the pill hides
+  // it. Confirmed or discarded: forgotten.
+  const originRef = useRef<string | null>(null);
+  useEffect(() => markOpen(cs.id), [cs.id]);
+  useEffect(() => {
+    if (phase !== "draft" || expired) return forgetDraft(cs.id);
+    const kept = findDraft(cs.id);
+    originRef.current ??= kept?.origin ?? window.location.pathname;
+    keepDraft(cs, view, originRef.current);
+  }, [phase, expired, cs, view]);
 
   // preview_shown, once per draft.
   useEffect(() => {

@@ -37,6 +37,11 @@ export type Task = {
   /** When it was marked Done (ISO). Set by the store whenever `completed`
    *  changes; absent on tasks finished before the column existed. */
   completedAt?: string | null;
+  /** Round 5A 4.3: block length in minutes on each day it covers. Null = the
+   *  default 45-min block (lib/task-span.ts). */
+  durationMin?: number | null;
+  /** Round 5A 4.3: the last day a range task covers. Null = single date. */
+  endDate?: string | null;
   calendarId?: string | null;
   planId?: string | null;
   notes?: string;
@@ -245,6 +250,8 @@ export type ActionKind =
 
 /** Task fields an undo puts back. null clears the column. */
 export type RestoredTaskFields = {
+  durationMin?: number | null;
+  endDate?: string | null;
   title?: string;
   date?: string;
   time?: string;
@@ -295,7 +302,7 @@ export type ActionSnapshot = {
   /** Prior calendarId per task moved by move_tasks — restored on undo. */
   moves?: { taskId: string; fromCalendarId: string | null }[];
   /** Prior date/time for a task rescheduled by reschedule_task — restored on undo. */
-  rescheduled?: { taskId: string; fromDate: string; fromTime: string };
+  rescheduled?: { taskId: string; fromDate: string; fromTime: string; fromEndDate?: string | null };
   /** Prior date/time of every task moved together (Today's re-plan, Not today, Fresh start). */
   rescheduledMany?: { taskId: string; fromDate: string; fromTime: string }[];
   /** Everything an apply_changeset did, reversed step by step on undo. */

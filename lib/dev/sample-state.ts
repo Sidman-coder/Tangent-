@@ -30,6 +30,8 @@ export const SAMPLE_STATE = {
     t("11", "Robotics: sketch the intake arm", -2, "16:00", { kind: "academic-ec", planId: "p1", completed: true }),
     t("12", "Test the servo travel", 9, "16:30", { kind: "academic-ec", planId: "p1" }),
     t("13", "Practice the regionals run", 18, "16:00", { kind: "academic-ec", planId: "p1" }),
+    // Round 5A 4.3: a range task with a length, so the previews show a span.
+    t("14", "Science fair poster", 1, "18:00", { kind: "personal", durationMin: 90, endDate: ymd(3) }),
   ],
   calendars: [],
   events: [],

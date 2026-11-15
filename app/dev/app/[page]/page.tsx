@@ -4,7 +4,7 @@
 // (lib/dev/sample-state.ts), for design review without an account.
 // /dev/app/today, /dev/app/calendar, /dev/app/projects, /dev/app/project, /dev/app/school, /dev/app/settings, /dev/app/settings-account (…-security, -schedule,
 // -notifications, -context, -activity, -data),
-// /dev/app/tangents, /dev/app/preview, /dev/app/color, /dev/app/grill. 404s in production. API calls fail here (no session), so
+// /dev/app/tangents, /dev/app/draft (an unconfirmed plan; leave the page and the draft pill shows), /dev/app/preview, /dev/app/color, /dev/app/grill. 404s in production. API calls fail here (no session), so
 // anything loaded from the server shows its empty or error state.
 
 import { notFound, useParams } from "next/navigation";
@@ -13,6 +13,8 @@ import MotionProvider from "@/components/MotionProvider";
 import { PipelineFlagProvider } from "@/components/PipelineFlag";
 import AppShell from "@/components/AppShell";
 import TaskDetail from "@/components/TaskDetail";
+import DraftDock from "@/components/drafts/DraftDock";
+import PreviewCard from "@/components/PreviewCard";
 import FirstRun from "@/components/FirstRun";
 import TodayHome from "@/components/today/TodayHome";
 import PlanCalendarPreview from "@/components/preview/PlanCalendarPreview";
@@ -56,6 +58,44 @@ function PreviewCalendarSample() {
         today={today}
       />
     </section>
+  );
+}
+
+/** Round 5A 4.2: an unconfirmed plan on screen. Leave the page and it's kept
+ *  as a draft (the pill bottom-right). Confirm/Discard 401 here (no session). */
+function DraftSample() {
+  const today = getUserToday(useUserTimezone());
+  const ops = [
+    { op: "create_plan" as const, ref: "cp", title: "Competitive programming" },
+    ...["Solve 3 easy array problems", "Review two-pointer patterns", "Timed set: 2 medium problems", "Read one editorial", "Virtual contest (Div. 3)"].map((title, i) => ({
+      op: "add_task" as const,
+      title,
+      date: addDaysYMD(today, i * 2 + 1),
+      time: "16:30",
+      commitment: "flexible" as const,
+      plan_ref: "cp",
+    })),
+  ];
+  const changeSet = {
+    id: "00000000-0000-4000-8000-00000000d5a1",
+    user_id: "00000000-0000-4000-8000-000000000001",
+    source: "typed" as const,
+    request_text: "plan competitive programming",
+    summary: "Five short practice sessions over the next ten days, building to a virtual contest.",
+    intent: "new_plan" as const,
+    target_plan_id: null,
+    ops,
+    assumptions: [],
+    status: "draft" as const,
+    created_at: new Date().toISOString(),
+    confirmed_at: null,
+    action_id: null,
+  };
+  const preview = { lines: ops.flatMap((o) => (o.op === "add_task" ? [`${o.title} · ${o.date}`] : [])), likelyDuplicates: [] };
+  return (
+    <div style={{ maxWidth: 680, margin: "24px auto" }}>
+      <PreviewCard changeSet={changeSet} preview={preview} />
+    </div>
   );
 }
 
@@ -125,6 +165,7 @@ const PAGES: Record<string, React.ComponentType> = {
   tangents: TangentsPage,
   paths: TangentsPage,
   preview: PreviewCalendarSample,
+  draft: DraftSample,
   color: ColorPickerSample,
   grill: GrillSample,
   followup: FollowUpSample,
@@ -148,6 +189,7 @@ export default function AppPreview() {
             </main>
           </AppShell>
           <TaskDetail />
+          <DraftDock />
         </MotionProvider>
       </MockAppStateProvider>
     </PipelineFlagProvider>

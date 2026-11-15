@@ -36,7 +36,8 @@ export const POST = withUser(async (request: Request) => {
   const action = await recordAction(
     "reschedule_task",
     `Moved "${task.title}" to ${suggestedDate} ${suggestedTime}`,
-    { rescheduled: { taskId, fromDate, fromTime } }
+    // A range task's end moves with it (lib/store.ts updateTask); undo puts it back.
+    { rescheduled: { taskId, fromDate, fromTime, ...(before.endDate ? { fromEndDate: before.endDate } : {}) } }
   );
 
   return NextResponse.json({ ok: true, task, actionId: action.id });

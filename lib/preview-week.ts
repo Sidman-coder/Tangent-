@@ -91,7 +91,7 @@ type Placed = Omit<WeekBlock, "dayIndex"> & { date: string };
 type PlanColors = readonly Pick<Plan, "id" | "color">[];
 
 /** A new step's color: its project's, or the one its new project is about to get. */
-function addedColor(op: Extract<Op, { op: "add_task" }>, plans: PlanColors): string {
+export function addedColor(op: Extract<Op, { op: "add_task" }>, plans: PlanColors): string {
   if (op.plan_id) return planSeriesColor({ id: op.plan_id, color: plans.find((p) => p.id === op.plan_id)?.color ?? "" });
   if (op.plan_ref) return seriesColor(assignProjectColor(plans.map((p) => p.color)));
   return seriesColor(op.commitment === "fixed" || op.commitment === "reminder" ? "personal" : "neutral");
