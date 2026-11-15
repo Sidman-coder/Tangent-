@@ -27,10 +27,10 @@
 }
 .you-card {
   padding: 14px 16px;
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--c, var(--line));
+  border: 1px solid color-mix(in srgb, var(--c, var(--line)) 22%, var(--line));
   border-radius: 16px;
-  background: var(--surface);
+  /* Round 5B Phase 3: a pastel wash in the area's map colour, no side stripe. */
+  background: color-mix(in srgb, var(--c, transparent) 7%, var(--surface));
   scroll-margin-block: 120px;
   transition: border-color 220ms ease, box-shadow 220ms ease;
 }
@@ -43,11 +43,10 @@
 }
 .you-card.is-focus {
   border-color: color-mix(in srgb, var(--c) 55%, var(--line));
-  border-left-color: var(--c);
   box-shadow: 0 6px 22px color-mix(in srgb, var(--c) 14%, transparent);
 }
 .you-card.is-empty {
-  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  background: color-mix(in srgb, var(--c, transparent) 4%, var(--surface));
 }
 .you-card header {
   display: flex;
@@ -67,8 +66,8 @@
   width: 28px;
   height: 28px;
   border-radius: 9px;
-  background: color-mix(in srgb, var(--c) 15%, transparent);
-  color: var(--c);
+  background: color-mix(in srgb, var(--c) 18%, var(--surface));
+  color: color-mix(in srgb, var(--c) 80%, var(--text));
 }
 .you-card-count {
   color: var(--text-3);
@@ -632,4 +631,252 @@
     position: absolute;
     inset: -12px -4px;
   }
+}
+
+/* ── Round 5B Phase 3: + Add, edit in place, Forget with Undo, Tell pill ── */
+.you-card-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 10px 0 8px;
+  border: 1px solid color-mix(in srgb, var(--c, var(--line)) 30%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--c, transparent) 10%, var(--surface));
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+.you-card-add:hover,
+.you-card-add:focus-visible {
+  background: color-mix(in srgb, var(--c, transparent) 20%, var(--surface));
+  color: var(--text);
+}
+.you-card-add:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+/* The fact's words become the field: same font, same spot, grows with the text. */
+.settings-page .you-fact-field,
+.you-fact-field {
+  display: block;
+  min-height: 0;
+  margin: -4px 0 0 -7px;
+  padding: 3px 6px;
+  border: 1px solid color-mix(in srgb, var(--c, var(--accent)) 45%, var(--line));
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+  resize: none;
+  overflow: hidden;
+  box-sizing: border-box;
+  width: calc(100% + 7px);
+}
+.you-fact-field:focus {
+  outline: 2px solid color-mix(in srgb, var(--c, var(--accent)) 40%, transparent);
+  outline-offset: 1px;
+}
+.you-fact-field::placeholder {
+  color: var(--text-3);
+}
+.you-fact-meta.is-editing {
+  gap: 6px;
+}
+.you-fact-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.you-fact-icon.is-save {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--c, var(--accent)) 30%, var(--surface));
+  color: var(--text);
+}
+.you-fact-icon:hover,
+.you-fact-icon:focus-visible {
+  color: var(--text);
+}
+.you-fact-keys {
+  margin-left: 4px;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+.you-fact-error {
+  margin: 6px 0 0;
+  color: var(--danger, #b42318);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.you-fact.is-forgotten {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.you-fact.is-forgotten p {
+  color: var(--text-3);
+  font-size: 13px;
+}
+.you-fact.is-new p {
+  animation: you-fact-glow 2.4s var(--ease, ease) 1;
+}
+@keyframes you-fact-glow {
+  0% { background: color-mix(in srgb, var(--c, var(--accent)) 28%, transparent); }
+  100% { background: transparent; }
+}
+
+/* "Tell Tangent something": full width, a pastel oval in the map's colours. */
+.knows-tell {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+}
+.knows-tell-thread {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.knows-tell-turn {
+  max-width: min(78%, 560px);
+  padding: 9px 14px;
+  border-radius: 18px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.knows-tell-turn p {
+  margin: 0;
+  white-space: pre-line;
+}
+.knows-tell-turn.is-you {
+  justify-self: end;
+  background: var(--map-pill, var(--surface-2));
+  color: var(--map-ink, var(--text));
+  border-bottom-right-radius: 6px;
+}
+.knows-tell-turn.is-tangent {
+  justify-self: start;
+  border: 1px solid var(--map-ring, var(--line));
+  background: var(--map-bg, var(--surface));
+  color: var(--text);
+  border-bottom-left-radius: 6px;
+}
+.knows-tell-who {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--text-3);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.knows-tell-dots {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px 0;
+}
+.knows-tell-dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-3);
+  animation: knows-tell-dot 1.2s ease-in-out infinite;
+}
+.knows-tell-dots i:nth-child(2) { animation-delay: 0.15s; }
+.knows-tell-dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes knows-tell-dot {
+  0%, 80%, 100% { opacity: 0.3; }
+  40% { opacity: 1; }
+}
+.knows-tell-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 64px;
+  padding: 10px 10px 10px 12px;
+  border: 1px solid var(--map-ring, var(--line));
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--map-bg, var(--surface)), var(--map-bg-2, var(--surface)));
+  box-shadow: 0 6px 24px color-mix(in srgb, var(--map-ink, #000) 7%, transparent);
+  box-sizing: border-box;
+}
+.knows-tell-pill:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--map-ring, var(--line)));
+}
+.settings-page .knows-tell-pill textarea,
+.knows-tell-pill textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: 24px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--map-ink, var(--text));
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.5;
+  resize: none;
+  box-shadow: none;
+}
+.knows-tell-pill textarea:focus {
+  outline: none;
+}
+.knows-tell-pill textarea::placeholder {
+  color: color-mix(in srgb, var(--map-ink, var(--text)) 50%, transparent);
+}
+.knows-tell-mic {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+}
+.knows-tell-send {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--map-ink, var(--text));
+  color: var(--map-bg, var(--surface));
+  cursor: pointer;
+  transition: opacity 160ms ease;
+}
+.knows-tell-send:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.knows-tell-note {
+  margin: 0 16px;
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+.knows-danger {
+  margin-top: 8px;
+}
+
+@media (max-width: 767px) {
+  .you-card-add { min-height: 44px; padding: 0 14px 0 12px; }
+  .you-fact-icon { width: 44px; height: 44px; }
+  .you-fact-keys { display: none; }
+  .knows-tell-turn { max-width: 88%; }
+  .knows-tell-pill { min-height: 60px; padding: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .you-card-add,
+  .knows-tell-send { transition: none; }
+  .you-fact.is-new p,
+  .knows-tell-dots i { animation: none; }
 }

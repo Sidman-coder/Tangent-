@@ -3,6 +3,7 @@ import { addContextEntry, clearContextEntries, confirmContextEntry, getUserConte
 import { extractContextFacts } from "@/lib/context-extract";
 import { factsFromText } from "@/lib/ai/import-context";
 import { withUser } from "@/lib/request-context";
+import { isFactCategory } from "@/lib/student/facts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,7 +29,11 @@ export const POST = withUser(async (request: Request) => {
       if (!fact) return NextResponse.json({ ok: false, error: "fact is required" }, { status: 400 });
       const CATEGORIES = ["preference", "habit", "commitment", "goal", "person", "work", "general"] as const;
       const category = CATEGORIES.find((c) => c === body.category) ?? "general";
-      const entry = await addContextEntry({ category, fact, source: "manual" });
+      // Round 5B: "+ Add" in an area (and an edit) keeps that area's category,
+      // and an edited project fact stays with its project.
+      const factCategory = isFactCategory(body.factCategory) ? body.factCategory : undefined;
+      const projectId = typeof body.projectId === "string" && body.projectId ? body.projectId : undefined;
+      const entry = await addContextEntry({ category, fact, source: "manual", factCategory, projectId });
       // Sensitive or too vague to plan with: not kept (lib/student/facts.ts).
       if (!entry) return NextResponse.json({ ok: false, error: NOT_KEPT }, { status: 422 });
       return NextResponse.json({ ok: true, entry });

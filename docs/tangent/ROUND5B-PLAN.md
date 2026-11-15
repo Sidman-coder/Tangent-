@@ -92,3 +92,40 @@ spec-verifier; ui-checker at 1440 and 390, light and dark; scroll and drill-in s
   - EXTRA:
     - the dev sample pages `/dev/app/settings-context` and `settings-context-dense` (`lib/dev/sample-knows.ts`)
     - the route `/api/context/usage` and `FactUsage` in `lib/store.ts` (needed for the satellite links)
+- 2026-11-15 Phase 3 done (signed-out /dev/app/settings-context; in the sample, all writes are local only):
+  - cards: no coloured left border (computed `border-left-width` 0.67px, the hairline); icon, title and count kept; a pastel wash and border in the area's `--map-*` colour
+  - "+ Add" in each of the six area cards opens an inline auto-growing row with the area preset (`lib/you-map-edit.ts AREA_CATEGORY`), through the sensitive filter:
+    - server: `remember` → `addContextEntry` → `prepareFact`
+    - sample: `localFact`, which runs `prepareFact`
+    - Playwright check: "I take ADHD meds every morning" shows the not-kept message inline
+  - edit in place: the `<p>` becomes a textarea with the same font (14px Figtree) in the same spot, multi-line and auto-growing. Enter or ✓ saves, Esc or ✕ cancels. A save keeps the old `factCategory` and `projectId`, then drops the old fact
+  - Forget gives an inline "Forgotten. Undo" row (`role=status`) for `UNDO_TOAST_MS` (8s); the forget is sent after that, or on pagehide or unmount, with `keepalive`. Confirm is unchanged
+  - Tell pill (`components/settings/KnowsTell.tsx`):
+    - full content width (1040 = cards width at 1440), 65px tall, pastel oval, mic and send
+    - the thread sits above it
+    - real mode: `extract`, falling back to `remember`
+    - distress gives `DISTRESS_REPLY`; sensitive text gives the not-kept message with no write
+    - new facts glow on the map (`glowIds` → `.you-map-light.is-new`) and in their card
+  - "Forget everything" is last in the "You, mapped" section, after the Tell pill
+  - Playwright run (signed-out /dev/app):
+    - add, sensitive add, edit cancel and save, forget then undo (5 → 5 facts), Tell, then a sensitive Tell all behave as above
+    - 0 POSTs to /api/context in the sample
+    - no sideways scroll at 1440 or 390, light or dark
+    - 44px tap targets at 390
+    - console: only signed-out 401s
+  - screenshots in `docs/design/screens/round5b/`:
+    - `p3-add-row-1440-light`
+    - `p3-edit-1440-light`
+    - `p3-forget-undo-1440-light`
+    - `p3-cards-{1440,390}-{light,dark}`
+    - `p3-tell-{1440,390}-{light,dark}`
+    - `p3-map-glow-{1440,390}-{light,dark}`
+  - tests: `lib/you-map-edit.test.ts` (8); `npm test` 937 pass; tsc clean; eslint clean
+  - replaced, not removed: the old one-line "Tell Tangent something" input card is now the Tell pill. The old one-line edit `<input>` is now the in-place field
+  - interpretation for Sid: "at the very bottom" is read as the bottom of the "You, mapped" section. The "Bring in what you already have" and "Getting to know you" sections still follow it on the page, as before
+  - not built: project cards have no "+ Add" (the spec says "every area"; projects aren't areas)
+  - EXTRA:
+    - POST /api/context `remember` now passes `factCategory` and `projectId` through (needed for area adds and edits)
+    - the keepalive deferred forget
+    - fixed the fact sorter: "after school" no longer files a fact under Future; only "after high school" does (`lib/student/facts.ts`). Found when "I work best right after school" went to Future
+    - a fact also glows in its card when new
