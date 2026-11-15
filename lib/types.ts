@@ -77,7 +77,12 @@ export type Plan = {
   color: string;
   createdAt: string;
   taskCount: number;
+  /** Round 5A Phase 3: School and Work are projects too. Null for a goal.
+   *  Absent until migration 20261114000000_plan_kind runs. */
+  kind?: PlanKind | null;
 };
+
+export type PlanKind = "school" | "work";
 
 export type CalendarCategory = "ALL" | string;
 

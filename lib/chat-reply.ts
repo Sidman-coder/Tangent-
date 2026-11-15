@@ -6,7 +6,7 @@ import "server-only";
 import { handlePendingAnswer, handleVoiceText, type PlanProgress, type VoiceOptions } from "@/lib/voice-handler";
 import type { PendingQuestion } from "@/lib/pending-question";
 import { extractContextFacts } from "@/lib/context-extract";
-import { getUserTimezone } from "@/lib/store";
+import { ensureAreaProjects, getUserTimezone } from "@/lib/store";
 import { promptDateContext } from "@/lib/time";
 import { buildStudentContext } from "@/lib/ai/student-context";
 import { reliefSuggestion } from "@/lib/spacing";
@@ -175,6 +175,9 @@ export function extractContextFireAndForget(userMessage: string, finalResponse: 
 Assistant: ${finalResponse}`, "chat").catch((e) => {
     console.error("[api/chat] context extraction failed:", e instanceof Error ? e.message : e);
   });
+  // Round 5A Phase 3: "I work at Target" gives the student a Work project.
+  // Only the student's own words count, and this never throws.
+  void ensureAreaProjects({ chatMentions: [userMessage] });
 }
 
 export type CalendarReplyOptions = {

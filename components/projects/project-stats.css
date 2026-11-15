@@ -105,6 +105,12 @@
 .school-card-copy { display: grid; gap: 3px; min-width: 0; }
 .school-card-copy strong { overflow: hidden; color: var(--text); font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .school-card-copy span { color: var(--text-2); font-size: 13px; line-height: 1.4; }
+/* Round 5A Phase 3: School and Work side by side from tablet width. */
+.areas-grid { display: grid; gap: 10px; }
+@media (min-width: 768px) {
+  .areas-grid:has(> :nth-child(2)) { grid-template-columns: 1fr 1fr; }
+}
+.school-card-copy .area-card-name { color: var(--text-2); font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
 
 /* School's own page. */
 .school-course { display: grid; gap: 8px; }

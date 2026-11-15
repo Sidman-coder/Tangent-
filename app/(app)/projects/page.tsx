@@ -60,7 +60,9 @@ export default function ProjectsPage() {
 
   const projects = useMemo<ProjectSummary[]>(() => {
     const tasks = state?.tasks ?? [];
+    // School and Work have their own section, so they never sit in the grid.
     return (state?.plans ?? [])
+      .filter((plan) => !plan.kind)
       .map((plan) => {
         const steps = tasks.filter((t) => t.planId === plan.id);
         const open = steps.filter((t) => !t.completed).sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
@@ -81,7 +83,15 @@ export default function ProjectsPage() {
     () => withoutClearedCanvas((state?.tasks ?? []).filter((t) => t.source === "canvas"), today),
     [state, today]
   );
-  const showSchool = canvasConnected || schoolTasks.length > 0;
+  // Round 5A Phase 3: School and Work are projects (plans.kind). Before the
+  // migration runs there's no School plan, and Canvas alone still shows School.
+  const schoolPlan = state?.plans.find((p) => p.kind === "school") ?? null;
+  const workPlan = state?.plans.find((p) => p.kind === "work") ?? null;
+  const schoolPlanTasks = useMemo(
+    () => (schoolPlan ? (state?.tasks ?? []).filter((t) => t.planId === schoolPlan.id && t.source !== "canvas") : []),
+    [state, schoolPlan]
+  );
+  const showSchool = Boolean(schoolPlan) || canvasConnected || schoolTasks.length > 0;
 
   const active = projects.filter((p) => p.next).sort((a, b) => (a.next!.date + a.next!.time).localeCompare(b.next!.date + b.next!.time));
   const finished = projects.filter((p) => !p.next);
@@ -145,10 +155,13 @@ export default function ProjectsPage() {
         </div>
       ) : (
         <>
-          {showSchool && (
-            <section className="school-section" aria-labelledby="school-heading">
-              <h2 id="school-heading">School</h2>
-              <SchoolCard tasks={schoolTasks} today={today} />
+          {(showSchool || workPlan) && (
+            <section className="school-section" aria-labelledby="areas-heading">
+              <h2 id="areas-heading">School &amp; Work</h2>
+              <div className="areas-grid">
+                {showSchool && <SchoolCard tasks={[...schoolTasks, ...schoolPlanTasks]} today={today} />}
+                {workPlan && <AreaCard plan={workPlan} tasks={(state?.tasks ?? []).filter((t) => t.planId === workPlan.id)} today={today} />}
+              </div>
             </section>
           )}
           {active.length > 0 && (
@@ -175,19 +188,39 @@ export default function ProjectsPage() {
 }
 
 function SchoolCard({ tasks, today }: { tasks: Task[]; today: string }) {
-  const courses = courseGroups(tasks, today);
+  const courses = courseGroups(tasks.filter((t) => t.source === "canvas"), today);
   const deadline = nextDeadline(tasks, today);
   const due = dueThisWeek(tasks, today);
   return (
     <Link href="/projects/school" className="school-card">
       <div className="school-card-copy">
-        <strong>{deadline ? `Next: ${splitCourse(deadline).title}` : "Nothing due from Canvas"}</strong>
+        <span className="area-card-name">School</span>
+        <strong>{deadline ? `Next: ${splitCourse(deadline).title}` : "Nothing due right now"}</strong>
         <span>
           {deadline ? `${shortDate(deadline.date)} · ` : ""}
           {due} due this week · {courses.length} course{courses.length === 1 ? "" : "s"}
         </span>
       </div>
       <MiniWorkload weeks={workloadByWeek(tasks, today)} />
+    </Link>
+  );
+}
+
+/** Work (and any later area): a project with no goal line or progress bar,
+ *  just what's next. */
+function AreaCard({ plan, tasks, today }: { plan: Plan; tasks: Task[]; today: string }) {
+  const open = tasks.filter((t) => !t.completed).sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999") || a.time.localeCompare(b.time));
+  const next = open.find((t) => !t.date || t.date >= today) ?? null;
+  return (
+    <Link href={`/projects/${plan.id}`} className="school-card" style={{ "--project-color": planSeriesColor(plan) } as React.CSSProperties}>
+      <div className="school-card-copy">
+        <span className="area-card-name">{plan.title}</span>
+        <strong>{next ? `Next: ${next.title}` : "Nothing coming up"}</strong>
+        <span>
+          {next?.date ? `${shortDay(next.date, today)}${next.time ? ` · ${formatTime12(next.time)}` : ""} · ` : ""}
+          {open.length} open
+        </span>
+      </div>
     </Link>
   );
 }

@@ -24,6 +24,7 @@ import { followUpById, followUpStorageKey } from "@/lib/student/follow-ups";
 import CalendarPage from "@/app/(app)/calendar/page";
 import ProjectsPage from "@/app/(app)/projects/page";
 import SchoolPage from "@/app/(app)/projects/school/page";
+import AllTasksPage from "@/app/(app)/tasks/page";
 import ProjectView from "@/components/projects/ProjectView";
 import SettingsPage from "@/app/(app)/settings/page";
 import SettingsFrame from "@/components/settings/SettingsFrame";
@@ -112,6 +113,7 @@ const PAGES: Record<string, React.ComponentType> = {
     return <ProjectView id="p1" />;
   },
   school: SchoolPage,
+  tasks: AllTasksPage,
   settings: framed(SettingsPage),
   "settings-account": framed(AccountSettings),
   "settings-security": framed(SecuritySettingsPage),

@@ -39,9 +39,11 @@ import type {
   PathNode,
   TangentStatus,
   BatchUndoStep,
+  PlanKind,
 } from "./types";
 import { commitmentOf } from "./task-kind";
 import { createColumnMemo, schemaErrorKind, warnSchemaOnce } from "./schema-compat";
+import { AREA_TITLE, areasFor, missingAreas, type AreaSignals } from "./school-work";
 import { dedupeFacts, factCategoryFor, factKey, factView, isFactCategory, isFactSource, prepareFact, type FactView } from "./student/facts";
 import { isStudentSlot } from "./context/goal-slots";
 import { isGlobalSlotKey } from "./context/slots";
@@ -1099,6 +1101,8 @@ export async function replaceCommitments(list: Commitment[], timezone: string): 
     if (error) fail("replaceCommitments", error);
   }
   console.log("[store] replaceCommitments — removed series:", stale.length, "| commitments:", list.length, "| rows:", rows.length);
+  // Round 5A Phase 3: a school or work commitment gives that area a project.
+  await ensureAreaProjects({ commitmentKinds: list.map((c) => c.kind) });
   return rows.length;
 }
 
@@ -1118,6 +1122,7 @@ type PlanRow = {
   task_count: number;
   color: string;
   created_at: string;
+  kind?: string | null;
 };
 
 function planFromRow(r: PlanRow): Plan {
@@ -1130,6 +1135,7 @@ function planFromRow(r: PlanRow): Plan {
     color: projectSeries(r.color, r.id),
     createdAt: r.created_at,
     taskCount: r.task_count,
+    ...(r.kind === "school" || r.kind === "work" ? { kind: r.kind } : {}),
   };
 }
 
@@ -1139,6 +1145,48 @@ export async function getAllPlans(): Promise<Plan[]> {
     db.from("plans").select("*").eq("user_id", userId).order("created_at").order("id").range(from, to)
   );
   return rows.map(planFromRow);
+}
+
+const missingPlanKind = createColumnMemo();
+
+/** Round 5A Phase 3: creates the School and/or Work project the student has
+ *  told Tangent about (lib/school-work.ts areasFor), once each. Never throws:
+ *  an area project is a nicety, so the caller's save always stands. Does
+ *  nothing before migration 20261114000000_plan_kind runs. */
+export async function ensureAreaProjects(signals: AreaSignals): Promise<PlanKind[]> {
+  const wanted = areasFor(signals);
+  if (wanted.length === 0 || missingPlanKind.isMissing("kind")) return [];
+  try {
+    const { db, userId } = ctx();
+    const { data, error } = await db.from("plans").select("id, kind, color").eq("user_id", userId);
+    if (error) {
+      if (schemaErrorKind(error) === "missing_column") {
+        missingPlanKind.markMissing("kind");
+        warnSchemaOnce("plans.kind", "plans.kind is missing; apply the migrations in docs/MANUAL-STEPS.md");
+        return [];
+      }
+      fail("ensureAreaProjects", error);
+    }
+    const existing = (data ?? []) as { id: string; kind: PlanKind | null; color: string | null }[];
+    const toMake = missingAreas(wanted, existing);
+    const used: SeriesKey[] = existing.map((p) => projectSeries(p.color, p.id));
+    const made: PlanKind[] = [];
+    for (const kind of toMake) {
+      const color = assignProjectColor(used);
+      used.push(color);
+      const { error: insertError } = await db
+        .from("plans")
+        .insert({ user_id: userId, title: AREA_TITLE[kind], description: "", task_ids: [], task_count: 0, color, kind });
+      // 23505: a parallel request made it first. That's the goal anyway.
+      if (insertError && insertError.code !== "23505") fail("ensureAreaProjects", insertError);
+      if (!insertError) made.push(kind);
+    }
+    if (made.length) console.log("[store] ensureAreaProjects — created:", made.join(", "));
+    return made;
+  } catch (e) {
+    console.warn("[store] ensureAreaProjects failed:", e instanceof Error ? e.message : e);
+    return [];
+  }
 }
 
 export async function addPlan(plan: Omit<Plan, "id" | "createdAt" | "color">): Promise<Plan> {
@@ -3474,6 +3522,8 @@ export async function saveCanvasFeed(icsUrl: string): Promise<CanvasFeedConfig> 
     .single();
   if (error) fail("saveCanvasFeed", error);
   console.log("[store] saveCanvasFeed: connected");
+  // Round 5A Phase 3: Canvas means school, so the student gets School.
+  await ensureAreaProjects({ canvasConnected: true });
   return canvasFeedFromRow(data as CanvasFeedRow);
 }
 

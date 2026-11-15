@@ -23,11 +23,20 @@
   display: block;
 }
 
+/* Round 5A Phase 3: the header and the island sit above the list, in the
+   same column. The list scales toward them while you talk. */
+.capture-head {
+  position: relative;
+  z-index: 90;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: calc(18px + env(safe-area-inset-top, 0px)) 16px 0;
+}
 .capture-page {
   max-width: 560px;
   margin: 0 auto;
-  padding: calc(18px + env(safe-area-inset-top, 0px)) 16px calc(220px + env(safe-area-inset-bottom, 0px));
-  transform-origin: 50% 85%;
+  padding: 18px 16px calc(48px + env(safe-area-inset-bottom, 0px));
+  transform-origin: 50% 0%;
 }
 
 .capture-top {
@@ -109,6 +118,44 @@
   display: flex;
   flex-direction: column;
   gap: 22px;
+}
+.capture-empty.is-inline {
+  margin: 0 6px;
+}
+/* The way to everything else, between Now and the projects. */
+.capture-all-tasks {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 0 16px;
+  border-radius: var(--r-md);
+  background: var(--elev-2);
+  color: var(--text);
+  font: 600 14.5px var(--font-body);
+  text-decoration: none;
+  transition: background var(--dur-fast) var(--ease);
+}
+.capture-all-tasks:hover {
+  background: var(--elev-3, var(--elev-2));
+}
+.capture-all-tasks:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.capture-all-tasks svg {
+  color: var(--text-2);
+}
+.capture-group {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.capture-group-head {
+  margin: 4px 6px 0;
+  color: var(--text);
+  font: 700 17px var(--font-display);
+  letter-spacing: -0.01em;
 }
 .capture-section-head {
   display: flex;
@@ -294,31 +341,10 @@
   color: color-mix(in srgb, var(--wash-ink) 55%, transparent);
 }
 
-/* Behind the island: the list fades into the page so rows never sit under,
-   or peek out below, the glass. */
-.capture-fade {
-  position: fixed;
-  z-index: 79;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: calc(230px + env(safe-area-inset-bottom, 0px));
-  background: linear-gradient(to bottom, rgb(from var(--bg) r g b / 0), var(--bg) 58%);
-  pointer-events: none;
-  transition: opacity 0.35s;
-}
-.capture-fade.is-hidden {
-  opacity: 0;
-}
-
 /* ── The island ────────────────────────────────────────────────────── */
 .capture-dock {
-  position: fixed;
-  z-index: 90;
-  left: 50%;
-  bottom: calc(30px + env(safe-area-inset-bottom, 0px));
-  width: min(528px, calc(100vw - 32px));
-  transform: translateX(-50%);
+  position: relative;
+  margin: 10px 0 0;
 }
 .capture-tail {
   margin: 0 12px 10px;
@@ -478,7 +504,7 @@
   position: fixed;
   z-index: 85;
   left: 50%;
-  bottom: calc(176px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
   width: min(528px, calc(100vw - 28px));
   margin-left: calc(min(528px, calc(100vw - 28px)) / -2);
   padding: 14px;

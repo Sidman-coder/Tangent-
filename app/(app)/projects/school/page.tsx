@@ -31,6 +31,20 @@ export default function SchoolPage() {
     [state, today, overrides]
   );
   const courses = useMemo(() => courseGroups(tasks, today), [tasks, today]);
+  // Round 5A Phase 3: School is a project (plans.kind). Its own steps (not
+  // from Canvas) list above the courses.
+  const schoolPlan = state?.plans.find((p) => p.kind === "school") ?? null;
+  const ownSteps = useMemo(
+    () =>
+      schoolPlan
+        ? (state?.tasks ?? [])
+            .filter((t) => t.planId === schoolPlan.id && t.source !== "canvas")
+            .map((t) => (t.id in overrides ? { ...t, completed: overrides[t.id] } : t))
+            .filter((t) => !t.completed || t.id in overrides)
+            .sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999") || a.time.localeCompare(b.time))
+        : [],
+    [state, schoolPlan, overrides]
+  );
 
   const toggle = async (task: Task) => {
     const completed = !task.completed;
@@ -61,11 +75,24 @@ export default function SchoolPage() {
       <header className="project-head">
         <h1 className="project-title-input">School</h1>
       </header>
-      {tasks.length === 0 ? (
+      {tasks.length === 0 && ownSteps.length === 0 ? (
         <p className="project-empty">Nothing from Canvas right now. New assignments show up here after the next sync.</p>
       ) : (
         <div className="project-layout">
           <div className="project-main">
+            {ownSteps.length > 0 && (
+              <section className="school-course" aria-label="School steps">
+                <div className="school-course-head">
+                  <h2>Your steps</h2>
+                  <span>{ownSteps.length} open</span>
+                </div>
+                <div className="project-step-list">
+                  {ownSteps.map((task) => (
+                    <TaskRow key={task.id} task={task} showDate kindColor={seriesColor(taskSeries(task, state?.plans ?? []))} onComplete={() => void toggle(task)} onOpen={() => openTask(task.id)} />
+                  ))}
+                </div>
+              </section>
+            )}
             {courses.map((c) => (
               <section key={c.course} className="school-course" aria-label={c.course}>
                 <div className="school-course-head">
