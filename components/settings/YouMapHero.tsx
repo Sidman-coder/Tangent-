@@ -73,7 +73,16 @@ export default function YouMapHero({
         </p>
       </div>
 
-      <ul className="you-hero-areas" aria-label="Facts per area">
+      <ul
+        className="you-hero-areas"
+        aria-label="Facts per area"
+        onKeyDown={(e) => {
+          // Escape on a chip steps the map back out, as it does on the map itself.
+          if (e.key !== "Escape" || level.kind === "root") return;
+          e.preventDefault();
+          onLevel(level.kind === "fact" ? { kind: "area", key: level.key } : { kind: "root" });
+        }}
+      >
         {grouped.map(({ group, facts }) => (
           <li key={group.key} style={{ "--c": `var(--map-${group.color})` } as React.CSSProperties}>
             <button type="button" onClick={() => onPick(group.key)} aria-pressed={level.kind !== "root" && level.key === group.key}>

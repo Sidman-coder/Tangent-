@@ -340,12 +340,12 @@ export default function WhatTangentKnows() {
   };
 
   // An area chip under the map: open the area on the map and bring its card up.
+  // An area chip opens that area on the map and marks its card below. It no
+  // longer scrolls to the card, so the map's area view stays in sight and
+  // focus stays on the map (Escape still steps back).
   const pick = (key: MapGroupKey) => {
     setFocus(key);
     setLevel({ kind: "area", key });
-    const el = cardRefs.current.get(key);
-    el?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
-    el?.focus({ preventScroll: true });
   };
 
   // A drill-in on the map also points the cards below at that area.

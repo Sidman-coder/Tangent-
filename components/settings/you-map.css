@@ -342,6 +342,7 @@
   pointer-events: none;
 }
 .you-map-light[data-side="l"] .you-map-flabel { right: calc(100% + 4px); left: auto; text-align: right; }
+.you-map-light[data-side="b"] .you-map-flabel { top: calc(100% + 2px); left: 50%; transform: translateX(-50%); text-align: center; }
 .you-map-light[data-side="c"] .you-map-flabel { top: auto; bottom: calc(100% + 2px); left: 50%; transform: translateX(-50%); text-align: center; }
 .you-map-stage.is-fact .you-map-light:not(.is-open) .you-map-flabel { opacity: 0.55; }
 .you-map-light.is-open .you-map-flabel { font-weight: 600; }
@@ -395,6 +396,11 @@
   background: none;
   font-size: 11.5px;
   white-space: nowrap;
+}
+.you-map-node[data-flip="l"] .you-map-sat {
+  flex-direction: row-reverse;
+  padding: 3px 4px 3px 8px;
+  translate: calc(-100% + 8px) -50%;
 }
 .you-map-sat-dot {
   width: 9px;
@@ -740,7 +746,7 @@
 .knows-tell {
   display: grid;
   gap: 10px;
-  margin-top: 4px;
+  margin-top: 16px;
 }
 .knows-tell-thread {
   display: grid;
@@ -812,7 +818,7 @@
   box-sizing: border-box;
 }
 .knows-tell-pill:focus-within {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--map-ring, var(--line)));
+  border-color: color-mix(in srgb, var(--map-ink, var(--text)) 30%, var(--map-ring, var(--line)));
 }
 .settings-page .knows-tell-pill textarea,
 .knows-tell-pill textarea {
@@ -879,4 +885,10 @@
   .knows-tell-send { transition: none; }
   .you-fact.is-new p,
   .knows-tell-dots i { animation: none; }
+}
+
+/* Dark: the pastel wash needs a little more colour to read on a dark surface. */
+:root[data-theme="dark"] .you-card { background: color-mix(in srgb, var(--c, transparent) 12%, var(--surface)); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .you-card { background: color-mix(in srgb, var(--c, transparent) 12%, var(--surface)); }
 }

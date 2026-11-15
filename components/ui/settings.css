@@ -270,6 +270,9 @@
     position: sticky;
     top: calc(var(--shell-top, 0px) + 8px);
     z-index: 5;
+    /* Solid and lifted, so text scrolling under it doesn't show through. */
+    background: var(--surface);
+    box-shadow: 0 2px 10px rgb(0 0 0 / 0.12);
   }
   .settings-page .ui-button--sm {
     min-height: 44px;

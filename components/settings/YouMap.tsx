@@ -40,7 +40,7 @@ type Node = {
   count?: number;
 };
 
-type Spot = { x: number; y: number; side?: "l" | "r" | "c" };
+type Spot = { x: number; y: number; side?: "l" | "r" | "c" | "b" };
 
 const TAU = Math.PI * 2;
 const HOLD_MS = 450;
@@ -155,7 +155,7 @@ export default function YouMap({
   const kickRef = useRef<() => void>(() => {});
 
   // Per-node animation state and the latest screen positions (for the lines).
-  const anim = useRef(new Map<string, { mix: number; op: number; last?: Spot; w?: { tf: string; op: string; zi: string; back: string } }>());
+  const anim = useRef(new Map<string, { mix: number; op: number; last?: Spot; w?: { tf: string; op: string; zi: string; back: string; flip: string } }>());
   const pos = useRef(new Map<string, { x: number; y: number; op: number }>());
 
   const areaKey = level.kind === "root" ? null : level.key;
@@ -170,15 +170,17 @@ export default function YouMap({
     const facts = nodes.filter((n) => n.kind === "fact" && n.group === areaKey);
     const base = Math.min(size.w * (wide ? 0.34 : 0.4), size.h * 0.38);
     const two = facts.length > 12;
-    // Side labels are up to 160px wide (CSS), so on a wide stage the ring is
+    // Side labels are up to 160px wide (CSS) plus a margin, so on a wide stage the ring is
     // squeezed sideways until they fit; on a phone every label sits above.
-    const squeeze = wide ? Math.min(1, Math.max(0.4, (size.w / 2 - 160 - 28) / base)) : 0.8;
+    const squeeze = wide ? Math.min(1, Math.max(0.4, (size.w / 2 - 160 - 64) / base)) : 0.8;
     facts.forEach((n, i) => {
       const a = -Math.PI / 2 + (i / Math.max(1, facts.length)) * TAU;
       const r = two ? base * (i % 2 === 0 ? 0.98 : 0.66) : base * 0.86;
       const x = Math.cos(a) * r * squeeze;
       const y = Math.sin(a) * r;
-      out.set(n.id, { x, y, side: !wide || Math.abs(x) < 8 ? "c" : x > 0 ? "r" : "l" });
+      // Labels point inward so none runs off the stage: on a phone, top-half
+      // labels sit below their light and the rest above.
+      out.set(n.id, { x, y, side: !wide ? (y < 0 ? "b" : "c") : Math.abs(x) < 8 ? "c" : x > 0 ? "r" : "l" });
     });
     out.set(`area:${areaKey}`, { x: 0, y: wide ? 74 : 62 });
     return out;
@@ -308,11 +310,14 @@ export default function YouMap({
         const op = a.op.toFixed(2);
         const zi = String(spot ? 300 : n.kind === "area" ? 150 + Math.round(depth * 20) * 5 : Math.round(depth * 20) * 5);
         const back = !spot && p.z < -0.15 * rad ? "1" : "";
-        const w0 = a.w ?? (a.w = { tf: "", op: "", zi: "", back: "-" });
+        // A satellite on the right puts its name on the inside, so it can't run off the stage.
+        const flip = n.kind === "sat" && x > R * 0.2 ? "l" : "";
+        const w0 = a.w ?? (a.w = { tf: "", op: "", zi: "", back: "-", flip: "-" });
         if (w0.tf !== tf) el.style.transform = w0.tf = tf;
         if (w0.op !== op) el.style.opacity = w0.op = op;
         if (w0.zi !== zi) el.style.zIndex = w0.zi = zi;
         if (w0.back !== back) el.dataset.back = w0.back = back;
+        if (w0.flip !== flip) el.dataset.flip = w0.flip = flip;
         pos.current.set(n.id, { x, y, op: a.op });
       }
 

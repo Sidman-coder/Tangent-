@@ -129,3 +129,49 @@ spec-verifier; ui-checker at 1440 and 390, light and dark; scroll and drill-in s
     - the keepalive deferred forget
     - fixed the fact sorter: "after school" no longer files a fact under Future; only "after high school" does (`lib/student/facts.ts`). Found when "I work best right after school" went to Future
     - a fact also glows in its card when new
+- 2026-11-15 Phase 4 done (all UI checks are signed-out /dev/app/settings-context; nothing below was checked signed in):
+  - spec-verifier (base f7019e1^, Phases 1–3): every requirement MET. Its flags are listed under "For Sid" below
+  - ui-checker: 1440 and 390, light and dark, plus the scroll and drill-in sequence. Screenshots: `docs/design/screens/round5b/p4-{top,scroll1,scroll2,scroll3,drill-area,drill-fact,drill-back}-{1440,390}-{light,dark}.png`, `p4-tell-1440-light.png`, `p4-drill-area-map-1440-light.png`. No sideways scroll in any view; console only signed-out 401s
+  - fixed from the ui-checker findings (re-checked, see the proof table):
+    - fact labels ran past the map edge (1440: 50px left; 390: 57px above the stage, and satellite labels 21–27px past the right). Now: a wider margin for the open area ring (`YouMap.tsx` squeeze `- 64`); on a phone, top-half labels sit below their light (`data-side="b"`); satellites on the right put their name on the inside (`data-flip="l"`)
+    - an area chip scrolled the page down to its card, so the map's area view was off screen and Escape did nothing. Now a chip opens the area on the map and marks its card, with no scroll; Escape on a chip steps back. **Behaviour change** (Phase 3 had added the scroll)
+    - the phone sticky "< Settings" pill now has a solid surface and a soft shadow, so text scrolling under it doesn't show through
+    - 16px (was 4px) between the cards and the Tell pill
+    - dark mode: card wash 12% (was 7%), so the area colour still reads
+    - the Tell pill focus ring uses the map ink, not the purple accent
+  - proof table:
+
+    | Requirement | Evidence |
+    |---|---|
+    | Cards: no left border, pastel wash | Phase 3 Playwright (`border-left-width` 0.67px); `p3-cards-*`; dark bg `color(srgb 0.213 0.183 0.2)` vs plain surface, `p4-fix-tell-*-dark.png` |
+    | + Add per area, filtered | `lib/you-map-edit.test.ts` "+ Add in each area…", "the sensitive filter stops…"; `p3-add-row-1440-light.png` |
+    | Edit in place, same font, multi-line | Phase 3 Playwright; `p3-edit-1440-light.png` |
+    | Forget with Undo | Phase 3 Playwright (5 → 5 after Undo); `p3-forget-undo-1440-light.png` |
+    | Tell pill, thread, glow, distress, not-kept | `you-map-edit.test.ts` "distress gets…", "Tangent's reply…", "nothing kept…"; `p3-tell-*`, `p3-map-glow-*` |
+    | "Forget everything" last in the section | Phase 3 Playwright DOM order; `p4-fix-tell-*` |
+    | Map labels inside the stage | Playwright: label/sat rects vs stage rect at 1440 and 390, idle, area open, fact open → 0 outside (2px tolerance) |
+    | Chip keeps the map in view, Escape works | Playwright: `scrollY` 0 → 0 after the chip click, stage top 151 (1440) / 251 (390), chip `aria-pressed`, card `is-focus`; after Escape, 0 pressed. `p4-fix-chip-{1440,390}-{light,dark}.png` |
+    | Tell gap | Playwright: 16px at 1440 and 390; `p4-fix-tell-{1440,390}-{light,dark}.png` |
+    | Phone back pill opaque | Playwright: computed background `rgb(27, 26, 36)` (dark surface), display flex at 390 |
+    | No sideways scroll | Playwright: `scrollWidth ≤ innerWidth` in all 4 views |
+    | Code checks | `npx tsc --noEmit` clean; `npx eslint components/settings components/ui` clean; `npm test` 937 pass, 0 fail |
+
+  - not verified (needs Sid, or real hardware):
+    - signed in: add, edit, forget (the deferred forget POST), Tell with the real AI `extract`
+    - the `facts_used` migration and the "used by" satellites on real data
+    - touch hold to pin on a real phone; the mic in the Tell pill
+    - 60fps on real hardware after the new per-frame `data-flip` write (it is written only when it changes)
+  - still open from ui-checker (noted, not fixed):
+    - the map isn't sticky at 1440; it scrolls away with the page. The spec doesn't ask for it
+    - labels can overlap each other while the sphere turns
+    - at 1440 the hero "Tangent knows…" line can sit over map points; at 390 it isn't shown
+    - the Tell placeholder wraps to two lines at 390
+  - For Sid (flags from spec-verifier):
+    - the Round 4 scroll story was removed from `YouMapHero.tsx` in Phase 1. Please confirm that's wanted
+    - the fact sorter change ("after school" is no longer Future) affects every surface that sorts facts
+    - "at the very bottom" read as the bottom of "You, mapped"
+    - project cards have no "+ Add"
+    - edit saves a new fact and forgets the old one; Undo isn't offered for the old one
+    - Confirm and Undo buttons on cards still use the accent purple (not the map)
+    - the dev sample includes "Family dinner most nights around 7" (dev only, not stored)
+  - EXTRA: the Escape handler on the area chips; the dark-mode card tint; the phone back pill shadow
