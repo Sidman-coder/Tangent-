@@ -40,6 +40,53 @@
   color: var(--text);
   font-weight: 600;
 }
+/* Round 5B Phase 1: the featured link ("What Tangent knows") sits first,
+   a little larger, with a hairline gap under it. */
+.settings-sidenav-link.is-featured {
+  min-height: 44px;
+  margin-bottom: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Round 5B Phase 1: on What Tangent knows, scrolling down slides the
+   sub-nav off to the left and the map takes the content area. Back at the
+   top it returns. Reduced motion: no slide, a "Settings" chip instead. */
+.settings-page.is-knows .settings-layout {
+  transition: grid-template-columns var(--dur) var(--ease), gap var(--dur) var(--ease);
+}
+.settings-page.is-knows .settings-sidenav {
+  transition: transform var(--dur) var(--ease), opacity var(--dur) var(--ease);
+}
+.settings-page.is-knows.is-takeover .settings-layout {
+  grid-template-columns: 0 minmax(0, 1fr);
+  gap: 0;
+}
+.settings-page.is-knows.is-takeover .settings-sidenav {
+  transform: translateX(-24px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.settings-back {
+  display: none;
+  align-self: flex-start;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  padding: 0 12px 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-2);
+  font: 500 13.5px/1 var(--font-body);
+  text-decoration: none;
+  cursor: pointer;
+}
+.settings-back:hover { color: var(--text); background: var(--elev-2); }
+.settings-back:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
 .settings-sidenav-link:focus-visible,
 .settings-list-link:focus-visible {
   outline: 2px solid var(--accent);
@@ -212,6 +259,14 @@
   .settings-tabs {
     display: flex;
   }
+  /* Phone: the map is full width with a "Settings" back link, no tabs. */
+  .settings-page.is-knows .settings-tabs { display: none; }
+  .settings-page.is-knows .settings-back--phone {
+    display: inline-flex;
+    position: sticky;
+    top: calc(var(--shell-top, 0px) + 8px);
+    z-index: 5;
+  }
   .settings-page .ui-button--sm {
     min-height: 44px;
   }
@@ -235,6 +290,17 @@
 
 @media (prefers-reduced-motion: reduce) {
   .settings-sidenav-link { transition: none; }
+  .settings-page.is-knows .settings-layout,
+  .settings-page.is-knows .settings-sidenav { transition: none; }
+  .settings-page.is-knows.is-takeover .settings-sidenav { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) and (min-width: 861px) {
+  .settings-page.is-knows.is-takeover .settings-back--desk {
+    display: inline-flex;
+    position: sticky;
+    top: calc(var(--shell-top, 0px) + 12px);
+    z-index: 5;
+  }
 }
 
 .settings-edit-form {
