@@ -28,6 +28,7 @@ import TaskRow from "@/components/ui/TaskRow";
 import { joinProjectNotes, splitProjectNotes, type ProjectNotes } from "@/lib/project-notes";
 import { paceOf, startsLabel, stepsByWeek, weekdayDate, weekSessions, type Pace, type WeekSession } from "@/lib/project-stats";
 import { roundChip } from "@/lib/rounds";
+import { useNoteOpened } from "@/lib/opened";
 import { rowPresence, spring } from "@/lib/motion";
 import { planSeriesColor } from "@/lib/task-colors";
 import { getUserToday } from "@/lib/time";
@@ -87,6 +88,8 @@ async function post(url: string, body: unknown): Promise<boolean> {
 
 export default function ProjectView({ id }: { id: string }) {
   const router = useRouter();
+  // So the sidebar lists the projects this student actually uses.
+  useNoteOpened("project", id);
   const { state, refresh } = useAppState();
   const today = getUserToday(useUserTimezone());
   const plan = state?.plans.find((p) => p.id === id) ?? null;

@@ -30,7 +30,13 @@ const fact = (fact: string, over: Partial<ContextEntry> = {}): ContextEntry => (
 
 type Mod = typeof import("./you-map");
 
-void (import("./you-map") as Promise<Mod>).then(({ groupFacts, groupOf, initialsOf, mapSummary, originOf, projectFacts }) => {
+void (import("./you-map") as Promise<Mod>).then(({ groupFacts, groupOf, initialsOf, mapSummary, originOf, projectFacts, GROUP_FACT_CATEGORY, MAP_GROUPS }) => {
+  test("a fact added inside an area card saves back into that area", () => {
+    for (const { key } of MAP_GROUPS) {
+      assert.equal(groupOf(fact("x", { factCategory: GROUP_FACT_CATEGORY[key] })), key, key);
+    }
+  });
+
   test("each student-model category lands in one of the six areas", () => {
     assert.equal(groupOf(fact("x", { factCategory: "goals" })), "goals");
     assert.equal(groupOf(fact("x", { factCategory: "schedule" })), "commitments");

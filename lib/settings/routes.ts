@@ -2,19 +2,30 @@
 // /settings?activity=…, /settings?reset=1#security) still have to land on the
 // right page. The server never sees a #hash, so this runs in the browser.
 
-export type SettingsPage = "account" | "security" | "schedule" | "notifications" | "context" | "activity" | "data";
+// Your Tangent (what Tangent knows, your week, getting to know you) is the
+// main page; Connectors holds everywhere Tangent learns from. They replaced
+// Schedule and What Tangent knows, whose URLs still forward here.
+export type SettingsPage = "your-tangent" | "connectors" | "account" | "security" | "notifications" | "activity" | "data";
 
-export const SETTINGS_PAGES: readonly SettingsPage[] = ["account", "security", "schedule", "notifications", "context", "activity", "data"];
+export const SETTINGS_PAGES: readonly SettingsPage[] = ["your-tangent", "connectors", "account", "security", "notifications", "activity", "data"];
+
+/** Retired pages and where their links go now. */
+export const LEGACY_SETTINGS_PAGES: Record<string, SettingsPage> = {
+  schedule: "your-tangent",
+  context: "your-tangent",
+};
 
 const HASH_TARGETS: Record<string, SettingsPage> = {
   "ai-activity": "activity",
   activity: "activity",
-  onboarding: "context",
-  "what-tangent-knows": "context",
-  context: "context",
+  onboarding: "your-tangent",
+  "what-tangent-knows": "your-tangent",
+  context: "your-tangent",
+  "your-tangent": "your-tangent",
   security: "security",
-  connections: "schedule",
-  schedule: "schedule",
+  connections: "connectors",
+  connectors: "connectors",
+  schedule: "your-tangent",
   notifications: "notifications",
   "your-data": "data",
   data: "data",
@@ -32,8 +43,8 @@ export function legacySettingsTarget(search: string, hash: string): string | nul
   return page ? `/settings/${page}` : null;
 }
 
-/** Where /settings itself lands: an old link's page, else Account on a
+/** Where /settings itself lands: an old link's page, else Your Tangent on a
  *  laptop. A phone stays on the section list (null). */
 export function settingsLanding(isDesktop: boolean, search: string, hash: string): string | null {
-  return legacySettingsTarget(search, hash) ?? (isDesktop ? "/settings/account" : null);
+  return legacySettingsTarget(search, hash) ?? (isDesktop ? "/settings/your-tangent" : null);
 }

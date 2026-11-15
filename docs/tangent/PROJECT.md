@@ -50,14 +50,14 @@ The product is not an AI counselor, therapy product, family surveillance system,
 - **Plan preview.** A confirmed-before-saving preview defaults to the month view, starting on the student's chosen week start.
 - **Grill me (sufficiency).** Tangent keeps asking one question at a time until it knows enough to plan (context slots and a sufficiency score), never asks what it already knows, and every question has Skip and Stop. The older template queue in `grill_questions` still feeds Today and Settings.
 - **Chats.** Every chat starts on Home; a task or project gets its own chat with its context attached, and the Chats library at `/ai` lists them all with running summaries. The two-chat model and "Ask Tangent" are replaced; see [the chat-model decision](decisions/2026-11-chat-model.md).
-- **Settings.** Separate pages for Account, Security, Schedule (with quiet hours and week start), Notifications, Context, Activity and Data (export and delete).
+- **Settings.** Your Tangent comes first and is the main page: You, mapped (every fact, with an Add in each area), the tour, Your week (commitments, capacity, week start) and Getting to know you. Connectors holds Canvas, calendar files, and notes or other AIs. Then Account, Security, Notifications (with quiet hours), AI activity and Your data (export and delete). The old Schedule and What Tangent knows URLs forward to Your Tangent.
 - **Projects.** A School card built from Canvas, plus project stats. "Done in the last 7 days" uses each task's completion time once migration `20261105060000` is run, and is marked "About" until then.
 - **AI routing.** Classification, titles, summaries and plain chat use the fast model; drafting plans and planning conversations use the smart model (`MODEL_ROUTES` in `lib/ai/models.ts`). Round 2 evals: `npm run eval:pipeline -- --round2` (costs a little; asks first).
 - **Pilot analytics.** Server-side events in the `events` table (`lib/analytics.ts`): signup, captures, confirmed plans, tasks done, Not today, Too big, Fresh start, re-plans, Grill answers/skips/stops, chats started and week-two return. Names, ids and counts only. Queries: [pilot-metrics.sql](pilot-metrics.sql).
 - **Sign-in:** email codes, optional password, and password reset by code. The codes only work once the email templates in MANUAL-STEPS are pasted in.
 - **Calendar:** dragging a task saves its new date and time, with Undo.
 - **Not built: anything from the December roadmap.** That covers billing, study buddy and the share card.
-- **Tangents:** the rail link is hidden. The route still exists.
+- **Sidebar and Tangents:** the sidebar's Projects row opens and closes a list of the 7 most recently opened projects and Tangents (`plans`/`paths.last_opened_at`, migration `20261114000000`; newest-created until it runs). Only All projects goes to the Projects page, which shows School, Projects, Tangents and Finished. `/tangents` still works for old links.
 
 The repository is a Next.js 14 and TypeScript application. Current code and user-provided context establish the following:
 

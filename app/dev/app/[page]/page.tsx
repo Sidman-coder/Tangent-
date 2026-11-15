@@ -2,8 +2,8 @@
 
 // Development-only: a page of the app inside the real shell, with sample data
 // (lib/dev/sample-state.ts), for design review without an account.
-// /dev/app/today, /dev/app/calendar, /dev/app/projects, /dev/app/project, /dev/app/school, /dev/app/settings, /dev/app/settings-account (…-security, -schedule,
-// -notifications, -context, -activity, -data),
+// /dev/app/today, /dev/app/calendar, /dev/app/projects, /dev/app/project, /dev/app/school, /dev/app/settings, /dev/app/settings-account (…-security, -your-tangent,
+// -connectors, -notifications, -activity, -data),
 // /dev/app/tangents, /dev/app/preview, /dev/app/color, /dev/app/grill. 404s in production. API calls fail here (no session), so
 // anything loaded from the server shows its empty or error state.
 
@@ -29,9 +29,9 @@ import SettingsPage from "@/app/(app)/settings/page";
 import SettingsFrame from "@/components/settings/SettingsFrame";
 import AccountSettings from "@/app/(app)/settings/account/page";
 import SecuritySettingsPage from "@/app/(app)/settings/security/page";
-import ScheduleSettings from "@/app/(app)/settings/schedule/page";
+import YourTangentSettings from "@/app/(app)/settings/your-tangent/page";
+import ConnectorsSettings from "@/app/(app)/settings/connectors/page";
 import NotificationSettings from "@/app/(app)/settings/notifications/page";
-import ContextSettings from "@/app/(app)/settings/context/page";
 import ActivitySettings from "@/app/(app)/settings/activity/page";
 import DataSettings from "@/app/(app)/settings/data/page";
 import TangentsPage from "@/app/(app)/tangents/page";
@@ -115,9 +115,9 @@ const PAGES: Record<string, React.ComponentType> = {
   settings: framed(SettingsPage),
   "settings-account": framed(AccountSettings),
   "settings-security": framed(SecuritySettingsPage),
-  "settings-schedule": framed(ScheduleSettings),
+  "settings-your-tangent": framed(YourTangentSettings),
+  "settings-connectors": framed(ConnectorsSettings),
   "settings-notifications": framed(NotificationSettings),
-  "settings-context": framed(ContextSettings),
   "settings-activity": framed(ActivitySettings),
   "settings-data": framed(DataSettings),
   tangents: TangentsPage,

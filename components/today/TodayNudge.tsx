@@ -50,7 +50,7 @@ export default function TodayNudge({ today, questionCount, setupLeft, onAnswer }
           </button>
         )}
         {setupLeft > 0 && (
-          <Link className="today-nudge-go" href="/settings/context">
+          <Link className="today-nudge-go" href="/settings/your-tangent">
             Finish setup
           </Link>
         )}

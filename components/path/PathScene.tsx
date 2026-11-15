@@ -608,7 +608,7 @@ export default function PathScene({
           className="path-zoombar-btn"
           onClick={fitAll}
           aria-label="Fit the whole Tangent"
-          title="Fit the whole path"
+          title="Fit the whole map"
         >
           <Maximize2 size={14} aria-hidden="true" />
         </button>

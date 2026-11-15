@@ -6,7 +6,7 @@
 // lib/schedule-slots.ts).
 //
 // No table: the tasks are the record. Each block's series id carries the
-// commitment's kind and repeat (seriesIdFor), so Settings → Schedule can read
+// commitment's kind and repeat (seriesIdFor), so Settings → Your Tangent can read
 // the commitments back from the calendar exactly as they were saved. Pure, so
 // it can be tested and used on the client.
 

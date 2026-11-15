@@ -38,16 +38,17 @@ export default function YouMapHero({
   // last frame that snaps back to full opacity. This keeps them on the JS path.
   const p = useTransform(scrollYProgress, (v) => v);
 
-  // 0 → 0.45: the title lifts away while the sphere turns half a revolution.
-  // 0.35 → 0.8: the sphere settles smaller and higher; the areas rise in.
-  const spin = useTransform(p, [0, 1], [0, Math.PI * 1.25]);
-  const orbitScale = useTransform(p, [0, 0.35, 0.8], [1.08, 1, 0.78]);
-  const orbitY = useTransform(p, [0.35, 0.8], ["0%", "-9%"]);
-  const introOpacity = useTransform(p, [0, 0.32], [1, 0]);
-  const introY = useTransform(p, [0, 0.32], [0, -40]);
-  const cueOpacity = useTransform(p, [0, 0.12], [1, 0]);
-  const areasOpacity = useTransform(p, [0.4, 0.72], [0, 1]);
-  const areasY = useTransform(p, [0.4, 0.72], [36, 0]);
+  // 0 → 0.3: the title lifts away while the sphere turns.
+  // 0.3 → 0.7: the sphere eases up into the space above the areas, which rise
+  // in under it. It stays big: it settles, it doesn't shrink into a corner.
+  const spin = useTransform(p, [0, 1], [0, Math.PI * 1.1]);
+  const orbitScale = useTransform(p, [0, 0.3, 0.7], [1, 1, 0.92]);
+  const orbitY = useTransform(p, [0.3, 0.7], ["0%", "-7%"]);
+  const introOpacity = useTransform(p, [0, 0.28], [1, 0]);
+  const introY = useTransform(p, [0, 0.28], [0, -40]);
+  const cueOpacity = useTransform(p, [0, 0.1], [1, 0]);
+  const areasOpacity = useTransform(p, [0.35, 0.65], [0, 1]);
+  const areasY = useTransform(p, [0.35, 0.65], [32, 0]);
 
   const still = reduce;
 

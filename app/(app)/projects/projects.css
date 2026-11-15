@@ -596,23 +596,12 @@
   letter-spacing: inherit;
 }
 
-/* Paths, inside Projects: a quiet link beside New project. */
-.projects-paths-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 40px;
-  padding: 0 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-pill);
-  background: var(--surface);
-  color: var(--text);
-  font: 600 14px/1 var(--font-body);
-  text-decoration: none;
-  transition: background-color var(--dur-fast) var(--ease);
-}
-.projects-paths-link:hover { background: var(--elev-2); }
-.projects-paths-link svg { color: var(--series-teal, var(--accent)); }
+/* The page's sections (Projects, Tangents) read like School above them. */
+.projects-section { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.projects-section > h2 { margin: 0; color: var(--text); font: 600 15px/1.3 var(--font-body); }
+
+/* New tangent, beside New project: the route mark in Tangents' teal. */
+.projects-new-tangent svg { color: var(--series-teal, var(--accent)); }
 
 /* Round 4 §3.4: the round review card. */
 .round-review {
@@ -638,8 +627,7 @@
   .projects-page .page-header {
     flex-wrap: wrap;
   }
-  .project-back,
-  .projects-paths-link {
+  .project-back {
     min-height: 44px;
   }
   .project-page .project-head .project-title-input:is(input) {

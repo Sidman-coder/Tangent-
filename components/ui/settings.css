@@ -40,6 +40,48 @@
   color: var(--text);
   font-weight: 600;
 }
+/* Your Tangent, the main page: bold violet in an outline even when you're
+   elsewhere; filled only while it's the page you're on, like the others. */
+.settings-sidenav-link.is-featured {
+  min-height: 44px;
+  margin-bottom: 2px;
+  border: 1px solid var(--accent-line);
+  color: var(--accent-text);
+  font-size: 14.5px;
+  font-weight: 700;
+}
+.settings-sidenav-link.is-featured:hover {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.settings-sidenav-link.is-featured.is-active {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  box-shadow: var(--shadow-sm);
+}
+.settings-sidenav-break {
+  height: 1px;
+  margin: 6px 12px;
+  background: var(--line);
+}
+.settings-list li.is-featured {
+  background: var(--accent-soft);
+}
+.settings-list-link.is-featured {
+  min-height: 72px;
+  color: var(--accent-text);
+}
+.settings-list-link.is-featured .settings-list-copy strong {
+  color: var(--accent-text);
+  font-size: 16px;
+  font-weight: 700;
+}
+.settings-list-link.is-featured .settings-list-copy span { color: var(--text-2); }
+.settings-list-link.is-featured .settings-list-chevron { color: var(--accent-text); }
+.settings-tabs .ui-tab.is-featured {
+  color: var(--accent-text);
+  font-weight: 700;
+}
 .settings-sidenav-link:focus-visible,
 .settings-list-link:focus-visible {
   outline: 2px solid var(--accent);

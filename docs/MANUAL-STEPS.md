@@ -193,3 +193,14 @@ Nothing to run. Commitments are stored as recurring busy tasks, so the planned `
 - Settings → Onboarding → **Setup answers**: the eight screens come back prefilled. Change one answer and finish; What Tangent knows shows the new answer, not both.
 - Add a commitment with two blocks (for example practice Mon/Wed 3:30–5:30 plus Sat 9–11). It shows on the calendar every week, and Settings → Schedule reads it back the same way. Ask Tangent to plan something: nothing lands inside those blocks.
 - On Home after onboarding, one question appears at most once a day. Type an answer: it shows in What Tangent knows. "Not now" closes it until tomorrow.
+
+## Sidebar recents: last opened (1 migration)
+
+**`supabase/migrations/20261114000000_last_opened.sql`** adds `last_opened_at` to `plans` and `paths`, so the sidebar's Projects list shows the projects and Tangents a student actually opens, not just the newest. It also re-creates `paths_set_updated_at` so opening a Tangent doesn't count as changing it. Check it (both rows come back):
+```sql
+select table_name from information_schema.columns
+where column_name = 'last_opened_at' and table_name in ('plans', 'paths');
+```
+Before it runs, opening a project is a quiet no-op (`POST /api/opened` answers `{ ok: false }`) and the sidebar sorts by newest-created.
+
+**Check it in the app** (signed in, after the migration): open an older project, reload the page on another device; it's at the top of the sidebar's Projects list. Then run `select title, last_opened_at from plans order by last_opened_at desc nulls last limit 3;`.

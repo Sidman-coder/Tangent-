@@ -1,8 +1,8 @@
 "use client";
 
-// Settings → Connections: everywhere Tangent can learn from. The more it can
-// see, the less it asks. Canvas syncs on its own; calendars come in from a
-// file. (Notion, Docs and other AIs come in on What Tangent knows.)
+// Settings → Connectors: Canvas and calendars. The more Tangent can see, the
+// less it asks. Canvas syncs on its own; calendars come in from a file.
+// (Notion, Docs and other AIs come in just below, on the same page.)
 
 import { Check } from "lucide-react";
 import Button from "@/components/ui/Button";

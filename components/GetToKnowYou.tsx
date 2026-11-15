@@ -345,7 +345,7 @@ export default function GetToKnowYou() {
                   <PenMark className="gtk-mark" />
                   <p className="gtk-ask" role="status">
                     {mode === "grill"
-                      ? "Thanks. That's saved, and you can change any of it in Settings › What Tangent knows."
+                      ? "Thanks. That's saved, and you can change any of it in Settings › Your Tangent."
                       : reply}
                   </p>
                 </div>

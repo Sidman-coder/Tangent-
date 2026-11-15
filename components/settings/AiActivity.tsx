@@ -137,7 +137,7 @@ export default function AiActivity() {
       <h2 id="ai-activity-title" className="settings-group-title">Requests</h2>
       <p className="settings-group-note">
         Every request Tangent AI handled, what it understood, and what happened. For what Tangent knows about you, see{" "}
-        <a href="/settings/context">What Tangent knows</a>.
+        <a href="/settings/your-tangent">Your Tangent</a>.
       </p>
       <div className="settings-card aia-card">
       {rows.length > 0 && !confirmClear && (

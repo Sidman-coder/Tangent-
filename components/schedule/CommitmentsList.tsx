@@ -1,7 +1,7 @@
 "use client";
 
 // "When are you already busy?": the one editor for commitments, used by the
-// onboarding question and by Settings → Schedule (Round 4 Phase 6). Controlled:
+// onboarding question and by Settings → Your Tangent (Round 4 Phase 6). Controlled:
 // the caller owns the list and decides when to save it. The shape and its
 // rules live in lib/commitments.ts.
 

@@ -78,12 +78,17 @@ export default function YouOrbit({
   const reduce = useReducedMotion();
   const { nodes, centers } = useMemo(() => layout(grouped), [grouped]);
   const stage = useRef<HTMLDivElement>(null);
+  // Each area name's half width, measured once, for keeping it on the card.
+  const halfWidths = useRef(new Map<string, number>());
   const els = useRef(new Map<string, HTMLElement>());
   const yaw = useRef(0.35);
   const pitch = useRef(-0.42);
   const target = useRef<number | null>(null);
   const drag = useRef<{ x: number; y: number; yaw: number; pitch: number } | null>(null);
   const [hover, setHover] = useState<{ text: string; x: number; y: number } | null>(null);
+
+  // A new count changes a name's width: measure again.
+  useEffect(() => halfWidths.current.clear(), [nodes]);
 
   // Face the focused area: the shortest way round.
   useEffect(() => {
@@ -96,6 +101,7 @@ export default function YouOrbit({
   useEffect(() => {
     let raf = 0;
     let last = performance.now();
+    let ringR = -1;
     const frame = (now: number) => {
       const dt = Math.min(64, now - last);
       last = now;
@@ -114,7 +120,19 @@ export default function YouOrbit({
       }
       const box = stage.current;
       if (box) {
-        const r = Math.min(box.clientWidth, box.clientHeight) * (variant === "hero" ? 0.4 : 0.34);
+        // The hero leaves room for the area names at the sides where it can (a
+        // laptop), stays a real size where it can't (a phone), and the names
+        // that would still cross the edge are held just inside it below. The
+        // ring is drawn at the same radius.
+        const r =
+          variant === "hero"
+            ? Math.max(box.clientWidth * 0.36, Math.min(box.clientWidth / 2 - 96, box.clientHeight * 0.36))
+            : Math.min(box.clientWidth, box.clientHeight) * 0.34;
+        const halfBox = box.clientWidth / 2;
+        if (variant === "hero" && Math.round(r) !== ringR) {
+          ringR = Math.round(r);
+          box.style.setProperty("--orbit-r", `${ringR}px`);
+        }
         const turn = yaw.current + (spin?.get() ?? 0);
         const cy = Math.cos(turn), sy = Math.sin(turn);
         const cp = Math.cos(pitch.current), sp = Math.sin(pitch.current);
@@ -127,9 +145,20 @@ export default function YouOrbit({
           const y2 = n.y * cp - z1 * sp;
           const z2 = n.y * sp + z1 * cp;
           const depth = (z2 + 1) / 2; // 0 back, 1 front
-          const scale = 0.62 + depth * 0.5;
-          el.style.transform = `translate(-50%, -50%) translate3d(${(x1 * r).toFixed(1)}px, ${(y2 * r).toFixed(1)}px, 0) scale(${scale.toFixed(3)})`;
-          el.style.opacity = (0.22 + depth * 0.78).toFixed(3);
+          // Far-side areas shrink and fade for depth, but stay readable.
+          const scale = 0.8 + depth * 0.3;
+          let x = x1 * r;
+          if (variant === "hero" && n.label) {
+            let half = halfWidths.current.get(n.id);
+            if (half === undefined) {
+              half = el.offsetWidth / 2;
+              halfWidths.current.set(n.id, half);
+            }
+            const limit = Math.max(0, halfBox - half * scale - 8);
+            x = Math.max(-limit, Math.min(limit, x));
+          }
+          el.style.transform = `translate(-50%, -50%) translate3d(${x.toFixed(1)}px, ${(y2 * r).toFixed(1)}px, 0) scale(${scale.toFixed(3)})`;
+          el.style.opacity = (0.5 + depth * 0.5).toFixed(3);
           el.style.zIndex = String(Math.round(depth * 100));
           el.dataset.back = z2 < -0.15 ? "1" : "";
         }

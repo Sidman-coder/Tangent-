@@ -2,9 +2,10 @@
 
 // Projects: the longer things a student is working toward. Each is a plan with
 // a goal and steps; Tangent asks a few questions, lays the steps out around the
-// student's week (the spacing brain), and helps with each one.
+// student's week (the spacing brain), and helps with each one. Tangents (the
+// year-plus goals projects branch from) have their own section here too.
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus, Route } from "lucide-react";
@@ -13,15 +14,19 @@ import { planSeriesColor } from "@/lib/task-colors";
 import Button from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
 import AddFlow from "@/components/add/AddFlow";
+import { NewTangentLayer, TangentCards, TangentsEmpty, useCreateTangent, useTangentSuggestions } from "@/components/tangents/TangentCards";
+import { useTangents } from "@/components/tangents/useTangents";
 import { MiniWorkload } from "@/components/projects/ProjectStats";
 import { takeAsk } from "@/lib/ask-handoff";
 import { withoutClearedCanvas } from "@/lib/canvas-clear";
 import { splitCourse } from "@/lib/course";
 import { formatTime12 } from "@/lib/dates";
 import { courseGroups, dueThisWeek, nextDeadline, shortDate, workloadByWeek } from "@/lib/project-stats";
+import { initialPathKind, pathsEmptyCopy, prefsOf } from "@/lib/personalize";
 import { getUserToday } from "@/lib/time";
 import type { Plan, Task } from "@/lib/types";
 import "./projects.css";
+import "../tangents/tangents.css";
 
 type ProjectSummary = { plan: Plan; steps: Task[]; done: number; next: Task | null };
 
@@ -83,6 +88,18 @@ export default function ProjectsPage() {
   );
   const showSchool = canvasConnected || schoolTasks.length > 0;
 
+  const { paths, error: tangentsError } = useTangents();
+  const [tangentError, setTangentError] = useState<string | null>(null);
+  const [creatingTangent, setCreatingTangent] = useState(false);
+  const [tangentSeed, setTangentSeed] = useState<string | null>(null);
+  const prefs = prefsOf(state?.user);
+  const tangentSuggestions = useTangentSuggestions((state?.plans ?? []).map((p) => p.title));
+  const createTangent = useCreateTangent(useCallback((message: string) => setTangentError(message), []));
+  const startTangent = (title: string | null) => {
+    setTangentSeed(title);
+    setCreatingTangent(true);
+  };
+
   const active = projects.filter((p) => p.next).sort((a, b) => (a.next!.date + a.next!.time).localeCompare(b.next!.date + b.next!.time));
   const finished = projects.filter((p) => !p.next);
   const showComposer = composing || (state !== null && projects.length === 0);
@@ -94,11 +111,14 @@ export default function ProjectsPage() {
         description="Bigger goals, broken into steps Tangent spaces out on your calendar."
         actions={
           <>
-            {/* Tangents live inside Projects (the sidebar shows them too, from laptop width). */}
-            <Link href="/tangents" className="projects-paths-link">
-              <Route size={16} strokeWidth={1.75} aria-hidden="true" />
-              Tangents
-            </Link>
+            <Button
+              variant="secondary"
+              className="projects-new-tangent"
+              icon={<Route size={16} strokeWidth={1.75} aria-hidden="true" />}
+              onClick={() => startTangent(null)}
+            >
+              New Tangent
+            </Button>
             {!showComposer && (
               <Button variant="primary" icon={<Plus size={16} aria-hidden="true" />} onClick={() => setComposing(true)}>
                 New project
@@ -152,11 +172,25 @@ export default function ProjectsPage() {
             </section>
           )}
           {active.length > 0 && (
-            <div className="projects-grid">
-              {active.map((p) => (
-                <ProjectCard key={p.plan.id} project={p} today={today} />
-              ))}
-            </div>
+            <section className="projects-section" aria-labelledby="projects-active-heading">
+              <h2 id="projects-active-heading">Projects</h2>
+              <div className="projects-grid">
+                {active.map((p) => (
+                  <ProjectCard key={p.plan.id} project={p} today={today} />
+                ))}
+              </div>
+            </section>
+          )}
+          {/* If the list can't load, the section stays out rather than claim there are none. */}
+          {paths !== null && !tangentsError && (
+            <section id="projects-tangents" className="projects-section tangents-light" aria-labelledby="projects-tangents-heading">
+              <h2 id="projects-tangents-heading">Tangents</h2>
+              {paths.length > 0 ? (
+                <TangentCards paths={paths} />
+              ) : (
+                <TangentsEmpty copy={pathsEmptyCopy(prefs)} suggestions={tangentSuggestions} onStart={startTangent} />
+              )}
+            </section>
           )}
           {finished.length > 0 && (
             <section className="projects-finished" aria-label="Finished projects">
@@ -170,6 +204,18 @@ export default function ProjectsPage() {
           )}
         </>
       )}
+
+      <NewTangentLayer
+        error={tangentError}
+        creating={creatingTangent}
+        seedTitle={tangentSeed}
+        initialKind={initialPathKind(prefs)}
+        onCancel={() => {
+          setCreatingTangent(false);
+          setTangentSeed(null);
+        }}
+        onCreate={createTangent}
+      />
     </div>
   );
 }

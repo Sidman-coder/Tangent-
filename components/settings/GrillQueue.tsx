@@ -1,6 +1,6 @@
 "use client";
 
-// Settings → Onboarding → Grill me: the full queue, and "Grill me now" to answer
+// Settings → Your Tangent → Getting to know you → Grill me: the full queue, and "Grill me now" to answer
 // it, up to SESSION_BUDGET at a time. With nothing queued it asks fresh ones.
 
 import { useMemo, useState } from "react";

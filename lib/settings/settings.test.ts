@@ -25,17 +25,24 @@ void Promise.all([import("./routes") as Promise<Routes>, import("./notification-
       assert.equal(t("?activity=cs:abc", "#ai-activity"), "/settings/activity?activity=cs%3Aabc");
       assert.equal(t("?reset=1", "#security"), "/settings/security?reset=1");
       assert.equal(t("", "#security"), "/settings/security");
-      assert.equal(t("", "#onboarding"), "/settings/context");
-      assert.equal(t("", "#what-tangent-knows"), "/settings/context");
-      assert.equal(t("", "#connections"), "/settings/schedule");
+      assert.equal(t("", "#onboarding"), "/settings/your-tangent");
+      assert.equal(t("", "#what-tangent-knows"), "/settings/your-tangent");
+      assert.equal(t("", "#schedule"), "/settings/your-tangent");
+      assert.equal(t("", "#connections"), "/settings/connectors");
       assert.equal(t("", ""), null);
       assert.equal(t("", "#nope"), null);
     });
 
-    test("/settings lands on Account on a laptop and the list on a phone", () => {
-      assert.equal(routes.settingsLanding(true, "", ""), "/settings/account");
+    test("/settings lands on Your Tangent on a laptop and the list on a phone", () => {
+      assert.equal(routes.settingsLanding(true, "", ""), "/settings/your-tangent");
       assert.equal(routes.settingsLanding(false, "", ""), null);
       assert.equal(routes.settingsLanding(false, "", "#ai-activity"), "/settings/activity");
+    });
+
+    test("the old Schedule and What Tangent knows pages forward to their new home", () => {
+      assert.equal(routes.LEGACY_SETTINGS_PAGES.schedule, "your-tangent");
+      assert.equal(routes.LEGACY_SETTINGS_PAGES.context, "your-tangent");
+      assert.deepEqual([...routes.SETTINGS_PAGES], ["your-tangent", "connectors", "account", "security", "notifications", "activity", "data"]);
     });
 
     test("quiet hours, including past midnight", () => {

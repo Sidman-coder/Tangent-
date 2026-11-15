@@ -352,6 +352,53 @@
   border-radius: 10px;
 }
 
+/* Each card's own Add, lined up under the facts (past the card's icon). */
+.you-card-add {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  margin: 6px 0 0 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+/* A 44px target around the 32px pill. */
+.you-card-add::after {
+  content: "";
+  position: absolute;
+  inset: -6px 0;
+}
+.you-card-add:hover {
+  background: color-mix(in srgb, var(--c, var(--accent)) 10%, var(--surface));
+  color: var(--text);
+}
+.you-card-add:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.you-card-add svg { color: var(--c, var(--accent)); }
+.you-card-add-form {
+  flex-wrap: nowrap;
+  margin: 10px 0 2px 37px;
+}
+.settings-page .you-card-add-form input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+@media (max-width: 767px) {
+  .you-card-add { margin-left: 0; }
+  .you-card-add-form { margin-left: 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .you-card,
   .you-map-counts button {
@@ -366,7 +413,7 @@
 
 .you-hero {
   position: relative;
-  height: 230svh;
+  height: 190svh;
   margin-bottom: 8px;
 }
 .you-hero-stage {
@@ -402,7 +449,7 @@
   border-radius: 0;
   background: none;
 }
-.you-orbit.is-hero .you-orbit-ring { inset: auto; top: 50%; left: 50%; width: min(80%, 80vh); aspect-ratio: 1; transform: translate(-50%, -50%); }
+.you-orbit.is-hero .you-orbit-ring { inset: auto; top: 50%; left: 50%; width: calc(var(--orbit-r, 36%) * 2); aspect-ratio: 1; transform: translate(-50%, -50%); }
 .you-orbit.is-hero .you-orbit-core { width: 112px; height: 112px; }
 .you-orbit.is-hero .you-orbit-core span { font-size: 34px; }
 .you-orbit.is-hero .you-orbit-core small { font-size: 12px; }
@@ -509,12 +556,15 @@
 }
 
 @media (max-width: 767px) {
-  .you-hero { height: 200svh; }
+  .you-hero { height: 170svh; }
   .you-hero-stage { border-radius: 22px; min-height: 420px; }
   .you-hero-areas { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
   .you-hero-areas button { min-height: 40px; padding: 0 10px; font-size: 12.5px; }
   .you-orbit.is-hero .you-orbit-core { width: 88px; height: 88px; }
   .you-orbit.is-hero .you-orbit-core span { font-size: 28px; }
+  /* The title takes the bottom of a tall phone card: the sphere sits above it. */
+  .you-hero-orbit { height: 80%; }
+  .you-orbit.is-hero .you-orbit-label { gap: 5px; padding: 4px 8px; font-size: 11px; }
 }
 
 /* Reduced motion: no track, no scroll-linked movement. */

@@ -68,7 +68,7 @@ export default function DeletePathDialog({ path, counts, busy, onCancel, onConfi
           <TriangleAlert size={18} />
         </span>
 
-        <h2 id="delete-path-title">Delete this path?</h2>
+        <h2 id="delete-path-title">Delete this Tangent?</h2>
         <p>
           <strong>{path.title}</strong>
           {going ? ` goes, and so do the ${going} on it.` : " goes."} This can&apos;t be undone.

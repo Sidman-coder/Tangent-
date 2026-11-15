@@ -53,9 +53,9 @@ const STEPS: Step[] = [
   },
   {
     route: "/",
-    target: [".float-mic"],
-    title: "Say it from anywhere",
-    body: "The mic in the bottom corner is on every page: tap it and talk, and it goes through the same Add flow. Press ⌘K to type instead. Questions go to Ask Tangent, from the same box.",
+    target: [".add-flow.is-hero .add-mic"],
+    title: "Say it instead of typing",
+    body: "Tap the mic and talk: your words appear as you speak, and it goes through the same Add flow. From any page, ⌘K (Ctrl K on Windows) opens the same box. On a phone, Calendar and Projects have a mic button in the corner.",
   },
   {
     route: "/",
@@ -73,6 +73,12 @@ const STEPS: Step[] = [
     route: "/",
     title: "It spaces your week",
     body: "Tangent knows how much you can handle in a day. New work lands on lighter days, and if one gets overloaded it suggests a move. Nothing moves without your tap.",
+  },
+  {
+    route: "/",
+    target: [".app-nav-toggle"],
+    title: "Your projects, one click away",
+    body: "Projects in the sidebar opens your 7 most recent projects and Tangents; click it again to close it. The ones you open most stay at the top. All projects shows everything. On a phone, it's the Projects tab.",
   },
   {
     route: "/calendar",
@@ -93,21 +99,39 @@ const STEPS: Step[] = [
     body: "A final, a science fair, starting a club. Tangent asks a few questions, then lays the steps across your calendar. Open a project to see your pace and next steps, or ask about it right on the project page.",
   },
   {
-    route: "/settings/context",
-    target: ["#onboarding"],
-    title: "Set Tangent up in Settings",
-    body: "Getting to know you has this tour, Tangent's first questions about you, Grill me and your setup answers. Canvas and your Google, Apple or Outlook calendar live under Schedule.",
+    route: "/projects",
+    target: ["#projects-tangents", ".projects-new-tangent"],
+    title: "Tangents, next to your projects",
+    body: "A Tangent is a goal a year or more away, like a college or a career. Tangent maps the moves from what you already do, and your projects branch off it. New Tangent starts one.",
   },
   {
-    route: "/settings/context",
-    target: ["#what-tangent-knows"],
-    title: "What Tangent knows",
-    body: "Everything Tangent has learned about you, in one place. Forget anything wrong, or tell it something new.",
+    route: "/settings/your-tangent",
+    target: [".you-hero-stage", "#what-tangent-knows"],
+    title: "Your Tangent",
+    body: "The main page of Settings. You, mapped is everything Tangent knows about you, by area. Scroll down to fix or forget a fact, or add one right inside its area.",
+  },
+  {
+    route: "/settings/your-tangent",
+    target: ["#planning"],
+    title: "Your week",
+    body: "Your regular commitments, and how much work fits on a school night or a weekend day. Tangent plans around these, so no day gets more than you can handle.",
+  },
+  {
+    route: "/settings/your-tangent",
+    target: ["#onboarding"],
+    title: "Getting to know you",
+    body: "Tangent's questions about you, Grill me, and your setup answers, each with whether it's done. You can take this tour again from the card just above.",
+  },
+  {
+    route: "/settings/connectors",
+    target: ["#connections"],
+    title: "Connectors",
+    body: "Canvas, your Google, Apple or Outlook calendar, and notes or what another AI like ChatGPT or Claude knows about you. The more Tangent can see, the less it has to ask.",
   },
   {
     route: "/",
     title: "That's Tangent",
-    body: "Add it, answer a question or two, and let Tangent place it. You can take this tour again from Settings → Onboarding.",
+    body: "Add it, answer a question or two, and let Tangent place it. You can take this tour again from Settings → Your Tangent.",
   },
 ];
 

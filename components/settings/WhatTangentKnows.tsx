@@ -6,13 +6,15 @@ import "./you-map.css";
 // "What Tangent knows about me" as "You, mapped" (Round 4 §5.4): every fact
 // Tangent plans with, as a turning map of the student beside six area cards.
 // Each fact says where it came from (You said / Tangent noticed / Guess,
-// confirm?) and can be edited, forgotten or confirmed. The cards are the
-// accessible list; the map is a picture of them.
+// confirm?) and can be edited, forgotten or confirmed. Each card has its own
+// Add, so a fact goes straight where the student means it; the box at the end
+// takes anything and lets Tangent sort it. The cards are the accessible list;
+// the map is a picture of them.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarClock, Compass, FolderOpen, Gauge, GraduationCap, Mountain, Target, type LucideIcon } from "lucide-react";
+import { CalendarClock, Compass, FolderOpen, Gauge, GraduationCap, Mountain, Plus, Target, type LucideIcon } from "lucide-react";
 import type { ContextEntry } from "@/lib/types";
-import { groupFacts, initialsOf, mapSummary, ORIGIN_LABEL, originOf, projectFacts, type MapGroupKey } from "@/lib/you-map";
+import { GROUP_FACT_CATEGORY, groupFacts, initialsOf, mapSummary, ORIGIN_LABEL, originOf, projectFacts, type MapGroupKey } from "@/lib/you-map";
 import { GET_TO_KNOW_DONE_EVENT } from "@/components/GetToKnowYou";
 import { useAppState } from "@/components/AppStateProvider";
 import { usePipelineV2 } from "@/components/PipelineFlag";
@@ -30,6 +32,19 @@ const ICON: Record<MapGroupKey, LucideIcon> = {
   hard: Mountain,
   future: Compass,
 };
+
+/** What each card's Add suggests, in the student's own voice. */
+const ADD_EXAMPLE: Record<MapGroupKey, string> = {
+  goals: "Get a 1500 on the SAT by March",
+  classes: "AP Chem, and I'm on the robotics team",
+  commitments: "Robotics Tue/Thu until 6",
+  work: "I focus best after dinner",
+  hard: "I put off essays until the night before",
+  future: "Study engineering at Georgia Tech",
+};
+
+/** Where a card's Add saves: an area (as its category) or a project. */
+type AddTarget = { key: string; label: string; body: { factCategory: string } | { projectId: string } };
 
 async function send(body: unknown): Promise<{ ok: boolean; error?: string }> {
   try {
@@ -52,6 +67,9 @@ export default function WhatTangentKnows() {
   const [summary, setSummary] = useState("");
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  // The card whose Add is open, and what's typed in it.
+  const [adding, setAdding] = useState<{ key: string; text: string } | null>(null);
+  const [addingBusy, setAddingBusy] = useState(false);
   const [confirmingForget, setConfirmingForget] = useState(false);
   const [forgetting, setForgetting] = useState(false);
   const [note, setNote] = useState<{ tone: "success" | "error"; text: string } | null>(null);
@@ -141,6 +159,53 @@ export default function WhatTangentKnows() {
     setBusy(false);
     void load();
   };
+
+  // A card's Add stays open after saving, so a few can go in one after another.
+  const rememberIn = async (target: AddTarget) => {
+    const fact = adding?.key === target.key ? adding.text.trim() : "";
+    if (!fact) return;
+    setAddingBusy(true);
+    setNote(null);
+    const result = await send({ action: "remember", fact, ...target.body });
+    if (result.ok) setAdding({ key: target.key, text: "" });
+    else setNote({ tone: "error", text: result.error ?? "Couldn't save that. Try again." });
+    setAddingBusy(false);
+    void load();
+  };
+
+  // The Add at the foot of a card: a quiet button that opens a one-line form.
+  const addRow = (target: AddTarget, example: string) =>
+    adding?.key === target.key ? (
+      <form
+        className="you-fact-edit you-card-add-form"
+        onSubmit={(ev) => {
+          ev.preventDefault();
+          void rememberIn(target);
+        }}
+      >
+        <input
+          name={`add-${target.key}`}
+          value={adding.text}
+          onChange={(ev) => setAdding({ key: target.key, text: ev.target.value })}
+          onKeyDown={(ev) => ev.key === "Escape" && setAdding(null)}
+          placeholder={example}
+          aria-label={`Add to ${target.label}`}
+          maxLength={300}
+          autoFocus
+        />
+        <button type="submit" className="you-fact-btn is-strong" disabled={addingBusy || !adding.text.trim()}>
+          Add
+        </button>
+        <button type="button" className="you-fact-btn" onClick={() => setAdding(null)}>
+          Done
+        </button>
+      </form>
+    ) : (
+      <button type="button" className="you-card-add" onClick={() => setAdding({ key: target.key, text: "" })} aria-label={`Add to ${target.label}`}>
+        <Plus size={14} strokeWidth={2} aria-hidden="true" />
+        Add
+      </button>
+    );
 
   const pick = (key: MapGroupKey) => {
     setFocus(key);
@@ -261,6 +326,7 @@ export default function WhatTangentKnows() {
                     ) : (
                       factList(facts)
                     )}
+                    {addRow({ key: group.key, label: group.label, body: { factCategory: GROUP_FACT_CATEGORY[group.key] } }, ADD_EXAMPLE[group.key])}
                   </section>
                 );
               })}
@@ -275,6 +341,7 @@ export default function WhatTangentKnows() {
                     <span className="you-card-count">{facts.length}</span>
                   </header>
                   {factList(facts)}
+                  {addRow({ key: `project:${projectId}`, label: title, body: { projectId } }, `Something about ${title}`)}
                 </section>
               ))}
 
@@ -290,8 +357,8 @@ export default function WhatTangentKnows() {
                     name="fact"
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
-                    placeholder="Add a fact: “I have robotics Tue/Thu until 6”"
-                    aria-label="Add a fact Tangent should know"
+                    placeholder="Add anything, Tangent sorts it"
+                    aria-label="Add a fact Tangent should know; Tangent picks the area"
                     maxLength={300}
                   />
                   <button type="submit" className="knows-add-btn" disabled={busy || !draft.trim()}>

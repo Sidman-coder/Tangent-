@@ -77,6 +77,8 @@ export type Plan = {
   color: string;
   createdAt: string;
   taskCount: number;
+  /** When the student last opened it. Unset until then, or before migration 20261114000000. */
+  lastOpenedAt?: string;
 };
 
 export type CalendarCategory = "ALL" | string;
@@ -464,6 +466,8 @@ export type Path = {
   standing?: string;
   createdAt: string;
   updatedAt: string;
+  /** When the student last opened it. Unset until then, or before migration 20261114000000. */
+  lastOpenedAt?: string;
 };
 
 /** Superseded by Path. Kept so a workspace saved before multi-path can be read
