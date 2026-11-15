@@ -10,6 +10,7 @@
 import { z } from "zod";
 import { formatTime12 } from "../dates";
 import { commitmentLabel } from "../task-kind";
+import { roundOf } from "../rounds";
 
 // Same loose shape the store accepts (lib/store.ts isUuid).
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -251,6 +252,9 @@ export function describeChangeSet(cs: Pick<ChangeSet, "ops">, known: DescribeCon
         const current = planTitle(op.plan_id);
         const name = current ? `'${current}'` : "a plan";
         if (op.title !== undefined && op.title !== current) return `Rename plan ${name} to '${op.title}'`;
+        // Round 5A Phase 5: the next round's line rides in the same ChangeSet.
+        const round = op.notes !== undefined ? roundOf(op.notes) : null;
+        if (round) return `Start round ${round.n} of ${name}`;
         return `Update notes on plan ${name}`;
       }
       case "add_task": {

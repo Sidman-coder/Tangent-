@@ -366,6 +366,30 @@ void (import("./apply-core") as Promise<Mod>).then(({ applyChangeSetWith }) => {
     assert.equal(db.plans.get(P)!.title, "SAT Prep");
   });
 
+  // Round 5A Phase 5: round 2's steps and its round line are one ChangeSet,
+  // so undoing the confirm also puts the round number back (the Round 4 gap).
+  test("round 2 confirm then undo: steps go and the round line is round 1 again", async () => {
+    const r1 = "Get to 1500\nRound — 1 · started 2026-10-01";
+    const r2 = "Get to 1500\nRound — 2 · started 2026-10-08";
+    const cs = draft([
+      { op: "add_task", title: "Practice test 4", date: "2026-10-08", time: "16:00", plan_id: P },
+      { op: "add_task", title: "Review mistakes", date: "2026-10-10", time: "16:00", plan_id: P },
+      { op: "update_plan", plan_id: P, notes: r2 },
+    ]);
+    cs.intent = "add_to_plan";
+    cs.target_plan_id = P;
+    const { db, store } = memoryStore(cs);
+    seedPlan(db, [T1]);
+    db.plans.set(P, { ...db.plans.get(P)!, description: r1 });
+    const r = await applyChangeSetWith(store, cs);
+    assert.equal(r.ok, true);
+    assert.equal(db.plans.get(P)!.description, r2, "confirm moves the plan to round 2");
+    assert.equal(db.plans.get(P)!.taskIds.length, 3);
+    await undo(db, store);
+    assert.equal(db.plans.get(P)!.description, r1, "undo rolls the round number back");
+    assert.deepEqual(db.plans.get(P)!.taskIds, [T1]);
+  });
+
   test("delete_plan with all its tasks: undo restores the plan and relinks every task", async () => {
     const cs = draft([
       { op: "delete_task", task_id: T1 },

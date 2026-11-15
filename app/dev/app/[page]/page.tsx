@@ -19,8 +19,10 @@ import FirstRun from "@/components/FirstRun";
 import TodayHome from "@/components/today/TodayHome";
 import PlanCalendarPreview from "@/components/preview/PlanCalendarPreview";
 import ColorPicker from "@/components/projects/ColorPicker";
+import RoundReviewSheet, { type RoundReviewSample } from "@/components/projects/RoundReviewSheet";
+import { startQuestion } from "@/lib/round-review";
 import SlotQuestionCard from "@/components/grill/SlotQuestionCard";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { GET_TO_KNOW_EVENT } from "@/components/GetToKnowYou";
 import { followUpById, followUpStorageKey } from "@/lib/student/follow-ups";
 import CalendarPage from "@/app/(app)/calendar/page";
@@ -99,6 +101,37 @@ function DraftSample() {
   );
 }
 
+/** Round 5A Phase 5: the round review sheet with sample questions (the API
+ *  isn't reachable here). at=last opens on "When should round 2 start?". */
+function RoundReviewSample({ at }: { at: number }) {
+  const today = getUserToday(useUserTimezone());
+  const sample = useMemo<RoundReviewSample>(
+    () => ({
+      next: 2,
+      at,
+      oldIds: ["3", "9", "11"],
+      questions: [
+        { id: "q1", kind: "answer", text: "\"Robotics CAD: intake arm\" ran 3 days late. Was it the CAD work or the week?", chips: ["The CAD work", "The week", "Both"] },
+        { id: "q2", kind: "answer", text: "Two steps got moved. Were after-school sessions too tight?", chips: ["Too tight", "About right", "Life got busy"] },
+        { id: "q3", kind: "answer", text: "Waiting on servo motors held things up. Order parts earlier next round?", chips: ["Yes, first thing", "Not needed"] },
+        startQuestion(2),
+      ],
+      ops: [
+        ...[
+          ["Mount the servos on the arm", 1, "16:00"],
+          ["Measure the arm's reach", 2, "16:30"],
+          ["Fix the CAD from the measurements", 4, "16:00"],
+          ["Full intake test with the team", 6, "10:00"],
+        ].map(([title, day, time]) => ({ op: "add_task" as const, title: String(title), date: addDaysYMD(today, Number(day)), time: String(time), commitment: "flexible" as const, plan_id: "p1" })),
+        { op: "update_plan" as const, plan_id: "p1", notes: `Intake arm for regionals
+Round — 2 · started ${today}` },
+      ],
+    }),
+    [at, today]
+  );
+  return <RoundReviewSheet open onClose={() => {}} projectId="p1" onChanged={() => {}} sample={sample} />;
+}
+
 function ColorPickerSample() {
   const plan = SAMPLE_STATE.plans[0];
   return (
@@ -167,6 +200,12 @@ const PAGES: Record<string, React.ComponentType> = {
   preview: PreviewCalendarSample,
   draft: DraftSample,
   color: ColorPickerSample,
+  "round-review": function RoundReviewFirst() {
+    return <RoundReviewSample at={0} />;
+  },
+  "round-review-start": function RoundReviewLast() {
+    return <RoundReviewSample at={3} />;
+  },
   grill: GrillSample,
   followup: FollowUpSample,
   setup: function SetupSample() {

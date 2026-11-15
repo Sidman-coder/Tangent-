@@ -45,6 +45,7 @@ import { TANGENT_PIPELINE_V2 } from "@/lib/pipeline/flags";
 import { logEvent } from "@/lib/pipeline/events";
 import { respondWithDraft } from "@/lib/pipeline/drafting";
 import { planOps, taskOp } from "@/lib/pipeline/draft";
+import type { ChangeSet } from "@/lib/pipeline/changeset";
 import { classifyWithFallback } from "@/lib/task-kind-ai";
 import { closestQuestion } from "@/lib/closest-match";
 import { pickCandidates } from "@/lib/ai/pick-candidate";
@@ -714,6 +715,9 @@ export type VoiceOptions = {
   projectId?: string;
   /** Goal for a newly created project (the plan's description). */
   projectGoal?: string;
+  /** Round 5A Phase 5: ops added to a project plan's draft (the next round's
+   *  line), so confirming and undoing the draft carries them too. */
+  extraOps?: ChangeSet["ops"];
 };
 
 /**
@@ -1171,7 +1175,7 @@ async function handleVoiceTextInner(
               summary: opts.projectId ? "Add to project" : "New plan",
               intent: "new_plan",
               ops: opts.projectId
-                ? draftTasks.map((t) => taskOp(t, { plan_id: opts.projectId }))
+                ? [...draftTasks.map((t) => taskOp(t, { plan_id: opts.projectId })), ...(opts.extraOps ?? [])]
                 : planOps(planTitle, draftTasks, projectNotes),
               assumptions,
             },

@@ -134,6 +134,8 @@ export const AI_TASKS = {
    *  the facts, returns the brief (goal line, assumptions, at most one
    *  question, and what/when/why for each step) as JSON. */
   planBrief: { feature: "plan", tier: "SMART", maxTokens: 1600, thinking: "disabled" },
+  // Round 5A Phase 5: 2 to 4 end-of-round questions from what happened.
+  roundReview: { feature: "plan", tier: "FAST", maxTokens: 700, thinking: "disabled" },
   /** Round 5A 2.4: rewrites the steps the quality guard rejected, once. */
   planFix: { feature: "plan", tier: "SMART", maxTokens: 800, thinking: "disabled" },
 } as const satisfies Record<string, TaskConfig>;

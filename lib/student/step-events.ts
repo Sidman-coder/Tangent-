@@ -167,3 +167,29 @@ export async function readPlanStepCodes(planId: string, sinceYmd: string): Promi
     return [];
   }
 }
+
+/** Round 5A Phase 5: the round review also counts moved steps, which are
+ *  logged with no code. Codes and kinds only, never notes or titles. */
+export async function readPlanReviewCodes(planId: string, sinceYmd: string): Promise<{ taskId: string | null; kind: StepEventKind; code: string }[]> {
+  if (tableMissing() || !UUID_RE.test(planId)) return [];
+  try {
+    const { db, userId } = getRequestContext();
+    const { data, error } = await db
+      .from("step_events")
+      .select("task_id, kind, code")
+      .eq("user_id", userId)
+      .eq("plan_id", planId)
+      .in("kind", ["check_in", "not_today", "rescheduled", "skipped"])
+      .gte("created_at", `${sinceYmd}T00:00:00Z`)
+      .limit(400);
+    if (error) {
+      if (!noteMissing(error)) console.warn("[step-events] could not read review codes:", error.code ?? "unknown");
+      return [];
+    }
+    return (data ?? [])
+      .filter((r: { kind: unknown; code: unknown }) => isStepEventKind(r.kind) && (typeof r.code === "string" || r.kind === "rescheduled" || r.kind === "skipped"))
+      .map((r: { task_id: string | null; kind: StepEventKind; code: string | null }) => ({ taskId: r.task_id, kind: r.kind, code: r.code ?? "" }));
+  } catch {
+    return [];
+  }
+}

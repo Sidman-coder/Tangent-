@@ -18,6 +18,7 @@ import InlineAsk, { type InlineAskHandle } from "@/components/chat/InlineAsk";
 import ColorPicker from "@/components/projects/ColorPicker";
 import ProjectStats from "@/components/projects/ProjectStats";
 import RoundReview from "@/components/projects/RoundReview";
+import RoundReviewSheet from "@/components/projects/RoundReviewSheet";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Chip from "@/components/ui/Chip";
@@ -27,7 +28,7 @@ import ProgressPace from "@/components/ui/ProgressPace";
 import TaskRow from "@/components/ui/TaskRow";
 import { joinProjectNotes, splitProjectNotes, type ProjectNotes } from "@/lib/project-notes";
 import { paceOf, startsLabel, stepsByWeek, weekdayDate, weekSessions, type Pace, type WeekSession } from "@/lib/project-stats";
-import { roundChip } from "@/lib/rounds";
+import { roundChip, roundOf, roundSteps } from "@/lib/rounds";
 import { rowPresence, spring } from "@/lib/motion";
 import { planSeriesColor } from "@/lib/task-colors";
 import { getUserToday } from "@/lib/time";
@@ -133,6 +134,26 @@ export default function ProjectView({ id }: { id: string }) {
   );
   const open = steps.filter((t) => !t.completed);
   const done = steps.filter((t) => t.completed);
+  // Round 5A Phase 5: the round review sheet. It opens by itself once every
+  // step of the round is done (once per round), or from "I've finished this
+  // round" and the review card.
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const roundNow = useMemo(() => roundOf(plan?.description), [plan?.description]);
+  const roundAllDone = useMemo(() => {
+    const these = roundSteps(steps, roundNow);
+    return !!roundNow && these.length > 0 && these.every((t) => t.completed);
+  }, [steps, roundNow]);
+  useEffect(() => {
+    if (!roundAllDone || !roundNow) return;
+    const key = `tangent:round-sheet-auto:${id}:${roundNow.n}`;
+    try {
+      if (localStorage.getItem(key)) return;
+      localStorage.setItem(key, "1");
+    } catch {
+      return;
+    }
+    setReviewOpen(true);
+  }, [roundAllDone, roundNow, id]);
   const groups = useMemo(() => stepsByWeek(steps, today, weekStart), [steps, today, weekStart]);
   const week = useMemo(() => weekSessions(steps, today, weekStart), [steps, today, weekStart]);
   const pace = useMemo(() => paceOf(steps, today), [steps, today]);
@@ -304,7 +325,13 @@ export default function ProjectView({ id }: { id: string }) {
           </details>
         )}
       </header>
-      {notes.round && <RoundReview projectId={id} stepsKey={`${done.length}/${steps.length}`} onChanged={() => void refresh()} />}
+      {notes.round && <RoundReview projectId={id} stepsKey={`${done.length}/${steps.length}`} onChanged={() => void refresh()} onPlan={() => setReviewOpen(true)} />}
+      {roundNow && (
+        <Button size="sm" variant="secondary" className="project-finish-round" onClick={() => setReviewOpen(true)}>
+          I&apos;ve finished this round
+        </Button>
+      )}
+      {roundNow && <RoundReviewSheet open={reviewOpen} onClose={() => setReviewOpen(false)} projectId={id} onChanged={() => void refresh()} />}
 
       <div className="project-layout project-layout--steps">
         <div className="project-main">

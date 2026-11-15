@@ -653,3 +653,38 @@
     padding-block: 9px;
   }
 }
+
+/* Round 5A Phase 5: the round review sheet (components/projects/RoundReviewSheet.tsx). */
+.round-sheet .ui-sheet-body { padding: var(--s-4) var(--s-5) var(--s-5); }
+.round-sheet .round-sheet-question { display: grid; gap: 12px; }
+.round-sheet h3 { margin: 0; font-size: 18px; font-weight: 600; line-height: 1.35; text-wrap: pretty; }
+.round-sheet-count { margin: 0; color: var(--text-2); font-size: 12px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
+.round-sheet-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.round-sheet-text { display: grid; gap: 6px; color: var(--text-2); font-size: 13px; }
+.round-sheet-text input {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+}
+.round-sheet-text input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.round-sheet-date { max-width: 220px; }
+.round-sheet-summary { margin: 0; color: var(--text-2); font-size: 14px; }
+.round-sheet-status { display: grid; justify-items: start; gap: 12px; margin: 0; color: var(--text-2); }
+.round-sheet-status p { margin: 0; }
+.round-sheet-actions { display: flex; align-items: center; gap: 8px; width: 100%; }
+.round-sheet-spacer { flex: 1; }
+.round-sheet-legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 0; padding: 0; list-style: none; color: var(--text-2); font-size: 12px; }
+.round-sheet-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.round-sheet-legend i { width: 14px; height: 8px; border-radius: 3px; background: var(--text-3); }
+.round-sheet-legend i.is-new { background: var(--project-color, var(--accent)); }
+.round-sheet-legend i.is-removed { background: color-mix(in srgb, var(--project-color, var(--accent)) 30%, var(--surface)); box-shadow: inset 0 0 0 1px var(--project-color, var(--accent)); }
+.round-sheet-legend i.is-existing { opacity: 0.4; }
+.project-finish-round { justify-self: start; }
+@media (max-width: 767px) {
+  .round-sheet-text input { min-height: 44px; }
+}

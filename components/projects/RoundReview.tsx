@@ -26,7 +26,18 @@ function laterFor(projectId: string, n: number): boolean {
   }
 }
 
-export default function RoundReview({ projectId, stepsKey, onChanged }: { projectId: string; stepsKey: string; onChanged: () => void }) {
+export default function RoundReview({
+  projectId,
+  stepsKey,
+  onChanged,
+  onPlan,
+}: {
+  projectId: string;
+  stepsKey: string;
+  onChanged: () => void;
+  /** Round 5A Phase 5: "Plan round N" opens the review sheet instead. */
+  onPlan?: () => void;
+}) {
   const reduce = useReducedMotion();
   const [review, setReview] = useState<Review | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
@@ -105,7 +116,14 @@ export default function RoundReview({ projectId, stepsKey, onChanged }: { projec
             preview={draft.preview}
             autoFocus
             onChanged={onChanged}
-            onConfirmed={() => void advance()}
+            onConfirmed={() => {
+              // The round line rides in the draft now (an update_plan op);
+              // advancing again would skip a round.
+              if (draft.changeSet.ops.some((o) => o.op === "update_plan")) {
+                setPhase("added");
+                onChanged();
+              } else void advance();
+            }}
             onSettled={(p) => {
               if (p !== "confirmed") setPhase("idle");
             }}
@@ -113,7 +131,7 @@ export default function RoundReview({ projectId, stepsKey, onChanged }: { projec
         )}
         {(phase === "idle" || phase === "drafting" || phase === "error") && (
           <div className="round-review-actions">
-            <Button size="sm" variant="primary" onClick={() => void propose()} disabled={phase === "drafting"}>
+            <Button size="sm" variant="primary" onClick={() => (onPlan ? onPlan() : void propose())} disabled={phase === "drafting"}>
               {phase === "drafting" ? "Planning…" : `Plan round ${review.next}`}
             </Button>
             <button type="button" className="round-review-quiet" onClick={later}>Not now</button>

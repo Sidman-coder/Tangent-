@@ -27,7 +27,8 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 
 export type WeekBlock = {
   key: string;
-  kind: "new" | "existing" | "school";
+  /** "removed": the round being replaced (Round 5A Phase 5), in its colour with an X. */
+  kind: "new" | "existing" | "school" | "removed";
   title: string;
   /** 0 is Monday. */
   dayIndex: number;
@@ -134,11 +135,11 @@ function newBlocks(ops: Op[], tasks: Task[], plans: PlanColors): Placed[] {
   return out;
 }
 
-function calendarBlocks(tasks: Task[], ops: Op[]): Placed[] {
+function calendarBlocks(tasks: Task[], ops: Op[], removed?: ReadonlySet<string>): Placed[] {
   const moved = new Set(ops.flatMap((o) => (o.op === "move_task" ? [o.task_id] : [])));
   const out: Placed[] = [];
   for (const task of tasks) {
-    if (task.completed || !task.date || !task.time || isDueOnly(task) || moved.has(task.id)) continue;
+    if (task.completed || !task.date || !task.time || isDueOnly(task) || moved.has(task.id) || removed?.has(task.id)) continue;
     const school = isOnboardingSchoolTask(task);
     const start = toMinutes(task.time);
     const end = school ? schoolEndFromNotes(task.notes) ?? start + BLOCK_MINUTES : start + BLOCK_MINUTES;
@@ -151,6 +152,27 @@ function calendarBlocks(tasks: Task[], ops: Op[]): Placed[] {
       color: null,
       when: `${dayLabel(task.date)} · ${formatTime12(task.time)}`,
       why: null,
+    });
+  }
+  return out;
+}
+
+/** The steps being replaced, done or not, timed or not: in their project's
+ *  colour, so the student sees round N go and round N+1 arrive. */
+function removedBlocks(tasks: Task[], removed: ReadonlySet<string>, plans: PlanColors): Placed[] {
+  const out: Placed[] = [];
+  for (const task of tasks) {
+    if (!removed.has(task.id) || !task.date) continue;
+    const timed = task.time && !isDueOnly(task);
+    out.push({
+      key: `removed-${task.id}`,
+      kind: "removed",
+      title: task.title,
+      date: task.date,
+      ...(timed ? placeInDay(toMinutes(task.time), toMinutes(task.time) + BLOCK_MINUTES) : { topPct: null, heightPct: 0 }),
+      color: seriesColor(taskSeries(task, plans)),
+      when: `${dayLabel(task.date)} · ${timed ? formatTime12(task.time) : "Anytime"}`,
+      why: task.completed ? "Done in the last round" : "From the last round",
     });
   }
   return out;
@@ -173,13 +195,23 @@ export function previewMonthItems(ops: Op[], tasks: Task[], plans: PlanColors): 
 
 /** The weeks the change touches, in order and with no gaps. The first holds
  *  the first new task, so that's where the preview opens. */
-export function previewWeeks(ops: Op[], tasks: Task[], plans: PlanColors = [], selected?: { date: string; weekStart: WeekStart }): PreviewWeek[] {
+export function previewWeeks(
+  ops: Op[],
+  tasks: Task[],
+  plans: PlanColors = [],
+  selected?: { date: string; weekStart: WeekStart },
+  removed?: ReadonlySet<string>,
+): PreviewWeek[] {
   const fresh = newBlocks(ops, tasks, plans);
   if (fresh.length === 0) return [];
+  const gone = removed?.size ? removedBlocks(tasks, removed, plans) : [];
   const dates = fresh.map((b) => b.date).sort();
-  const first = selected ? startOfPreviewWeek(selected.date, selected.weekStart) : mondayOf(dates[0]);
+  // With a round being replaced, the weeks run from its first step to the new
+  // round's last, so both sit on the same calendar.
+  const from = gone.reduce((min, b) => (b.date < min ? b.date : min), dates[0]);
+  const first = selected ? startOfPreviewWeek(selected.date, selected.weekStart) : mondayOf(from);
   const lastStart = selected ? first : mondayOf(dates[dates.length - 1]);
-  const others = calendarBlocks(tasks, ops);
+  const others = [...calendarBlocks(tasks, ops, removed), ...gone];
   const weeks: PreviewWeek[] = [];
   for (let start = first; start <= lastStart && weeks.length < MAX_WEEKS; start = addDaysYMD(start, 7)) {
     const end = addDaysYMD(start, 6);

@@ -4691,6 +4691,36 @@ body .gtk-sheet {
   color: var(--text);
   box-shadow: 0 0 0 1px var(--surface);
 }
+/* Round 5A Phase 5: the round being replaced, in its colour, crossed out. */
+.preview-week-block.is-removed {
+  border-left: 3px solid var(--block);
+  background: color-mix(in srgb, var(--block) 18%, var(--surface));
+  color: var(--text-2);
+  text-decoration: line-through;
+  opacity: 0.75;
+}
+.preview-week-block.is-removed::after,
+.preview-week-untimed.is-removed::after {
+  content: "×";
+  position: absolute;
+  top: -1px;
+  right: 2px;
+  color: var(--text-2);
+  font: 700 10px/1 var(--font-body);
+}
+.preview-week-block.is-removed span {
+  padding-right: 8px;
+}
+.preview-week-untimed.is-removed {
+  position: relative;
+  height: 10px;
+  opacity: 0.55;
+}
+.preview-week-untimed.is-removed::after {
+  top: 0;
+  right: 1px;
+  font-size: 9px;
+}
 .preview-week-block span {
   display: block;
   overflow: hidden;
