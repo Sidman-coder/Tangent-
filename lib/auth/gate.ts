@@ -21,7 +21,7 @@ export const SIGNIN_PATH = "/signin";
 /** Where "Delete my account" ends. Public: the account and its session are gone. */
 export const GOODBYE_PATH = "/goodbye";
 
-export const WAITLIST_API_ERROR = "You're on the waitlist. We'll email you when your spot opens.";
+export const WAITLIST_API_ERROR = "You're on the waitlist. We'll email you when you're in.";
 export const UNDER_13_API_ERROR = "Tangent is for students 13 and up.";
 
 type GateUser = { email?: string | null; app_metadata?: unknown } | null | undefined;

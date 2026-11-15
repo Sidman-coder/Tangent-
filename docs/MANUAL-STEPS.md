@@ -193,3 +193,50 @@ Nothing to run. Commitments are stored as recurring busy tasks, so the planned `
 - Settings → Onboarding → **Setup answers**: the eight screens come back prefilled. Change one answer and finish; What Tangent knows shows the new answer, not both.
 - Add a commitment with two blocks (for example practice Mon/Wed 3:30–5:30 plus Sat 9–11). It shows on the calendar every week, and Settings → Schedule reads it back the same way. Ask Tangent to plan something: nothing lands inside those blocks.
 - On Home after onboarding, one question appears at most once a day. Type an answer: it shows in What Tangent knows. "Not now" closes it until tomorrow.
+
+## Round 5A
+
+No new env vars. The waitlist owner page uses the existing `OWNER_EMAIL`.
+
+### Migrations (3, run in this order)
+
+Run each in the Supabase SQL Editor. Each is safe to run twice, and the app works before they run (a missing table or column is skipped with one server warning).
+
+1. **`supabase/migrations/20261113000000_waitlist.sql`** creates the `waitlist` table: RLS on, no policies, browser roles revoked. Check it (expect `true`, then 0 policies, then no rows):
+   ```sql
+   select relrowsecurity from pg_class where oid = 'public.waitlist'::regclass;
+   select count(*) from pg_policies where schemaname = 'public' and tablename = 'waitlist';
+   select grantee, privilege_type from information_schema.role_table_grants
+   where table_schema = 'public' and table_name = 'waitlist' and grantee in ('anon', 'authenticated');
+   ```
+2. **`supabase/migrations/20261114000000_plan_kind.sql`** adds `plans.kind` (school | work), one of each per student. Check it (expect 1 row, then 1 row):
+   ```sql
+   select column_name, data_type from information_schema.columns where table_name = 'plans' and column_name = 'kind';
+   select indexname from pg_indexes where indexname = 'plans_user_kind_unique';
+   ```
+3. **`supabase/migrations/20261114010000_task_span.sql`** adds `tasks.duration_min` and `tasks.end_date` (multi-day tasks). Check it (expect 2 rows, then 1 row):
+   ```sql
+   select column_name, data_type from information_schema.columns where table_name = 'tasks' and column_name in ('duration_min', 'end_date');
+   select conname from pg_constraint where conname = 'tasks_end_date_after_date';
+   ```
+
+### Waitlist email (Supabase SMTP, no new secret)
+
+Approving someone on `/settings/waitlist` (owner only; everyone else gets a 404) marks them approved and sends the normal Supabase sign-in email (`signInWithOtp`, `shouldCreateUser: false`) through your configured SMTP. For that one email, `user_metadata.waitlist_approved` is true.
+
+1. Supabase dashboard → Authentication → Email Templates → **Magic Link**. Add this line near the top of the body:
+   ```
+   {{ if .Data.waitlist_approved }}You're in! Tangent is ready for you.{{ end }}
+   ```
+2. The auth email rate limits still apply (see Round 4 Phase 1). Approve a few people at a time.
+
+### Signed-in checks
+
+- **Waitlist:** sign in with an address that isn't on `ALLOWED_EMAILS`. `/waitlist` says "We'll email you at …", and a row appears once (`select email, status from waitlist;`). As the owner, approve it on `/settings/waitlist`: the email arrives with the "You're in" line, and that account now reaches Home.
+- **Delete my account:** on a throwaway account, Settings → Your data → Delete my account → type `DELETE`. You land on `/goodbye`, signing in again finds no account, and `select count(*) from tasks where user_id = 'THE_ID';` is 0.
+- **Home talk:** "help me get better at competitive programming" gets a real answer (markdown) with no plan. "Plan this into my calendar" shows the stages, then the Brief | Calendar split. Confirm, then Undo.
+- **Bulk actions:** "delete all my chats" and "move all today's tasks to tomorrow" show a confirm card with exact counts and never start a plan.
+- **Calendar rail and draft pill:** plan from the rail. The steps show on the main calendar. Leave without confirming: the draft pill shows on `/capture` and Home; open it, confirm it.
+- **Round review:** finish a project's round (or press "I've finished this round"). Answer the questions, try Push 1 week on the last one, confirm, then Undo: the round number goes back.
+- **Notifications:** the bell opens the popover with a tail toward the bell. Several overdue tasks show as one item, and Clear all empties it ("You're all caught up").
+- **School/Work:** after the migration, add a work commitment in Settings → Schedule. A Work project appears under "School & Work" on Projects.
