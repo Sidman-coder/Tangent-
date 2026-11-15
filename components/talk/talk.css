@@ -1,0 +1,328 @@
+/* Round 5A Phase 2: talk-first Home. Tokens only (docs/design/TANGENT-STYLE.md). */
+
+/* ── Talk thread ─────────────────────────────────────────── */
+.talk-thread {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+.talk-thread.is-compact {
+  gap: var(--s-3);
+}
+.talk-line {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.talk-line.is-user {
+  align-items: flex-end;
+}
+.talk-bubble {
+  margin: 0;
+  max-width: min(85%, 560px);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-lg);
+  background: var(--accent-soft);
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.talk-line.is-assistant {
+  align-items: stretch;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.talk-wait {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--text-2);
+}
+.talk-question-hint {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 0.875rem;
+}
+.talk-link {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  min-height: 24px;
+}
+.talk-link:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.talk-plan-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+/* ── Thinking stages ─────────────────────────────────────── */
+.plan-stages {
+  list-style: none;
+  margin: 0;
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.plan-stage {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--text-3);
+  font-size: 0.9375rem;
+}
+.plan-stage.is-done {
+  color: var(--text-2);
+}
+.plan-stage.is-now {
+  color: var(--text);
+  font-weight: 600;
+}
+.plan-stage-mark {
+  inline-size: 16px;
+  block-size: 16px;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  color: var(--accent);
+}
+
+/* ── Plan brief ──────────────────────────────────────────── */
+.plan-brief {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  min-width: 0;
+}
+.plan-brief-goal {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.plan-brief-h {
+  margin: 0 0 var(--s-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.plan-brief-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.plan-step-card {
+  padding: var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  min-width: 0;
+}
+.plan-step-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.plan-step-what {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.plan-step-when {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 0.875rem;
+}
+.plan-step-detail {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.plan-step-detail > span {
+  color: var(--text-3);
+  font-weight: 600;
+  margin-inline-end: var(--s-1);
+}
+.plan-step-remove {
+  appearance: none;
+  flex: none;
+  inline-size: 44px;
+  block-size: 44px;
+  margin: calc(var(--s-2) * -1);
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.plan-step-remove:hover {
+  color: var(--text);
+}
+.plan-step-remove:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.plan-step-edit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.plan-step-edit input {
+  min-height: 44px;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg, var(--surface));
+  color: var(--text);
+  font: inherit;
+}
+.plan-step-edit input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.plan-brief-list {
+  margin: 0;
+  padding-inline-start: var(--s-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  font-size: 0.875rem;
+}
+.plan-brief-text,
+.plan-brief-note {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-2);
+}
+.plan-brief-error {
+  margin: 0;
+  color: var(--danger, var(--text));
+  font-size: 0.875rem;
+}
+.plan-brief-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.plan-brief-done {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--text-2);
+}
+.plan-brief-done > svg {
+  color: var(--accent);
+}
+.plan-brief-history > summary {
+  cursor: pointer;
+  color: var(--text-2);
+  font-size: 0.875rem;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.plan-brief-history > summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.plan-brief-history[open] > .talk-thread {
+  margin-block: var(--s-2) var(--s-3);
+}
+
+/* ── Q4: the conversation takes over Home ───────────────── */
+.today-v2:has(.add-flow.is-talk) > :not(.today-add) {
+  display: none;
+}
+.add-flow.is-talk:not(.is-workspace) {
+  gap: var(--s-4);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.add-flow.is-talk:not(.is-workspace):focus-within {
+  box-shadow: none;
+}
+/* The box itself, pinned under the talk. */
+.add-flow.is-talk:not(.is-workspace) .talk-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-3) var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.add-flow.is-talk:not(.is-workspace) .talk-composer:focus-within {
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.plan-brief-history .talk-thread {
+  font-size: 0.875rem;
+}
+.talk-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.talk-back {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0 var(--s-2);
+  margin-inline-start: calc(var(--s-2) * -1);
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 0.875rem;
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.talk-back:hover {
+  color: var(--text);
+}
+.talk-back:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 0;
+}
+.add-flow.is-talk .talk-composer {
+  position: sticky;
+  bottom: var(--s-3);
+  z-index: 2;
+}

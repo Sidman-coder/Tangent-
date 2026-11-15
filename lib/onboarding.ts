@@ -164,7 +164,7 @@ export function formatSchoolHours(hours: SchoolHours): string {
 
 
 // ─── The flow (Round 4 Phase 6: deeper, not longer) ──────────────────────────
-// Eight questions, then the ready screen. Only the name is required; every
+// Nine questions (Round 5A R1 added "why"), then the ready screen. Only the name is required; every
 // question has an optional "Tell me more", and every answer is saved as a
 // fact the student said (lib/onboarding-facts.ts).
 
@@ -175,6 +175,8 @@ export const BEST_TIMES = ["mornings", "afterSchool", "evenings", "lateNight"] a
 export const FOCUS_LENGTHS = ["15", "30", "45", "60"] as const;
 export const SCHOOL_NIGHT_HOURS = ["1", "2", "3", "4"] as const;
 export const PUSH_STYLES = ["gentle", "straight", "ask"] as const;
+/** Round 5A R1: what made it click the last time they locked in. */
+export const LOCKED_IN = ["deadline", "people", "firstStep", "progress", "notYet"] as const;
 
 export type Grade = (typeof GRADES)[number];
 export type Matter = (typeof MATTERS)[number];
@@ -183,6 +185,7 @@ export type BestTime = (typeof BEST_TIMES)[number];
 export type FocusLength = (typeof FOCUS_LENGTHS)[number];
 export type SchoolNightHours = (typeof SCHOOL_NIGHT_HOURS)[number];
 export type PushStyle = (typeof PUSH_STYLES)[number];
+export type LockedIn = (typeof LOCKED_IN)[number];
 
 export const parseGrade = oneOf(GRADES);
 export const parseMatter = oneOf(MATTERS);
@@ -191,11 +194,13 @@ export const parseBestTime = oneOf(BEST_TIMES);
 export const parseFocusLength = oneOf(FOCUS_LENGTHS);
 export const parseSchoolNightHours = oneOf(SCHOOL_NIGHT_HOURS);
 export const parsePushStyle = oneOf(PUSH_STYLES);
+export const parseLockedIn = oneOf(LOCKED_IN);
 
 export const MAX_SLIPS = 2;
 /** "Tell me more" and the longer free-text answers. */
 export const MORE_MAX = 300;
 export const SHORT_TEXT_MAX = 80;
+export const HARD_TIME_MAX = 160;
 
 export const GRADE_OPTIONS: Choice<Grade>[] = [
   { value: "9", label: "9th" },
@@ -252,10 +257,20 @@ export const PUSH_OPTIONS: Choice<PushStyle>[] = [
   { value: "ask", label: "Only when I ask", hint: "Stay quiet until I come to you" },
 ];
 
-export type StepId = "about" | "busy" | "matters" | "slip" | "bugging" | "brain" | "toward" | "push" | "ready";
+export const LOCKED_IN_OPTIONS: Choice<LockedIn>[] = [
+  { value: "deadline", label: "A real deadline" },
+  { value: "people", label: "Someone counting on me" },
+  { value: "firstStep", label: "Knowing the first step" },
+  { value: "progress", label: "Seeing my progress" },
+  { value: "notYet", label: "Haven't really yet" },
+];
+
+export type StepId = "about" | "busy" | "matters" | "slip" | "bugging" | "why" | "brain" | "toward" | "push" | "ready";
 export type QuestionStep = Exclude<StepId, "ready">;
 
-export const STEPS: StepId[] = ["about", "busy", "matters", "slip", "bugging", "brain", "toward", "push", "ready"];
+// Round 5A R1: "why" sits straight after "what's bugging you". It's the moment
+// the student decides to lock in, so it asks about them, in their own words.
+export const STEPS: StepId[] = ["about", "busy", "matters", "slip", "bugging", "why", "brain", "toward", "push", "ready"];
 export const QUESTION_STEPS = STEPS.filter((s): s is QuestionStep => s !== "ready");
 
 export type Toward = { major: string; career: string; dream: string; notSure: boolean };
@@ -272,6 +287,13 @@ export type OnboardingDraft = {
   slips: Slip[];
   /** Raw while typing; it becomes the starting intent on save. */
   bugging: string;
+  /** Round 5A R1, the "why" step: why it matters, what a good month looks
+   *  like, and what made it click the last time they locked in. */
+  why: string;
+  picture: string;
+  lockedIn: LockedIn | null;
+  /** The brain step: a time they can't think, and why ("mornings, too sleepy"). */
+  hardTime: string;
   bestTime: BestTime | null;
   focusLength: FocusLength | null;
   schoolNightHours: SchoolNightHours | null;
@@ -293,6 +315,10 @@ export function emptyDraft(): OnboardingDraft {
     mattersText: "",
     slips: [],
     bugging: "",
+    why: "",
+    picture: "",
+    lockedIn: null,
+    hardTime: "",
     bestTime: null,
     focusLength: null,
     schoolNightHours: null,
@@ -349,8 +375,10 @@ export function hasAnswer(step: QuestionStep, draft: OnboardingDraft): boolean {
       return draft.slips.length > 0 || more;
     case "bugging":
       return Boolean(draft.bugging.trim()) || more;
+    case "why":
+      return Boolean(draft.why.trim() || draft.picture.trim() || draft.lockedIn) || more;
     case "brain":
-      return Boolean(draft.bestTime || draft.focusLength || draft.schoolNightHours) || more;
+      return Boolean(draft.bestTime || draft.focusLength || draft.schoolNightHours || draft.hardTime.trim()) || more;
     case "toward": {
       const t = draft.toward;
       return Boolean(t.major.trim() || t.career.trim() || t.dream.trim() || t.notSure) || more;
@@ -417,6 +445,10 @@ export function parseStoredDraft(raw: string | null | undefined): StoredDraft | 
       mattersText: str(src.mattersText, MORE_MAX),
       slips: listOf(src.slips, parseSlip, MAX_SLIPS),
       bugging: str(src.bugging, STARTING_INTENT_MAX),
+      why: str(src.why, MORE_MAX),
+      picture: str(src.picture, MORE_MAX),
+      lockedIn: parseLockedIn(src.lockedIn),
+      hardTime: str(src.hardTime, HARD_TIME_MAX),
       bestTime: parseBestTime(src.bestTime),
       focusLength: parseFocusLength(src.focusLength),
       schoolNightHours: parseSchoolNightHours(src.schoolNightHours),
@@ -450,7 +482,7 @@ export function resumeStep(wanted: StepId, draft: OnboardingDraft): StepId {
 
 // ─── Submission (client → POST /api/onboarding) ──────────────────────────────
 
-/** Everything the eight questions collected, cleaned. */
+/** Everything the nine questions collected, cleaned. */
 export type OnboardingAnswers = {
   grade: Grade | null;
   /** null: leave the calendar's busy blocks as they are. */
@@ -459,6 +491,11 @@ export type OnboardingAnswers = {
   mattersText: string | null;
   slips: Slip[];
   bugging: string | null;
+  /** Round 5A R1. Optional, so an older client's body still parses. */
+  why?: string | null;
+  picture?: string | null;
+  lockedIn?: LockedIn | null;
+  hardTime?: string | null;
   bestTime: BestTime | null;
   focusLength: FocusLength | null;
   schoolNightHours: SchoolNightHours | null;
@@ -537,6 +574,10 @@ export function answersFromDraft(draft: OnboardingDraft): OnboardingAnswers {
     mattersText: cleanText(draft.mattersText, MORE_MAX),
     slips: draft.slips.slice(0, MAX_SLIPS),
     bugging: cleanText(draft.bugging, STARTING_INTENT_MAX),
+    why: cleanText(draft.why, MORE_MAX),
+    picture: cleanText(draft.picture, MORE_MAX),
+    lockedIn: draft.lockedIn,
+    hardTime: cleanText(draft.hardTime, HARD_TIME_MAX),
     bestTime: draft.bestTime,
     focusLength: draft.focusLength,
     schoolNightHours: draft.schoolNightHours,
@@ -625,6 +666,14 @@ export function parseSubmission(raw: unknown): Parsed<OnboardingSubmission> {
   if (!schoolNightHours.ok) return schoolNightHours;
   const push = checkEnum(src, "push", parsePushStyle);
   if (!push.ok) return push;
+  const lockedIn = checkEnum(src, "lockedIn", parseLockedIn);
+  if (!lockedIn.ok) return lockedIn;
+  const why = checkText(src.why, "why", MORE_MAX);
+  if (!why.ok) return why;
+  const picture = checkText(src.picture, "picture", MORE_MAX);
+  if (!picture.ok) return picture;
+  const hardTime = checkText(src.hardTime, "hardTime", HARD_TIME_MAX);
+  if (!hardTime.ok) return hardTime;
   const view = checkEnum(prefsRaw, "dayView", parseDayView);
   if (!view.ok) return view;
   const matters = checkList(src.matters, "matters", parseMatter, MATTERS.length);
@@ -673,6 +722,10 @@ export function parseSubmission(raw: unknown): Parsed<OnboardingSubmission> {
     mattersText: mattersText.value,
     slips: slips.value,
     bugging: bugging.value,
+    why: why.value,
+    picture: picture.value,
+    lockedIn: lockedIn.value,
+    hardTime: hardTime.value,
     bestTime: bestTime.value,
     focusLength: focusLength.value,
     schoolNightHours: schoolNightHours.value,
@@ -729,6 +782,69 @@ export function parsePreferencesPatch(raw: unknown): Parsed<PreferencesPatch> {
   }
   if (!Object.keys(patch).length) return { ok: false, error: "Nothing to update" };
   return { ok: true, value: patch };
+}
+
+// ─── Round 5A R1: the "why" step ─────────────────────────────────────────────
+// The question is built from what they already said, so it reads as heard,
+// not as a form. Fixed copy, no AI: it shows instantly and can't go wrong.
+
+const QUOTE_MAX = 70;
+
+function quoted(text: string): string {
+  const t = text.replace(/\s+/g, " ").trim().replace(/[.!?]+$/, "");
+  return t.length > QUOTE_MAX ? `${t.slice(0, QUOTE_MAX - 1).trimEnd()}…` : t;
+}
+
+export type WhyQuestion = { title: string; sub: string; whyLabel: string; whyPlaceholder: string };
+
+export function whyQuestion(draft: Pick<OnboardingDraft, "bugging" | "matters" | "name">): WhyQuestion {
+  const bugging = draft.bugging.trim();
+  const whyPlaceholder = "e.g. I want to prove to myself I can actually do this";
+  if (bugging && !looksDistressed(bugging)) {
+    return {
+      title: "Why does this one matter to you?",
+      sub: `You said: \u201c${quoted(bugging)}\u201d. Not the reason you'd give a teacher, the real one.`,
+      whyLabel: "Why it matters to you",
+      whyPlaceholder,
+    };
+  }
+  const first = draft.matters[0];
+  const label = first ? labelFor(MATTER_OPTIONS, first) : null;
+  if (label) {
+    const thing = /^(AP|SAT)/.test(label) ? label : label.charAt(0).toLowerCase() + label.slice(1);
+    return {
+      title: `Why does ${thing} matter to you right now?`,
+      sub: "Not the reason you'd give a teacher, the real one.",
+      whyLabel: "Why it matters to you",
+      whyPlaceholder,
+    };
+  }
+  return {
+    title: "What made you want to lock in now?",
+    sub: "Something happened, or you just want this year to feel different. Either is a real answer.",
+    whyLabel: "What made you want to lock in",
+    whyPlaceholder: "e.g. Last semester got away from me and I don't want that again",
+  };
+}
+
+const LOCKED_LINES: Record<LockedIn, string> = {
+  deadline: "You lock in when there's a real deadline, so every step gets its own date.",
+  people: "You lock in when someone's counting on you, so we'll check in on how it's going.",
+  firstStep: "You lock in once you know the first step, so every plan starts with a small one.",
+  progress: "You lock in when you can see progress, so we'll show you what you've already done.",
+  notYet: "You haven't found what makes you lock in yet. We'll try a few things and keep what works.",
+};
+
+/** "Here's what I heard": their own words back, and what Tangent will do with
+ *  them. Only what they wrote; anything that reads as distress is left out. */
+export function heardLines(answers: Pick<OnboardingAnswers, "why" | "picture" | "lockedIn" | "hardTime">): string[] {
+  const lines: string[] = [];
+  const ok = (t: string | null | undefined): t is string => Boolean(t && t.trim() && !looksDistressed(t));
+  if (ok(answers.why)) lines.push(`Your why: \u201c${quoted(answers.why)}\u201d. We'll keep it in front of you when it gets hard.`);
+  if (ok(answers.picture)) lines.push(`A good month looks like: \u201c${quoted(answers.picture)}\u201d. Plans will aim there.`);
+  if (answers.lockedIn) lines.push(LOCKED_LINES[answers.lockedIn]);
+  if (ok(answers.hardTime)) lines.push(`Hard time to think: \u201c${quoted(answers.hardTime)}\u201d. Heavy work stays out of it.`);
+  return lines;
 }
 
 // ─── Final screen: fixed copy, no AI ─────────────────────────────────────────

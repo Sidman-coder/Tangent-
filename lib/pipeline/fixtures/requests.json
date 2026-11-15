@@ -2352,7 +2352,7 @@
       "id": "r4-help-me-sat",
       "text": "help me get a 1400 on the SAT",
       "source": "typed",
-      "note": "Round 4 3.1: \"help me\" with a goal plans.",
+      "note": "Round 4 3.1: \"help me\" with a goal plans. Round 5A: this is the plan pipeline's classifier, reached only after Plan this; talk-level routing is in talk-first.json (an answer first).",
       "seed": {
         "plans": [],
         "tasks": []
@@ -2398,7 +2398,7 @@
       "id": "r4-how-do-i-get",
       "text": "how do I get better at chess",
       "source": "voice",
-      "note": "Round 4 3.1: \"how do I get\" plans, even with a question shape.",
+      "note": "Round 4 3.1: \"how do I get\" plans, even with a question shape. Round 5A: classifier only, reached after Plan this; talk-first.json answers it first.",
       "seed": {
         "plans": [],
         "tasks": []

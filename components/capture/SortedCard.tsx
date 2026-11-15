@@ -10,6 +10,8 @@ import { useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
 import ActionReceipt from "@/components/ActionReceipt";
 import PreviewCard from "@/components/PreviewCard";
+import Markdown from "@/components/console/Markdown";
+import PlanThisRow from "@/components/talk/PlanThisRow";
 import { answerQuestions, dismissQuestions, type QuestionSet } from "@/lib/questions-client";
 import type { CaptureOutcome } from "@/lib/capture-outcome";
 
@@ -29,10 +31,12 @@ type Props = {
   onRetry: (said: string) => void;
   onConfirm: (id: string, yes: boolean) => void;
   onAsk: (said: string) => void;
+  /** Round 5A 2.5: "Plan this into my calendar" under an answer. */
+  onPlanThis: (said: string, answer: string, goal: string) => void;
   onChanged: () => void;
 };
 
-export default function SortedCard({ outcome, freshSet, questionsPending, parkedSet, line, onDismiss, onRetry, onConfirm, onAsk, onChanged }: Props) {
+export default function SortedCard({ outcome, freshSet, questionsPending, parkedSet, line, onDismiss, onRetry, onConfirm, onAsk, onPlanThis, onChanged }: Props) {
   const reduced = useReducedMotion();
   const set = outcome.kind === "saved" ? freshSet ?? (questionsPending ? null : parkedSet) : null;
   const parked = Boolean(set && set !== freshSet);
@@ -113,6 +117,24 @@ export default function SortedCard({ outcome, freshSet, questionsPending, parked
             </div>
           </>
         );
+      case "answer":
+        // Talk first: the answer, here under the mic. Nothing was added.
+        return (
+          <>
+            <div className="sorted-answer" aria-live="polite">
+              <Markdown text={outcome.text} />
+            </div>
+            {outcome.planGoal ? (
+              <PlanThisRow onPlan={() => onPlanThis(outcome.said, outcome.text, outcome.planGoal!)} onDismiss={onDismiss} />
+            ) : (
+              <div className="sorted-chips">
+                <button type="button" className="capture-chip is-quiet" onClick={onDismiss}>Done</button>
+              </div>
+            )}
+          </>
+        );
+      case "plan":
+        return <p className="sorted-text">Opening your planner…</p>;
       case "unsure":
         // Not added, and it goes away on its own; "Add anyway" for a wrong guess.
         return (
@@ -133,7 +155,7 @@ export default function SortedCard({ outcome, freshSet, questionsPending, parked
       case "saved":
         return null;
     }
-  }, [outcome, onAsk, onChanged, onConfirm, onDismiss, onRetry]);
+  }, [outcome, onAsk, onChanged, onConfirm, onDismiss, onRetry, onPlanThis]);
 
   return (
     <>

@@ -48,7 +48,7 @@ export function planRemovalsFor(cs: Pick<ChangeSet, "ops">, tasks: readonly Task
  */
 export async function respondWithDraft(
   input: Omit<DraftInput, "id" | "userId" | "now">,
-  meta: { text: string; today: string; route: string }
+  meta: { text: string; today: string; route: string; extra?: Record<string, unknown> }
 ): Promise<NextResponse> {
   const built = buildDraft({ ...input, id: crypto.randomUUID(), userId: getRequestContext().userId, now: new Date().toISOString() });
   if (!built.ok) {
@@ -70,5 +70,6 @@ export async function respondWithDraft(
     await attachFactsUsed("change_sets", changeSet.id, used);
   }
   await addVoiceLog({ text: meta.text, response: changeSet.summary, action: "preview", ok: true });
-  return NextResponse.json({ ok: true, action: "preview", changeSet, preview, response: changeSet.summary });
+  // Round 5A 2.3: the plan brief (goal line, whys, what was used) rides along.
+  return NextResponse.json({ ok: true, action: "preview", changeSet, preview, response: changeSet.summary, ...(meta.extra ?? {}) });
 }

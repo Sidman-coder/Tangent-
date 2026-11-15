@@ -674,3 +674,12 @@
   .focus-ring.is-over { animation: none; }
   .focus-ring-fill { transition: none; }
 }
+
+/* Round 5A 2.5: an answer under the mic. Long ones scroll inside the card. */
+.sorted-answer {
+  max-height: min(50vh, 420px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  font-size: 15px;
+  line-height: 1.5;
+}

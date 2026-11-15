@@ -94,9 +94,9 @@ void load.then(([ob, px, sb, facts]) => {
     }
   });
 
-  test("eight questions, then the ready screen, and none of them asks about week shape or integrations", () => {
-    assert.deepEqual(ob.STEPS, ["about", "busy", "matters", "slip", "bugging", "brain", "toward", "push", "ready"]);
-    assert.equal(ob.QUESTION_STEPS.length, 8);
+  test("nine questions, then the ready screen, and none of them asks about week shape or integrations", () => {
+    assert.deepEqual(ob.STEPS, ["about", "busy", "matters", "slip", "bugging", "why", "brain", "toward", "push", "ready"]);
+    assert.equal(ob.QUESTION_STEPS.length, 9);
     const keys = Object.keys(ob.emptyDraft()).join(" ").toLowerCase();
     for (const banned of ["weekshape", "integration", "canvas", "google", "notion"]) assert.ok(!keys.includes(banned), banned);
   });
@@ -272,6 +272,86 @@ void load.then(([ob, px, sb, facts]) => {
       assert.match(f.slotKey, /^[a-zA-Z]{1,32}$/);
       assert.ok(f.factCategory && f.category, f.slotKey);
     }
+  });
+
+  // ─── Round 5A R1: the "why" step ────────────────────────────────────────
+
+  test("Round 5A R1: the why question quotes what they said, then falls back", () => {
+    const d = ob.emptyDraft();
+    const q1 = ob.whyQuestion({ ...d, bugging: "Finish my robotics proposal." });
+    assert.equal(q1.title, "Why does this one matter to you?");
+    assert.match(q1.sub, /You said: \u201cFinish my robotics proposal\u201d/);
+    const q2 = ob.whyQuestion({ ...d, matters: ["grades"] });
+    assert.match(q2.title, /^Why does .+ matter to you right now\?$/);
+    const q3 = ob.whyQuestion(d);
+    assert.equal(q3.title, "What made you want to lock in now?");
+    // Distress is never quoted back.
+    const q4 = ob.whyQuestion({ ...d, bugging: "I can't go on like this" });
+    assert.ok(!q4.sub.includes("go on"), q4.sub);
+    // Long answers are trimmed.
+    assert.ok(ob.whyQuestion({ ...d, bugging: "x".repeat(140) }).sub.includes("\u2026"));
+  });
+
+  test("Round 5A R1: the why step counts any one part, and never blocks", () => {
+    const d = ob.emptyDraft();
+    assert.equal(ob.hasAnswer("why", d), false);
+    assert.equal(ob.canContinue("why", d), true);
+    assert.equal(ob.hasAnswer("why", { ...d, why: "I want to prove I can" }), true);
+    assert.equal(ob.hasAnswer("why", { ...d, picture: "No cramming" }), true);
+    assert.equal(ob.hasAnswer("why", { ...d, lockedIn: "firstStep" }), true);
+    assert.equal(ob.hasAnswer("brain", { ...d, hardTime: "Mornings" }), true);
+    for (const v of ob.LOCKED_IN) assert.equal(ob.parseLockedIn(v), v);
+    assert.deepEqual(ob.LOCKED_IN_OPTIONS.map((o) => o.value), [...ob.LOCKED_IN]);
+  });
+
+  test("Round 5A R1: why answers survive the draft round-trip and the server check", () => {
+    const d = { ...ob.emptyDraft(), name: "Maya", why: "  I want to prove I can  ", picture: "No cramming", lockedIn: "deadline" as const, hardTime: "Mornings, too sleepy" };
+    const back = ob.parseStoredDraft(ob.serializeDraft("why", d));
+    assert.ok(back);
+    assert.equal(back!.draft.why, "  I want to prove I can  ");
+    assert.equal(back!.draft.lockedIn, "deadline");
+    assert.equal(back!.draft.hardTime, "Mornings, too sleepy");
+    const sub = ob.submissionFromDraft(d);
+    const parsed = ob.parseSubmission(JSON.parse(JSON.stringify(sub)));
+    assert.ok(parsed.ok, parsed.ok ? "" : parsed.error);
+    if (parsed.ok) {
+      assert.equal(parsed.value.answers.why, "I want to prove I can");
+      assert.equal(parsed.value.answers.picture, "No cramming");
+      assert.equal(parsed.value.answers.lockedIn, "deadline");
+      assert.equal(parsed.value.answers.hardTime, "Mornings, too sleepy");
+    }
+    const bad = ob.parseSubmission({ ...JSON.parse(JSON.stringify(sub)), answers: { ...sub.answers, lockedIn: "vibes" } });
+    assert.equal(bad.ok, false);
+  });
+
+  test("Round 5A R1: 'Here's what I heard' reflects their words and what Tangent will do", () => {
+    const a = ob.answersFromDraft({ ...ob.emptyDraft(), why: "I want to prove I can", picture: "No cramming", lockedIn: "firstStep", hardTime: "Mornings" });
+    const lines = ob.heardLines(a);
+    assert.equal(lines.length, 4);
+    assert.match(lines[0], /I want to prove I can/);
+    assert.match(lines[1], /No cramming/);
+    assert.equal(lines[2], "You lock in once you know the first step, so every plan starts with a small one.");
+    assert.match(lines[3], /Mornings.*Heavy work stays out of it/);
+    assert.deepEqual(ob.heardLines(ob.answersFromDraft(ob.emptyDraft())), []);
+    assert.deepEqual(ob.heardLines({ ...a, why: "I want to die", picture: null, lockedIn: null, hardTime: null }), []);
+  });
+
+  test("Round 5A R1: why answers become facts, and distress never does", () => {
+    const a = ob.answersFromDraft(ob.emptyDraft());
+    const by = (patch: Partial<typeof a>, key: string) =>
+      facts.onboardingFacts({ ...a, ...patch }).filter((f) => f.slotKey === key);
+    const why = by({ bugging: "Finish my robotics proposal.", why: "Because my team is counting on me" }, "onbWhy");
+    assert.deepEqual(why.map((f) => f.fact), ["Why Finish my robotics proposal matters to you: my team is counting on me"]);
+    assert.equal(why[0].factCategory, "goals");
+    assert.deepEqual(by({ why: "I want this year to feel different" }, "onbWhy").map((f) => f.fact), ["Why you want to lock in: I want this year to feel different"]);
+    const pic = by({ picture: "I'm not cramming the night before" }, "onbPicture");
+    assert.deepEqual(pic.map((f) => [f.fact, f.factCategory]), [["For you, a good month looks like: I'm not cramming the night before", "future"]]);
+    const lock = by({ lockedIn: "firstStep" }, "onbLockedIn");
+    assert.deepEqual(lock.map((f) => [f.fact, f.factCategory]), [["You lock in once you know the first step", "how_you_work"]]);
+    const hard = by({ hardTime: "Mornings, I'm too sleepy to focus" }, "onbHardTime");
+    assert.deepEqual(hard.map((f) => [f.fact, f.factCategory]), [["You find it hard to think: Mornings, I'm too sleepy to focus", "how_you_work"]]);
+    assert.deepEqual(by({ why: "I can't go on like this" }, "onbWhy"), []);
+    assert.deepEqual(by({ why: "idk" }, "onbWhy"), []);
   });
 
   test("fact wording edge cases", () => {

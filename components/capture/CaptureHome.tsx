@@ -22,6 +22,7 @@ import { CAPTURE_LENSES, buildCaptureList, captureSections, parseCaptureLens, ty
 import { holdReducer, initialHold, listeningWithoutPress, spaceStartsHold, type Hold, type HoldEvent } from "@/lib/hold-gesture";
 import { heardSomethingToAdd, soundsLikeATask } from "@/lib/voice-intent";
 import { putAsk } from "@/lib/ask-handoff";
+import { putTalkHandoff } from "@/lib/talk-handoff";
 import { planSeriesColor, seriesColor, taskSeries } from "@/lib/task-colors";
 import { toYMD } from "@/lib/dates";
 import { wallClockNow } from "@/lib/time";
@@ -120,8 +121,13 @@ export default function CaptureHome() {
       if (seq !== holdRef.current.seq) return;
       setOutcome(result);
       finishSort(seq);
+      // Asked for a plan in words: Home's planning view builds it.
+      if (result.kind === "plan") {
+        putTalkHandoff({ lines: [], goal: result.said });
+        router.push("/?plan=1");
+      }
     },
-    [capture, clearFreshSet, finishSort]
+    [capture, clearFreshSet, finishSort, router]
   );
 
   const voice = useVoiceCapture({
@@ -506,6 +512,11 @@ export default function CaptureHome() {
             onAsk={(said) => {
               putAsk("ai", said);
               router.push("/?ask=1");
+            }}
+            onPlanThis={(said, answer, goal) => {
+              // Round 5A 2.5: Home's planning view, with this talk carried over.
+              putTalkHandoff({ lines: [{ role: "user", text: said }, { role: "assistant", text: answer }], goal });
+              router.push("/?plan=1");
             }}
             onChanged={() => void refresh()}
           />

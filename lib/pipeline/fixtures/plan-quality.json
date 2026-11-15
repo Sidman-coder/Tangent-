@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "reference_date": "2026-11-16",
+  "timezone": "America/New_York",
+  "note": "Round 5A 2.4: plan specificity. Each case runs the brief-building call (lib/ai/plan-brief-call.ts) and is graded by gradePlanQuality (lib/ai/plan-quality.ts): every kept step passes the guard, enough steps name the topic, nothing banned, the goal line names the topic. Paid run: npm run eval:pipeline -- --quality. Free: add --check.",
+  "cases": [
+    {
+      "id": "quality-competitive-programming",
+      "request": "help me get better at competitive programming",
+      "weekSummary": "Mon 16 Nov: robotics 3:30–5pm\nTue 17 Nov: free\nWed 18 Nov: soccer 4–6pm\nThu 19 Nov: free\nSat 21 Nov: free",
+      "dates": ["2026-11-17", "2026-11-19", "2026-11-21"],
+      "facts": [
+        { "id": "f1", "text": "You want to reach USACO Silver by February" },
+        { "id": "f2", "text": "You find it hard to think: mornings, you're too sleepy to focus" }
+      ],
+      "topicWords": ["usaco", "problem", "algorithm", "contest", "codeforces", "prefix", "graph", "dp", "bfs", "silver", "bronze", "debug", "code"],
+      "minTopicSteps": 2
+    },
+    {
+      "id": "quality-ap-chem-final",
+      "request": "plan my studying for the AP Chem final on December 10",
+      "weekSummary": "Mon 16 Nov: job 5–8pm\nTue 17 Nov: free\nWed 18 Nov: free\nThu 19 Nov: job 5–8pm\nSun 22 Nov: free",
+      "dates": ["2026-11-17", "2026-11-18", "2026-11-22"],
+      "facts": [
+        { "id": "f1", "text": "You struggle most with equilibrium and Ksp" },
+        { "id": "f2", "text": "You lock in once you know the first step" }
+      ],
+      "topicWords": ["chem", "chemistry", "equilibrium", "ksp", "stoichiometry", "frq", "unit", "kinetics", "thermo", "acid", "base", "practice exam", "mcq", "final"],
+      "minTopicSteps": 2
+    },
+    {
+      "id": "quality-instagram-growth",
+      "request": "put a plan on my calendar to grow my art instagram",
+      "weekSummary": "Tue 17 Nov: debate 3–5pm\nWed 18 Nov: free\nFri 20 Nov: free\nSat 21 Nov: free",
+      "dates": ["2026-11-18", "2026-11-20", "2026-11-21"],
+      "facts": [
+        { "id": "f1", "text": "You post digital illustrations, mostly character art" }
+      ],
+      "topicWords": ["post", "reel", "caption", "hashtag", "illustration", "art", "instagram", "follower", "engagement", "story", "portfolio", "schedule", "analytics"],
+      "minTopicSteps": 2
+    },
+    {
+      "id": "quality-college-essay",
+      "request": "make me a schedule for my Common App essay, due December 1",
+      "weekSummary": "Mon 16 Nov: free\nWed 18 Nov: volunteering 4–6pm\nThu 19 Nov: free\nSat 21 Nov: free",
+      "dates": ["2026-11-16", "2026-11-19", "2026-11-21"],
+      "facts": [
+        { "id": "f1", "text": "Why you want to lock in: you want your essay to sound like you, not a template" }
+      ],
+      "topicWords": ["essay", "draft", "prompt", "brainstorm", "outline", "intro", "story", "revise", "common app", "word", "paragraph", "reader", "counselor"],
+      "minTopicSteps": 2
+    }
+  ]
+}

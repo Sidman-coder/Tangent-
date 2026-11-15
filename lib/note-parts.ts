@@ -6,7 +6,8 @@ export type NotePart = { label: string; text: string };
 
 // Round 4 §3.4 adds "YOU'LL HAVE:" (the step's outcome) and "HOW IT WENT:"
 // (the student's own check-in words).
-const LABELS: Record<string, string> = { GOAL: "Goal", FOCUS: "What to do", TIME: "Time", "YOU'LL HAVE": "You'll have", "HOW IT WENT": "How it went" };
+// Round 5A 2.3 adds "WHY:" (the step's reason, tied to the week or a fact).
+const LABELS: Record<string, string> = { GOAL: "Goal", FOCUS: "What to do", TIME: "Time", WHY: "Why", "YOU'LL HAVE": "You'll have", "HOW IT WENT": "How it went" };
 
 /**
  * The labelled parts, or null when the notes are just prose. By default one
@@ -14,7 +15,7 @@ const LABELS: Record<string, string> = { GOAL: "Goal", FOCUS: "What to do", TIME
  * `single` splits even "GOAL: …" alone, so no raw "GOAL:" is ever shown.
  */
 export function noteParts(notes: string, single = false): NotePart[] | null {
-  const re = /(GOAL|FOCUS|TIME|YOU'LL HAVE|HOW IT WENT):\s*/g;
+  const re = /(GOAL|FOCUS|TIME|WHY|YOU'LL HAVE|HOW IT WENT):\s*/g;
   const hits = Array.from(notes.matchAll(re));
   const lead = notes.slice(0, hits[0]?.index ?? notes.length).trim();
   if (hits.length === 0 || hits.length < (lead || single ? 1 : 2)) return null;

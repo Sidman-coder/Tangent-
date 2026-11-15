@@ -5,6 +5,8 @@
 //
 //   npm run eval:pipeline -- --check   validate fixtures + modules, print the
 //                                      cost estimate; no database, no AI
+//   npm run eval:pipeline -- --quality [--check]   Round 5A plan specificity
+//                                      (plan-quality.json; no database)
 //   npm run eval:pipeline              the real run (calls the AI, writes to
 //                                      the eval account's rows only)
 //
@@ -32,6 +34,7 @@ async function main() {
   const check = process.argv.includes("--check");
   if (process.argv.includes("--round2")) return round2(check);
   if (process.argv.includes("--context")) return contextSwap(check);
+  if (process.argv.includes("--quality")) return planQuality(check);
   // Drafting is gated on the flag, read when lib/pipeline/flags.ts loads.
   process.env.TANGENT_PIPELINE_V2 = "true";
 
@@ -188,6 +191,59 @@ function fastStandIn(route: FastRoute): Graded {
     case "due":
       return { intent: "question", target_plan_id: null, ops: [] };
   }
+}
+
+/**
+ * Round 5A (2.4): plan specificity, from lib/pipeline/fixtures/plan-quality.json.
+ * Each case runs the brief-building call (plus at most one fix call) on its
+ * fixture week and facts, then gradePlanQuality checks every kept step is
+ * specific and on topic. No database, nothing saved. `--quality --check` is free.
+ */
+async function planQuality(check: boolean) {
+  const { validateQualityFile, gradePlanQuality } = await import("@/lib/ai/plan-quality");
+  const { estimateCostUsd, modelFor } = await import("@/lib/ai/models");
+  const raw = (await import("@/lib/pipeline/fixtures/plan-quality.json")).default as unknown;
+  const problems = validateQualityFile(raw);
+  if (problems.length > 0) {
+    console.error("plan-quality.json is invalid:\n" + problems.join("\n"));
+    process.exit(1);
+  }
+  const file = raw as import("@/lib/ai/plan-quality").QualityFile;
+  const perCase = 2 * estimateCostUsd(modelFor("SMART"), PLAN_OUTLINE);
+  const cost = MARGIN * file.cases.length * perCase;
+  console.log(`Plan quality: ${file.cases.length} cases on ${modelFor("SMART")}`);
+  console.log(`Estimated cost: at most about $${cost.toFixed(2)} (x${MARGIN} margin; a fix call only when a step fails)`);
+
+  const { buildPlanBrief } = await import("@/lib/ai/plan-brief-call");
+  const { PLAN_GUARD } = await import("@/lib/ai/plan-guard-config");
+  const guard = await import("@/lib/ai/plan-guard");
+  const { promptDateContext } = await import("@/lib/time");
+  if (check) {
+    console.log("Check OK: plan-quality fixtures valid, modules load. No AI calls made.");
+    return;
+  }
+  if (!(await ask(`This calls the AI for ${file.cases.length} cases (about $${cost.toFixed(2)}). Type y to continue: `))) {
+    console.log("Stopped. Nothing was spent.");
+    return;
+  }
+  const at = new Date(`${file.reference_date}T12:00:00Z`);
+  let passed = 0;
+  for (const c of file.cases) {
+    const brief = await buildPlanBrief({
+      request: c.request,
+      dateContext: promptDateContext(file.timezone, at),
+      weekSummary: c.weekSummary,
+      facts: c.facts,
+      dates: c.dates,
+      noQuestion: true,
+      guard: PLAN_GUARD,
+    }).catch(() => null);
+    const g = gradePlanQuality(c, brief, PLAN_GUARD, guard);
+    if (g.pass) passed++;
+    console.log(`${g.pass ? "PASS" : "FAIL"}  ${c.id}${g.pass ? "" : `  (${g.failures.join("; ")})`}`);
+    for (const s of brief?.steps ?? []) console.log(`        - ${s.what} | ${s.why}`);
+  }
+  console.log(`\n${passed}/${file.cases.length} passed`);
 }
 
 function ask(question: string): Promise<boolean> {

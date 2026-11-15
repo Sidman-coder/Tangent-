@@ -11,6 +11,7 @@ import {
   GRADE_OPTIONS,
   MATTER_OPTIONS,
   type BestTime,
+  type LockedIn,
   type OnboardingAnswers,
   type QuestionStep,
   type Slip,
@@ -59,12 +60,22 @@ const PUSH_FACTS: Record<PushStyle, string> = {
   ask: "You only want reminders when you ask",
 };
 
+// Round 5A R1. Worded so "Since you mentioned…" reads naturally (lib/student/recall.ts).
+const LOCKED_FACTS: Record<LockedIn, string> = {
+  deadline: "You lock in when there's a real deadline",
+  people: "You lock in when someone's counting on you",
+  firstStep: "You lock in once you know the first step",
+  progress: "You lock in when you can see your progress",
+  notYet: "You haven't found what makes you lock in yet",
+};
+
 const MORE_CATEGORY: Record<QuestionStep, FactCategory> = {
   about: "identity",
   busy: "schedule",
   matters: "goals",
   slip: "whats_hard",
   bugging: "goals",
+  why: "goals",
   brain: "how_you_work",
   toward: "future",
   push: "push_style",
@@ -76,6 +87,7 @@ const MORE_KEY: Record<QuestionStep, string> = {
   matters: "onbMoreMatters",
   slip: "onbMoreSlip",
   bugging: "onbMoreBugging",
+  why: "onbMoreWhy",
   brain: "onbMoreBrain",
   toward: "onbMoreToward",
   push: "onbMorePush",
@@ -117,6 +129,16 @@ export function onboardingFacts(answers: OnboardingAnswers): OnboardingFact[] {
   for (const s of answers.slips) add("onbSlip", "whats_hard", SLIP_FACTS[s]);
 
   if (usable(answers.bugging)) add("onbBugging", "goals", `On your mind right now: ${answers.bugging}`);
+
+  // Round 5A R1: the why, in their words. These are what plans and nudges
+  // point back to ("Since you mentioned…").
+  if (usable(answers.why)) {
+    const why = answers.why.replace(/^because\s+/i, "");
+    add("onbWhy", "goals", usable(answers.bugging) ? `Why ${answers.bugging.replace(/[.!?]+$/, "")} matters to you: ${why}` : `Why you want to lock in: ${why}`);
+  }
+  if (usable(answers.picture)) add("onbPicture", "future", `For you, a good month looks like: ${answers.picture}`);
+  if (answers.lockedIn) add("onbLockedIn", "how_you_work", LOCKED_FACTS[answers.lockedIn]);
+  if (usable(answers.hardTime)) add("onbHardTime", "how_you_work", `You find it hard to think: ${answers.hardTime}`);
 
   if (answers.bestTime) add("preferredWorkTimes", "how_you_work", BEST_TIME_FACTS[answers.bestTime]);
   if (answers.focusLength) {

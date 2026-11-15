@@ -1,0 +1,28 @@
+{
+  "$comment": "Round 5A 2.2: talk first. Each case runs through routeMessage from every scope and must get the same kind. projects: the student's projects for that case.",
+  "projects": [
+    { "id": "p-ig", "title": "Instagram Growth to 10K" },
+    { "id": "p-chem", "title": "AP Chem Final Prep" }
+  ],
+  "cases": [
+    { "text": "help me get better at competitive programming", "kind": "answer", "schedulable": true },
+    { "text": "I want to get better at chess", "kind": "answer", "schedulable": true },
+    { "text": "help me prepare for the SAT", "kind": "answer", "schedulable": true },
+    { "text": "how do I get 10k followers", "kind": "answer", "schedulable": true },
+    { "text": "help me grow my instagram", "kind": "answer", "schedulable": true },
+    { "text": "how should I study for a quiz?", "kind": "answer" },
+    { "text": "plan it", "kind": "plan" },
+    { "text": "ok plan this out", "kind": "plan" },
+    { "text": "put this on my calendar", "kind": "plan" },
+    { "text": "make me a schedule for my piano exam", "kind": "plan" },
+    { "text": "build me a study plan for the SAT", "kind": "plan" },
+    { "text": "make me a schedule for AP Chem", "kind": "plan" },
+    { "text": "make me a schedule for my AP Chem final prep", "kind": "extend", "projectId": "p-chem" },
+    { "text": "plan the next round of my instagram", "kind": "extend", "projectId": "p-ig" },
+    { "text": "help me get better at competitive programming", "planThis": true, "kind": "plan" },
+    { "text": "delete all my tasks and projects", "kind": "action" },
+    { "text": "mark all done", "kind": "action" },
+    { "text": "dentist tomorrow at 4pm", "kind": "add" },
+    { "text": "grill me on my AP Chem final prep", "kind": "grill", "projectId": "p-chem" }
+  ]
+}

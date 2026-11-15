@@ -4,24 +4,28 @@
 // inside the ⌘K sheet, so it works the same everywhere:
 //
 //   1. Type it or say it. The server decides what it is first
-//      (lib/pipeline/home-route.ts): a question is answered right here, under
-//      the box, from the student's projects and finished steps; more steps
-//      for a project they have are previewed; a new goal gets a few questions;
-//      anything else goes on the calendar. A long-range goal goes to Tangents.
-//   2. Big or vague asks get a few questions first (/api/chat clarify). The
-//      student can answer, or skip: it's saved now and the questions wait on
-//      Today instead (lib/questions-client.ts), so grilling is never a wall.
+//      (lib/pipeline/talk-route.ts). Round 5A: talk first. A question or a
+//      goal gets a real answer, streamed in as markdown; a goal's answer ends
+//      with "Plan this into my calendar". A plan is built only when the
+//      student asks in words or presses that button. A plain to-do goes on the
+//      calendar straight away.
+//   2. Planning shows its real steps as they start (ThinkingStages), may ask
+//      one question (skippable), then opens the split: the brief on the left,
+//      the calendar on the right (PlanBrief, PlanWorkspace).
 //   3. It says where it landed - the day, or the project - with Undo.
 //
-// Frontend only: it drives the same /api/chat, /api/confirm and
-// /api/questions routes the palette, mic and AI page already use.
+// On Home the conversation takes over the page once a message is answered
+// (Round 5A Q4); "Back to Today" ends it. Nothing is saved as chat history.
+//
+// Frontend only: it drives the same /api/chat, /api/confirm, /api/changesets
+// and /api/questions routes the palette, mic and AI page already use.
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
-import { ArrowRight, ArrowUp, AudioLines, Mic, Orbit, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUp, AudioLines, Mic, Orbit } from "lucide-react";
 import ActionReceipt from "@/components/ActionReceipt";
 import PreviewCard from "@/components/PreviewCard";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
@@ -29,6 +33,11 @@ import { planSeriesColor } from "@/lib/task-colors";
 import "@/components/console/clarify-card.css";
 import ClarifyCard, { type ClarifyAnswer, type ClarifyQuestion } from "@/components/console/ClarifyCard";
 import SlotQuestionCard from "@/components/grill/SlotQuestionCard";
+import { readChatReply } from "@/components/console/turns";
+import TalkThread, { type TalkLine } from "@/components/talk/TalkThread";
+import ThinkingStages from "@/components/plan/ThinkingStages";
+import PlanBrief from "@/components/plan/PlanBrief";
+import type { BriefView, PlanStage } from "@/lib/voice-handler";
 
 /** "Grill until enough" so far, sent back each turn (lib/context/grill.ts). */
 type SlotTurn = { answers: { slot: string; answer: string }[]; skipped: string[]; inARow: number; stopped: boolean };
@@ -38,23 +47,20 @@ import { routeAsk } from "@/lib/ask-route";
 import { heardSomethingToAdd } from "@/lib/voice-intent";
 import { ASK_EVENT, takeAsk } from "@/lib/ask-handoff";
 import { projectFor } from "@/lib/pipeline/home-route";
-import { planStoryText } from "@/lib/plan-story";
 import { putNewPathTitle } from "@/lib/path-handoff";
 import { HOME_INTENT_EVENT, planRequestFor, takeHomeIntent, takeHomePlan, type HomeIntent } from "@/lib/home-intent";
 import { generateQuestions } from "@/lib/questions-client";
+import { takeTalkHandoff } from "@/lib/talk-handoff";
 import type { ChangeSet } from "@/lib/pipeline/changeset";
 import type { PreviewPayload } from "@/lib/pipeline/draft";
 import HelpPlanBetter from "@/components/grill/HelpPlanBetter";
 import PlanCalendarPreview from "@/components/preview/PlanCalendarPreview";
 import { getUserToday } from "@/lib/time";
 import DestPill, { type DestChoice } from "./DestPill";
-import PlanWorkspace, { CalendarPlaceholder, HowThisPlanWorks, ModeToggle, type Pane, type TalkMode } from "./PlanWorkspace";
+import PlanWorkspace, { CalendarPlaceholder, type Pane } from "./PlanWorkspace";
 import "./add.css";
 
 type Dest = "calendar" | "project";
-
-/** One line of talk: the workspace's left pane, or Home's answer area. */
-type ThreadLine = { role: "user" | "assistant"; text: string };
 
 type Reply = {
   ok?: boolean;
@@ -76,17 +82,30 @@ type Reply = {
   grillNote?: string;
   /** A kind reply to real distress (lib/student/sensitive.ts): never a task. */
   care?: boolean;
+  /** Round 5A talk first: an answer about something that could be scheduled. */
+  schedulable?: boolean;
+  /** The goal "Plan this" will plan (and the brief's question is about). */
+  planGoal?: string;
+  /** The plan brief's one question (lib/ai/plan-brief-call.ts). */
+  planQuestion?: boolean;
+  brief?: BriefView;
 };
+
+/** Planning asked for, in words or with "Plan this into my calendar". */
+type PlanAsk = { planThis: true; planGoal: string; planAnswer?: { question: string; answer: string } };
 
 type Phase =
   | { kind: "compose" }
-  | { kind: "working"; text: string; thinking?: boolean }
+  | { kind: "working"; text: string; thinking?: boolean; streaming?: boolean }
   | { kind: "asking"; text: string; questions: ClarifyQuestion[]; message: string; slot?: { slots: string[]; progress: number; at: number; turn: SlotTurn } }
   | { kind: "confirm"; id: string; message: string }
-  | { kind: "preview"; changeSet: ChangeSet; preview: PreviewPayload; said: string; asked: number; note?: string }
+  | { kind: "preview"; changeSet: ChangeSet; preview: PreviewPayload; said: string; asked: number; note?: string; brief: BriefView | null }
   | { kind: "done"; summary: string; actionId: string | null; where: { href: string; label: string } | null }
   | { kind: "error"; message: string }
   | { kind: "heard"; text: string };
+
+/** The brief's question, skipped: Tangent picks its own defaults. */
+const SKIP_ANSWER = "No preference, use your best guess";
 
 function clean(text: string | undefined, fallback: string): string {
   const t = (text ?? "").replace(/```[\s\S]*?```/g, "").replace(/\*\*(.+?)\*\*/g, "$1").trim();
@@ -97,6 +116,9 @@ function dayName(ymd: string): string {
   const [y, mo, d] = ymd.split("-").map(Number);
   return new Date(y, mo - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
+
+let lineSeq = 0;
+const lineId = () => `l${Date.now().toString(36)}${(lineSeq++).toString(36)}`;
 
 export default function AddFlow({
   variant = "hero",
@@ -140,40 +162,44 @@ export default function AddFlow({
   const doneTimer = useRef<number | null>(null);
   const timezone = useUserTimezone();
   const reduce = useReducedMotion();
+  const hero = variant === "hero";
 
-  // Round 4 §3.3: planning opens the workspace in place. The talk so far (for
-  // the left pane, and the project's thread once confirmed), what the student
-  // told it in "Tell me anything", and Plan it / Just talk.
+  // Round 5A 2.1: the talk on Home. Newest last; nothing is saved.
+  const [talk, setTalk] = useState<TalkLine[]>([]);
+  const talkRef = useRef(talk);
+  talkRef.current = talk;
+  // A follow-up question while the brief is open: the brief stays put.
+  const [talkBusy, setTalkBusy] = useState(false);
+  // The real planning step under way (lib/voice-handler.ts emits these).
+  const [stage, setStage] = useState<PlanStage | null>(null);
+  // The brief's one question, waiting for the student's typed answer.
+  const pendingPlan = useRef<{ goal: string; question: string } | null>(null);
+
+  // Round 5A 2.3: the split once round 1 is placed. The talk before it folds
+  // into "Your conversation"; follow-ups carry on under the brief.
   const [planning, setPlanning] = useState(false);
-  const [log, setLog] = useState<ThreadLine[]>([]);
-  const [brief, setBrief] = useState("");
-  const [talkMode, setTalkMode] = useState<TalkMode>("plan");
-  const [pane, setPane] = useState<Pane>("chat");
-  const [draftOps, setDraftOps] = useState<ChangeSet["ops"] | null>(null);
-  const logRef = useRef(log);
-  logRef.current = log;
-  const briefRef = useRef(brief);
-  briefRef.current = brief;
   const planningRef = useRef(planning);
   planningRef.current = planning;
-  const talkModeRef = useRef(talkMode);
-  talkModeRef.current = talkMode;
-  const say = useCallback((line: ThreadLine) => setLog((l) => [...l, line]), []);
-  // What the workspace is about: the words that opened it.
+  const [history, setHistory] = useState<TalkLine[]>([]);
+  const historyRef = useRef(history);
+  historyRef.current = history;
+  const [pane, setPane] = useState<Pane>("brief");
+  const [draftOps, setDraftOps] = useState<ChangeSet["ops"] | null>(null);
+  // What the plan is for: the goal "Plan this" planned.
   const [topic, setTopic] = useState("");
-  // Round 4 Phase 4: Home answers in place. The talk shows under the box and
-  // pushes the page down; follow-ups carry it along. Nothing is saved: there's
-  // no chat history, and Clear (or leaving Home) ends it.
-  const [thread, setThread] = useState<ThreadLine[]>([]);
-  const threadRef = useRef(thread);
-  threadRef.current = thread;
-  const endPlanning = useCallback(() => {
+  const topicRef = useRef(topic);
+  topicRef.current = topic;
+
+  const endTalk = useCallback(() => {
     setPlanning(false);
-    setLog([]);
-    setBrief("");
-    setTalkMode("plan");
-    setPane("chat");
+    setHistory([]);
+    setTalk([]);
+    setStage(null);
+    setTalkBusy(false);
+    setPane("brief");
     setDraftOps(null);
+    setTopic("");
+    pendingPlan.current = null;
   }, []);
 
   const projects = useMemo(
@@ -242,76 +268,124 @@ export default function AddFlow({
   );
 
   const send = useCallback(
-    async (said: string, followUp?: { answers?: ClarifyAnswer[] | null; slotTurn?: SlotTurn }, source: "voice" | "typed" = "typed") => {
+    async (said: string, followUp?: { answers?: ClarifyAnswer[] | null; slotTurn?: SlotTurn }, source: "voice" | "typed" = "typed", ask?: PlanAsk) => {
       const words = said.trim();
       if (!words) return;
-      // A draft or a question on screen stays there through a "Just talk" reply.
+      const inWorkspace = hero && planningRef.current;
+      // Round 5A 2.2: a typed reply to the brief's one question plans with it.
+      const pending = pendingPlan.current;
+      if (hero && !followUp && !ask && pending) {
+        ask = { planThis: true, planGoal: pending.goal, planAnswer: { question: pending.question, answer: words } };
+      }
+      pendingPlan.current = null;
+      // In the split, anything that isn't a question changes the draft: plan
+      // again with it, and let the old draft go.
       const before = phaseRef.current;
-      setPhase({ kind: "working", text: words, thinking: !followUp && (/\?\s*$/.test(words) || routeAsk(words) === "question") });
+      if (inWorkspace && !followUp && !ask && !/\?\s*$/.test(words) && topicRef.current) {
+        ask = { planThis: true, planGoal: topicRef.current, planAnswer: { question: "Change to the draft", answer: words } };
+        if (before.kind === "preview") void fetch(`/api/changesets/${encodeURIComponent(before.changeSet.id)}/discard`, { method: "POST" }).catch(() => {});
+        setDraftOps(null);
+      }
+      // A question beside the brief keeps the brief (and its edits) on screen.
+      const keepBrief = inWorkspace && !ask && before.kind === "preview";
+      if (keepBrief) setTalkBusy(true);
+      else setPhase({ kind: "working", text: words, thinking: !!ask || (!followUp && (/\?\s*$/.test(words) || routeAsk(words) === "question")) });
       setHelp(null);
+      setStage(null);
       const toProject = dest === "project";
-      // In the workspace: the talk so far rides along as context, and what the
-      // student wrote in "Tell me anything" joins this request.
-      const inWorkspace = planningRef.current;
-      // The answer area's talk so far carries into a plan that comes out of it.
-      const talked = inWorkspace ? [] : threadRef.current;
-      if (!followUp && !inWorkspace) {
-        setLog([...talked, { role: "user", text: words }]);
-        setTopic(words);
-      } else if (!followUp) say({ role: "user", text: words });
-      const told = briefRef.current.trim();
-      const content = told ? `${words}\n\nMore about this: ${told}` : words;
-      const earlier = (inWorkspace ? logRef.current : talked).filter((l) => l.text !== words).map((l) => ({ role: l.role, content: l.text })).slice(-12);
-      // "Just talk": a reply only. Nothing is added without the student asking.
-      const talk = inWorkspace && !followUp && talkModeRef.current === "talk";
+      // The talk so far rides along as context.
+      const earlier = hero
+        ? [...historyRef.current, ...talkRef.current]
+            .filter((l) => l.text && !l.streaming)
+            .map((l) => ({ role: l.role, content: l.text }))
+            .slice(-12)
+        : [];
+
+      // The student's words show in the talk once Tangent starts answering, or
+      // straight away when the talk is already open. A quick to-do never
+      // takes over Home.
+      const userLine: TalkLine = { id: lineId(), role: "user", text: words };
+      const replyId = lineId();
+      let shown = false;
+      const showUser = () => {
+        if (shown || !hero) return;
+        shown = true;
+        setTalk((t) => [...t, userLine]);
+      };
+      if (hero && (talkRef.current.length > 0 || inWorkspace || ask)) showUser();
+      const writeReply = (patch: Partial<TalkLine>) =>
+        setTalk((t) => (t.some((l) => l.id === replyId) ? t.map((l) => (l.id === replyId ? { ...l, ...patch } : l)) : [...t, { id: replyId, role: "assistant", text: "", ...patch }]));
+      const started = () => setPhase((p) => (p.kind === "working" ? { ...p, streaming: true } : p));
+      let streamedBrief: BriefView | null = null;
+
       try {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            messages: [...earlier, { role: "user", content }],
+            messages: [...earlier, { role: "user", content: words }],
             mode: "calendar",
-            stream: false,
+            // Home streams its answers (Round 5A 2.1); the sheet doesn't need to.
+            stream: hero,
             source,
-            ...(talk ? { talk: true } : {}),
-            // Decided on the server before anything asks (lib/pipeline/home-route.ts).
+            // Decided on the server before anything asks (lib/pipeline/talk-route.ts).
             home: true,
             // A plain to-do is saved instantly; anything bigger is considered for questions.
-            capture: !talk && !toProject && !followUp && earlier.length === 0,
-            clarify: !talk && (!followUp || !!followUp.slotTurn),
+            capture: !ask && !toProject && !followUp && earlier.length === 0,
+            clarify: !ask && (!followUp || !!followUp.slotTurn),
             answers: followUp?.answers ?? undefined,
             // A few questions until Tangent knows enough (lib/context/goal-slots.ts).
             slotFlow: true,
             slotTurn: followUp?.slotTurn,
-            ...(toProject ? (targetProject === "new" ? { newProject: true } : { projectId: targetProject }) : {}),
+            ...(ask ?? {}),
+            ...(toProject && !ask ? (targetProject === "new" ? { newProject: true } : { projectId: targetProject }) : {}),
           }),
         });
-        const data = (await res.json()) as Reply;
+        if (!res.ok && !(res.headers.get("content-type") ?? "").includes("json")) throw new Error("That didn't go through. Try again.");
+        const data = (await readChatReply(res, (line) => {
+          if (line.type === "reply_text" && typeof line.text === "string") {
+            showUser();
+            started();
+            writeReply({ text: line.text, streaming: true });
+          } else if (line.type === "stage" && typeof line.id === "string") {
+            showUser();
+            started();
+            setStage(line.id as PlanStage);
+          } else if (line.type === "plan_brief" && line.brief) {
+            streamedBrief = line.brief as BriefView;
+          }
+        })) as Reply;
+        setStage(null);
         if (!res.ok || !data.ok) throw new Error(data.error || "That didn't go through. Try again.");
         if (data.action === "error") throw new Error(clean(data.message, "Sorry, I couldn't do that. Try again."));
+
         const reply = (data.action === "plan_reply" || data.action === "chat_reply" || data.care === true) && !data.actionId;
-        if (reply && inWorkspace) {
-          say({ role: "assistant", text: clean(data.message, "I'm here. Tell me more.") });
-          setPhase(before.kind === "preview" || before.kind === "asking" ? before : { kind: "compose" });
+        if (reply && hero) {
+          // An answer, in the talk. Nothing was added.
+          const message = (data.message ?? data.response ?? "").trim() || "I'm not sure. Can you say a bit more?";
+          const goal = data.planGoal?.trim() || "";
+          showUser();
+          writeReply({
+            text: message,
+            streaming: false,
+            ...(data.planQuestion && goal ? { planQuestion: true, planGoal: goal } : {}),
+            ...(data.schedulable && goal && !data.planQuestion ? { offerPlan: true, planGoal: goal } : {}),
+          });
+          if (data.planQuestion && goal) pendingPlan.current = { goal, question: message };
+          if (keepBrief) setTalkBusy(false);
+          else setPhase(inWorkspace && before.kind === "preview" ? before : { kind: "compose" });
           reset();
           return;
         }
         if (reply) {
-          // An answer: right under the box. Nothing was added.
-          setThread((t) => [...t, { role: "user" as const, text: words }, { role: "assistant" as const, text: clean(data.message ?? data.response, "I'm not sure. Can you say a bit more?") }].slice(-16));
-          setPhase({ kind: "compose" });
+          setPhase({ kind: "done", summary: clean(data.message ?? data.response, "I'm not sure. Can you say a bit more?"), actionId: null, where: null });
           reset();
           return;
         }
         if (data.action === "clarify" && data.questions?.length) {
           const slot = data.slotFlow ? { slots: data.slotFlow.slots, progress: data.slotFlow.progress, at: 0, turn: followUp?.slotTurn ?? NO_TURN } : undefined;
           setPhase({ kind: "asking", text: words, questions: data.questions, message: data.message ?? "A few quick questions so this fits you.", slot });
-          // Questions mean planning: open the workspace (Home's composer only).
-          if (variant === "hero") {
-            setPlanning(true);
-            setThread([]);
-            setText("");
-          }
+          if (hero) setText("");
           return;
         }
         if (data.action === "confirm_required" && data.pending) {
@@ -319,17 +393,28 @@ export default function AddFlow({
           return;
         }
         if (data.action === "preview" && data.changeSet && data.preview) {
-          setPhase({ kind: "preview", changeSet: data.changeSet, preview: data.preview, said: words, asked: followUp?.answers?.length ?? followUp?.slotTurn?.answers.length ?? 0, note: data.grillNote });
-          // Round 4 Phase 4: on Home, a preview opens up: the talk on the
-          // left, with what Tangent planned and why, the calendar on the right.
-          if (variant === "hero") {
-            const planId = data.projectId ?? data.changeSet.target_plan_id ?? null;
-            const planTitle = planId ? allPlans?.find((p) => p.id === planId)?.title : null;
+          const brief = data.brief ?? streamedBrief;
+          setPhase({
+            kind: "preview",
+            changeSet: data.changeSet,
+            preview: data.preview,
+            said: words,
+            asked: followUp?.answers?.length ?? followUp?.slotTurn?.answers.length ?? 0,
+            note: data.grillNote,
+            brief,
+          });
+          // Round 5A 2.3: on Home, a placed round opens the split: the brief
+          // on the left, the calendar on the right.
+          if (hero) {
+            if (!inWorkspace) {
+              setHistory((h) => [...h, ...talkRef.current.filter((l) => l.text)]);
+              setTalk([]);
+            }
+            setTopic(ask?.planGoal || data.planGoal || topicRef.current || words);
             setPlanning(true);
-            setThread([]);
+            setPane("brief");
             setText("");
             setDraftOps(data.changeSet.ops);
-            say({ role: "assistant", text: planStoryText(data.changeSet, planTitle) });
           }
           return;
         }
@@ -347,16 +432,20 @@ export default function AddFlow({
         const asked = followUp?.answers?.length ?? followUp?.slotTurn?.answers.length ?? 0;
         finish(data, words, asked === 0, asked);
       } catch (e) {
-        setPhase({ kind: "error", message: e instanceof Error ? e.message : "Something went wrong." });
+        setStage(null);
+        setTalk((t) => t.filter((l) => !(l.id === replyId && !l.text)).map((l) => (l.id === replyId ? { ...l, streaming: false } : l)));
+        if (keepBrief) setTalkBusy(false);
+        setPhase(keepBrief ? before : { kind: "error", message: e instanceof Error ? e.message : "Something went wrong." });
+        if (keepBrief) setTalk((t) => [...t, { id: lineId(), role: "assistant", text: e instanceof Error ? e.message : "Something went wrong." }]);
       }
     },
-    [allPlans, dest, finish, onClose, reset, router, say, targetProject, variant]
+    [dest, finish, hero, onClose, reset, router, targetProject]
   );
 
   const submit = useCallback(() => {
     const words = text.trim();
     if (!words) return;
-    if (handoff === "goal") {
+    if (handoff === "goal" && !(hero && (planningRef.current || talkRef.current.length > 0))) {
       putNewPathTitle(words);
       reset();
       onClose?.();
@@ -364,7 +453,7 @@ export default function AddFlow({
       return;
     }
     void send(words);
-  }, [handoff, onClose, reset, router, send, text]);
+  }, [handoff, hero, onClose, reset, router, send, text]);
 
   const resolveConfirm = useCallback(
     async (id: string, confirm: boolean) => {
@@ -387,6 +476,25 @@ export default function AddFlow({
       }
     },
     [finish]
+  );
+
+  // "Plan this into my calendar" under a goal's answer.
+  const planThis = useCallback(
+    (line: TalkLine) => {
+      if (!line.planGoal) return;
+      setTalk((t) => t.map((l) => (l.id === line.id ? { ...l, offerPlan: false } : l)));
+      void send("Plan this into my calendar", undefined, "typed", { planThis: true, planGoal: line.planGoal });
+    },
+    [send]
+  );
+  const notNow = useCallback((line: TalkLine) => setTalk((t) => t.map((l) => (l.id === line.id ? { ...l, offerPlan: false } : l))), []);
+  const skipQuestion = useCallback(
+    (line: TalkLine) => {
+      if (!line.planGoal) return;
+      pendingPlan.current = null;
+      void send("Skip, use your best guess", undefined, "typed", { planThis: true, planGoal: line.planGoal, planAnswer: { question: line.text, answer: SKIP_ANSWER } });
+    },
+    [send]
   );
 
   // Say it: words fill the box live; stopping sends it straight away.
@@ -427,10 +535,10 @@ export default function AddFlow({
     const act = () => {
       if (window.location.pathname !== "/") return;
       // A goal handed over (onboarding, the starting-point card): plan it
-      // here, in this composer, with questions that can be skipped or stopped.
+      // here, in this composer. Asking for a plan is explicit, so it plans.
       const plan = takeHomePlan();
       if (plan) {
-        void sendRef.current(planRequestFor(plan.goal));
+        void sendRef.current(planRequestFor(plan.goal), undefined, "typed", { planThis: true, planGoal: plan.goal });
         if (plan.fromOnboarding) {
           void fetch("/api/onboarding", {
             method: "PATCH",
@@ -461,9 +569,21 @@ export default function AddFlow({
       const asked = takeAsk("ai");
       if (asked) void sendRef.current(asked);
     };
-    if (new URLSearchParams(window.location.search).get("ask") === "1") {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("ask") === "1") {
       take();
       router.replace("/", { scroll: false });
+    }
+    // Round 5A 2.5: "Plan this" from /capture. The talk comes over, then it plans.
+    if (params.get("plan") === "1") {
+      const handoff = takeTalkHandoff();
+      router.replace("/", { scroll: false });
+      if (handoff) {
+        const lines: TalkLine[] = handoff.lines.map((l) => ({ id: lineId(), role: l.role, text: l.text }));
+        talkRef.current = lines;
+        setTalk(lines);
+        void sendRef.current("Plan this into my calendar", undefined, "typed", { planThis: true, planGoal: handoff.goal });
+      }
     }
     const onAsk = (event: Event) => {
       if (window.location.pathname !== "/") return;
@@ -474,14 +594,15 @@ export default function AddFlow({
     return () => window.removeEventListener(ASK_EVENT, onAsk);
   }, [router, variant]);
 
-  const busy = phase.kind === "working" || transcribing;
-  const hint = handoff === "goal" ? { icon: Orbit, text: "Sounds like a long-range goal. Enter starts a Tangent." } : null;
+  const busy = phase.kind === "working" || transcribing || talkBusy;
+  const workspace = planning && hero;
+  const talking = hero && (talk.length > 0 || workspace);
+  const hint = handoff === "goal" && !talking ? { icon: Orbit, text: "Sounds like a long-range goal. Enter starts a Tangent." } : null;
 
-  const workspace = planning && variant === "hero";
   const composer = (
     <>
       <label className="sr-only" htmlFor={inputId}>
-        What do you want to add?
+        {talking ? "Reply to Tangent" : "What do you want to add?"}
       </label>
       <textarea
         id={inputId}
@@ -491,7 +612,15 @@ export default function AddFlow({
         rows={1}
         value={text}
         disabled={busy}
-        placeholder={listening ? "Listening…" : workspace ? (talkMode === "talk" ? "Say anything about it…" : "Reply, or ask for a change…") : placeholder ?? (narrow ? "Type or say anything…" : "Type or say anything: a task, a project, a question")}
+        placeholder={
+          listening
+            ? "Listening…"
+            : workspace
+              ? "Ask about it, or tell me what to change…"
+              : talking
+                ? "Reply, or ask anything…"
+                : placeholder ?? (narrow ? "Type or say anything…" : "Type or say anything: a task, a project, a question")
+        }
         onChange={(e) => {
           setText(e.target.value);
           if (phase.kind === "done" || phase.kind === "error" || phase.kind === "heard") setPhase({ kind: "compose" });
@@ -505,23 +634,23 @@ export default function AddFlow({
         }}
       />
       <div className="add-row">
-        <DestPill choice={choice} projects={projects} onChange={setChoice} disabled={busy} />
+        {!talking && <DestPill choice={choice} projects={projects} onChange={setChoice} disabled={busy} />}
         <button
           type="button"
           className={`add-mic${listening ? " is-on" : ""}`}
           onClick={() => (listening ? voice.stopRecording() : void voice.startRecording())}
           disabled={busy}
-          aria-label={listening ? "Stop and add" : "Say it"}
-          title={listening ? "Stop and add" : "Say it"}
+          aria-label={listening ? "Stop and send" : "Say it"}
+          title={listening ? "Stop and send" : "Say it"}
         >
           {listening ? <AudioLines size={20} strokeWidth={1.75} aria-hidden="true" /> : <Mic size={20} strokeWidth={1.75} aria-hidden="true" />}
         </button>
-        <button type="button" className="add-send" onClick={submit} disabled={busy || !text.trim()} aria-label="Add">
+        <button type="button" className="add-send" onClick={submit} disabled={busy || !text.trim()} aria-label={talking ? "Send" : "Add"}>
           {busy ? <span className="add-spinner" aria-hidden="true" /> : <ArrowUp size={18} strokeWidth={2.25} aria-hidden="true" />}
         </button>
       </div>
 
-      {/* A question or a long-range goal goes somewhere else; say so first. */}
+      {/* A long-range goal goes somewhere else; say so first. */}
       <AnimatePresence initial={false}>
         {text.trim() && phase.kind !== "asking" && hint && (
           <m.p
@@ -543,207 +672,209 @@ export default function AddFlow({
     </>
   );
 
-  const steps = phase.kind === "preview" ? (draftOps ?? phase.changeSet.ops).filter((op) => op.op === "add_task").length : null;
   const phases = (
-      <AnimatePresence mode="wait" initial={false}>
-        {phase.kind === "working" && phase.text && (
-          <m.p key="working" className="add-status" role="status" {...fade}>
-            <span className="add-spinner" aria-hidden="true" /> {phase.thinking ? "Thinking…" : <>Placing “{phase.text}”…</>}
-          </m.p>
-        )}
-        {phase.kind === "asking" && (
-          <m.div key="asking" className="add-asking" {...fade}>
-            <p className="add-asking-lead">
-              <span>{phase.message}</span>
-              <span className="add-asking-said">“{phase.text}”</span>
-            </p>
-            {phase.slot ? (
-              (() => {
-                // 1–3 questions a turn, one card at a time; the turn goes back
-                // after the last one. Stop sends what Tangent has right away.
-                const { slots, at, turn, progress } = phase.slot;
-                const name = slots[at];
-                const card = phase.questions[at];
-                const advance = (t: SlotTurn, answer?: string) => {
-                  say({ role: "assistant", text: card.question });
-                  if (answer) say({ role: "user", text: answer });
-                  if (at + 1 < slots.length) setPhase({ ...phase, slot: { ...phase.slot!, at: at + 1, turn: t } });
-                  else void send(phase.text, { slotTurn: t });
-                };
-                // The bar fills as the batch is answered; 0.7 reads as 100%.
-                const score = 0.7 * Math.min(1, progress + ((1 - progress) * at) / slots.length);
-                if (!name || !card) return null;
-                return (
-                  <SlotQuestionCard
-                    key={`${name}-${turn.answers.length + turn.skipped.length}`}
-                    card={card}
-                    score={score}
-                    checkIn={false}
-                    onAnswer={(answer) => advance({ ...turn, answers: [...turn.answers, { slot: name, answer }], inARow: turn.inARow + 1 }, answer)}
-                    onSkip={() => advance({ ...turn, skipped: [...turn.skipped, name], inARow: turn.inARow + 1 })}
-                    onStop={() => void send(phase.text, { slotTurn: { ...turn, stopped: true } })}
-                    onKeepGoing={() => undefined}
-                  />
-                );
-              })()
-            ) : (
-              <ClarifyCard
-                questions={phase.questions}
-                skipLabel="Skip for now"
-                onSubmit={(answers) => {
-                  for (const a of answers ?? []) {
-                    const q = phase.questions.find((x) => x.id === a.id);
-                    if (q) say({ role: "assistant", text: q.question });
-                    if (a.answer) say({ role: "user", text: a.answer });
-                  }
-                  void send(phase.text, { answers });
-                }}
-              />
-            )}
-          </m.div>
-        )}
-        {phase.kind === "confirm" && (
-          <m.div key="confirm" className="add-confirm" role="alertdialog" aria-label="Confirm" {...fade}>
-            <p>{phase.message}</p>
-            <div>
-              <button type="button" className="tg-clarify-btn is-primary" onClick={() => void resolveConfirm(phase.id, true)}>Confirm</button>
-              <button type="button" className="tg-clarify-btn" onClick={() => void resolveConfirm(phase.id, false)}>Cancel</button>
-            </div>
-          </m.div>
-        )}
-        {phase.kind === "preview" && (
-          <m.div key="preview" {...fade}>
-            {phase.note && <p className="add-grill-note" role="status">{phase.note}</p>}
-            <PreviewCard
-              changeSet={phase.changeSet}
-              preview={phase.preview}
-              onChanged={() => void refresh()}
-              grill={{ said: phase.said, asked: phase.asked }}
-              hideCalendar={workspace}
-              onOps={workspace ? setDraftOps : undefined}
-              onConfirmed={() => {
-                // What it just did, said in the talk beside the calendar.
-                if (workspace) say({ role: "assistant", text: `Added ${steps ? `${steps} step${steps === 1 ? "" : "s"}` : "it"} to your calendar. When you finish them, tell me how they went and I'll plan the next round.` });
-              }}
-              onSettled={() =>
-                window.setTimeout(() => {
-                  setPhase({ kind: "compose" });
-                  endPlanning();
-                }, 2500)
-              }
-            />
-          </m.div>
-        )}
-        {phase.kind === "done" && (
-          <m.div key="done" className="add-done" role="status" {...fade}>
-            {phase.actionId ? (
-              <ActionReceipt actionId={phase.actionId} label={phase.summary} onUndone={() => void refresh()} />
-            ) : (
-              <span>{phase.summary}</span>
-            )}
-            {phase.where && (
-              <Link href={phase.where.href} className="add-where" onClick={onClose}>
-                {phase.where.label} <ArrowRight size={13} aria-hidden="true" />
-              </Link>
-            )}
-          </m.div>
-        )}
-        {phase.kind === "heard" && (
-          <m.p key="heard" className="add-status" role="status" {...fade}>
-            Only heard “{phase.text.replace(/[.!?]+$/, "")}”. Say a bit more, or press Enter to add it anyway.
-          </m.p>
-        )}
-        {phase.kind === "error" && (
-          <m.p key="error" className="add-status is-error" role="alert" {...fade}>
-            {phase.message}
-          </m.p>
-        )}
-      </AnimatePresence>
+    <AnimatePresence mode="wait" initial={false}>
+      {phase.kind === "working" && phase.text && !phase.streaming && (
+        <m.p key="working" className="add-status" role="status" {...fade}>
+          <span className="add-spinner" aria-hidden="true" /> {phase.thinking ? "Thinking…" : <>Placing “{phase.text}”…</>}
+        </m.p>
+      )}
+      {phase.kind === "asking" && (
+        <m.div key="asking" className="add-asking" {...fade}>
+          <p className="add-asking-lead">
+            <span>{phase.message}</span>
+            <span className="add-asking-said">“{phase.text}”</span>
+          </p>
+          {phase.slot ? (
+            (() => {
+              // 1–3 questions a turn, one card at a time; the turn goes back
+              // after the last one. Stop sends what Tangent has right away.
+              const { slots, at, turn, progress } = phase.slot;
+              const name = slots[at];
+              const card = phase.questions[at];
+              const advance = (t: SlotTurn) => {
+                if (at + 1 < slots.length) setPhase({ ...phase, slot: { ...phase.slot!, at: at + 1, turn: t } });
+                else void send(phase.text, { slotTurn: t });
+              };
+              // The bar fills as the batch is answered; 0.7 reads as 100%.
+              const score = 0.7 * Math.min(1, progress + ((1 - progress) * at) / slots.length);
+              if (!name || !card) return null;
+              return (
+                <SlotQuestionCard
+                  key={`${name}-${turn.answers.length + turn.skipped.length}`}
+                  card={card}
+                  score={score}
+                  checkIn={false}
+                  onAnswer={(answer) => advance({ ...turn, answers: [...turn.answers, { slot: name, answer }], inARow: turn.inARow + 1 })}
+                  onSkip={() => advance({ ...turn, skipped: [...turn.skipped, name], inARow: turn.inARow + 1 })}
+                  onStop={() => void send(phase.text, { slotTurn: { ...turn, stopped: true } })}
+                  onKeepGoing={() => undefined}
+                />
+              );
+            })()
+          ) : (
+            <ClarifyCard questions={phase.questions} skipLabel="Skip for now" onSubmit={(answers) => void send(phase.text, { answers })} />
+          )}
+        </m.div>
+      )}
+      {phase.kind === "confirm" && (
+        <m.div key="confirm" className="add-confirm" role="alertdialog" aria-label="Confirm" {...fade}>
+          <p>{phase.message}</p>
+          <div>
+            <button type="button" className="tg-clarify-btn is-primary" onClick={() => void resolveConfirm(phase.id, true)}>Confirm</button>
+            <button type="button" className="tg-clarify-btn" onClick={() => void resolveConfirm(phase.id, false)}>Cancel</button>
+          </div>
+        </m.div>
+      )}
+      {phase.kind === "preview" && !workspace && (
+        <m.div key="preview" {...fade}>
+          {phase.note && <p className="add-grill-note" role="status">{phase.note}</p>}
+          <PreviewCard
+            changeSet={phase.changeSet}
+            preview={phase.preview}
+            onChanged={() => void refresh()}
+            grill={{ said: phase.said, asked: phase.asked }}
+            onSettled={() => window.setTimeout(() => setPhase({ kind: "compose" }), 2500)}
+          />
+        </m.div>
+      )}
+      {phase.kind === "done" && (
+        <m.div key="done" className="add-done" role="status" {...fade}>
+          {phase.actionId ? (
+            <ActionReceipt actionId={phase.actionId} label={phase.summary} onUndone={() => void refresh()} />
+          ) : (
+            <span>{phase.summary}</span>
+          )}
+          {phase.where && (
+            <Link href={phase.where.href} className="add-where" onClick={onClose}>
+              {phase.where.label} <ArrowRight size={13} aria-hidden="true" />
+            </Link>
+          )}
+        </m.div>
+      )}
+      {phase.kind === "heard" && (
+        <m.p key="heard" className="add-status" role="status" {...fade}>
+          Only heard “{phase.text.replace(/[.!?]+$/, "")}”. Say a bit more, or press Enter to add it anyway.
+        </m.p>
+      )}
+      {phase.kind === "error" && (
+        <m.p key="error" className="add-status is-error" role="alert" {...fade}>
+          {phase.message}
+        </m.p>
+      )}
+    </AnimatePresence>
   );
   const helpCard = help && <HelpPlanBetter key={help.planId} planId={help.planId} said={help.said} asked={help.asked} onDone={() => setHelp(null)} />;
   const layoutMotion = reduce ? { layout: false as const } : { layout: true as const, transition: { layout: { type: "spring" as const, visualDuration: 0.3, bounce: 0 } } };
-
-  // Home's answer area: the talk, newest last, under the box.
-  const answers = thread.length > 0 && (
-    <section className="add-answer" aria-label="Tangent's answer" aria-live="polite">
-      <ol className="add-answer-log">
-        {thread.map((l, i) => (
-          <li key={i} className={`add-answer-line is-${l.role}`}>
-            {l.role === "assistant" ? l.text.split(/\n{2,}/).map((para, j) => <p key={j}>{para}</p>) : l.text}
-          </li>
-        ))}
-      </ol>
-      <div className="add-answer-foot">
-        <span>Ask a follow-up in the box, or add something.</span>
-        <button type="button" className="tg-clarify-quiet add-answer-clear" onClick={() => setThread([])}>
-          <X size={13} strokeWidth={2} aria-hidden="true" /> Clear
-        </button>
-      </div>
-    </section>
+  const stages = stage && phase.kind === "working" && <ThinkingStages current={stage} />;
+  const thread = (lines: TalkLine[], compact = false) =>
+    lines.length > 0 && <TalkThread lines={lines} busy={busy} onPlanThis={planThis} onNotNow={notNow} onSkipQuestion={skipQuestion} compact={compact} />;
+  const backToToday = (
+    <div className="talk-head">
+      <button
+        type="button"
+        className="talk-back"
+        onClick={() => {
+          setPhase({ kind: "compose" });
+          endTalk();
+          reset();
+        }}
+        disabled={phase.kind === "working"}
+      >
+        <ArrowLeft size={16} strokeWidth={1.75} aria-hidden="true" /> Back to Today
+      </button>
+    </div>
   );
 
   if (!workspace) {
+    if (talking) {
+      // Round 5A Q4: the talk takes over Home, the box pinned under it.
+      return (
+        <m.section {...layoutMotion} className={`add-flow is-${variant} is-talk${listening ? " is-listening" : ""}`} aria-label="Talk with Tangent">
+          {backToToday}
+          <div aria-live="polite">{thread(talk)}</div>
+          {stages}
+          {phases}
+          <div className="talk-composer">{composer}</div>
+          {helpCard}
+        </m.section>
+      );
+    }
     return (
-      <m.section {...layoutMotion} className={`add-flow is-${variant}${listening ? " is-listening" : ""}${thread.length ? " has-answer" : ""}`} aria-label="Add to Tangent">
+      <m.section {...layoutMotion} className={`add-flow is-${variant}${listening ? " is-listening" : ""}`} aria-label="Add to Tangent">
         {composer}
-        {answers}
         {phases}
         {helpCard}
       </m.section>
     );
   }
 
-  // Round 4 §3.3: the planning workspace. Talk on the left, the plan on the right.
-  const title = topic || (phase.kind === "asking" ? phase.text : "your plan");
-  const basedOn = phase.kind === "preview" ? [...(phase.preview.factsUsed ?? []), ...(phase.changeSet.assumptions ?? []).map((a) => `Assumed: ${a}`)] : [];
+  // Round 5A 2.3: the split. The brief on the left, the calendar on the right.
   const today = getUserToday(timezone);
-  const close = () => {
-    setPhase({ kind: "compose" });
-    endPlanning();
-    setTopic("");
-    reset();
-  };
+  const followUps = (
+    <>
+      {thread(talk, true)}
+      {stages}
+      {phases}
+    </>
+  );
+  const historyFold = history.length > 0 && (
+    <details className="plan-brief-history">
+      <summary>Your conversation</summary>
+      <TalkThread lines={history} compact />
+    </details>
+  );
   return (
-    <m.section {...layoutMotion} className={`add-flow is-${variant} is-workspace${listening ? " is-listening" : ""}`} aria-label="Planning with Tangent">
+    <m.section {...layoutMotion} className={`add-flow is-${variant} is-workspace is-talk${listening ? " is-listening" : ""}`} aria-label="Planning with Tangent">
       <PlanWorkspace
-        title={title}
         pane={pane}
         onPane={setPane}
-        head={
-          <div className="plan-ws-actions">
-            <ModeToggle mode={talkMode} onChange={setTalkMode} disabled={busy} />
-            <button type="button" className="tg-clarify-quiet" onClick={close}>
-              Close
-            </button>
-          </div>
+        head={backToToday}
+        brief={
+          phase.kind === "preview" ? (
+            <>
+              {historyFold}
+              {phase.note && <p className="add-grill-note" role="status">{phase.note}</p>}
+              <PlanBrief
+                key={phase.changeSet.id}
+                changeSet={phase.changeSet}
+                preview={phase.preview}
+                brief={phase.brief}
+                goal={topic}
+                onChanged={() => void refresh()}
+                onOps={setDraftOps}
+                onSettled={() =>
+                  window.setTimeout(() => {
+                    // Still on the same settled draft: back to Today.
+                    if (phaseRef.current.kind === "preview" && phaseRef.current.changeSet.id === phase.changeSet.id) {
+                      setPhase({ kind: "compose" });
+                      endTalk();
+                    }
+                  }, 4000)
+                }
+                composer={
+                  <>
+                    {followUps}
+                    <div className="plan-ws-composer">{composer}</div>
+                  </>
+                }
+              />
+            </>
+          ) : (
+            <>
+              {historyFold}
+              {followUps}
+              <div className="plan-ws-composer">{composer}</div>
+              {helpCard}
+            </>
+          )
         }
-        chat={
-          <>
-            <ol className="plan-ws-log" aria-label="So far">
-              {log.map((l, i) => (
-                <li key={i} className={`plan-ws-line is-${l.role}`}>
-                  {l.text.split("\n").map((line, j) => (j === 0 ? line : <span key={j} className="plan-ws-more">{line}</span>))}
-                </li>
-              ))}
-            </ol>
-            {phases}
-            <label className="plan-ws-brief">
-              <span>Tell me anything about this: your schedule, what you&apos;ve already done, what&apos;s hard</span>
-              <textarea value={brief} onChange={(e) => setBrief(e.target.value)} rows={2} maxLength={1500} placeholder="Optional. It shapes the next draft." />
-            </label>
-            <div className="plan-ws-composer">{composer}</div>
-            {helpCard}
-          </>
-        }
-        plan={
-          <>
-            {draftOps && draftOps.some((op) => op.op === "add_task") ? (
-              <PlanCalendarPreview ops={draftOps} tasks={state?.tasks ?? []} plans={state?.plans ?? []} weekStart={state?.user.weekStart ?? 0} today={today} />
-            ) : (
-              <CalendarPlaceholder working={phase.kind === "working"} />
-            )}
-            <HowThisPlanWorks steps={steps} basedOn={basedOn} />
-          </>
+        calendar={
+          draftOps && draftOps.some((op) => op.op === "add_task") ? (
+            <PlanCalendarPreview ops={draftOps} tasks={state?.tasks ?? []} plans={state?.plans ?? []} weekStart={state?.user.weekStart ?? 0} today={today} />
+          ) : (
+            <CalendarPlaceholder working={phase.kind === "working"} />
+          )
         }
       />
     </m.section>

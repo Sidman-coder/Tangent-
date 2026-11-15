@@ -241,6 +241,16 @@
 .onb-ready { display: flex; flex-direction: column; gap: 18px; }
 .onb-ready-mark { margin-bottom: 4px; }
 .onb-ready-lines p { margin: 0 0 6px; font-size: 16px; line-height: 1.5; color: var(--text-2); }
+/* Round 5A R1: "Here's what I heard", their words back with what Tangent will do. */
+.onb-heard {
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.onb-heard-title { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--text-3); }
+.onb-heard ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.onb-heard li { font-size: 15px; line-height: 1.5; color: var(--text); }
 .onb-summary {
   margin: 4px 0 0;
   padding: 4px 16px;

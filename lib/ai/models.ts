@@ -127,6 +127,15 @@ export const AI_TASKS = {
   classifyCommitment: { feature: "classify", tier: "FAST", maxTokens: 60, temperature: 0, effort: "low" },
   /** Pipeline V2: only the new tasks for an existing plan (lib/pipeline/extend-plan.ts). */
   extendPlan: { feature: "extendPlan", tier: "SMART", maxTokens: 1500, thinking: "disabled" },
+  /** Round 5A 2.1: talk mode. A real, topic-specific answer in markdown,
+   *  streamed; chatTier() moves it to SMART for goal talk. */
+  talk: { feature: "chat", tier: "FAST", maxTokens: 1200 },
+  /** Round 5A 2.2 (Q1): the reasoning step before a plan. Reads the week and
+   *  the facts, returns the brief (goal line, assumptions, at most one
+   *  question, and what/when/why for each step) as JSON. */
+  planBrief: { feature: "plan", tier: "SMART", maxTokens: 1600, thinking: "disabled" },
+  /** Round 5A 2.4: rewrites the steps the quality guard rejected, once. */
+  planFix: { feature: "plan", tier: "SMART", maxTokens: 800, thinking: "disabled" },
 } as const satisfies Record<string, TaskConfig>;
 
 export type AiTask = keyof typeof AI_TASKS;

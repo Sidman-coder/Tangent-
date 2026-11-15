@@ -29,6 +29,10 @@ import { ROUND_ONE_COPY, roundDates, roundLine } from "@/lib/rounds";
 import { PACKED_NOTE } from "@/lib/load";
 import { buildStudentContext } from "@/lib/ai/student-context";
 import { briefAssumptions, briefNotes, readBrief } from "@/lib/ai/plan-brief";
+import { briefGuidance, buildPlanBrief, type PlanBrief } from "@/lib/ai/plan-brief-call";
+import { PLAN_GUARD } from "@/lib/ai/plan-guard-config";
+import { isGenericTitle } from "@/lib/ai/plan-guard";
+import { datesBetween, weekSummary } from "@/lib/ai/week-summary";
 import { resolvePlanTitle } from "@/lib/plan-title";
 import { perfCount, perfSpan, withPerfTrace } from "@/lib/perf";
 import type Anthropic from "@anthropic-ai/sdk";
@@ -663,7 +667,32 @@ export type PlanProgress =
   | { type: "plan_outline"; title: string; taskCount: number }
   | { type: "plan_task"; index: number; task: { title: string; date: string; time: string } }
   /** Master fix Phase 4: a talked reply as it's written (the text so far). */
-  | { type: "reply_text"; text: string };
+  | { type: "reply_text"; text: string }
+  /** Round 5A 2.2: the real planning steps as they start ("Reading your week" …). */
+  | { type: "stage"; id: PlanStage }
+  /** Round 5A 2.3: the brief (goal line and each step's why) once it's decided. */
+  | { type: "plan_brief"; brief: BriefView };
+
+export type PlanStage = "week" | "facts" | "steps" | "place";
+
+/** What the client shows of the brief (lib/ai/plan-brief-call.ts PlanBrief). */
+export type BriefView = {
+  goalLine: string;
+  steps: { what: string; when: string; why: string; youllHave: string }[];
+  dropNote: string;
+  /** "What I used about you": the facts the steps lean on, in the student's words. */
+  used: string[];
+};
+
+export function briefView(brief: PlanBrief, facts: readonly { id: string; text: string }[]): BriefView {
+  const byId = new Map(facts.map((f) => [f.id, f.text]));
+  return {
+    goalLine: brief.goal_line,
+    steps: brief.steps.map((s) => ({ what: s.what, when: s.when_hint, why: s.why, youllHave: s.youll_have })),
+    dropNote: brief.dropNote,
+    used: brief.factIds.map((id) => byId.get(id)).filter((t): t is string => !!t),
+  };
+}
 
 export type VoiceOptions = {
   forcePlan?: boolean;
@@ -711,6 +740,8 @@ async function handleVoiceTextInner(
       : t;
   // Pipeline V2 (lib/pipeline). Neither does anything when the flag is off.
   const drafting = TANGENT_PIPELINE_V2 && opts.preview === true;
+  // Round 5A (Sid, Q3): a plan is always a draft when the caller can preview it.
+  const planDrafting = opts.preview === true;
   const received = (route: string) => {
     if (TANGENT_PIPELINE_V2) logEvent("request_received", { route, fast: false, source: opts.source ?? (opts.preview ? "typed" : "voice"), reentry: !!opts.forcePlan });
   };
@@ -1001,13 +1032,12 @@ async function handleVoiceTextInner(
       }
       console.log("[api/voice] Final date range:", startDate, "to", endDate);
 
-      // Session dates are fixed here (lib/ai/plan.ts sessionInterval), not by the model.
-      const picture = await buildStudentContext({ purpose: "plan", query: text }).catch(() => null);
-      const studentPicture = picture?.text ?? "";
-      // Master fix Phase 3: the plan brief (answers, chat and context filled in;
-      // defaults for the rest) steers the planner and is kept as project notes.
-      const brief = readBrief(text, { studentContext: studentPicture, capacityKnown: picture?.capacityKnown });
-      const briefText = brief && brief.type !== "single" ? briefNotes(brief) : "";
+      // Round 5A 2.2: each stage is sent as its real step starts, so the
+      // "Reading your week → … → Placing them" row is honest, not a timer.
+      const stage = (id: PlanStage) => opts.onProgress?.({ type: "stage", id });
+
+      // Stage 1, "Reading your week": round size, busy days, open times.
+      stage("week");
       // Round 4 §3.4: plans come in rounds. This round is about a week of 3 to
       // 7 steps, sized to the step size the student actually finishes; the
       // next round is planned from how these went.
@@ -1015,18 +1045,60 @@ async function handleVoiceTextInner(
       const goalEnd = endDate;
       const evenDates = roundDates(startDate, endDate, stepMinutes);
       endDate = evenDates[evenDates.length - 1] ?? startDate;
-      const projectNotes =
-        [opts.projectGoal, briefText, opts.projectId ? "" : roundLine({ n: 1, startedOn: startDate })].filter(Boolean).join("\n") || undefined;
       // The spacing brain moves sessions off days that are already full and
       // gives each one a real open time (lib/spacing.ts).
       const spaced = await spreadPlanDates(evenDates).catch((e) => {
         console.warn("[api/voice] spacing failed, using even dates:", e instanceof Error ? e.message : e);
         return null;
       });
-      const dates = spaced ? spaced.map((s) => s.date) : evenDates;
+      let dates = spaced ? spaced.map((s) => s.date) : evenDates;
       const timeByDate = new Map(spaced?.map((s) => [s.date, s.time]) ?? []);
       const shifted = spaced ? spaced.filter((s, i) => s.date !== evenDates[i]).length : 0;
+      const week = weekSummary(await getAllTasks().catch(() => []), datesBetween(startDate, endDate));
       console.log("[api/voice] Plan sessions:", dates.length, "from", startDate, "to", endDate, "| moved off busy days:", shifted);
+
+      // Stage 2, "Checking what you've told me": the context pack.
+      stage("facts");
+      // Session dates are fixed above (lib/ai/plan.ts sessionInterval), not by the model.
+      const picture = await buildStudentContext({ purpose: "plan", query: text }).catch(() => null);
+      const studentPicture = picture?.text ?? "";
+      // Master fix Phase 3: the plan brief (answers, chat and context filled in;
+      // defaults for the rest) steers the planner and is kept as project notes.
+      const brief = readBrief(text, { studentContext: studentPicture, capacityKnown: picture?.capacityKnown });
+      const briefText = brief && brief.type !== "single" ? briefNotes(brief) : "";
+      const projectNotes =
+        [opts.projectGoal, briefText, opts.projectId ? "" : roundLine({ n: 1, startedOn: startDate })].filter(Boolean).join("\n") || undefined;
+
+      // Stage 3, "Choosing steps": the reasoning call (Q1), then the writer.
+      stage("steps");
+      const answered = text.includes("\n\nMy answers to your questions:");
+      const facts = (picture?.factsUsed ?? []).slice(0, 16);
+      const stepBrief = await perfSpan("plan: brief", () =>
+        buildPlanBrief({
+          request: withContext(text),
+          dateContext: promptDateContext(tz),
+          weekSummary: week,
+          facts,
+          dates,
+          // One question at most, only where the student can answer it.
+          noQuestion: answered || !planDrafting,
+          guard: PLAN_GUARD,
+        })
+      ).catch((e) => {
+        console.warn("[api/voice] plan brief failed, planning without it:", e instanceof Error ? e.message : e);
+        return null;
+      });
+      if (stepBrief?.question) {
+        // Ask it in the thread; the reply comes back with "My answers to your questions:".
+        await addVoiceLog({ text, response: stepBrief.question, action: "chat_reply", ok: true });
+        return NextResponse.json({ ok: true, action: "chat_reply", response: stepBrief.question, message: stepBrief.question, planQuestion: true });
+      }
+      // Dropped steps take their dates with them, so the rest stay on their days.
+      if (stepBrief && stepBrief.steps.length > 0 && stepBrief.steps.length < dates.length) {
+        dates = stepBrief.kept.map((i) => dates[i]).filter(Boolean);
+      }
+      const view = stepBrief && stepBrief.steps.length > 0 ? briefView(stepBrief, facts) : null;
+      if (view) opts.onProgress?.({ type: "plan_brief", brief: view });
 
       const generated = await perfSpan("plan: generate", () =>
         generatePlan({
@@ -1035,6 +1107,7 @@ async function handleVoiceTextInner(
             briefText ? `PLAN BRIEF (follow it; "Assumed" lines are defaults the student can change):\n${briefText}` : "",
             studentPicture ? `STUDENT CONTEXT (fit the plan to this student):\n${studentPicture}` : "",
           ].filter(Boolean).join("\n\n"),
+          brief: stepBrief ? briefGuidance(stepBrief) : undefined,
           dateContext: promptDateContext(tz),
           dates,
           onOutline: (o) => opts.onProgress?.({ type: "plan_outline", title: resolvePlanTitle(o.title, text), taskCount: o.taskCount }),
@@ -1045,24 +1118,40 @@ async function handleVoiceTextInner(
       if (!generated.ok) console.error("[api/voice] Plan generation failed:", generated.error);
 
       if (generated.ok && generated.tasks.length > 0) {
+        // Stage 4, "Placing them": open times, calendars, the why on each step.
+        stage("place");
         const planKind = inferPlanKind(text);
+        // Round 5A 2.3: each step keeps its why as a WHY: note line (lib/note-parts.ts).
+        const whyFor = (i: number) => stepBrief?.steps[i]?.why ?? "";
+        // 2.4: a written title that's only generic words ("Practice problems")
+        // falls back to the brief's step title, which already passed the guard.
+        const titleFor = (title: string, i: number) => {
+          const fromBrief = stepBrief?.steps[i]?.what;
+          return fromBrief && isGenericTitle(title, PLAN_GUARD) ? fromBrief : title;
+        };
+        const withWhy = (notes: string | undefined, i: number) => {
+          const why = whyFor(i);
+          if (!why) return notes || undefined;
+          return [notes, `WHY: ${why}`].filter(Boolean).join("\n");
+        };
         const calendarIds = new Map<string, string>();
         for (const id of Array.from(new Set(generated.tasks.map((t) => t.calendarId)))) calendarIds.set(id, await resolveCalendarId(id, generated.title));
         // One insert for every task, with plan_id already set (store.addPlanWithTasks).
-        const planTasks = generated.tasks.map((t) => ({
-              title: cleanTitle(t.title),
+        const planTasks = generated.tasks.map((t, i) => ({
+              title: cleanTitle(titleFor(t.title, i)),
               date: t.date,
               time: timeByDate.get(t.date) ?? t.time,
               kind: planKind,
               completed: false,
               calendarId: calendarIds.get(t.calendarId) ?? inferCalendarGroup(t.title),
-              notes: t.notes || undefined,
+              notes: withWhy(t.notes, i),
               startAction: t.startAction || undefined,
               resources: t.resources.length > 0 ? t.resources : undefined,
             }));
 
-        if (drafting) {
-          // Pipeline V2: the same tasks, saved as a draft for the student to confirm.
+        if (planDrafting) {
+          // The same tasks, saved as a draft for the student to confirm
+          // (always, when previewing: Round 5A Q3).
           const planTitle = resolvePlanTitle(generated.title, text);
           const assumptions = opts.projectId ? [] : [ROUND_ONE_COPY];
           assumptions.push(`Spread from ${friendlyWhen(startDate, undefined, today)} to ${friendlyWhen(endDate, undefined, today)}`);
@@ -1073,6 +1162,7 @@ async function handleVoiceTextInner(
           if (spaced?.some((s) => s.note)) assumptions.push(PACKED_NOTE);
           if (text.includes("\n\nMy answers to your questions:")) assumptions.push("Built from your answers above");
           if (brief) assumptions.push(...briefAssumptions(brief));
+          for (const a of stepBrief?.assumptions ?? []) if (!assumptions.includes(a)) assumptions.push(a);
           const draftTasks = planTasks.map((t) => ({ ...t, resources: t.resources ?? [] }));
           return await respondWithDraft(
             {
@@ -1085,7 +1175,7 @@ async function handleVoiceTextInner(
                 : planOps(planTitle, draftTasks, projectNotes),
               assumptions,
             },
-            { text, today, route: "plan" }
+            { text, today, route: "plan", extra: view ? { brief: view } : undefined }
           );
         }
 

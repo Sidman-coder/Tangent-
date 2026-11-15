@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import { withUser } from "@/lib/request-context";
 import { trackEvent } from "@/lib/analytics";
 import { DISTRESS_REPLY, looksDistressed } from "@/lib/student/sensitive";
-import { answerReply, calendarReply, lastUserMessage, pendingAnswerReply, planReply, type CalendarReplyOptions } from "@/lib/chat-reply";
+import { calendarReply, lastUserMessage, pendingAnswerReply, planReply, talkReply, type CalendarReplyOptions } from "@/lib/chat-reply";
 import { parsePendingQuestion, PENDING_QUESTION_ID } from "@/lib/pending-question";
 import { TANGENT_PIPELINE_V2 } from "@/lib/pipeline/flags";
 import { handleRequest } from "@/lib/pipeline/intake";
 import { routeAnswerReply } from "@/lib/pipeline/understand";
-import { homeRoute, type HomeKind } from "@/lib/pipeline/home-route";
+import { type HomeKind } from "@/lib/pipeline/home-route";
+import { planRequestText, routeMessage, type TalkScope } from "@/lib/pipeline/talk-route";
 import { extendPlan } from "@/lib/pipeline/extend-plan";
 import { addPendingConfirmation, addTask, addVoiceLog, countChatSessions, getAllPlans, getAllTasks, getUserTimezone, recordAction, setCapacity } from "@/lib/store";
 import { proposeBulk } from "@/lib/pipeline/bulk-action-run";
@@ -127,6 +128,14 @@ export const POST = withUser(async (req: Request) => {
        *  Routed first (lib/pipeline/home-route.ts): answered, extended,
        *  grilled, planned or added — never grilled about what's known. */
       home?: unknown;
+      /** Round 5A 2.1: "Plan this into my calendar" (or the answer to the plan's one question). */
+      planThis?: unknown;
+      /** The message the "Plan this" row sat under. */
+      planGoal?: unknown;
+      /** { question, answer }: the reply to the plan brief's one question. */
+      planAnswer?: unknown;
+      /** Where it was typed (home, capture, task, project, rail, palette). Logged only. */
+      scope?: unknown;
     };
     const mode: ChatMode = body.mode === "plan" ? "plan" : "calendar";
     const raw = body.messages;
@@ -221,14 +230,31 @@ export const POST = withUser(async (req: Request) => {
     // A question is answered from their projects and finished steps; more
     // steps for a project they have are previewed; only a new goal (or "grill
     // me") is asked about.
+    //
+    // Round 5A 2.1/2.5: talk first (lib/pipeline/talk-route.ts). A goal is
+    // answered, with a "Plan this into my calendar" row when it could be
+    // scheduled (`schedulable`); a plan is built only when asked in words or
+    // with that button (`planThis`), and never after grill cards.
     let homeKind: HomeKind | null = null;
     const firstTurn = parseAnswers(body.answers).length === 0 && body.slotTurn == null;
-    if (body.home === true && body.talk !== true && body.route !== "chat" && body.newProject !== true && firstTurn) {
+    const planThis = body.planThis === true;
+    if (body.home === true && body.talk !== true && body.route !== "chat" && body.newProject !== true && (firstTurn || planThis)) {
       const plans = await getAllPlans().catch(() => []);
-      const routed = homeRoute(userText, plans.map((p) => ({ id: p.id, title: p.title })), projectId || null);
+      const scope = parseScope(body.scope);
+      const routed = routeMessage(userText, { projects: plans.map((p) => ({ id: p.id, title: p.title })), scoped: projectId || null, planThis, scope });
       homeKind = routed.kind;
       if (routed.projectId && !projectId) projectId = routed.projectId;
-      console.log("[api/chat] home route:", routed.kind, routed.projectId ? "(project)" : "");
+      console.log("[api/chat] talk route:", routed.kind, scope, routed.projectId ? "(project)" : "", routed.schedulable ? "schedulable" : "");
+      if (routed.kind === "plan" || (routed.kind === "extend" && planThis)) {
+        // Explicit: the brief, one question at most, then a draft to confirm
+        // (Round 5A Q3: always previewed). Stages stream as they start.
+        const goal = planRequestText(messages, { goal: typeof body.planGoal === "string" ? body.planGoal.slice(0, 2000) : null, answer: parsePlanAnswer(body.planAnswer) });
+        const project: CalendarReplyOptions["project"] = projectId ? { projectId } : { forcePlan: true, projectGoal: goal.split("\n")[0].slice(0, 300) };
+        const planned = (onProgress?: Parameters<typeof calendarReply>[2]) =>
+          calendarReply(messages, aboutTask ? `${goal}\n\n${aboutTask.brief}` : goal, onProgress, { project, preview: true, source }).then((r) => ({ ...r, planGoal: goal.split("\n\nMy answers")[0] }));
+        if (body.stream !== true) return NextResponse.json(await planned());
+        return ndjson(async (send) => planned(send));
+      }
       if (routed.kind === "action" && routed.action) {
         // Round 5A 1.6: a bulk command. A confirm card with counts; never
         // planned, never asked about.
@@ -241,18 +267,24 @@ export const POST = withUser(async (req: Request) => {
         });
       }
       if (routed.kind === "answer") {
-        // The project it's about, or their newest few when it names none.
+        // The project it's about, or their newest few when it names none (a
+        // brand-new goal leans on what they've told Tangent, not old projects).
         const ids = projectId
           ? [projectId]
-          : [...plans].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 3).map((p) => p.id);
+          : routed.schedulable
+            ? []
+            : [...plans].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 3).map((p) => p.id);
         const notes = [
           ...(aboutTask ? [`THE STEP THEY'RE ASKING ABOUT:\n${aboutTask.brief}`] : []),
           ...(await Promise.all(ids.map((id) => projectBrief(id, threadSummary).catch(() => null)))).filter((n): n is string => !!n),
         ];
+        // Talk mode: a real, specific answer in markdown; nothing is added.
         const answer = async (onText?: (text: string) => void) => ({
           ok: true,
           action: "chat_reply",
-          message: await answerReply(messages, { projectNotes: notes, onText }),
+          message: (await talkReply(messages, { projectId: projectId || null, projectNotes: notes, onText })).text,
+          schedulable: routed.schedulable,
+          planGoal: routed.schedulable ? userText.slice(0, 2000) : undefined,
           ...(projectId ? { projectId } : {}),
         });
         if (body.stream !== true) return NextResponse.json(await answer());
@@ -449,4 +481,16 @@ function ndjson(run: (send: (line: object) => void) => Promise<Record<string, un
   return new Response(stream, {
     headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" },
   });
+}
+
+const SCOPES: readonly TalkScope[] = ["home", "capture", "task", "project", "rail", "palette"];
+function parseScope(raw: unknown): TalkScope {
+  return SCOPES.includes(raw as TalkScope) ? (raw as TalkScope) : "home";
+}
+
+function parsePlanAnswer(raw: unknown): { question: string; answer: string } | null {
+  if (!raw || typeof raw !== "object") return null;
+  const { question, answer } = raw as { question?: unknown; answer?: unknown };
+  if (typeof question !== "string" || typeof answer !== "string" || !answer.trim()) return null;
+  return { question: question.slice(0, 300), answer: answer.trim().slice(0, 500) };
 }

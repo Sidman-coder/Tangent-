@@ -1,6 +1,7 @@
 "use client";
 
-// The first-run flow (Round 4 Phase 6: deeper, not longer). Eight questions,
+// The first-run flow (Round 4 Phase 6: deeper, not longer). Nine questions
+// (Round 5A R1 added "why", the moment they decide to lock in),
 // then the ready screen. Every answer lives in a local draft (saved to
 // localStorage per student, so Back keeps it and a refresh resumes it) until
 // "Open Tangent", which is the one server save; the server turns the answers
@@ -26,6 +27,8 @@ import {
   DISPLAY_NAME_MAX,
   FOCUS_LENGTH_OPTIONS,
   GRADE_OPTIONS,
+  HARD_TIME_MAX,
+  LOCKED_IN_OPTIONS,
   MATTER_OPTIONS,
   MAX_SLIPS,
   MORE_MAX,
@@ -41,6 +44,7 @@ import {
   draftStorageKey,
   emptyDraft,
   hasAnswer,
+  heardLines,
   parseStoredDraft,
   readyLines,
   readySummary,
@@ -48,6 +52,7 @@ import {
   serializeDraft,
   submissionFromDraft,
   toggleSlip,
+  whyQuestion,
   type Choice,
   type OnboardingDraft,
   type QuestionStep,
@@ -64,6 +69,7 @@ const MORE_PROMPTS: Record<QuestionStep, string> = {
   matters: "Why it matters, or what would make this year a win",
   slip: "What does it look like when it happens?",
   bugging: "What's making it hard to start?",
+  why: "Anything else that would help Tangent get you",
   brain: "e.g. I focus better at the library, or with music on",
   toward: "What got you interested?",
   push: "e.g. Don't bug me on weekends",
@@ -402,6 +408,10 @@ export default function FirstRun({ onComplete }: { onComplete: () => Promise<voi
               </Question>
             )}
 
+            {step === "why" && (
+              <WhyStep headingRef={headingRef} draft={draft} update={update} actions={actions("why")} more={more("why")} />
+            )}
+
             {step === "brain" && (
               <Question headingRef={headingRef} title="How does your brain work best?" sub="Rough guesses are fine." {...actions("brain")}>
                 <ChipRadio
@@ -422,6 +432,19 @@ export default function FirstRun({ onComplete }: { onComplete: () => Promise<voi
                   value={draft.schoolNightHours}
                   onChoose={(schoolNightHours) => update({ schoolNightHours })}
                 />
+                <div className="onb-group">
+                  <label className="onb-label" htmlFor="onb-hardtime">
+                    Is there a time you just can&apos;t think? Why?
+                  </label>
+                  <input
+                    id="onb-hardtime"
+                    className="onb-input"
+                    maxLength={HARD_TIME_MAX}
+                    placeholder="e.g. Mornings, I'm too sleepy to focus"
+                    value={draft.hardTime}
+                    onChange={(e) => update({ hardTime: e.target.value })}
+                  />
+                </div>
                 {more("brain")}
               </Question>
             )}
@@ -892,6 +915,65 @@ function ChipToggles<T extends string>({
   );
 }
 
+type QuestionActions = { answered: boolean; ready: boolean; onNext: () => void };
+
+// Round 5A R1: the "why" step. The question quotes what they said a step ago,
+// so it reads as being heard. Three optional parts; any one is enough.
+function WhyStep({
+  headingRef,
+  draft,
+  update,
+  actions,
+  more,
+}: {
+  headingRef: HeadingRef;
+  draft: OnboardingDraft;
+  update: (patch: Partial<OnboardingDraft>) => void;
+  actions: QuestionActions;
+  more: React.ReactNode;
+}) {
+  const q = useMemo(() => whyQuestion(draft), [draft]);
+  return (
+    <Question headingRef={headingRef} title={q.title} sub={q.sub} {...actions}>
+      <div className="onb-group">
+        <label className="onb-label" htmlFor="onb-why">
+          {q.whyLabel}
+        </label>
+        <textarea
+          id="onb-why"
+          className="onb-input onb-textarea"
+          rows={3}
+          maxLength={MORE_MAX}
+          placeholder={q.whyPlaceholder}
+          value={draft.why}
+          onChange={(e) => update({ why: e.target.value })}
+        />
+      </div>
+      <div className="onb-group">
+        <label className="onb-label" htmlFor="onb-picture">
+          Imagine it&apos;s a month from now and it went well. What&apos;s different?
+        </label>
+        <textarea
+          id="onb-picture"
+          className="onb-input onb-textarea"
+          rows={2}
+          maxLength={MORE_MAX}
+          placeholder="e.g. I'm not cramming the night before, and my grade's back up"
+          value={draft.picture}
+          onChange={(e) => update({ picture: e.target.value })}
+        />
+      </div>
+      <ChipRadio
+        label="When you've locked in before, what made it click?"
+        options={LOCKED_IN_OPTIONS}
+        value={draft.lockedIn}
+        onChoose={(lockedIn) => update({ lockedIn })}
+      />
+      {more}
+    </Question>
+  );
+}
+
 function ReadyStep({
   headingRef,
   draft,
@@ -910,6 +992,7 @@ function ReadyStep({
   const answers = useMemo(() => answersFromDraft(draft), [draft]);
   const lines = useMemo(() => readyLines(answers), [answers]);
   const summary = useMemo(() => readySummary(answers), [answers]);
+  const heard = useMemo(() => heardLines(answers), [answers]);
   const name = draft.name.trim();
   // Real distress in "what's bugging you" never becomes a plan; it gets a
   // kind word instead (lib/student/sensitive.ts).
@@ -930,6 +1013,18 @@ function ReadyStep({
           <p key={l}>{l}</p>
         ))}
       </div>
+      {heard.length > 0 && (
+        <section className="onb-heard" aria-labelledby="onb-heard-title">
+          <h2 id="onb-heard-title" className="onb-heard-title">
+            Here&apos;s what I heard
+          </h2>
+          <ul>
+            {heard.map((l) => (
+              <li key={l}>{l}</li>
+            ))}
+          </ul>
+        </section>
+      )}
       {summary.length > 0 && (
         <dl className="onb-summary">
           {summary.map((r) => (

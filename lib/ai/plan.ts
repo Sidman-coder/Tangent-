@@ -222,6 +222,8 @@ export type GeneratePlanInput = {
   /** Called as each task completes. `index` is the task's slot; a retried
    *  phase re-reports its slots, so treat it as an upsert. */
   onTask?: (index: number, task: PlanTask) => void;
+  /** Round 5A 2.2: the brief call's decided steps (lib/ai/plan-brief-call.ts briefGuidance). */
+  brief?: string;
 };
 
 function detailTier(): Tier | undefined {
@@ -237,7 +239,9 @@ async function outline(input: GeneratePlanInput, sizes: number[]): Promise<{ tit
   const system = `You outline study and practice plans for a student's calendar.
 ${input.dateContext}
 The plan has ${dates.length} session${dates.length > 1 ? "s" : ""} from ${dates[0]} to ${dates[dates.length - 1]}, split into exactly ${sizes.length} phase${sizes.length > 1 ? "s" : ""} of ${sizes.join(", ")} session${dates.length > 1 ? "s" : ""}.
-Return a title (2 to 6 words, specific to the goal, e.g. "Chess Tactics Fundamentals"; never "New Plan", "New project" or "Study Plan") and, for each phase in order, a short name and a one-sentence goal. Phases progress from foundations to harder work.`;
+Return a title (2 to 6 words, specific to the goal, e.g. "Chess Tactics Fundamentals"; never "New Plan", "New project" or "Study Plan") and, for each phase in order, a short name and a one-sentence goal. Phases progress from foundations to harder work.${input.brief ? `
+
+${input.brief}` : ""}`;
   let last: GeneratedPlan = { ok: false, error: "Outline failed" };
   for (let attempt = 1; attempt <= 2; attempt++) {
     const r = await callClaude(
@@ -281,7 +285,10 @@ ${input.dateContext}
 Plan: "${plan.title}". Phases: ${plan.phases.map((p, j) => `${j + 1}. ${p.name}: ${p.goal}`).join(" ")}
 Write phase ${phase + 1} (${ph.name}): exactly ${dates.length} task${dates.length > 1 ? "s" : ""}, one for each of these dates, in order: ${dates.join(", ")}.
 
-${TASK_RULES}`;
+${TASK_RULES}${input.brief ? `
+
+${input.brief}
+Use step N of the brief for session N of the whole plan (this phase starts at session ${offset + 1}): its title, purpose and result.` : ""}`;
   const run = async (tier: Tier | undefined, route: string | undefined) => {
     const tasks: (PlanTask | null)[] = dates.map(() => null);
     let seen = 0;

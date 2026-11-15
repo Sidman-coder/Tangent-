@@ -23,6 +23,9 @@ export type ChatReply = {
   pending?: { id: string; message: string };
   changeSet?: ChangeSet;
   preview?: PreviewPayload;
+  /** Round 5A talk first: an answer about something that could be scheduled. */
+  schedulable?: boolean;
+  planGoal?: string;
 };
 
 export type CaptureOutcome =
@@ -31,6 +34,11 @@ export type CaptureOutcome =
   | { kind: "confirm"; id: string; message: string }
   | { kind: "preview"; changeSet: ChangeSet; preview: PreviewPayload }
   | { kind: "question"; said: string }
+  /** Round 5A 2.5: talk first. Answered here, under the mic; nothing saved.
+   *  `planGoal` set: "Plan this into my calendar" hands the talk to Home. */
+  | { kind: "answer"; said: string; text: string; planGoal: string | null }
+  /** They asked for a plan in words: Home's planning view takes it. */
+  | { kind: "plan"; said: string }
   /** It didn't sound like a task ("listen to me", "la la la"): nothing is saved. */
   | { kind: "unsure"; said: string }
   /** `said` empty: nothing was heard, so `message` says why and there is nothing to resend. */
@@ -46,6 +54,10 @@ function clean(text: string | undefined, fallback: string): string {
 export function outcomeFromReply(reply: ChatReply, said: string, dayLabel: (ymd: string) => string): CaptureOutcome {
   if (reply.action === "confirm_required" && reply.pending) return { kind: "confirm", id: reply.pending.id, message: reply.pending.message };
   if (reply.action === "preview" && reply.changeSet && reply.preview) return { kind: "preview", changeSet: reply.changeSet, preview: reply.preview };
+  if ((reply.action === "chat_reply" || reply.action === "plan_reply") && !reply.actionId) {
+    const text = (reply.message ?? reply.response ?? "").trim() || "I'm not sure. Can you say a bit more?";
+    return { kind: "answer", said, text, planGoal: reply.schedulable && reply.planGoal?.trim() ? reply.planGoal.trim() : null };
+  }
   const summary = clean(reply.message ?? reply.response, "Added.");
   if (DUPLICATE.test(summary)) return { kind: "duplicate", summary: "Already on your list" };
   const planId = reply.plan?.id ?? reply.projectId ?? null;

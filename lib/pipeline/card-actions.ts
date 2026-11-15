@@ -14,7 +14,7 @@ import { logEvent } from "./events";
 import { trackEvent } from "../analytics";
 import { logStepEvent } from "../student/step-events";
 import { toCode } from "../student/observations";
-import { TANGENT_PIPELINE_V2 } from "./flags";
+import { draftsOnFor } from "./flags";
 import { nextStep, type CardAction } from "./lifecycle";
 
 const json = (body: Record<string, unknown>, status = 200) => NextResponse.json(body, { status });
@@ -27,9 +27,9 @@ function idFrom(req: Request): string {
 
 /** Shared preamble: flag on, change set found, and the action allowed in its status. */
 async function load(req: Request, action: CardAction): Promise<{ cs: ChangeSet; step: ReturnType<typeof nextStep> } | NextResponse> {
-  if (!TANGENT_PIPELINE_V2) return json({ ok: false, message: "Not found" }, 404);
   const cs = await getChangeSet(idFrom(req));
-  if (!cs) return json({ ok: false, message: "That change could not be found." }, 404);
+  // Flag off: only plan drafts answer (Round 5A Q3); anything else is a 404, as before.
+  if (!cs || !draftsOnFor(cs.intent)) return json({ ok: false, message: "That change could not be found." }, 404);
   const step = nextStep(action, cs);
   if (step.kind === "refuse") return json({ ok: false, status: cs.status, message: step.message }, 409);
   return { cs, step };
@@ -200,12 +200,12 @@ export async function editChangeSet(req: Request): Promise<NextResponse> {
  * Older drafts are discarded first (changeset_discarded, reason "expired").
  */
 export async function listOpenDrafts(): Promise<NextResponse> {
-  if (!TANGENT_PIPELINE_V2) return json({ ok: false, message: "Not found" }, 404);
   try {
     const since = new Date(Date.now() - DRAFT_TTL_MS).toISOString();
     const expired = await expireDraftChangeSets(since);
     for (const cs of expired) logEvent("changeset_discarded", { intent: cs.intent, ops: cs.ops.length, reason: "expired" }, { changeSetId: cs.id });
-    const drafts = await listDraftChangeSets(since);
+    // Flag off: only plan drafts come back (Round 5A Q3).
+    const drafts = (await listDraftChangeSets(since)).filter((cs) => draftsOnFor(cs.intent));
     const today = localNow(await getUserTimezone()).date;
     const items = await Promise.all(drafts.map(async (changeSet) => ({ changeSet, preview: await previewFor(changeSet, today) })));
     return json({ ok: true, drafts: items });

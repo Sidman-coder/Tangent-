@@ -57,4 +57,20 @@ void (import("./capture-outcome") as Promise<Mod>).then(({ outcomeFromReply, out
     assert.deepEqual(outcomeFromError("", "Microphone access denied"), { kind: "error", said: "", message: "Microphone access denied" });
     assert.deepEqual(outcomeFromError(""), { kind: "error", said: "", message: "Couldn't hear that. Hold again to talk." });
   });
+
+  test("Round 5A 2.5: a question is answered inline, and a goal offers Plan this", () => {
+    const day = (ymd: string) => ymd;
+    assert.deepEqual(
+      outcomeFromReply({ action: "chat_reply", message: "## Start here\n- Do 2 problems a day", schedulable: true, planGoal: "get better at competitive programming" }, "help me get better at competitive programming", day),
+      { kind: "answer", said: "help me get better at competitive programming", text: "## Start here\n- Do 2 problems a day", planGoal: "get better at competitive programming" },
+    );
+    assert.deepEqual(outcomeFromReply({ action: "chat_reply", message: "Thursday.", schedulable: false }, "when is my test?", day), {
+      kind: "answer",
+      said: "when is my test?",
+      text: "Thursday.",
+      planGoal: null,
+    });
+    // A reply that did something (has an actionId) is still a save, not talk.
+    assert.equal(outcomeFromReply({ action: "chat_reply", message: "Added.", actionId: "a1" }, "math hw", day).kind, "saved");
+  });
 });

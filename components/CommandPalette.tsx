@@ -12,6 +12,8 @@ import AddFlow from "@/components/add/AddFlow";
 import { generateQuestions } from "@/lib/questions-client";
 import { askOnHome } from "@/lib/ask-handoff";
 import { putNewPathTitle } from "@/lib/path-handoff";
+import { routeMessage } from "@/lib/pipeline/talk-route";
+import { putTalkHandoff } from "@/lib/talk-handoff";
 import ActionReceipt from "@/components/ActionReceipt";
 import Toast, { ToastPortal } from "@/components/ui/Toast";
 import PreviewCard from "@/components/PreviewCard";
@@ -151,6 +153,17 @@ export default function CommandPalette() {
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed || busy) return;
+      // Round 5A 2.5: one router everywhere. A question or a goal is talk, and
+      // talk happens on Home; "plan it" opens Home's planning view directly.
+      const talk = routeMessage(trimmed, { scope: "palette" });
+      if (talk.kind === "answer" || talk.kind === "plan") {
+        closePalette();
+        if (talk.kind === "plan") {
+          putTalkHandoff({ lines: [], goal: trimmed });
+          router.push("/?plan=1");
+        } else askOnHome(trimmed, router.push);
+        return;
+      }
       setBusy(true);
       closePalette();
       // Never close silently: say it's working until the result replaces this.
@@ -161,7 +174,7 @@ export default function CommandPalette() {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: [{ role: "user", content: trimmed }], capture: true }),
+          body: JSON.stringify({ messages: [{ role: "user", content: trimmed }], capture: true, scope: "palette" }),
         });
         const data = (await res.json()) as {
           ok?: boolean;
