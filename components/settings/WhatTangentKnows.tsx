@@ -9,7 +9,7 @@ import "./you-map.css";
 // confirm?) and can be edited, forgotten or confirmed. The cards are the
 // accessible list; the map is a picture of them.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarClock, Compass, FolderOpen, Gauge, GraduationCap, Mountain, Target, type LucideIcon } from "lucide-react";
 import type { ContextEntry } from "@/lib/types";
 import { groupFacts, initialsOf, mapSummary, ORIGIN_LABEL, originOf, projectFacts, type MapGroupKey } from "@/lib/you-map";
@@ -21,6 +21,13 @@ import Button from "@/components/ui/Button";
 import ConfirmPanel from "@/components/ui/ConfirmPanel";
 import FormMessage from "@/components/ui/FormMessage";
 import YouMapHero from "./YouMapHero";
+import type { MapLevel } from "./YouMap";
+import type { FactUsage } from "@/lib/store";
+import { factLinks, projectLinks, usageByFact, type PlanRef } from "@/lib/you-map-links";
+
+/** Dev previews (/dev/app/settings-context*) hand the page sample facts here
+ *  instead of it fetching them; saving is then local only. */
+export const SampleKnowsContext = createContext<{ entries: ContextEntry[]; usage: FactUsage[]; plans?: PlanRef[]; summary?: string } | null>(null);
 
 const ICON: Record<MapGroupKey, LucideIcon> = {
   goals: Target,
@@ -48,6 +55,7 @@ async function post(body: unknown): Promise<boolean> {
 export default function WhatTangentKnows() {
   const v2 = usePipelineV2();
   const { state } = useAppState();
+  const sample = useContext(SampleKnowsContext);
   const [entries, setEntries] = useState<ContextEntry[] | null>(null);
   const [summary, setSummary] = useState("");
   const [draft, setDraft] = useState("");
@@ -57,9 +65,23 @@ export default function WhatTangentKnows() {
   const [note, setNote] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
   const [focus, setFocus] = useState<MapGroupKey | null>(null);
+  const [level, setLevel] = useState<MapLevel>({ kind: "root" });
+  const [usage, setUsage] = useState<FactUsage[]>([]);
   const cardRefs = useRef(new Map<MapGroupKey, HTMLElement>());
 
   const load = useCallback(async () => {
+    if (sample) {
+      setEntries((cur) => cur ?? sample.entries);
+      setSummary(sample.summary ?? "");
+      setUsage(sample.usage);
+      return;
+    }
+    // Which plans used which facts: only for the map's satellites and the
+    // fact card, so a failure just leaves them empty.
+    void fetch("/api/context/usage", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : { usage: [] }))
+      .then((d: { usage?: FactUsage[] }) => setUsage(d.usage ?? []))
+      .catch(() => setUsage([]));
     try {
       const res = await fetch("/api/context", { cache: "no-store" });
       const data = (await res.json()) as { context?: { entries?: ContextEntry[]; compressedSummary?: string } };
@@ -68,7 +90,7 @@ export default function WhatTangentKnows() {
     } catch {
       setEntries([]);
     }
-  }, []);
+  }, [sample]);
 
   useEffect(() => {
     void load();
@@ -78,7 +100,10 @@ export default function WhatTangentKnows() {
   }, [load]);
 
   const grouped = useMemo(() => groupFacts(entries ?? []), [entries]);
-  const projects = useMemo(() => projectFacts(entries ?? [], (state?.plans ?? []).map((p) => ({ id: p.id, title: p.title }))), [entries, state?.plans]);
+  const plans = useMemo<PlanRef[]>(() => sample?.plans ?? (state?.plans ?? []).map((p) => ({ id: p.id, title: p.title })), [sample, state?.plans]);
+  const projects = useMemo(() => projectFacts(entries ?? [], plans), [entries, plans]);
+  const usedBy = useMemo(() => usageByFact(usage, plans), [usage, plans]);
+  const links = useMemo(() => [...factLinks(grouped), ...projectLinks(grouped, plans, usedBy)], [grouped, plans, usedBy]);
 
   // Scroll-driven: the card nearest the middle of the screen turns the map.
   useEffect(() => {
@@ -142,11 +167,19 @@ export default function WhatTangentKnows() {
     void load();
   };
 
+  // An area chip under the map: open the area on the map and bring its card up.
   const pick = (key: MapGroupKey) => {
     setFocus(key);
+    setLevel({ kind: "area", key });
     const el = cardRefs.current.get(key);
     el?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
     el?.focus({ preventScroll: true });
+  };
+
+  // A drill-in on the map also points the cards below at that area.
+  const onLevel = (next: MapLevel) => {
+    setLevel(next);
+    if (next.kind !== "root") setFocus(next.key);
   };
 
   // One fact per row, with where it came from and what you can do about it.
@@ -215,7 +248,18 @@ export default function WhatTangentKnows() {
       ) : (
         <>
           {/* Round 4 Phase 4: the map fills the window, then the facts follow. */}
-          <YouMapHero grouped={grouped} initials={initials} summary={mapSummary(grouped)} focus={focus} onPick={pick} />
+          <YouMapHero
+            grouped={grouped}
+            initials={initials}
+            summary={mapSummary(grouped)}
+            focus={focus}
+            plans={plans}
+            links={links}
+            usedBy={usedBy}
+            level={level}
+            onLevel={onLevel}
+            onPick={pick}
+          />
 
           <div className="you-map-head">
             <p className="settings-group-note">
@@ -246,7 +290,7 @@ export default function WhatTangentKnows() {
                     data-group={group.key}
                     tabIndex={-1}
                     className={`you-card${focus === group.key ? " is-focus" : ""}${facts.length ? "" : " is-empty"}`}
-                    style={{ "--c": `var(--series-${group.color})` } as React.CSSProperties}
+                    style={{ "--c": `var(--map-${group.color})` } as React.CSSProperties}
                     aria-labelledby={`you-card-${group.key}`}
                   >
                     <header>

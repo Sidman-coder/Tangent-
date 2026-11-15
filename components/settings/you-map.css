@@ -1,6 +1,6 @@
-/* "You, mapped" (Settings › What Tangent knows, Round 4 §5.4). The map sits
-   sticky beside the area cards when there's room; stacked above them on a
-   phone. Colours come from the --series-* palette (one per area). */
+/* "You, mapped" (Settings › What Tangent knows). Round 5B: the map is an
+   ivory constellation in its own pastel palette (--map-* in tokens.css, no
+   purple); the area cards below are the accessible list. */
 
 .you-map {
   container-type: inline-size;
@@ -11,52 +11,6 @@
   gap: 12px;
   margin-bottom: 18px;
 }
-.you-map-summary {
-  margin: 0;
-  color: var(--text);
-  font-size: 17px;
-  line-height: 1.45;
-  letter-spacing: -0.01em;
-  text-wrap: pretty;
-}
-.you-map-counts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.you-map-counts button {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  height: 30px;
-  padding: 0 11px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--text-2);
-  font: inherit;
-  font-size: 12.5px;
-  cursor: pointer;
-  transition: border-color 160ms ease, color 160ms ease;
-}
-.you-map-counts button:hover {
-  border-color: var(--c);
-  color: var(--text);
-}
-.you-map-counts b {
-  color: var(--text);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.you-map-swatch {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--c);
-}
 .you-map .settings-group-note {
   margin: 0;
 }
@@ -64,155 +18,6 @@
 .you-map-body {
   display: grid;
   gap: 20px;
-}
-@container (min-width: 680px) {
-  .you-map-body {
-    grid-template-columns: minmax(260px, 0.85fr) minmax(0, 1fr);
-    align-items: start;
-    gap: 24px;
-  }
-  .you-map-visual {
-    position: sticky;
-    top: 24px;
-  }
-}
-
-/* The map. */
-.you-map-visual {
-  display: grid;
-  gap: 8px;
-}
-.you-orbit {
-  position: relative;
-  aspect-ratio: 1;
-  width: 100%;
-  max-width: 380px;
-  margin-inline: auto;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
-  border-radius: 24px;
-  background:
-    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 62%),
-    var(--surface);
-  cursor: grab;
-  touch-action: none;
-  user-select: none;
-}
-.you-orbit:active {
-  cursor: grabbing;
-}
-.you-orbit-ring {
-  position: absolute;
-  inset: 12%;
-  border: 1px dashed color-mix(in srgb, var(--line) 85%, transparent);
-  border-radius: 50%;
-  pointer-events: none;
-}
-.you-orbit-core {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  z-index: 50;
-  display: grid;
-  place-items: center;
-  align-content: center;
-  width: 76px;
-  height: 76px;
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  background: var(--accent);
-  color: var(--accent-ink);
-  box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 14%, transparent), 0 10px 30px color-mix(in srgb, var(--accent) 30%, transparent);
-  pointer-events: none;
-}
-.you-orbit-core span {
-  font-size: 24px;
-  font-weight: 650;
-  letter-spacing: -0.02em;
-  line-height: 1;
-}
-.you-orbit-core small {
-  margin-top: 3px;
-  font-size: 10.5px;
-  opacity: 0.85;
-}
-.you-orbit-dot,
-.you-orbit-label {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  will-change: transform, opacity;
-}
-.you-orbit-dot {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--c);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--c) 20%, transparent);
-  cursor: pointer;
-}
-.you-orbit-dot[data-back="1"] {
-  pointer-events: none;
-}
-.you-orbit-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border: 1px solid color-mix(in srgb, var(--c) 45%, var(--line));
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--c) 12%, var(--surface));
-  color: var(--text);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 550;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.you-orbit-label b {
-  min-width: 18px;
-  padding: 1px 5px;
-  border-radius: 999px;
-  background: var(--c);
-  color: var(--ci, #fff);
-  font-size: 10.5px;
-  text-align: center;
-}
-.you-orbit-label.is-empty {
-  border-style: dashed;
-  background: var(--surface);
-  color: var(--text-3);
-}
-.you-orbit-label.is-empty b {
-  background: var(--line);
-  color: var(--text-2);
-}
-.you-orbit-label[data-back="1"] {
-  pointer-events: none;
-}
-.you-orbit-tip {
-  position: absolute;
-  z-index: 200;
-  max-width: 180px;
-  padding: 7px 10px;
-  transform: translate(-50%, calc(-100% - 8px));
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--elev-2, var(--surface));
-  color: var(--text);
-  font-size: 12.5px;
-  line-height: 1.35;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.14);
-  pointer-events: none;
-}
-.you-orbit-tip.is-below {
-  transform: translate(-50%, 24px);
-}
-.you-map-hint {
-  margin: 0;
-  color: var(--text-3);
-  font-size: 12px;
-  text-align: center;
 }
 
 /* The area cards: the accessible list. */
@@ -353,70 +158,367 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .you-card,
-  .you-map-counts button {
+  .you-card {
     transition: none;
   }
 }
 
-/* ── Round 4 Phase 4: the scroll story (components/settings/YouMapHero.tsx) ──
-   A tall track with a sticky stage that fills the settings window. Scroll
-   progress drives the sphere's turn and size and swaps the title for the six
-   areas; the fact cards follow below, two across when there is room. */
+/* ── Round 5B Phase 2: the map (YouMapHero.tsx + YouMap.tsx) ──
+   One ivory stage. A canvas draws the orbit trails and the faint lines; the
+   points are buttons placed by the frame loop (transform, opacity, z-index).
+   Everything sits at the stage centre and is moved from there. */
 
 .you-hero {
-  position: relative;
-  height: 230svh;
-  margin-bottom: 8px;
+  display: grid;
+  gap: 12px;
+  margin-bottom: 20px;
 }
 .you-hero-stage {
-  position: sticky;
-  top: calc(var(--shell-top, 0px) + 12px);
+  position: relative;
   display: grid;
-  height: calc(100svh - var(--shell-top, 0px) - 24px);
-  min-height: 460px;
+  height: clamp(460px, 74svh, 720px);
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  border: 1px solid var(--map-ring);
   border-radius: 28px;
-  background:
-    radial-gradient(120% 80% at 50% 45%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 60%),
-    radial-gradient(60% 50% at 85% 100%, color-mix(in srgb, var(--series-teal, var(--accent)) 10%, transparent), transparent 70%),
-    var(--surface);
+  background: radial-gradient(70% 60% at 50% 48%, var(--map-bg) 0%, var(--map-bg) 40%, var(--map-bg-2) 100%);
+  color: var(--map-ink);
   isolation: isolate;
 }
 .you-hero-stage > * { grid-area: 1 / 1; }
 
-.you-hero-orbit {
+.you-map-stage {
   position: relative;
   z-index: 1;
   width: 100%;
   height: 100%;
-  will-change: transform;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
-.you-orbit.is-hero {
+.you-map-stage:active { cursor: grabbing; }
+
+.you-map-grain {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  max-width: none;
   height: 100%;
-  aspect-ratio: auto;
+  opacity: 0.07;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+[data-theme="dark"] .you-map-grain { opacity: 0.12; mix-blend-mode: screen; }
+
+.you-map-world {
+  position: absolute;
+  inset: 0;
+  transition: transform var(--dur-slow) var(--ease);
+}
+.you-map-stage.is-fact.is-wide .you-map-world { transform: translateX(-17%); }
+.you-map-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Centre: the initials in clean type inside a soft pearl circle. */
+.you-map-core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 250;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  width: 104px;
+  height: 104px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 28%, var(--map-core-1) 0%, var(--map-core-1) 22%, var(--map-core-2) 100%);
+  box-shadow:
+    0 1px 0 0 var(--map-core-1) inset,
+    0 14px 34px -12px color-mix(in srgb, var(--map-ink) 30%, transparent),
+    0 0 0 10px color-mix(in srgb, var(--map-core-1) 45%, transparent);
+  color: var(--map-ink);
+  pointer-events: none;
+}
+.you-map-core span {
+  font-family: var(--font-display, inherit);
+  font-size: 32px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.you-map-core small {
+  margin-top: 4px;
+  color: color-mix(in srgb, var(--map-ink) 60%, transparent);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+/* Every point starts at the centre; the frame loop moves it. */
+.you-map-node {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  will-change: transform, opacity;
+}
+.you-map-light,
+.you-map-pill,
+.you-map-sat {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
   border: 0;
-  border-radius: 0;
+  font: inherit;
+  color: var(--map-ink);
+  cursor: pointer;
+}
+.you-map-light:focus-visible,
+.you-map-pill:focus-visible,
+.you-map-sat:focus-visible {
+  outline: 2px solid var(--map-ink);
+  outline-offset: 3px;
+}
+.you-map-stage [data-back="1"],
+.you-map-stage [data-dim="1"] { pointer-events: none; }
+
+/* Point colours live on the (static) children, so the moving parent
+   declares no custom property. */
+.you-map-pill[data-c="goals"], .you-map-world [data-c="goals"] > * { --c: var(--map-goals); }
+.you-map-pill[data-c="classes"], .you-map-world [data-c="classes"] > * { --c: var(--map-classes); }
+.you-map-pill[data-c="commitments"], .you-map-world [data-c="commitments"] > * { --c: var(--map-commitments); }
+.you-map-pill[data-c="work"], .you-map-world [data-c="work"] > * { --c: var(--map-work); }
+.you-map-pill[data-c="hard"], .you-map-world [data-c="hard"] > * { --c: var(--map-hard); }
+.you-map-pill[data-c="future"], .you-map-world [data-c="future"] > * { --c: var(--map-future); }
+
+/* A fact: a small emerging light with a soft bloom. */
+.you-map-light {
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  padding: 0;
+  border-radius: 50%;
   background: none;
 }
-.you-orbit.is-hero .you-orbit-ring { inset: auto; top: 50%; left: 50%; width: min(80%, 80vh); aspect-ratio: 1; transform: translate(-50%, -50%); }
-.you-orbit.is-hero .you-orbit-core { width: 112px; height: 112px; }
-.you-orbit.is-hero .you-orbit-core span { font-size: 34px; }
-.you-orbit.is-hero .you-orbit-core small { font-size: 12px; }
-
-.you-hero-intro {
-  z-index: 2;
-  align-self: end;
-  max-width: 34rem;
-  padding: 0 clamp(20px, 4vw, 40px) clamp(24px, 5vh, 48px);
+.you-map-bloom {
+  position: absolute;
+  inset: -7px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--c) 70%, transparent) 0%, color-mix(in srgb, var(--c) 22%, transparent) 42%, transparent 70%);
+  transition: transform var(--dur) var(--ease);
+}
+.you-map-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--c) 55%, var(--map-core-1));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--c) 85%, var(--map-ink));
+}
+.you-map-light.is-guess .you-map-dot { background: var(--map-bg); box-shadow: 0 0 0 1.25px var(--c); }
+.you-map-light:hover .you-map-bloom,
+.you-map-light:focus-visible .you-map-bloom,
+.you-map-light.is-open .you-map-bloom { transform: scale(1.35); }
+.you-map-flabel {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 4px);
+  width: max-content;
+  max-width: 160px;
+  transform: translateY(-50%);
+  color: var(--map-ink);
+  font-size: 12.5px;
+  line-height: 1.3;
+  text-align: left;
+  white-space: normal;
   pointer-events: none;
+}
+.you-map-light[data-side="l"] .you-map-flabel { right: calc(100% + 4px); left: auto; text-align: right; }
+.you-map-light[data-side="c"] .you-map-flabel { top: auto; bottom: calc(100% + 2px); left: 50%; transform: translateX(-50%); text-align: center; }
+.you-map-stage.is-fact .you-map-light:not(.is-open) .you-map-flabel { opacity: 0.55; }
+.you-map-light.is-open .you-map-flabel { font-weight: 600; }
+
+/* A new fact glows for a moment (Phase 3). */
+.you-map-light.is-new .you-map-bloom { animation: you-map-glow 2.4s var(--ease) 2; }
+@keyframes you-map-glow {
+  0%, 100% { transform: scale(1); }
+  45% { transform: scale(2.4); }
+}
+
+/* An area: a white pill with a small pastel dot. */
+.you-map-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px 0 10px;
+  translate: -50% -50%;
+  border: 1px solid var(--map-ring);
+  border-radius: 999px;
+  background: var(--map-pill);
+  box-shadow: 0 4px 14px -8px color-mix(in srgb, var(--map-ink) 35%, transparent);
+  font-size: 12.5px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+.you-map-pill b {
+  color: color-mix(in srgb, var(--map-ink) 55%, transparent);
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+}
+.you-map-pill.is-empty { color: color-mix(in srgb, var(--map-ink) 55%, transparent); }
+.you-map-pill.is-open { border-color: color-mix(in srgb, var(--c) 70%, var(--map-ring)); }
+.you-map-pill-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c);
+}
+
+/* A project: a small satellite. */
+.you-map-sat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px 3px 4px;
+  translate: -8px -50%;
+  border-radius: 999px;
+  background: none;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.you-map-sat-dot {
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid var(--map-ink);
+  border-radius: 50%;
+  background: var(--map-bg);
+}
+.you-map-sat-name { color: color-mix(in srgb, var(--map-ink) 70%, transparent); }
+.you-map-sat:hover .you-map-sat-name,
+.you-map-sat.is-pinned .you-map-sat-name { color: var(--map-ink); text-decoration: underline; text-underline-offset: 3px; }
+.you-map-sat.is-pinned .you-map-sat-dot { background: var(--map-ink); }
+
+/* Hover label. */
+.you-map-tip {
+  position: absolute;
+  z-index: 400;
+  max-width: 220px;
+  padding: 7px 10px;
+  transform: translate(-50%, calc(-100% - 14px));
+  border: 1px solid var(--map-ring);
+  border-radius: 10px;
+  background: var(--map-pill);
+  color: var(--map-ink);
+  font-size: 12.5px;
+  line-height: 1.35;
+  box-shadow: 0 8px 24px -10px color-mix(in srgb, var(--map-ink) 40%, transparent);
+  pointer-events: none;
+}
+.you-map-tip.is-below { transform: translate(-50%, 18px); }
+
+/* Back a level. */
+.you-map-back {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 34px;
+  padding: 0 14px 0 8px;
+  border: 1px solid var(--map-ring);
+  border-radius: 999px;
+  background: var(--map-pill);
+  color: var(--map-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+}
+.you-map-back:focus-visible { outline: 2px solid var(--map-ink); outline-offset: 2px; }
+
+/* The fact card: full text, source, when, and which plans used it. */
+.you-map-card {
+  position: absolute;
+  top: 50%;
+  right: clamp(16px, 4%, 40px);
+  z-index: 500;
+  width: min(340px, 40%);
+  padding: 18px 20px;
+  transform: translateY(-50%);
+  border: 1px solid var(--map-ring);
+  border-radius: 20px;
+  background: var(--map-pill);
+  box-shadow: 0 18px 40px -20px color-mix(in srgb, var(--map-ink) 45%, transparent);
+  color: var(--map-ink);
+  animation: you-map-card-in var(--dur) var(--ease);
+  cursor: auto;
+}
+@keyframes you-map-card-in {
+  from { opacity: 0; transform: translate(8px, -50%); }
+}
+.you-map-card-kicker {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 8px;
+  color: color-mix(in srgb, var(--map-ink) 60%, transparent);
+  font-size: 12px;
+  font-weight: 600;
+}
+.you-map-card-text {
+  margin: 0 0 14px;
+  font-size: 17px;
+  line-height: 1.4;
+  text-wrap: pretty;
+}
+.you-map-card dl { display: grid; gap: 8px; margin: 0; }
+.you-map-card dl > div { display: grid; grid-template-columns: 72px 1fr; gap: 10px; }
+.you-map-card dt { color: color-mix(in srgb, var(--map-ink) 55%, transparent); font-size: 12.5px; }
+.you-map-card dd { margin: 0; font-size: 13px; line-height: 1.4; }
+.you-map-stage:not(.is-wide) .you-map-card {
+  top: auto;
+  right: 12px;
+  bottom: 12px;
+  left: 12px;
+  width: auto;
+  transform: none;
+  animation-name: you-map-card-up;
+}
+@keyframes you-map-card-up {
+  from { opacity: 0; transform: translateY(8px); }
+}
+.you-map-stage.is-fact:not(.is-wide) .you-map-world { transform: translateY(-22%); }
+
+/* The title and hint step aside once an area is open. */
+.you-hero-intro,
+.you-hero-hint {
+  z-index: 2;
+  pointer-events: none;
+  transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+.you-hero-intro.is-away,
+.you-hero-hint.is-away { opacity: 0; transform: translateY(-8px); }
+.you-hero-intro {
+  align-self: start;
+  max-width: 30rem;
+  padding: clamp(20px, 4vh, 36px) clamp(20px, 4vw, 36px) 0;
 }
 .you-hero-kicker {
   margin: 0 0 6px;
-  color: var(--text-3);
+  color: color-mix(in srgb, var(--map-ink) 55%, transparent);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -424,51 +526,38 @@
 }
 .you-hero-title {
   margin: 0;
-  color: var(--text);
-  font-size: clamp(36px, 6vw, 64px);
-  font-weight: 650;
-  letter-spacing: -0.035em;
-  line-height: 0.98;
+  color: var(--map-ink);
+  font-family: var(--font-display, inherit);
+  font-size: clamp(32px, 4.6vw, 52px);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1;
 }
 .you-hero-summary {
-  margin: 12px 0 0;
-  color: var(--text-2);
-  font-size: clamp(15px, 1.6vw, 18px);
+  margin: 10px 0 0;
+  color: color-mix(in srgb, var(--map-ink) 70%, transparent);
+  font-size: clamp(14px, 1.4vw, 16px);
   line-height: 1.45;
   text-wrap: pretty;
 }
-
-.you-hero-cue {
-  z-index: 2;
-  display: inline-flex;
+.you-hero-hint {
   align-self: end;
-  justify-self: end;
-  align-items: center;
-  gap: 6px;
+  justify-self: center;
   margin: 0;
-  padding: 0 clamp(20px, 4vw, 40px) clamp(24px, 5vh, 48px);
-  color: var(--text-3);
+  padding-bottom: 16px;
+  color: color-mix(in srgb, var(--map-ink) 50%, transparent);
   font-size: 12.5px;
-  pointer-events: none;
-}
-.you-hero-cue svg { animation: you-hero-nudge 1.6s var(--ease) infinite; }
-@keyframes you-hero-nudge {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(3px); }
 }
 
+/* Area chips under the stage: white pills with a pastel dot. */
 .you-hero-areas {
-  z-index: 3;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  align-self: end;
   margin: 0;
-  padding: 0 clamp(14px, 3vw, 28px) clamp(14px, 3vh, 28px);
+  padding: 0;
   list-style: none;
 }
-/* Keyboard users can reach the areas before they've scrolled them in. */
-.you-hero-areas:focus-within { opacity: 1 !important; transform: none !important; }
 .you-hero-areas button {
   display: flex;
   align-items: center;
@@ -476,67 +565,62 @@
   width: 100%;
   min-height: 44px;
   padding: 0 14px;
-  border: 1px solid color-mix(in srgb, var(--c) 35%, var(--line));
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--c) 9%, var(--surface));
-  color: var(--text-2);
+  border: 1px solid var(--map-ring);
+  border-radius: 999px;
+  background: var(--map-pill);
+  color: var(--map-ink);
   font: inherit;
   font-size: 13.5px;
   text-align: left;
   cursor: pointer;
-  backdrop-filter: blur(8px);
-  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  transition: border-color var(--dur-fast) var(--ease);
 }
-.you-hero-areas button:hover {
-  border-color: var(--c);
-  background: color-mix(in srgb, var(--c) 16%, var(--surface));
-  color: var(--text);
-}
+.you-hero-areas button:hover,
+.you-hero-areas button[aria-pressed="true"] { border-color: color-mix(in srgb, var(--c) 70%, var(--map-ring)); }
 .you-hero-areas button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .you-hero-area-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.you-hero-areas b { color: var(--text); font-weight: 650; font-variant-numeric: tabular-nums; }
+.you-hero-areas b { color: color-mix(in srgb, var(--map-ink) 60%, transparent); font-weight: 600; font-variant-numeric: tabular-nums; }
 
-/* The cards now sit under the story, two across when there is room. */
+/* The cards sit under the map, two across when there is room. */
 .you-map-body.is-below { display: block; }
 .you-map-body.is-below .you-map-cards {
   display: grid;
   gap: 14px;
 }
 @container (min-width: 680px) {
-  .you-map-body.is-below { grid-template-columns: none; }
   .you-map-body.is-below .you-map-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
   .you-map-body.is-below .you-card.is-earlier { grid-column: 1 / -1; }
 }
 
 @media (max-width: 767px) {
-  .you-hero { height: 200svh; }
-  .you-hero-stage { border-radius: 22px; min-height: 420px; }
+  .you-hero-stage { height: 540px; border-radius: 22px; }
+  .you-hero-intro { padding: 18px 18px 0; }
+  .you-hero-title { font-size: 30px; }
+  .you-hero-summary { display: none; }
+  .you-map-core { width: 76px; height: 76px; }
+  .you-map-core span { font-size: 24px; }
+  .you-map-core small { font-size: 10px; }
+  .you-map-pill { height: 28px; padding: 0 10px 0 8px; font-size: 12px; }
+  .you-map-sat { font-size: 11px; }
+  .you-map-flabel { max-width: 120px; font-size: 11.5px; }
   .you-hero-areas { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
-  .you-hero-areas button { min-height: 40px; padding: 0 10px; font-size: 12.5px; }
-  .you-orbit.is-hero .you-orbit-core { width: 88px; height: 88px; }
-  .you-orbit.is-hero .you-orbit-core span { font-size: 28px; }
+  .you-hero-areas button { padding: 0 12px; font-size: 12.5px; }
 }
 
-/* Reduced motion: no track, no scroll-linked movement. */
-.you-hero.is-still { height: auto; }
-.you-hero.is-still .you-hero-stage {
-  position: relative;
-  top: auto;
-  grid-template-rows: minmax(320px, 1fr) auto auto;
-  height: auto;
-  min-height: 0;
-}
-.you-hero.is-still .you-hero-stage > * { grid-area: auto; }
-.you-hero.is-still .you-hero-orbit { height: 360px; }
-.you-hero.is-still .you-hero-intro { padding-bottom: 12px; }
+/* Reduced motion: no drift, no glow, no easing (the frame loop also stops). */
 @media (prefers-reduced-motion: reduce) {
-  .you-hero-cue svg { animation: none; }
+  .you-map-world,
+  .you-map-bloom,
+  .you-hero-intro,
+  .you-hero-hint,
+  .you-hero-areas button { transition: none; }
+  .you-map-card { animation: none; }
+  .you-map-light.is-new .you-map-bloom { animation: none; transform: scale(1.6); }
 }
 
 /* Round 4 Phase 7: 44px to tap on phones. */
 @media (max-width: 767px) {
   .you-hero-areas button,
-  .you-map-counts button,
   .settings-page .you-fact-edit input {
     min-height: 44px;
   }

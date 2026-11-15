@@ -1459,6 +1459,49 @@ export async function attachFactsUsed(table: "change_sets" | "ai_decisions", id:
   }
 }
 
+/** One confirmed plan change and the facts it used (Round 5B: the map links
+ *  facts to the projects that used them). `planTitle` is the new plan's
+ *  title for an add_plan change set, whose id isn't stored on the row. */
+export type FactUsage = { planId: string | null; planTitle: string | null; factIds: string[] };
+
+/**
+ * The student's confirmed change sets that recorded facts_used, newest first
+ * (at most 200). Empty when the column is missing (the migration hasn't run)
+ * or on any error: the map just draws no usage lines.
+ */
+export async function listFactUsage(): Promise<FactUsage[]> {
+  if (missingFactsUsed.isMissing("change_sets")) return [];
+  try {
+    const { db, userId } = ctx();
+    const { data, error } = await db
+      .from("change_sets")
+      .select("target_plan_id, ops, facts_used")
+      .eq("user_id", userId)
+      .eq("status", "confirmed")
+      .not("facts_used", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (error) {
+      if (schemaErrorKind(error) === "missing_column") missingFactsUsed.markMissing("change_sets");
+      return [];
+    }
+    const out: FactUsage[] = [];
+    for (const row of (data ?? []) as { target_plan_id: string | null; ops: unknown; facts_used: unknown }[]) {
+      const factIds = (Array.isArray(row.facts_used) ? row.facts_used : [])
+        .map((f) => (f && typeof f === "object" ? String((f as { id?: unknown }).id ?? "") : ""))
+        .filter(Boolean);
+      if (!factIds.length) continue;
+      const addPlan = (Array.isArray(row.ops) ? row.ops : []).find((o) => o && typeof o === "object" && (o as { op?: unknown }).op === "add_plan") as
+        | { title?: unknown }
+        | undefined;
+      out.push({ planId: row.target_plan_id ?? null, planTitle: typeof addPlan?.title === "string" ? addPlan.title : null, factIds });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 /** Inserts the request's decision row; its id, or null if it couldn't. */
 export async function recordDecision(input: DecisionInput): Promise<string | null> {
   try {

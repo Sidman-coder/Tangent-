@@ -59,9 +59,13 @@
 .settings-page.is-knows .settings-sidenav {
   transition: transform var(--dur) var(--ease), opacity var(--dur) var(--ease);
 }
-.settings-page.is-knows.is-takeover .settings-layout {
-  grid-template-columns: 0 minmax(0, 1fr);
-  gap: 0;
+/* Desktop only: on phones the sub-nav is display:none, so a 0 first column
+   would swallow .settings-main (it collapsed to 0px wide at 390). */
+@media (min-width: 861px) {
+  .settings-page.is-knows.is-takeover .settings-layout {
+    grid-template-columns: 0 minmax(0, 1fr);
+    gap: 0;
+  }
 }
 .settings-page.is-knows.is-takeover .settings-sidenav {
   transform: translateX(-24px);

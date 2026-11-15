@@ -3,7 +3,7 @@
 // Development-only: a page of the app inside the real shell, with sample data
 // (lib/dev/sample-state.ts), for design review without an account.
 // /dev/app/today, /dev/app/calendar, /dev/app/projects, /dev/app/project, /dev/app/school, /dev/app/settings, /dev/app/settings-account (…-security, -schedule,
-// -notifications, -context, -activity, -data),
+// -notifications, -context (sample facts on the map; -context-dense has ~150), -activity, -data),
 // /dev/app/tangents, /dev/app/notifications (…-empty), /dev/app/draft (an unconfirmed plan; leave the page and the draft pill shows), /dev/app/preview, /dev/app/color, /dev/app/grill. 404s in production. API calls fail here (no session), so
 // anything loaded from the server shows its empty or error state.
 
@@ -13,6 +13,8 @@ import MotionProvider from "@/components/MotionProvider";
 import { PipelineFlagProvider } from "@/components/PipelineFlag";
 import AppShell from "@/components/AppShell";
 import { SampleNotificationsContext } from "@/components/NotificationBell";
+import { SampleKnowsContext } from "@/components/settings/WhatTangentKnows";
+import { SAMPLE_KNOWS, denseKnows } from "@/lib/dev/sample-knows";
 import type { Notification } from "@/lib/types";
 import TaskDetail from "@/components/TaskDetail";
 import DraftDock from "@/components/drafts/DraftDock";
@@ -241,22 +243,31 @@ const NOTIFICATION_PAGES: Record<string, () => Notification[]> = {
   "notifications-empty": () => [],
 };
 
+/** /dev/app/settings-context (-dense): What Tangent knows with sample facts. */
+const KNOWS_PAGES: Record<string, () => typeof SAMPLE_KNOWS> = {
+  "settings-context": () => SAMPLE_KNOWS,
+  "settings-context-dense": denseKnows,
+};
+
 export default function AppPreview() {
   const { page } = useParams<{ page: string }>();
   const notifSample = useMemo(() => NOTIFICATION_PAGES[page]?.() ?? null, [page]);
+  const knowsSample = useMemo(() => KNOWS_PAGES[page]?.() ?? null, [page]);
   if (process.env.NODE_ENV !== "development") notFound();
-  const Page = notifSample ? TodayHome : PAGES[page];
+  const Page = notifSample ? TodayHome : page === "settings-context-dense" ? PAGES["settings-context"] : PAGES[page];
   if (!Page) notFound();
   return (
     <PipelineFlagProvider value={false}>
       <MockAppStateProvider state={SAMPLE_STATE}>
         <MotionProvider>
           <SampleNotificationsContext.Provider value={notifSample}>
-            <AppShell>
-              <main id="main-content">
-                <Page />
-              </main>
-            </AppShell>
+            <SampleKnowsContext.Provider value={knowsSample}>
+              <AppShell>
+                <main id="main-content">
+                  <Page />
+                </main>
+              </AppShell>
+            </SampleKnowsContext.Provider>
           </SampleNotificationsContext.Provider>
           <TaskDetail />
           <DraftDock />

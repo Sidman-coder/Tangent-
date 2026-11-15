@@ -63,3 +63,32 @@ spec-verifier; ui-checker at 1440 and 390, light and dark; scroll and drill-in s
   - 390: back link shown, tabs hidden, scrollWidth 384 ≤ 390; `p1-knows-390.png`
   - tsc clean; `npm test` 922 pass; eslint clean on both files
   - EXTRA: a sticky "Settings" back link on the phone (the spec asks for a link; sticky is my choice); hysteresis (on at 48px, off at 8px) so the layout change can't flicker
+- 2026-11-15 Phase 2 done (signed-out /dev/app/settings-context and settings-context-dense):
+  - `YouOrbit.tsx` replaced by `components/settings/YouMap.tsx`: levels root → area → fact; one rAF loop writes transform/opacity/z-index to plain `.you-map-node` wrapper divs, and one canvas draws trails and links
+  - link rules in `lib/you-map-links.ts`, tested in `lib/you-map-links.test.ts`; project satellites use GET `/api/context/usage` (`change_sets.facts_used`; empty when the column is missing)
+  - perf, dense page (150 facts, 162 points; Playwright CDP `Performance.getMetrics` plus an in-page rAF counter):
+    - before: 37fps idle, 29fps dragging, 16.7ms of style recalc per frame
+    - after: 60fps idle, 60.4fps dragging, 2.39ms of style recalc per frame
+    - the fix: no inline `--c` on moving elements (`data-c` rules on the static children instead); the loop writes to divs, not `<button>`s
+  - interaction (Playwright evaluate):
+    - an area click spreads its facts with labels
+    - a fact click opens the card, and focus lands on `.you-map-light.is-open`
+    - Esc goes fact → area → root
+    - reduced motion: transforms unchanged over 1.5s
+  - fixed a Phase 1 bug: at ≤860px the takeover grid (`0 1fr`) put `.settings-main` in the 0-wide column (0px at 390). The takeover grid is now desktop-only (`components/ui/settings.css`); at 390 in takeover, main is 352px wide and scrollWidth is 384
+  - screenshots in `docs/design/screens/round5b/`:
+    - `p2-map-root-1440-{light,dark}`
+    - `p2-map-dense-1440-dark`
+    - `p2-map-area-1440-{light,dark}`
+    - `p2-map-fact-1440-{light,dark}`
+    - `p2-map-reduced-1440-light`
+    - `p2-map-root-390-{light,dark}`
+    - `p2-map-area-390-dark`
+  - tsc clean; `npm test` 929 pass; eslint clean on the touched files
+  - TANGENT-STYLE: Round 5B exception added (idle drift, glow, map palette)
+  - known gaps:
+    - in the dense sample, facts bunch into bands near the top and bottom of the sphere
+    - at 390, an outer satellite label can clip at the stage edge
+  - EXTRA:
+    - the dev sample pages `/dev/app/settings-context` and `settings-context-dense` (`lib/dev/sample-knows.ts`)
+    - the route `/api/context/usage` and `FactUsage` in `lib/store.ts` (needed for the satellite links)

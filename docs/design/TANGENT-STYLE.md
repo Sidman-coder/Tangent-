@@ -411,6 +411,8 @@ Rules: nothing over 250ms; nothing moves on its own except the mic pulse while l
 
 **Exception (Round 5A Phase 6):** the notifications popover springs out of the bell with a slight overshoot (`spring.pop`: `visualDuration` 0.25, `bounce` 0.3, scaling from the bell's position). It is the only spring with bounce; everything else keeps `bounce: 0`. Reduced motion: a plain fade.
 
+**Exception (Round 5B, "You, mapped"):** in Settings › What Tangent knows, the map drifts slowly when idle. It pauses on hover, drag or drill-in. A newly told fact glows on the map for a moment. The map uses its own ivory and pastel `--map-*` tokens, with no purple accent. Drill-in moves ease toward their target and take a little over 250ms. Reduced motion: no drift, no glow animation, and instant level changes on a still layout.
+
 ---
 
 ## 10. Voice and copy
