@@ -276,6 +276,23 @@
 .project-done[open] summary {
   margin-bottom: 10px;
 }
+/* Review 2026-11-24: "Done 1" had no sign it opens; same chevron as Later. */
+.project-done summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+}
+.project-done summary::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  margin-left: 8px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--dur-fast) var(--ease);
+}
+.project-done[open] summary::after { transform: rotate(45deg); }
 
 @media (prefers-reduced-motion: reduce) {
   .project-card,
