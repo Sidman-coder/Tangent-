@@ -135,11 +135,14 @@ export function commitmentLabel(kind: TaskCommitment): "Appointment" | "Reminder
   return kind === "reminder" ? "Reminder" : "Goal step";
 }
 
-/** The choices in the task detail's Type selector. */
-export const COMMITMENT_OPTIONS: { value: TaskCommitment; label: string }[] = [
-  { value: "fixed", label: "Fixed appointment" },
-  { value: "reminder", label: "Reminder" },
-  { value: "flexible", label: "Goal step" },
+/** The choices in every Type selector (task detail and Add a task), one
+ *  vocabulary and one order everywhere. Review 2026-11-24: the same type was
+ *  "Fixed appointment" in the detail, "Must-do" in Add a task and
+ *  "Appointment" on preview rows. */
+export const COMMITMENT_OPTIONS: { value: TaskCommitment; label: string; hint: string }[] = [
+  { value: "fixed", label: "Appointment", hint: "Has to happen then" },
+  { value: "flexible", label: "Goal step", hint: "Moves you toward something bigger" },
+  { value: "reminder", label: "Reminder", hint: "Just a nudge" },
 ];
 
 /** Graded or due work: it gets a Done circle even when it has a time. */

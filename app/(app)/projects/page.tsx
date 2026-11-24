@@ -5,6 +5,7 @@
 // student's week (the spacing brain), and helps with each one. Tangents (the
 // year-plus goals projects branch from) have their own section here too.
 
+import { taskTitleText } from "@/components/ui/TaskTitle";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -266,7 +267,7 @@ function AreaCard({ plan, tasks, today }: { plan: Plan; tasks: Task[]; today: st
     <Link href={`/projects/${plan.id}`} className="school-card" style={{ "--project-color": planSeriesColor(plan) } as React.CSSProperties}>
       <div className="school-card-copy">
         <span className="area-card-name">{plan.title}</span>
-        <strong>{next ? `Next: ${next.title}` : "Nothing coming up"}</strong>
+        <strong>{next ? `Next: ${taskTitleText(next, plan.title)}` : "Nothing coming up"}</strong>
         <span>
           {next?.date ? `${shortDay(next.date, today)}${next.time ? ` · ${formatTime12(next.time)}` : ""} · ` : ""}
           {open.length} open
@@ -297,9 +298,9 @@ function ProjectCard({ project, today }: { project: ProjectSummary; today: strin
       <p className="project-card-meta">
         {next ? (
           <>
-            <span className="project-card-next">Next: {next.title}</span>
+            <span className="project-card-next">Next: {taskTitleText(next, plan.title)}</span>
             <span className={overdue ? "project-card-when is-overdue" : "project-card-when"}>
-              {overdue ? "Overdue · " : ""}
+              {overdue ? "Past due · " : ""}
               {shortDay(next.date, today)}
               {next.time ? ` · ${formatTime12(next.time)}` : ""}
             </span>

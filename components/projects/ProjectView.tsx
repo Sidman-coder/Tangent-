@@ -406,7 +406,7 @@ export default function ProjectView({ id }: { id: string }) {
         </Card>
 
         <div className="project-extras">
-          <ProjectStats tasks={steps} today={today} extrasOnly />
+          <ProjectStats tasks={steps} today={today} extrasOnly projectName={plan.title} />
         </div>
 
         <div className="project-settings">

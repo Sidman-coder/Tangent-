@@ -1,5 +1,6 @@
 "use client";
 
+import { COMMITMENT_OPTIONS } from "@/lib/task-kind";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { getUserToday } from "@/lib/time";
 import { useEffect, useMemo, useState } from "react";
@@ -25,12 +26,8 @@ interface Props {
 
 const DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-/** Round 4 Phase 4.2: what kind of task, in the student's words. */
-const TYPES: { value: TaskCommitment; label: string; hint: string }[] = [
-  { value: "fixed", label: "Must-do", hint: "Has to happen then" },
-  { value: "flexible", label: "Goal step", hint: "Moves you toward something bigger" },
-  { value: "reminder", label: "Reminder", hint: "Just a nudge" },
-];
+/** Round 4 Phase 4.2: what kind of task, in the student's words (the shared list). */
+const TYPES = COMMITMENT_OPTIONS;
 
 const NEW_PROJECT = "__new__";
 

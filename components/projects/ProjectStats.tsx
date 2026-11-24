@@ -4,6 +4,7 @@
 // lib/project-stats.ts; this only lays it out. The project page shows its own
 // progress and pace card, so it asks for the extras only (Focus, Workload).
 
+import { cleanTaskTitle } from "@/lib/clean-title";
 import { useMemo, useState } from "react";
 import { AlertCircle, CheckCircle2, Clock } from "lucide-react";
 import { useAppState } from "@/components/AppStateProvider";
@@ -50,7 +51,10 @@ export default function ProjectStats({
   today,
   school = false,
   extrasOnly = false,
+  projectName = null,
 }: {
+  /** The project's name, dropped from the front of step titles ("Robotics: …"). */
+  projectName?: string | null;
   tasks: StatTask[];
   today: string;
   school?: boolean;
@@ -141,7 +145,7 @@ export default function ProjectStats({
       {focus && (
         <div className="pstats-block">
           <h3>Focus</h3>
-          <p className="pstats-focus">{focus.title}</p>
+          <p className="pstats-focus">{cleanTaskTitle(focus.title, { projectName }).title}</p>
           <p className="pstats-note">{focus.why}</p>
         </div>
       )}

@@ -356,10 +356,17 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTop = Math.max(0, (startHour - START_HOUR) * HOUR_PX - 16);
+    // Review 2026-11-24: when today is on screen and the school morning has
+    // passed, open an hour above now instead, so the now line and what's next
+    // are in view (at 2 PM a phone used to open on 7 AM-1 PM, all empty).
+    const showsToday = days.some((d) => toYMD(d) === todayYmd);
+    const t = new Date();
+    const nowHour = t.getHours() + t.getMinutes() / 60;
+    const openAt = showsToday && nowHour - 1 > startHour ? Math.min(nowHour - 1, 20) : startHour;
+    el.scrollTop = Math.max(0, (openAt - START_HOUR) * HOUR_PX - 16);
     // Only when the days change, not on every task edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toYMD(days[0]), days.length, startHour]);
+  }, [toYMD(days[0]), days.length, startHour, todayYmd]);
 
   const hasDue = days.some((d) => tasksForDay(toYMD(d)).some(isDue));
   const hours = useMemo(() => Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i), []);
