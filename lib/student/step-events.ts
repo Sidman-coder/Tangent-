@@ -107,6 +107,31 @@ export function logStepEvent(event: StepEventInput): void {
   logStepEvents([event]);
 }
 
+/** Ids of steps the student checked in on in the last `days` days (the daily
+ *  bubble never asks about those again: lib/student/step-follow-up.ts). Empty
+ *  before the migration or on any error. */
+export async function checkedInTaskIds(days = 3): Promise<Set<string>> {
+  if (tableMissing()) return new Set();
+  try {
+    const { db, userId } = getRequestContext();
+    const since = new Date(Date.now() - days * 86_400_000).toISOString();
+    const { data, error } = await db
+      .from("step_events")
+      .select("task_id")
+      .eq("user_id", userId)
+      .eq("kind", "check_in")
+      .gte("created_at", since)
+      .limit(200);
+    if (error) {
+      noteMissing(error);
+      return new Set();
+    }
+    return new Set((data ?? []).map((r: { task_id: string | null }) => r.task_id).filter((id: string | null): id is string => !!id));
+  } catch {
+    return new Set();
+  }
+}
+
 /** The student's recent observations, newest first (the last 120 days, up to
  *  500). Empty before the migration. */
 export async function readStepEvents(): Promise<StepEvent[]> {

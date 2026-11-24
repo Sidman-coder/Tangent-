@@ -250,7 +250,7 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
 
       {cs.assumptions.length > 0 && (
         <ul className="preview-card-assumptions">
-          {cs.assumptions.map((a) => (
+          {cs.assumptions.slice(0, 3).map((a) => (
             <li key={a}>{a}</li>
           ))}
         </ul>

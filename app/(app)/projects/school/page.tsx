@@ -6,6 +6,10 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
+import CanvasConnectGuide from "@/components/CanvasConnectGuide";
+import { useCanvasStatus } from "@/components/settings/useCanvasStatus";
+import Button from "@/components/ui/Button";
+import Skeleton from "@/components/ui/Skeleton";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import ProjectStats from "@/components/projects/ProjectStats";
 import { openTask } from "@/components/TaskDetail";
@@ -22,6 +26,8 @@ export default function SchoolPage() {
   const tz = useUserTimezone();
   const today = getUserToday(tz);
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
+  const canvas = useCanvasStatus();
+  const [guideOpen, setGuideOpen] = useState(false);
 
   const tasks = useMemo(
     () =>
@@ -65,7 +71,13 @@ export default function SchoolPage() {
     }
   };
 
-  if (!state) return <div className="project-page" aria-busy="true" />;
+  if (!state) {
+    return (
+      <div className="project-page" aria-busy="true">
+        <Skeleton rows={4} label="Loading School" />
+      </div>
+    );
+  }
 
   return (
     <div className="project-page">
@@ -75,8 +87,25 @@ export default function SchoolPage() {
       <header className="project-head">
         <h1 className="project-title-input">School</h1>
       </header>
+      {canvas.syncFailed && (
+        <div className="school-sync-note" role="status">
+          <p>Canvas didn&apos;t update. Your last assignments are still here.</p>
+          <Button variant="secondary" size="sm" onClick={() => setGuideOpen(true)}>Reconnect</Button>
+        </div>
+      )}
       {tasks.length === 0 && ownSteps.length === 0 ? (
-        <p className="project-empty">Nothing from Canvas right now. New assignments show up here after the next sync.</p>
+        <div className="project-empty school-empty">
+          <p>
+            {canvas.connected
+              ? "Nothing due from Canvas right now. New assignments show up here after the next sync."
+              : "Nothing here yet. Connect Canvas and your assignments and due dates land here."}
+          </p>
+          {canvas.loaded && !canvas.connected && (
+            <Button variant="primary" size="sm" onClick={() => setGuideOpen(true)}>
+              Connect Canvas
+            </Button>
+          )}
+        </div>
       ) : (
         <div className="project-layout">
           <div className="project-main">
@@ -112,6 +141,7 @@ export default function SchoolPage() {
           </aside>
         </div>
       )}
+      <CanvasConnectGuide open={guideOpen} onClose={() => setGuideOpen(false)} />
     </div>
   );
 }

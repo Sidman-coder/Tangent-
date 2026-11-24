@@ -62,6 +62,8 @@ export default function CaptureHome() {
   const [words, setWords] = useState("");
   const [interim, setInterim] = useState("");
   const [outcome, setOutcome] = useState<CaptureOutcome | null>(null);
+  // Round 6 (item 5): the words this outcome came from, for the busy-time offer.
+  const [sortedSaid, setSortedSaid] = useState("");
   const [done, setDone] = useState<Record<string, boolean>>({});
   const islandRef = useRef<HTMLButtonElement>(null);
   const [origin, setOrigin] = useState<Point>({ x: 0, y: 0 });
@@ -119,6 +121,7 @@ export default function CaptureHome() {
       clearFreshSet();
       const result = await capture(said);
       if (seq !== holdRef.current.seq) return;
+      setSortedSaid(said);
       setOutcome(result);
       finishSort(seq);
       // Asked for a plan in words: Home's planning view builds it.
@@ -437,7 +440,8 @@ export default function CaptureHome() {
       >
         <h1 className="capture-title">To do</h1>
         <p className="capture-count">
-          {count === 1 ? "1 thing" : `${count} things`}
+          {/* Overnight Phase 5 (N08): "0 things" read as an empty list while later work exists below All tasks. */}
+          {count === 0 && lens === "all" ? (allRows.length > 0 ? "Nothing due now" : "Nothing to check off") : count === 1 ? "1 thing" : `${count} things`}
           {urgentCount > 0 && <span className="capture-count-urgent"> · {urgentCount} urgent</span>}
         </p>
 
@@ -458,7 +462,7 @@ export default function CaptureHome() {
         ) : (
           <div className="capture-sections">
             {nowSections.map((sec) => renderSection(sec))}
-            {lens === "all" && state && nowSections.length === 0 && <p className="capture-empty is-inline">Nothing due now.</p>}
+            {lens === "all" && state && nowSections.length === 0 && <p className="capture-empty is-inline">Nothing due today. Later work is under All tasks.</p>}
             {lens === "all" && (
               <Link href="/tasks" className="capture-all-tasks">
                 All tasks <ChevronRight size={15} aria-hidden="true" />
@@ -523,6 +527,7 @@ export default function CaptureHome() {
             questionsPending={questionsPending}
             parkedSet={parkedSet}
             line={savedLine}
+            said={sortedSaid}
             onDismiss={dismiss}
             onRetry={(said) => {
               setOutcome(null);

@@ -95,7 +95,8 @@ type PlanColors = readonly Pick<Plan, "id" | "color">[];
 export function addedColor(op: Extract<Op, { op: "add_task" }>, plans: PlanColors): string {
   if (op.plan_id) return planSeriesColor({ id: op.plan_id, color: plans.find((p) => p.id === op.plan_id)?.color ?? "" });
   if (op.plan_ref) return seriesColor(assignProjectColor(plans.map((p) => p.color)));
-  return seriesColor(op.commitment === "fixed" || op.commitment === "reminder" ? "personal" : "neutral");
+  // A one-off is Personal in every view, as on the calendar (overnight 2, Phase 5).
+  return seriesColor("personal");
 }
 
 function newBlocks(ops: Op[], tasks: Task[], plans: PlanColors): Placed[] {

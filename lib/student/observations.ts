@@ -253,6 +253,76 @@ export function behaviourLines(events: StepEvent[]): string[] {
   return out;
 }
 
+// ─── "Tangent noticed" (overnight 2, Phase 6) ────────────────────────────────
+// What the student sees in You, mapped: the same functions and thresholds as
+// the AI's lines above, said to them. Three rows, one per kind of data, so a
+// row's Forget deletes exactly the events behind it and leaves no half-true
+// habit standing (every step habit is computed from "done" rows).
+
+export type NoticedKey = "steps" | "planning" | "asking";
+export type Noticed = { key: NoticedKey; title: string; lines: string[] };
+
+export const NOTICED_KINDS: Record<NoticedKey, readonly StepEventKind[]> = {
+  steps: STEP_EVENT_KINDS,
+  planning: ["plan_accept", "plan_edit", "plan_reject", "plan_stop", "question_answer", "question_skip"],
+  asking: ["chat_ask"],
+};
+
+const ASK_WORDS: Record<Exclude<AskType, "other">, string> = {
+  how_to: "how to start a step",
+  explain: "what something means",
+  check: "whether your work is right",
+  stuck: "getting unstuck",
+  time: "how long things take",
+  motivation: "getting going",
+};
+
+const join = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+
+/** The habits Tangent uses, in the student's words. Empty rows are left out. */
+export function noticedHabits(events: StepEvent[]): Noticed[] {
+  const steps: string[] = [];
+  const t = timeMultiplier(events);
+  if (t.samples >= MIN_SAMPLES && Math.abs(t.value - 1) >= 0.15) {
+    steps.push(`Steps take you about ${t.value}× the first estimate, so Tangent sizes new ones to match.`);
+  }
+  const hours = completionByHour(events);
+  if (hours.value.best.length) steps.push(`You usually finish work around ${join(hours.value.best.map(hourLabel))}.`);
+  const size = preferredStepSize(events);
+  if (size.value !== null) steps.push(`The steps you finish are about ${size.value} minutes, so new steps stay near that.`);
+  const f = followThrough(events);
+  if (f.samples >= 6) {
+    steps.push(`You finish about ${Math.round(f.value.rate * 10)} in 10 of the steps that come due.`);
+    if (f.value.topReason) steps.push(`When you put one off, it's usually "${REASON_WORDS[f.value.topReason] ?? f.value.topReason}".`);
+  }
+  const days = workDays(events);
+  if (days.value.best.length) steps.push(`You get the most done on ${join(days.value.best.map((d) => DAY[d]))}.`);
+
+  const planning: string[] = [];
+  const p = planningStyle(events);
+  if (p.samples >= 3) {
+    const changed = (p.value.edit + p.value.reject) / Math.max(1, p.value.accept + p.value.reject);
+    if (changed >= 0.5) planning.push("You often change or turn down plans, so Tangent offers two shapes first.");
+    else if (p.value.edit === 0 && p.value.reject === 0) planning.push("You usually take plans as they are.");
+  }
+  if (p.value.answerRate !== null) {
+    if (p.value.answerRate < 0.4) planning.push("You skip most planning questions, so Tangent asks only the one that matters most.");
+    else if (p.value.answerRate >= 0.85) planning.push("You answer planning questions fully.");
+  }
+  if (p.value.stops >= 2) planning.push("You've pressed Stop on questions more than once, so Tangent keeps it to one.");
+
+  const asking: string[] = [];
+  const ask = askPattern(events);
+  if (ask.value && ask.value !== "other") asking.push(`In task chats you most often ask about ${ASK_WORDS[ask.value]}.`);
+
+  const rows: Noticed[] = [
+    { key: "steps", title: "How you work through steps", lines: steps },
+    { key: "planning", title: "How you plan", lines: planning },
+    { key: "asking", title: "What you ask about", lines: asking },
+  ];
+  return rows.filter((r) => r.lines.length > 0);
+}
+
 /** The calibration lines the AI sees, in plain words. Empty while unsure. */
 export function calibrationLines(events: StepEvent[]): string[] {
   const out: string[] = [];

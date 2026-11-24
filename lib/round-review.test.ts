@@ -15,7 +15,7 @@ type Resolve = (specifier: string, context: unknown, next: (s: string, c: unknow
 });
 
 void (import("./round-review") as Promise<typeof import("./round-review")>).then(
-  ({ roundFacts, factLines, readQuestions, fallbackQuestions, answerFacts, startDate, shiftRound, withRoundOp, START_QUESTION_ID }) => {
+  ({ roundFacts, factLines, readQuestions, fallbackQuestions, answerFacts, startDate, shiftRound, withRoundOp, START_QUESTION_ID, namedStep, reviewChangeNote, roundChangeLine }) => {
     const round = { n: 1, startedOn: "2026-11-02" };
     const steps = [
       { id: "a", title: "Two-pointer drills", date: "2026-11-02", completed: true, completedAt: "2026-11-02T20:00:00Z" },
@@ -138,6 +138,42 @@ void (import("./round-review") as Promise<typeof import("./round-review")>).then
       assert.equal(withRoundOp(withLine, "p1", "x", { n: 2, startedOn: "2026-11-15" })?.filter((o) => o.op === "update_plan").length, 1);
       // Too long for an op: null, the caller advances after confirm.
       assert.equal(withRoundOp(ops, "p1", "x".repeat(2100), { n: 2, startedOn: "2026-11-15" }), null);
+    });
+    test("overnight 2 L12: an open step later this week counts, and a lone open step is named", () => {
+      const f = roundFacts(steps, codes, round, "2026-11-10");
+      assert.deepEqual(f.open, ["Mock contest", "Review mistakes"]);
+      assert.ok(factLines(f).some((l) => l.includes('Still open') && l.includes("Review mistakes")));
+      const one = { open: ["Run a timed virtual contest"] };
+      assert.equal(namedStep("Which step did you not finish, and what got in the way?", one), '"Run a timed virtual contest" didn\'t get done. What got in the way?');
+      assert.equal(namedStep("Were the steps too small?", one), "Were the steps too small?");
+      assert.equal(namedStep("Which step did you not finish?", { open: ["a", "b"] }), "Which step did you not finish?");
+    });
+
+    test("overnight 2 L12: the next round says what the review changed", () => {
+      const note = reviewChangeNote(
+        [
+          { questionId: "q1", question: "What got in the way?", chip: "Ran out of time" },
+          { questionId: "q2", question: "More practice?", chip: "More practice" },
+          { questionId: START_QUESTION_ID, question: "When?", chip: "Start now" },
+        ],
+        2
+      );
+      assert.equal(note, "Round 2 changed because you said: ran out of time; more practice.");
+      assert.equal(reviewChangeNote([], 2), "");
+    });
+
+    test("overnight 2 Phase 3: Round 2 says what changed, read from the steps", () => {
+      const note = "Round 2 changed because you said: mornings didn't stick.";
+      const mornings = [{ time: "07:00", notes: "TIME: 60 min" }, { time: "07:30", notes: "TIME: 60 min" }, { time: "08:00", notes: "TIME: 45 min" }];
+      const evenings = [{ time: "19:00", notes: "TIME: 30 min" }, { time: "19:30", notes: "TIME: 30 min" }, { time: "20:00", notes: "TIME: 30 min" }];
+      assert.equal(roundChangeLine(note, mornings, evenings), "Last round you said mornings didn't stick, so this round is evenings and steps are shorter (30 min, not 60).");
+      assert.equal(roundChangeLine(note, mornings, evenings.map((s) => ({ ...s, notes: "TIME: 60 min" }))), "Last round you said mornings didn't stick, so this round is evenings.");
+      // Fewer steps, same time of day.
+      assert.equal(roundChangeLine(note, mornings, mornings.slice(0, 2)), "Last round you said mornings didn't stick, so round 2 has 2 steps, not 3.");
+      // Nothing visible changed: says it's planned around what they said.
+      assert.equal(roundChangeLine(note, mornings, mornings), "Last round you said mornings didn't stick. Round 2 is planned around that.");
+      // Not a review note: unchanged.
+      assert.equal(roundChangeLine("Something else", mornings, evenings), "Something else");
     });
   },
 );

@@ -9,7 +9,7 @@
 export const ACTIVITY_PAGE_SIZE = 25;
 export const ACTIVITY_DAYS = [7, 30, 90] as const;
 export type ActivityDays = (typeof ACTIVITY_DAYS)[number];
-export const CLEAR_CONFIRM_TEXT = "This clears the log. Your calendar stays the same.";
+export const CLEAR_CONFIRM_TEXT = "This deletes the log from Tangent. Your calendar stays the same.";
 export const ACTIVITY_EMPTY_TEXT = "Nothing yet. When you ask Tangent AI to plan or change things, you'll see what it did here.";
 
 // ─── What Tangent understood ────────────────────────────────────────────────

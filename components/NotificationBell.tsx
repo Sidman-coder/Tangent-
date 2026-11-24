@@ -10,7 +10,7 @@ import { Notification } from "@/lib/types"
 import { notifyNewDesktopNotifications } from "@/lib/desktop-notifications"
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider"
 import { getUserToday } from "@/lib/time"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { QUESTIONS_EVENT } from "@/lib/questions-client"
 import { claimPopups, getInAppPopupsEnabled, planToasts, popupCandidates, type Toast } from "@/lib/notification-popups"
 import NotificationToasts from "@/components/NotificationToasts"
@@ -80,20 +80,32 @@ export default function NotificationBell({ open, onOpenChange, onUnreadChange }:
     onUnreadChange?.(unreadCount)
   }, [onUnreadChange, unreadCount])
 
-  // The proactive check runs once on load, then the list polls every minute.
+  // The list loads once, then polls every minute.
   useEffect(() => {
-    if (sample) {
-      void fetchNotifications()
-      return
-    }
+    void fetchNotifications()
+    if (sample) return
+    const interval = setInterval(fetchNotifications, 60000)
+    return () => clearInterval(interval)
+  }, [fetchNotifications, sample])
+
+  // Overnight 2, Phase 4: the proactive check runs only from Home and
+  // Calendar, and the server runs it at most once per 4 hours (lib/proactive.ts).
+  // This tab asks at most every 30 minutes, so moving between pages costs nothing.
+  const pathname = usePathname()
+  const proactiveAskedRef = useRef(0)
+  useEffect(() => {
+    if (sample || !(pathname === "/" || pathname?.startsWith("/calendar"))) return
+    if (Date.now() - proactiveAskedRef.current < 30 * 60 * 1000) return
+    proactiveAskedRef.current = Date.now()
     fetch("/api/proactive", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ trigger: "page_load" })
-    }).catch(() => {}).finally(() => void fetchNotifications())
-    const interval = setInterval(fetchNotifications, 60000)
-    return () => clearInterval(interval)
-  }, [fetchNotifications, sample])
+    })
+      .then((r) => r.json().catch(() => ({})))
+      .then((data: { generated?: number }) => { if (data.generated) void fetchNotifications() })
+      .catch(() => {})
+  }, [pathname, sample, fetchNotifications])
 
   // Refetch as soon as the tab comes back (not a second loop — one fetch per
   // return, and never twice within 5 s since focus and visibility fire together).
@@ -303,7 +315,7 @@ export default function NotificationBell({ open, onOpenChange, onUnreadChange }:
         onClose={() => setOpen(false)}
         clearAll={notifications.length > 0 && (
           <Button size="sm" variant="ghost" className="notif-clear" loading={clearing} onClick={() => void handleClearAll()}>
-            Clear all
+            Dismiss all
           </Button>
         )}
       >

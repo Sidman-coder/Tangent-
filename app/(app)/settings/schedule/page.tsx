@@ -51,7 +51,7 @@ export default function ScheduleSettingsPage() {
     <>
       <SettingsPageHeader page="schedule" />
 
-      <ConnectionsSection canvasLoaded={canvas.loaded} canvasConnected={canvas.connected} onConnectCanvas={() => setGuideOpen(true)} />
+      <ConnectionsSection canvasLoaded={canvas.loaded} canvasConnected={canvas.connected} canvasSyncFailed={canvas.syncFailed} canvasItemCount={canvas.itemCount} onConnectCanvas={() => setGuideOpen(true)} onCanvasDisconnected={() => { canvas.reload(); void refresh(); }} />
 
       <SettingsSection
         id="planning"

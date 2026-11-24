@@ -11,17 +11,19 @@
 //   extend  explicit steps for a project they already have
 //   grill   they asked to be asked
 //   plan    an explicit request for a new plan
+//   report  how a step went ("drafted the pitch, went fine"): logged on it
 //
 // Pure and instant, built on homeRoute (lib/pipeline/home-route.ts). The scope
 // is recorded but never changes the kind: the same words get the same route
 // wherever they're typed.
 
-import { GOAL_CUE } from "../ask-route";
+import { GOAL_CUE, HOWTO_DO } from "../ask-route";
 import { homeRoute, projectFor, type HomeRoute } from "./home-route";
 import { isPlanningRequest } from "./planning-intent";
+import { isProgressReport } from "../progress-report";
 
 export type TalkScope = "home" | "capture" | "task" | "project" | "rail" | "palette";
-export type TalkKind = "action" | "add" | "answer" | "extend" | "grill" | "plan";
+export type TalkKind = "action" | "add" | "answer" | "extend" | "grill" | "plan" | "report";
 
 export type TalkRoute = {
   kind: TalkKind;
@@ -56,6 +58,7 @@ const GOAL_TALK =
 
 /** "ok plan it", "yes put this on my calendar": the ask is the earlier message. */
 const BARE_PLAN = /^(?:(?:ok|okay|yes|yeah|sure|so|great|cool|alright)[,!.]?\s+)?(?:please\s+)?(?:plan (?:it|this|that)|put (?:it|this|that) on my calendar|schedule (?:it|this|that)|map (?:it|this) out)\b[\s\w]{0,24}[.!]?$/i;
+
 
 export type PlanAsk = {
   /** The message the "Plan this" row sat under (planThis), if any. */
@@ -95,7 +98,10 @@ export function routeMessage(text: string, opts: TalkOptions = {}): TalkRoute {
 
   if (EXPLICIT_PLAN.test(s)) return { kind: projectId ? "extend" : "plan", projectId, schedulable: false };
 
-  const schedulable = isPlanningRequest(s) || GOAL_CUE.test(s) || GOAL_TALK.test(s);
+  // Overnight 2 (Jordan sim): a report on a step is never new work.
+  if (isProgressReport(s)) return { kind: "report", projectId, schedulable: false };
+
+  const schedulable = isPlanningRequest(s) || GOAL_CUE.test(s) || GOAL_TALK.test(s) || HOWTO_DO.test(s);
   if (base.kind === "add" && GOAL_TALK.test(s)) return { kind: "answer", projectId, schedulable: true };
   switch (base.kind) {
     case "plan":

@@ -6,8 +6,9 @@
 // commitments and anything with a real due date. Their date is a fact, so a
 // student can only set them aside for the day.
 
+import { isDatedExam } from "./exam-title";
 import { isDueOnly } from "./dates";
-import { type Capacity, estimateMinutes, isMovable, placeTask } from "./load";
+import { type Capacity, capacityOn, dayLoad, estimateMinutes, isMovable, placeTask } from "./load";
 import { addDaysYMD } from "./time";
 import type { Task } from "./types";
 import { tracksCompletion } from "./urgency";
@@ -48,15 +49,77 @@ export function pickTodaySteps(tasks: Task[], today: string, setAside: ReadonlyS
     .slice(0, MAX_TODAY_STEPS);
 }
 
+/** After Done: the step that comes next, so the check-in can say "Next: …"
+ *  (overnight 2 L8). The same project's next open step first, then the next
+ *  open step anywhere, from today on. */
+export function nextStepAfter(tasks: Task[], done: Pick<Task, "id" | "planId">, today: string): Task | null {
+  const open = tasks
+    .filter((t) => t.id !== done.id && !t.completed && tracksCompletion(t) && t.date >= today && t.kind !== "school")
+    .sort(byDateThenTime);
+  return (done.planId ? open.find((t) => t.planId === done.planId) : undefined) ?? open[0] ?? null;
+}
+
+export type DayTwo = { planId: string; planTitle: string; step: Task; madeOn: string };
+
+/**
+ * Overnight 2 Phase 3: the day after a goal plan is confirmed, Home leads with
+ * that plan's first open step and a short check-in. A goal plan (not School or
+ * Work) made yesterday or the day before, and its earliest open step from today
+ * on, when that step is today. Null otherwise: the plan was made today (the
+ * brief already said "First up"), or its first step is another day.
+ * `madeOn` turns the plan's createdAt into the student's local date.
+ */
+export function dayTwoStep(
+  tasks: Task[],
+  plans: readonly { id: string; title: string; createdAt: string; kind?: string | null }[],
+  today: string,
+  madeOn: (createdAt: string) => string
+): DayTwo | null {
+  const from = addDaysYMD(today, -2);
+  const recent = plans
+    .filter((p) => !p.kind && p.createdAt)
+    .map((p) => ({ p, on: madeOn(p.createdAt) }))
+    .filter(({ on }) => on >= from && on < today)
+    .sort((a, b) => b.p.createdAt.localeCompare(a.p.createdAt));
+  for (const { p, on } of recent) {
+    const step = tasks
+      .filter((t) => t.planId === p.id && !t.completed && tracksCompletion(t) && t.date >= today)
+      .sort(byDateThenTime)[0];
+    if (step && step.date === today) return { planId: p.id, planTitle: p.title, step, madeOn: on };
+  }
+  return null;
+}
+
 /** Tangent may pick a new day for this step. Everything else is set aside. */
 export function canMoveStep(task: Task): boolean {
   return isMovable(task) && !isDueOnly(task);
 }
 
+/** Overnight 2 (AI-JUDGMENT-1 #1): the last day a project's steps may use. The
+ *  project's own fixed item (a due date, a test, a commitment) from `from` on is
+ *  its deadline, and prep goes the day before it. Null when it has none. */
+export function planDeadlineCap(tasks: readonly Task[], planId: string, from: string): string | null {
+  let deadline: string | null = null;
+  for (const t of tasks) {
+    if (t.planId !== planId || t.completed || t.date < from) continue;
+    if (canMoveStep(t) && !isDatedExam(t.title)) continue;
+    if (deadline === null || t.date < deadline) deadline = t.date;
+  }
+  return deadline === null ? null : addDaysYMD(deadline, -1);
+}
+
 /** Moves the chosen steps to `floor` or later without reordering a project:
  *  a project gets at most one moved step a day, and a later step is pushed
- *  only when a moved one lands on or past it. */
-function rebuild(tasks: Task[], chosen: (t: Task) => boolean, floor: string, { now, cap }: Context): StepMove[] {
+ *  only when a moved one lands on or past it. A step never moves past its
+ *  project's deadline (planDeadlineCap); with no room before it, it stays. */
+function rebuild(
+  tasks: Task[],
+  chosen: (t: Task) => boolean,
+  floor: string,
+  { now, cap }: Context,
+  /** Days after `floor` to try first for a chosen step; wider only if none has room. */
+  nearDays?: number
+): StepMove[] {
   let working = tasks;
   const moves: StepMove[] = [];
   const planFloor = new Map<string, string>();
@@ -69,17 +132,20 @@ function rebuild(tasks: Task[], chosen: (t: Task) => boolean, floor: string, { n
       continue;
     }
     const earliest = held !== undefined && held > floor ? held : floor;
-    const placed = placeTask(
-      working.filter((t) => t.id !== task.id),
-      {
-        now,
-        cap,
-        minutes: estimateMinutes(task),
-        earliest,
-        preferredDate: earliest,
-        latest: addDaysYMD(earliest, PLACE_WITHIN_DAYS),
-      }
-    );
+    const deadlineCap = task.planId && !isDatedExam(task.title) ? planDeadlineCap(tasks, task.planId, floor) : null;
+    if (deadlineCap !== null && deadlineCap < earliest) continue;
+    const others = working.filter((t) => t.id !== task.id);
+    const minutes = estimateMinutes(task);
+    const place = (days: number) => {
+      const wide = addDaysYMD(earliest, days);
+      const latest = deadlineCap !== null && deadlineCap < wide ? deadlineCap : wide;
+      return placeTask(others, { now, cap, minutes, earliest, preferredDate: earliest, latest });
+    };
+    // Overnight 2 R2-L9: over 13 days, an empty Saturday two weeks out outranked
+    // a free school night three days away. A near day that fits comes first.
+    const near = nearDays !== undefined && chosen(task) ? place(nearDays) : null;
+    const nearFits = near !== null && dayLoad(others, near.date) + minutes <= capacityOn(near.date, cap);
+    const placed = nearFits ? near : place(PLACE_WITHIN_DAYS);
     if (!placed) continue;
     if (placed.date !== task.date || placed.time !== task.time) {
       moves.push({ taskId: task.id, fromDate: task.date, fromTime: task.time, date: placed.date, time: placed.time });
@@ -123,9 +189,47 @@ export function planFreshStart(tasks: Task[], ctx: Context): StepMove[] {
   return cleared.size === 0 ? [] : rebuild(tasks, (t) => cleared.has(t.id), ctx.now.date, ctx);
 }
 
-export function planNotToday(tasks: Task[], task: Task, ctx: Context): StepMove[] {
-  return rebuild(tasks, (t) => t.id === task.id, addDaysYMD(ctx.now.date, 1), ctx);
+/** The first day "Not today" may use: tomorrow, or for a step already set for
+ *  a later day, the day after that one. Never earlier than where it was
+ *  (overnight 2 L9: a Tue step moved back to Mon). */
+export function notTodayFloor(task: Pick<Task, "date">, today: string): string {
+  const tomorrow = addDaysYMD(today, 1);
+  return task.date >= tomorrow ? addDaysYMD(task.date, 1) : tomorrow;
 }
+
+const LIGHT_DAY_WINDOW = 3;
+
+/** Of the `floor` day and the next few, the one with the fewest open minutes
+ *  already on it. Ties go to the earliest. */
+export function lightestDay(tasks: Task[], floor: string, skipId?: string): string {
+  let best = floor;
+  let bestLoad = Infinity;
+  for (let i = 0; i < LIGHT_DAY_WINDOW; i++) {
+    const day = addDaysYMD(floor, i);
+    const load = tasks
+      .filter((t) => t.id !== skipId && !t.completed && t.date === day && !isDueOnly(t))
+      .reduce((sum, t) => sum + estimateMinutes(t), 0);
+    if (load < bestLoad) {
+      best = day;
+      bestLoad = load;
+    }
+  }
+  return best;
+}
+
+/** "No time" and "too tired" go to the lightest of the next few days, so the
+ *  reason changes where the step lands. Other reasons keep the first free day. */
+export function planNotToday(tasks: Task[], task: Task, ctx: Context, reason?: string | null): StepMove[] {
+  const floor = notTodayFloor(task, ctx.now.date);
+  const light = reason === "no_time" || reason === "too_tired" ? lightestDay(tasks, floor, task.id) : floor;
+  // The lightest day can't be past the project's deadline.
+  const cap = task.planId ? planDeadlineCap(tasks, task.planId, floor) : null;
+  const start = cap !== null && light > cap ? floor : light;
+  return rebuild(tasks, (t) => t.id === task.id, start, ctx, NOT_TODAY_NEAR_DAYS);
+}
+
+/** "Not today" means soon: the next five days are tried before the wider window. */
+const NOT_TODAY_NEAR_DAYS = 4;
 
 // ─── Too big ───────────────────────────────────────────────────────────────
 

@@ -57,8 +57,31 @@ void Promise.all([import("./auth/gate"), import("./auth/signup"), import("./auth
       assert.equal(accessOf({ email: stranger, app_metadata: {}, user_metadata: { waitlist: "approved" } } as never), "waitlist");
     });
 
+    test("overnight 2 Phase 5: the public pages skip the session check, exact paths only", () => {
+      const { skipsSessionCheck, PUBLIC_PAGES, LANDING_PATH } = gateMod;
+      assert.deepEqual([...PUBLIC_PAGES], ["/welcome", "/privacy", "/terms", "/parents"]);
+      for (const page of PUBLIC_PAGES) {
+        assert.equal(skipsSessionCheck(page), true, page);
+        for (const access of ["signed_out", "waitlist", "under13", "allowed"] as const) {
+          assert.deepEqual(prod(page, access), { kind: "next" }, `${page} ${access}`);
+        }
+      }
+      for (const near of ["/privacy/x", "/terms/", "/parentsx", "/welcome/x", "/api/privacy"]) {
+        assert.equal(skipsSessionCheck(near), false, near);
+        assert.notDeepEqual(prod(near, "signed_out"), { kind: "next" }, near);
+      }
+      // Signed out, the home address shows the landing page (the URL stays /).
+      assert.deepEqual(prod("/", "signed_out"), { kind: "rewrite", to: LANDING_PATH });
+      // With a query (?ask=1) it still asks them to sign in.
+      assert.deepEqual(prod("/", "signed_out", "?ask=1"), { kind: "redirect", to: "/signin" });
+      // Signed in, / is still the app; waitlist and under 13 still go to their pages.
+      assert.deepEqual(prod("/", "allowed"), { kind: "next" });
+      assert.deepEqual(prod("/", "waitlist"), { kind: "redirect", to: WAITLIST_PATH });
+      assert.deepEqual(prod("/", "under13"), { kind: "redirect", to: UNDER_13_PATH });
+    });
+
     test("signed out: app pages redirect to /signin with next; APIs 401; cron passes", () => {
-      for (const page of ["/", "/today", "/calendar", "/settings/security", "/waitlist", "/not-yet"]) {
+      for (const page of ["/today", "/calendar", "/settings/security", "/waitlist", "/not-yet"]) {
         const d = prod(page, "signed_out");
         assert.equal(d.kind, "redirect", page);
         assert.ok(d.kind === "redirect" && d.to.startsWith("/signin"), page);

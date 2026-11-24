@@ -142,7 +142,7 @@ export default function Composer({
               data-tooltip="Send"
               disabled={!canSend}
             >
-              <ArrowUp size={18} strokeWidth={2} aria-hidden="true" />
+              <ArrowUp size={18} strokeWidth={1.75} aria-hidden="true" />
             </button>
           )}
         </div>

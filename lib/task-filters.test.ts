@@ -92,6 +92,12 @@ void (import("./task-filters") as Promise<typeof import("./task-filters")>).then
     assert.equal(taskView({ kind: "personal" }), "personal");
     assert.equal(taskView({}), "personal");
     assert.equal(taskView({ kind: "commitment", source: null }), "personal");
+    // Exam prep and quizzes a student typed in are school work (overnight C20).
+    assert.equal(taskView({ kind: "personal", title: "Study for AP Chem final" }), "school");
+    assert.equal(taskView({ title: "Chem quiz Friday" }), "school");
+    assert.equal(taskView({ kind: "personal", calendarId: "cal_school", title: "Review notes" }), "school");
+    assert.equal(taskView({ kind: "personal", calendarId: "cal_other", title: "Study group snacks" }), "personal");
+    assert.equal(taskView({ kind: "academic-ec", title: "Debate practice" }), "personal");
     // A project step about a class is still the project's work.
     assert.equal(taskView({ kind: "school", planId: "p1" }), "projects");
     assert.equal(taskView({ pathNodeId: "n1" }), "projects");

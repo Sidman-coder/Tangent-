@@ -159,6 +159,13 @@
   color: var(--text-2);
   font-size: 0.875rem;
 }
+/* Round 6: the step's if-then line, right under the title. */
+.plan-step-ifthen {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
 .plan-step-detail {
   margin: 0;
   font-size: 0.875rem;
@@ -243,6 +250,28 @@
 .plan-brief-done > svg {
   color: var(--accent);
 }
+.plan-brief-done-text {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+.plan-brief-done-text strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.plan-brief-done-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.plan-brief-done-link:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 .plan-brief-history > summary {
   cursor: pointer;
   color: var(--text-2);
@@ -325,4 +354,58 @@
   position: sticky;
   bottom: var(--s-3);
   z-index: 2;
+}
+
+/* "Why this plan": the reasoning, folded (overnight C13). */
+.plan-brief-why {
+  border-top: 1px solid var(--line);
+  padding-top: var(--s-2);
+}
+.plan-brief-why > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--text-2);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+.plan-brief-why > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-md); }
+.plan-brief-why[open] > summary { margin-bottom: var(--s-2); }
+.plan-brief-why section + section { margin-top: var(--s-3); }
+
+/* Title fields while editing a draft (overnight C12). */
+.plan-brief-goal-input,
+.plan-step-title-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+}
+.plan-brief-goal-input:focus-visible,
+.plan-step-title-input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+.talk-plan-ask { color: var(--text-2); font-size: 0.875rem; margin-right: var(--s-1); }
+
+/* Round 6 (item 5): "Add bakery shifts as busy time?" → Yes / Not now, like the Plan this row. */
+.busy-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+.busy-offer.is-done {
+  display: block;
+  color: var(--text-2);
+  font-size: 0.875rem;
+}
+.busy-offer.is-done a {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }

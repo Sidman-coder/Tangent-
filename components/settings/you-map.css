@@ -28,11 +28,11 @@
 .you-card {
   padding: 14px 16px;
   border: 1px solid color-mix(in srgb, var(--c, var(--line)) 22%, var(--line));
-  border-radius: 16px;
+  border-radius: var(--r-lg);
   /* Round 5B Phase 3: a pastel wash in the area's map colour, no side stripe. */
   background: color-mix(in srgb, var(--c, transparent) 7%, var(--surface));
   scroll-margin-block: 120px;
-  transition: border-color 220ms ease, box-shadow 220ms ease;
+  transition: border-color var(--dur) ease, box-shadow var(--dur) ease;
 }
 .you-card:focus {
   outline: none;
@@ -57,7 +57,7 @@
   flex: 1;
   margin: 0;
   color: var(--text);
-  font-size: 14.5px;
+  font-size: 15px;
   font-weight: 600;
 }
 .you-card-icon {
@@ -65,13 +65,13 @@
   place-items: center;
   width: 28px;
   height: 28px;
-  border-radius: 9px;
+  border-radius: var(--r-sm);
   background: color-mix(in srgb, var(--c) 18%, var(--surface));
   color: color-mix(in srgb, var(--c) 80%, var(--text));
 }
 .you-card-count {
   color: var(--text-3);
-  font-size: 12.5px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 .you-card-empty {
@@ -131,7 +131,7 @@
   background: none;
   color: var(--text-3);
   font: inherit;
-  font-size: 12.5px;
+  font-size: 13px;
   cursor: pointer;
 }
 .you-fact-btn:hover,
@@ -153,7 +153,7 @@
   flex: 1 1 220px;
   height: 36px;
   padding: 0 12px;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -252,8 +252,8 @@
 }
 .you-map-core small {
   margin-top: 4px;
-  color: color-mix(in srgb, var(--map-ink) 60%, transparent);
-  font-size: 11px;
+  color: color-mix(in srgb, var(--map-ink) 78%, transparent);
+  font-size: 12px;
   letter-spacing: 0.02em;
 }
 
@@ -335,7 +335,7 @@
   max-width: 160px;
   transform: translateY(-50%);
   color: var(--map-ink);
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.3;
   text-align: left;
   white-space: normal;
@@ -363,19 +363,20 @@
   padding: 0 12px 0 10px;
   translate: -50% -50%;
   border: 1px solid var(--map-ring);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--map-pill);
   box-shadow: 0 4px 14px -8px color-mix(in srgb, var(--map-ink) 35%, transparent);
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 550;
   white-space: nowrap;
 }
+.you-map-pill-none { color: color-mix(in srgb, var(--map-ink) 70%, transparent); font-size: 12px; font-weight: 500; }
 .you-map-pill b {
-  color: color-mix(in srgb, var(--map-ink) 55%, transparent);
+  color: color-mix(in srgb, var(--map-ink) 78%, transparent);
   font-weight: 550;
   font-variant-numeric: tabular-nums;
 }
-.you-map-pill.is-empty { color: color-mix(in srgb, var(--map-ink) 55%, transparent); }
+.you-map-pill.is-empty { color: color-mix(in srgb, var(--map-ink) 78%, transparent); }
 .you-map-pill.is-open { border-color: color-mix(in srgb, var(--c) 70%, var(--map-ring)); }
 .you-map-pill-dot {
   flex: none;
@@ -392,9 +393,9 @@
   gap: 6px;
   padding: 3px 8px 3px 4px;
   translate: -8px -50%;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: none;
-  font-size: 11.5px;
+  font-size: 12px;
   white-space: nowrap;
 }
 .you-map-node[data-flip="l"] .you-map-sat {
@@ -409,7 +410,7 @@
   border-radius: 50%;
   background: var(--map-bg);
 }
-.you-map-sat-name { color: color-mix(in srgb, var(--map-ink) 70%, transparent); }
+.you-map-sat-name { color: color-mix(in srgb, var(--map-ink) 78%, transparent); }
 .you-map-sat:hover .you-map-sat-name,
 .you-map-sat.is-pinned .you-map-sat-name { color: var(--map-ink); text-decoration: underline; text-underline-offset: 3px; }
 .you-map-sat.is-pinned .you-map-sat-dot { background: var(--map-ink); }
@@ -422,10 +423,10 @@
   padding: 7px 10px;
   transform: translate(-50%, calc(-100% - 14px));
   border: 1px solid var(--map-ring);
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   background: var(--map-pill);
   color: var(--map-ink);
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.35;
   box-shadow: 0 8px 24px -10px color-mix(in srgb, var(--map-ink) 40%, transparent);
   pointer-events: none;
@@ -444,7 +445,7 @@
   min-height: 34px;
   padding: 0 14px 0 8px;
   border: 1px solid var(--map-ring);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--map-pill);
   color: var(--map-ink);
   font: inherit;
@@ -479,7 +480,7 @@
   align-items: center;
   gap: 7px;
   margin: 0 0 8px;
-  color: color-mix(in srgb, var(--map-ink) 60%, transparent);
+  color: color-mix(in srgb, var(--map-ink) 78%, transparent);
   font-size: 12px;
   font-weight: 600;
 }
@@ -491,7 +492,7 @@
 }
 .you-map-card dl { display: grid; gap: 8px; margin: 0; }
 .you-map-card dl > div { display: grid; grid-template-columns: 72px 1fr; gap: 10px; }
-.you-map-card dt { color: color-mix(in srgb, var(--map-ink) 55%, transparent); font-size: 12.5px; }
+.you-map-card dt { color: color-mix(in srgb, var(--map-ink) 78%, transparent); font-size: 13px; }
 .you-map-card dd { margin: 0; font-size: 13px; line-height: 1.4; }
 .you-map-stage:not(.is-wide) .you-map-card {
   top: auto;
@@ -523,7 +524,7 @@
 }
 .you-hero-kicker {
   margin: 0 0 6px;
-  color: color-mix(in srgb, var(--map-ink) 55%, transparent);
+  color: color-mix(in srgb, var(--map-ink) 78%, transparent);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -540,7 +541,7 @@
 }
 .you-hero-summary {
   margin: 10px 0 0;
-  color: color-mix(in srgb, var(--map-ink) 70%, transparent);
+  color: color-mix(in srgb, var(--map-ink) 78%, transparent);
   font-size: clamp(14px, 1.4vw, 16px);
   line-height: 1.45;
   text-wrap: pretty;
@@ -550,8 +551,8 @@
   justify-self: center;
   margin: 0;
   padding-bottom: 16px;
-  color: color-mix(in srgb, var(--map-ink) 50%, transparent);
-  font-size: 12.5px;
+  color: color-mix(in srgb, var(--map-ink) 78%, transparent);
+  font-size: 13px;
 }
 
 /* Area chips under the stage: white pills with a pastel dot. */
@@ -571,11 +572,11 @@
   min-height: 44px;
   padding: 0 14px;
   border: 1px solid var(--map-ring);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--map-pill);
   color: var(--map-ink);
   font: inherit;
-  font-size: 13.5px;
+  font-size: 14px;
   text-align: left;
   cursor: pointer;
   transition: border-color var(--dur-fast) var(--ease);
@@ -583,8 +584,10 @@
 .you-hero-areas button:hover,
 .you-hero-areas button[aria-pressed="true"] { border-color: color-mix(in srgb, var(--c) 70%, var(--map-ring)); }
 .you-hero-areas button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.you-hero-area-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.you-hero-areas b { color: color-mix(in srgb, var(--map-ink) 60%, transparent); font-weight: 600; font-variant-numeric: tabular-nums; }
+/* Wraps rather than clips (N11): "Classes & activities" next to "Not asked yet". */
+.you-hero-area-label { flex: 1; min-width: 0; padding-block: 6px; line-height: 1.25; overflow-wrap: anywhere; }
+.you-hero-area-none { flex-shrink: 0; color: color-mix(in srgb, var(--map-ink) 78%, transparent); font-size: 13px; font-weight: 500; }
+.you-hero-areas b { color: color-mix(in srgb, var(--map-ink) 78%, transparent); font-weight: 600; font-variant-numeric: tabular-nums; }
 
 /* The cards sit under the map, two across when there is room. */
 .you-map-body.is-below { display: block; }
@@ -598,18 +601,19 @@
 }
 
 @media (max-width: 767px) {
-  .you-hero-stage { height: 540px; border-radius: 22px; }
+  .you-hero-stage { height: 440px; border-radius: var(--r-lg, 16px); }
   .you-hero-intro { padding: 18px 18px 0; }
   .you-hero-title { font-size: 30px; }
   .you-hero-summary { display: none; }
   .you-map-core { width: 76px; height: 76px; }
   .you-map-core span { font-size: 24px; }
-  .you-map-core small { font-size: 10px; }
-  .you-map-pill { height: 28px; padding: 0 10px 0 8px; font-size: 12px; }
-  .you-map-sat { font-size: 11px; }
-  .you-map-flabel { max-width: 120px; font-size: 11.5px; }
-  .you-hero-areas { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
-  .you-hero-areas button { padding: 0 12px; font-size: 12.5px; }
+  .you-map-core small { font-size: 12px; }
+  .you-map-pill { height: 30px; padding: 0 10px 0 8px; font-size: 13px; }
+  .you-map-pill-none { display: none; }
+  .you-map-sat { font-size: 12px; }
+  .you-map-flabel { max-width: 132px; font-size: 13px; }
+  .you-hero-areas { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .you-hero-areas button { padding: 0 14px; font-size: 14px; }
 }
 
 /* Reduced motion: no drift, no glow, no easing (the frame loop also stops). */
@@ -647,14 +651,14 @@
   height: 28px;
   padding: 0 10px 0 8px;
   border: 1px solid color-mix(in srgb, var(--c, var(--line)) 30%, var(--line));
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: color-mix(in srgb, var(--c, transparent) 10%, var(--surface));
   color: var(--text-2);
   font: inherit;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 550;
   cursor: pointer;
-  transition: background-color 160ms ease, color 160ms ease;
+  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease;
 }
 .you-card-add:hover,
 .you-card-add:focus-visible {
@@ -673,7 +677,7 @@
   margin: -4px 0 0 -7px;
   padding: 3px 6px;
   border: 1px solid color-mix(in srgb, var(--c, var(--accent)) 45%, var(--line));
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   background: var(--surface);
   color: var(--text);
   font: inherit;
@@ -700,7 +704,7 @@
   width: 28px;
   height: 28px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--surface);
   color: var(--text-2);
   cursor: pointer;
@@ -717,12 +721,12 @@
 .you-fact-keys {
   margin-left: 4px;
   color: var(--text-3);
-  font-size: 11.5px;
+  font-size: 12px;
 }
 .you-fact-error {
   margin: 6px 0 0;
   color: var(--danger, #b42318);
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.4;
 }
 .you-fact.is-forgotten {
@@ -758,7 +762,7 @@
 .knows-tell-turn {
   max-width: min(78%, 560px);
   padding: 9px 14px;
-  border-radius: 18px;
+  border-radius: var(--r-lg);
   font-size: 14px;
   line-height: 1.45;
 }
@@ -783,7 +787,7 @@
   display: block;
   margin-bottom: 2px;
   color: var(--text-3);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
 }
 .knows-tell-dots {
@@ -812,7 +816,7 @@
   min-height: 64px;
   padding: 10px 10px 10px 12px;
   border: 1px solid var(--map-ring, var(--line));
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: linear-gradient(135deg, var(--map-bg, var(--surface)), var(--map-bg-2, var(--surface)));
   box-shadow: 0 6px 24px color-mix(in srgb, var(--map-ink, #000) 7%, transparent);
   box-sizing: border-box;
@@ -858,7 +862,7 @@
   background: var(--map-ink, var(--text));
   color: var(--map-bg, var(--surface));
   cursor: pointer;
-  transition: opacity 160ms ease;
+  transition: opacity var(--dur-fast) ease;
 }
 .knows-tell-send:disabled {
   opacity: 0.35;
@@ -867,7 +871,7 @@
 .knows-tell-note {
   margin: 0 16px;
   color: var(--text-3);
-  font-size: 12.5px;
+  font-size: 13px;
 }
 .knows-danger {
   margin-top: 8px;
@@ -891,4 +895,22 @@
 :root[data-theme="dark"] .you-card { background: color-mix(in srgb, var(--c, transparent) 12%, var(--surface)); }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .you-card { background: color-mix(in srgb, var(--c, transparent) 12%, var(--surface)); }
+}
+
+/* Overnight 2, Phase 6: "Tangent noticed", the habits from the observation log. */
+.you-card-note {
+  margin: 6px 0 4px 37px;
+  color: var(--text-3);
+  font-size: 13px;
+}
+.you-fact.is-habit p + p {
+  margin-top: 2px;
+}
+.you-fact.is-habit .you-noticed-title {
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+.you-fact.is-habit .you-fact-meta {
+  justify-content: flex-end;
 }

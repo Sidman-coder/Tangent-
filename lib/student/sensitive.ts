@@ -34,12 +34,33 @@ export function isSensitive(text: string): boolean {
   return sensitiveKind(text) !== null;
 }
 
-/** Only clear signs of real distress, not "this test is killing me". */
-const DISTRESS =
-  /\b(kill(ing)? my ?self|want(ed)? to die|wanna die|suicid\w*|end (it all|my life)|hurt(ing)? my ?self|self[- ]?harm\w*|no reason to live|don'?t want to (be alive|live|exist)|better off without me|can'?t go on)\b/i;
+/** Only clear signs of real distress, not "this test is killing me". "Can't
+ *  keep going" and "don't want to be here" count unless an ordinary object
+ *  follows ("…going to debate", "…here at 7am"); a false alarm costs a kind
+ *  reply, a miss costs far more (overnight 2 L13). */
+const DISTRESS_PARTS = [
+    String.raw`kill(ing)? my ?self`,
+    String.raw`kms`,
+    String.raw`want(ed)? to die`,
+    String.raw`wanna die`,
+    String.raw`suicid\w*`,
+    String.raw`unalive`,
+    String.raw`end (it all|my life)`,
+    String.raw`hurt(ing)? my ?self`,
+    String.raw`self[- ]?harm\w*`,
+    String.raw`no (reason|point)( in)? (to live|living)`,
+    String.raw`don'?t want to (be alive|live|exist)`,
+    String.raw`do ?n[o']?t want to be here(?! (at|in|for|on|during|when|after|before|by|with|today|tonight|tomorrow)\b)`,
+    String.raw`wish i (was|were|wasn'?t|weren'?t) (dead|alive|here|born)`,
+    String.raw`want to disappear`,
+    String.raw`better off (without me|dead)`,
+    String.raw`can'?t go on`,
+    String.raw`can'?t keep going(?! (to|with|at|in|on|through|for)\b)`,
+];
+const DISTRESS_RE = new RegExp(String.raw`\b(?:${DISTRESS_PARTS.join("|")})\b`, "i");
 
 export function looksDistressed(text: string): boolean {
-  return DISTRESS.test(text);
+  return DISTRESS_RE.test(text.replace(/[’‘]/g, "'"));
 }
 
 /** What Tangent says instead of planning when a message shows real distress. */

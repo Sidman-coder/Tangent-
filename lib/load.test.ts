@@ -32,6 +32,7 @@ void (import("./load") as Promise<Load>).then(
     suggestRelief,
     dayLoad,
     formatMinutes,
+    canvasEveMinutes,
   }) => {
     let n = 0;
     const task = (p: Partial<Task> & Pick<Task, "date">): Task => ({
@@ -178,6 +179,36 @@ void (import("./load") as Promise<Load>).then(
       assert.equal(moved[0].note, undefined);
       const packed = spreadSessions(twoOnTue, [TUE], { now, cap, slack: 0, rules, projectId: "p1" });
       assert.deepEqual(packed, [{ date: TUE, time: packed[0].time, note: PACKED_NOTE }]);
+    });
+
+    const canvasDue = (date: string, n = 1): Task[] =>
+      Array.from({ length: n }, (_, i) => task({ date, time: "23:59", source: "canvas", title: `Canvas ${date} ${i}` }));
+
+    test("the eve of a Canvas deadline counts as busier than it looks", () => {
+      // Two Canvas items due Thursday: Wednesday is their eve (2 x 45 min).
+      assert.equal(canvasEveMinutes([...week, ...canvasDue(THU, 2)], WED), 90);
+      assert.equal(canvasEveMinutes([...week, ...canvasDue(THU, 2)], TUE), 0);
+      assert.equal(canvasEveMinutes([task({ date: THU, source: "canvas", completed: true })], WED), 0);
+    });
+
+    test("with no day asked for, a step avoids the eve of a Canvas deadline", () => {
+      // Tue and Wed are equally empty; Thursday has two Canvas items due.
+      const tasks = [...week, ...canvasDue(THU, 2)];
+      const p = placeTask(tasks, { now: { date: MON, minutes: 7 * 60 }, cap, earliest: TUE, latest: WED });
+      assert.equal(p?.date, TUE);
+    });
+
+    test("an asked-for day that fits is still kept, even the eve of a deadline", () => {
+      const p = placeTask([...week, ...canvasDue(THU, 2)], { now, cap, preferredDate: WED, earliest: TUE, latest: WED });
+      assert.equal(p?.date, WED);
+    });
+
+    test("a step is not placed over a calendar event's time on the same day", () => {
+      // An imported calendar event at 16:00 holds its slot (45 min with no end time).
+      const event = task({ date: TUE, time: "16:00", kind: "commitment", title: "Rehearsal" });
+      const p = placeTask([...week, event], { now, cap, preferredDate: TUE });
+      assert.equal(p?.date, TUE);
+      assert.ok(p && p.time >= "16:45", `after the event, got ${p?.time}`);
     });
   }
 );

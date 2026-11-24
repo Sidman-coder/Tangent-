@@ -6,12 +6,16 @@
 // server's step events; the optional words stay on the student's own step.
 
 import { useEffect, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { CircleAlert, CircleCheck, X } from "lucide-react";
 import { m, useReducedMotion } from "motion/react";
 import type { Task } from "@/lib/types";
+import { SAVED_MS, SAVE_FAILED, saveCheckIn, savedLine } from "@/lib/check-in-save";
+// Also opened from Calendar (overnight 2), so it brings its own styles.
+import "./today.css";
 
 export type FollowUp =
-  | { kind: "check_in"; task: Task }
+  /** `next`: what comes after it, already worded ("Practice dict frequency counting · Tue 3:30 PM"). */
+  | { kind: "check_in"; task: Task; next?: string | null }
   | { kind: "why_not"; task: Task };
 
 type Feel = "nailed" | "okay" | "struggled";
@@ -29,6 +33,8 @@ const TIMES: { id: Time; label: string }[] = [
 ];
 export const WHY_NOT: { id: string; label: string }[] = [
   { id: "no_time", label: "No time" },
+  // Overnight 2 (AI-JUDGMENT-1 #2): a step that's too big gets smaller, not just later.
+  { id: "too_big", label: "Too big" },
   { id: "unclear", label: "Unclear" },
   { id: "not_feeling_it", label: "Not feeling it" },
   { id: "blocked", label: "Blocked" },
@@ -48,29 +54,41 @@ export default function StepFollowUp({ followUp, onWhyNot, onClose }: Props) {
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [reply, setReply] = useState<string | null>(null);
+  // Round 6 item 1: Save always says what happened.
+  const [saved, setSaved] = useState(false);
+  const [failed, setFailed] = useState(false);
   const first = useRef<HTMLButtonElement>(null);
   useEffect(() => first.current?.focus({ preventScroll: true }), [followUp]);
+
+  // The confirmation shows briefly, then the card closes itself. A reply from
+  // Tangent stays until the student closes it.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    if (!saved || reply) return;
+    const timer = window.setTimeout(() => closeRef.current(), SAVED_MS);
+    return () => window.clearTimeout(timer);
+  }, [saved, reply]);
 
   const send = async () => {
     if (!feel && !time && !note.trim()) return onClose();
     setSaving(true);
-    try {
-      const res = await fetch("/api/today", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "check_in", taskId: followUp.task.id, feel, time, note: note.trim() || undefined }),
-      });
-      const data = (await res.json().catch(() => ({}))) as { reply?: string | null };
-      if (data.reply) {
-        setReply(data.reply);
-        return;
-      }
-    } catch {
-      /* a lost check-in only means a little less to learn from */
-    } finally {
-      setSaving(false);
+    setFailed(false);
+    const result = await saveCheckIn(fetch, {
+      action: "check_in",
+      taskId: followUp.task.id,
+      feel,
+      time,
+      note: note.trim() || undefined,
+    });
+    setSaving(false);
+    if (result.status === "failed") {
+      // The card stays open with the student's choices, ready to try again.
+      setFailed(true);
+      return;
     }
-    onClose();
+    setReply(result.reply);
+    setSaved(true);
   };
 
   const motionProps = reduce
@@ -98,11 +116,20 @@ export default function StepFollowUp({ followUp, onWhyNot, onClose }: Props) {
     );
   }
 
-  if (reply) {
+  if (saved) {
     return (
-      <m.div className="step-follow" role="dialog" aria-label="A note from Tangent" {...motionProps}>
-        <p className="step-follow-reply">{reply}</p>
-        <button type="button" className="step-follow-quiet" onClick={onClose}>Close</button>
+      <m.div className="step-follow" role="status" aria-live="polite" {...motionProps}>
+        <div className="step-follow-head">
+          <p className="step-follow-saved">
+            <CircleCheck size={16} strokeWidth={1.75} aria-hidden="true" />
+            <span>{reply ? "Saved." : savedLine(followUp.next)}</span>
+          </p>
+          <button type="button" className="step-follow-x" onClick={onClose} aria-label="Close">
+            <X size={16} strokeWidth={1.75} aria-hidden="true" />
+          </button>
+        </div>
+        {reply && <p className="step-follow-reply">{reply}</p>}
+        {reply && <button type="button" className="step-follow-quiet" onClick={onClose}>Close</button>}
       </m.div>
     );
   }
@@ -115,6 +142,7 @@ export default function StepFollowUp({ followUp, onWhyNot, onClose }: Props) {
           <X size={16} strokeWidth={1.75} aria-hidden="true" />
         </button>
       </div>
+      {followUp.next && <p className="step-follow-next">Next: {followUp.next}</p>}
       <div className="step-follow-chips" role="radiogroup" aria-label="How it went">
         {FEELS.map((f, i) => (
           <button
@@ -130,27 +158,39 @@ export default function StepFollowUp({ followUp, onWhyNot, onClose }: Props) {
           </button>
         ))}
       </div>
-      <div className="step-follow-chips" role="radiogroup" aria-label="How long it took">
-        {TIMES.map((t) => (
-          <button key={t.id} type="button" role="radio" aria-checked={time === t.id} className="step-follow-chip" onClick={() => setTime(time === t.id ? null : t.id)}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-      <input
-        className="step-follow-note"
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && void send()}
-        placeholder="Anything to remember? (optional)"
-        maxLength={280}
-        aria-label="Anything to remember (optional)"
-      />
+      {feel && (
+        <div className="step-follow-chips" role="radiogroup" aria-label="How long it took">
+          {TIMES.map((t) => (
+            <button key={t.id} type="button" role="radio" aria-checked={time === t.id} className="step-follow-chip" onClick={() => setTime(time === t.id ? null : t.id)}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {feel && (
+        <input
+          className="step-follow-note"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && void send()}
+          placeholder="Anything to remember? (optional)"
+          maxLength={280}
+          aria-label="Anything to remember (optional)"
+        />
+      )}
+      {failed && (
+        <p className="step-follow-failed" role="alert">
+          <CircleAlert size={16} strokeWidth={1.75} aria-hidden="true" />
+          <span>{SAVE_FAILED}</span>
+        </p>
+      )}
       <div className="step-follow-actions">
         <button type="button" className="step-follow-quiet" onClick={onClose}>Skip</button>
-        <button type="button" className="step-follow-save" onClick={() => void send()} disabled={saving}>
-          {saving ? "Saving…" : "Save"}
-        </button>
+        {feel && (
+          <button type="button" className="step-follow-save" onClick={() => void send()} disabled={saving}>
+            {saving ? "Saving…" : "Save"}
+          </button>
+        )}
       </div>
     </m.div>
   );

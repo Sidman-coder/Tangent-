@@ -3,6 +3,7 @@
 // fixture file and the grader are checked for free in `npm test`.
 
 import type { GuardConfig, GuardStep, checkStep as CheckStep, bannedPhraseIn as BannedPhraseIn } from "./plan-guard";
+import type { PlacementCase } from "./placement-grade";
 
 /** The guard's checks, passed in so this file has no runtime imports (plain `node --test`). */
 export type GuardFns = { checkStep: typeof CheckStep; bannedPhraseIn: typeof BannedPhraseIn };
@@ -15,7 +16,7 @@ export type QualityCase = {
   facts: { id: string; text: string }[];
   topicWords: string[];
   minTopicSteps: number;
-};
+} & Partial<Pick<PlacementCase, "times" | "reference_date" | "school" | "expectDeadline" | "expectBusy">>;
 
 export type QualityFile = { version: 1; reference_date: string; timezone: string; note?: string; cases: QualityCase[] };
 
@@ -41,6 +42,10 @@ export function validateQualityFile(raw: unknown): string[] {
     if (!Array.isArray(c?.dates) || c.dates.length === 0 || !c.dates.every(isYmd)) out.push(`${at}: dates must be YYYY-MM-DD`);
     if (!Array.isArray(c?.facts) || !c.facts.every((x) => isStr(x?.id) && isStr(x?.text))) out.push(`${at}: facts must be {id, text}`);
     if (!Array.isArray(c?.topicWords) || c.topicWords.length === 0 || !c.topicWords.every(isStr)) out.push(`${at}: topicWords missing`);
+    if (c?.times !== undefined && (!Array.isArray(c.times) || c.times.length !== c.dates?.length || !c.times.every((t) => /^\d{2}:\d{2}$/.test(t)))) {
+      out.push(`${at}: times must be HH:MM, one per date`);
+    }
+    if (c?.reference_date !== undefined && !isYmd(c.reference_date)) out.push(`${at}: reference_date must be YYYY-MM-DD`);
     if (!Number.isInteger(c?.minTopicSteps) || c.minTopicSteps < 1 || (Array.isArray(c?.dates) && c.minTopicSteps > c.dates.length)) {
       out.push(`${at}: minTopicSteps must be 1..dates.length`);
     }

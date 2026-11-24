@@ -895,7 +895,17 @@ export async function getNotificationPrefs(): Promise<NotificationPrefs> {
 }
 
 export async function setNotificationPrefs(prefs: NotificationPrefs): Promise<boolean> {
-  return updateProfileOptional("setNotificationPrefs", { notification_prefs: parseNotificationPrefs(prefs) });
+  // The proactive check's last run is the server's, never the settings form's.
+  const { proactiveAt } = await getNotificationPrefs();
+  const next = { ...parseNotificationPrefs(prefs), proactiveAt };
+  if (!proactiveAt) delete next.proactiveAt;
+  return updateProfileOptional("setNotificationPrefs", { notification_prefs: next });
+}
+
+/** Overnight 2, Phase 4: note that the proactive check ran (4-hour gate). */
+export async function markProactiveRun(at: Date): Promise<boolean> {
+  const prefs = await getNotificationPrefs();
+  return updateProfileOptional("markProactiveRun", { notification_prefs: { ...prefs, proactiveAt: at.toISOString() } });
 }
 
 /** Every row the student owns, for "Export my data". Secrets are dropped
@@ -3571,7 +3581,49 @@ export async function getCanvasFeedStatus(): Promise<CanvasFeedStatus | null> {
     connectedAt: feed.connectedAt,
     lastSyncedAt: feed.lastSyncedAt,
     lastSyncCount: feed.lastSyncCount,
+    itemCount: await countCanvasTasks(),
   };
+}
+
+/** How many Canvas items (done or not) are in this student's calendar. */
+export async function countCanvasTasks(): Promise<number> {
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("tasks").select("id").eq("user_id", userId).eq("source", "canvas");
+  if (error) fail("countCanvasTasks", error);
+  return data?.length ?? 0;
+}
+
+/** Overnight 2, Phase 6 (Sid approved): Disconnect Canvas. Always deletes the
+ *  stored feed link, so nothing syncs again; deletes the items it brought in
+ *  only when the student said so. Only this student's rows. */
+export async function disconnectCanvas(opts: { removeItems: boolean }): Promise<{ removedItems: number }> {
+  const { db, userId } = ctx();
+  const { error } = await db.from("canvas_feeds").delete().eq("user_id", userId);
+  if (error) fail("disconnectCanvas feed", error);
+  let removedItems = 0;
+  if (opts.removeItems) {
+    const { data, error: taskError } = await db.from("tasks").delete().eq("user_id", userId).eq("source", "canvas").select("id");
+    if (taskError) fail("disconnectCanvas tasks", taskError);
+    removedItems = data?.length ?? 0;
+  }
+  console.log("[store] disconnectCanvas: removed items:", removedItems);
+  return { removedItems };
+}
+
+/** Overnight 2, Phase 6: deletes this student's observation log rows
+ *  (`step_events`), all of them or only some kinds ("Tangent noticed" →
+ *  Forget). Nothing to do on a database without the table. */
+export async function forgetObservations(kinds?: readonly string[]): Promise<number> {
+  const { db, userId } = ctx();
+  if (kinds && kinds.length === 0) return 0;
+  let q = db.from("step_events").delete().eq("user_id", userId);
+  if (kinds) q = q.in("kind", kinds as string[]);
+  const { data, error } = await q.select("id");
+  if (error) {
+    if (schemaErrorKind(error) === "missing_table") return 0;
+    fail("forgetObservations", error);
+  }
+  return data?.length ?? 0;
 }
 
 export async function saveCanvasFeed(icsUrl: string): Promise<CanvasFeedConfig> {

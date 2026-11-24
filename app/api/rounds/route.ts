@@ -8,7 +8,7 @@ import { splitProjectNotes } from "@/lib/project-notes";
 import { handleVoiceText } from "@/lib/voice-handler";
 import { trackEvent } from "@/lib/analytics";
 import { previewFor } from "@/lib/pipeline/drafting";
-import { answerFacts, shiftRound, withRoundOp, type ReviewAnswer } from "@/lib/round-review";
+import { answerFacts, reviewChangeNote, shiftRound, withRoundOp, type ReviewAnswer } from "@/lib/round-review";
 
 // Round 4 §3.4: the round review. GET says whether a project's round is ready
 // for review and how it went (from step event codes only, never the student's
@@ -42,6 +42,7 @@ async function review(planId: string) {
     today: now.date,
     due,
     done,
+    open: steps.filter((t) => !t.completed).map((t) => ({ title: t.title, date: t.date })),
     total: steps.length,
     next,
     summary: round ? roundSummary(done, steps.length, checkIns, notToday, next) : "",
@@ -76,9 +77,16 @@ export const POST = withUser(async (request: Request) => {
       (a): a is ReviewAnswer => !!a && typeof (a as ReviewAnswer).questionId === "string" && typeof (a as ReviewAnswer).question === "string"
     );
     const said = answerFacts(answers, r.plan.title, r.round.n);
-    const context = `How round ${r.round.n} went: ${r.summary}${said.length ? ` What the student said in the review: ${said.join(" ")}` : ""} Plan the next week only: 3 to 7 steps that build on what's done, sized to how it went.`;
+    // Overnight 2 (L12): a step still open stays on the calendar, so round 2
+    // must not add it again or a vague "Finish the missed round 1 step".
+    const open = r.open.slice(0, 3).map((o) => `"${o.title}" (${o.date})`).join(", ");
+    const openLine = open
+      ? ` Still open from round ${r.round.n} and already on their calendar: ${open}. Don't add another step for it, and never a vague "finish the missed step"; plan the new steps around it.`
+      : "";
+    const context = `How round ${r.round.n} went: ${r.summary}${said.length ? ` What the student said in the review: ${said.join(" ")}` : ""}${openLine} Plan the next week only: 3 to 7 steps that build on what's done, sized to how it went. When a step is there because of something they said in the review, its why says so ("You said more practice, so…").`;
     const extraOps = withRoundOp([], planId, r.plan.description, { n: r.next, startedOn: r.today }) ?? undefined;
-    return handleVoiceText(text, { forcePlan: true, preview: true, source: "typed", projectId: planId, context, extraOps });
+    const reviewNote = reviewChangeNote(answers, r.next) || undefined;
+    return handleVoiceText(text, { forcePlan: true, preview: true, source: "typed", projectId: planId, context, extraOps, reviewNote });
   }
 
   if (body.action === "schedule") {

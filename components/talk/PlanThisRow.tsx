@@ -9,6 +9,7 @@ import Button from "@/components/ui/Button";
 export default function PlanThisRow({ onPlan, onDismiss, disabled }: { onPlan: () => void; onDismiss: () => void; disabled?: boolean }) {
   return (
     <div className="talk-plan-row">
+      <span className="talk-plan-ask">Want me to plan it?</span>
       <Button variant="secondary" size="sm" icon={<CalendarPlus size={16} strokeWidth={1.75} aria-hidden="true" />} onClick={onPlan} disabled={disabled}>
         Plan this into my calendar
       </Button>

@@ -33,13 +33,20 @@ import {
   type Candidate,
   type PendingQuestion,
 } from "../pending-question";
-import { getAllPlans, getPlanAliases, getUserTimezone, recordDecision, savePlanAlias, setDecisionOutcome } from "../store";
+import { getAllPlans, getAllTasks, getPlanAliases, getUserTimezone, recordDecision, savePlanAlias, setDecisionOutcome } from "../store";
+import { respondWithDraft } from "./drafting";
+import { parsePlanShift, planShiftOps } from "./plan-shift";
+import { splitCaptureItems, type QuickCapture } from "../ai/router";
+import { placeNewTask } from "../spacing";
+import { inferCalendarGroup } from "../calendars";
+import { taskOp } from "./draft";
 import { localNow } from "../time";
+import { dayName } from "../load";
 import { outcomeForReply, type DecisionInput } from "./decisions";
 import { logEvent } from "./events";
 import { extendPlan } from "./extend-plan";
 import { TANGENT_PIPELINE_V2 } from "./flags";
-import { classifyIntent, CLARIFY_OPTIONS, confidenceBucket, ROUTER_JSON_SCHEMA, type Understanding } from "./intent";
+import { classifyIntent, CLARIFY_OPTIONS, confidenceBucket, ROUTER_JSON_SCHEMA, type OpenTask, type Understanding } from "./intent";
 import { matchPlan, type MatchResult } from "./match";
 import { stripModeSwitchLine, isCompleteSchedule } from "./plan-text";
 
@@ -73,6 +80,8 @@ export type UnderstandOptions = {
   pipelineText: string;
   /** The client can show Juann's question card ("grill me"). */
   clarify?: boolean;
+  /** Typed in a task's chat: that task, for the router. */
+  openTask?: OpenTask | null;
 };
 
 const ROUTER_MODEL = () => modelFor(AI_TASKS.intentRouter.tier);
@@ -96,6 +105,53 @@ async function addToPlan(planId: string, request: string, source: "typed" | "voi
   const res = await extendPlan(planId, request, source);
   if (!res.ok) return { message: res.message, action: res.reason === "no_tasks" ? "chat_reply" : "error", ok: true };
   return fromDraft(res.response);
+}
+
+/** A whole-plan shift as a preview of move_task ops, or null when nothing is open to move. */
+async function shiftPlan(planId: string, title: string, days: number, request: string, source: "typed" | "voice"): Promise<Reply | null> {
+  const today = localNow(await getUserTimezone()).date;
+  const ops = planShiftOps((await getAllTasks()).filter((t) => t.planId === planId), days, today);
+  if (ops.length === 0) return null;
+  const amount = Math.abs(days) % 7 === 0 ? `${Math.abs(days) / 7} week${Math.abs(days) === 7 ? "" : "s"}` : `${Math.abs(days)} day${Math.abs(days) === 1 ? "" : "s"}`;
+  const response = await respondWithDraft(
+    {
+      source,
+      requestText: request,
+      summary: `Move ${title} ${days > 0 ? "later" : "earlier"} by ${amount}`,
+      intent: "change_plan",
+      targetPlanId: planId,
+      ops,
+      assumptions: ops.length ? [`Moves the ${ops.length} open step${ops.length === 1 ? "" : "s"} from today on; done steps stay put`] : [],
+    },
+    { text: request, today, route: "plan_shift" }
+  );
+  return fromDraft(response);
+}
+
+/** Several to-dos from one line as one preview. A typed day stands; the
+ *  spacing brain picks the time, and the day for a "due" or undated item. */
+async function draftSeveral(items: QuickCapture[], request: string, source: "typed" | "voice", today: string): Promise<Reply | null> {
+  const ops = [];
+  for (const q of items) {
+    const placed = await placeNewTask({ date: q.date ?? null, time: q.time ?? null, deadline: q.deadline ?? null });
+    // Keep the due day on a to-do placed before it (overnight 2, live L4).
+    const notes = !q.date && q.deadline ? `DUE: ${dayName(q.deadline)} ${q.deadline}` : undefined;
+    ops.push(taskOp({ title: q.title, date: q.date ?? placed.date, time: placed.time, calendarId: inferCalendarGroup(q.title), notes }));
+  }
+  const due = items.filter((q) => q.deadline && !q.date).map((q) => q.title);
+  const response = await respondWithDraft(
+    {
+      source,
+      requestText: request,
+      summary: `Add ${ops.length} to-dos`,
+      intent: "add_task",
+      targetPlanId: null,
+      ops,
+      assumptions: due.length ? [`${due.join(", ")}: placed before ${due.length === 1 ? "its" : "their"} due day`] : [],
+    },
+    { text: request, today, route: "multi_capture" }
+  );
+  return fromDraft(response);
 }
 
 const changeSetIdOf = (reply: Reply) => {
@@ -133,12 +189,24 @@ export async function understandAndRoute(messages: ChatMessage[], userText: stri
   const plans = await getAllPlans().catch(() => []);
   const titles = [...plans].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((p) => p.title);
 
+  // "calc test friday and english essay due monday": several dated to-dos,
+  // drafted as one preview with no model (overnight 2, eval calc-and-essay).
+  const several = messages.length <= 1 ? splitCaptureItems(userText, tz) : null;
+  if (several) {
+    const reply = await draftSeveral(several, userText, opts.source, today);
+    if (reply) {
+      await recordDecision({ source: opts.source, requestText: userText, route: "fast", intent: "add_task", confidence: 1, via: "fast", models: [], outcome: outcomeForReply(reply), changeSetId: changeSetIdOf(reply), actionId: null });
+      return reply;
+    }
+  }
+
   const u: Understanding = await classifyIntent(userText, {
     flag: TANGENT_PIPELINE_V2,
     tz,
     today,
     planTitles: titles,
     caller: callIntentRouter,
+    openTask: opts.openTask,
   });
   logEvent("intent_classified", { intent: u.intent ?? "none", confidence_bucket: confidenceBucket(u.confidence), via: u.via, ...(u.fallback ? { fallback: u.fallback } : {}) });
 
@@ -203,6 +271,12 @@ export async function understandAndRoute(messages: ChatMessage[], userText: stri
       logEvent("match_proposed", { decision: match.decision, candidates: match.candidates.length });
       const planMatch = { decision: match.decision, candidates: match.candidates.map((c) => ({ id: c.id, score: c.score })) };
       if (match.decision === "sure") {
+        // "Push it back two days" is arithmetic: move_task drafts, no model.
+        const shift = u.intent === "change_plan" ? parsePlanShift(userText) : null;
+        if (shift !== null) {
+          const reply = await shiftPlan(match.target.id, match.target.title, shift, opts.pipelineText, opts.source);
+          if (reply) return done(reply, { planMatch, chosenPlanId: match.target.id });
+        }
         const reply = await addToPlan(match.target.id, opts.pipelineText, opts.source);
         return done(reply, { planMatch, chosenPlanId: match.target.id, models: [...(base.models ?? []), EXTEND_MODEL()] });
       }

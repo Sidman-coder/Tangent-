@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { fetchAndValidateIcs, syncCanvasFeed } from "@/lib/canvas-ics";
 import { CanvasFeedError } from "@/lib/canvas-feed-security";
+import { syncWithQuietRetry } from "@/lib/canvas-retry";
 import { getCanvasFeed, getCanvasFeedStatus, saveCanvasFeed, recordCanvasSync } from "@/lib/store";
 import { withUser } from "@/lib/request-context";
 
@@ -65,7 +66,8 @@ export const GET = withUser(async (req: Request) => {
       }
     }
 
-    const result = await syncCanvasFeed(feed.icsUrl);
+    // One quiet retry first: a slow Canvas is not worth bothering anyone about.
+    const result = await syncWithQuietRetry(() => syncCanvasFeed(feed.icsUrl));
     await recordCanvasSync(result.total);
 
     // The feed URL is a secret; only the masked status goes back to the browser.
@@ -73,10 +75,10 @@ export const GET = withUser(async (req: Request) => {
     return NextResponse.json({ ok: true, ...result, lastSyncedAt: status?.lastSyncedAt ?? null, feed: status });
   } catch (e) {
     if (e instanceof CanvasFeedError) {
-      return NextResponse.json({ ok: false, error: e.message }, { status: 400 });
+      return NextResponse.json({ ok: false, error: e.message, needsReconnect: true }, { status: 400 });
     }
     console.error("[api/canvas/connect] GET error:", e instanceof Error ? e.name : "error");
-    return NextResponse.json({ ok: false, error: "Couldn't re-sync your Canvas feed right now." }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "Canvas didn't update. Tangent will keep trying; reconnect if it keeps happening." }, { status: 502 });
   }
 });
 

@@ -1,3 +1,4 @@
+import PublicLinks from "@/components/public/PublicLinks";
 import SignInForm from "./SignInForm";
 
 export const metadata = { title: "Sign in · Tangent" };
@@ -16,6 +17,7 @@ export default function SignInPage({ searchParams }: { searchParams: { next?: st
         initialError={searchParams.error ? ERRORS[searchParams.error] ?? null : null}
         initialMode={searchParams.mode === "create" ? "create" : "signin"}
       />
+      <PublicLinks className="auth-footer-links" />
     </>
   );
 }

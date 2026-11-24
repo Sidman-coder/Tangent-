@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCommitments, getState, getUserTimezone, replaceCommitments } from "@/lib/store";
 import { withUser } from "@/lib/request-context";
-import { MAX_COMMITMENTS, parseCommitments } from "@/lib/commitments";
+import { MAX_COMMITMENTS, commitmentProblem, parseCommitment, parseCommitments } from "@/lib/commitments";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,5 +33,30 @@ export const PUT = withUser(async (req: Request) => {
   } catch (e) {
     console.error("[api/commitments] PUT error:", e instanceof Error ? e.message : e);
     return NextResponse.json({ ok: false, error: "Couldn't save your schedule. Try again." }, { status: 500 });
+  }
+});
+
+/** POST { add }: Round 6 (item 5), the student tapped Yes on "Add bakery shifts
+ *  as busy time?". Appends one commitment to the ones saved, through the same
+ *  replace path Settings → Schedule uses. Already covered → nothing changes. */
+export const POST = withUser(async (req: Request) => {
+  const body = (await req.json().catch(() => null)) as { add?: unknown } | null;
+  const add = parseCommitment(body?.add);
+  if (!add || commitmentProblem(add)) {
+    return NextResponse.json({ ok: false, error: "Invalid commitment" }, { status: 400 });
+  }
+  try {
+    const current = await getCommitments();
+    const same = current.find((c) => c.name.toLowerCase() === add.name.toLowerCase() && JSON.stringify(c.blocks) === JSON.stringify(add.blocks));
+    if (same) return NextResponse.json({ ok: true, added: false, commitments: current, state: await getState() });
+    if (current.length >= MAX_COMMITMENTS) {
+      return NextResponse.json({ ok: false, error: "Too many commitments" }, { status: 400 });
+    }
+    await replaceCommitments([...current, { ...add, id: undefined }], await getUserTimezone());
+    console.log("[api/commitments] added from an offer:", add.kind, "| blocks:", add.blocks.length);
+    return NextResponse.json({ ok: true, added: true, commitments: await getCommitments(), state: await getState() });
+  } catch (e) {
+    console.error("[api/commitments] POST error:", e instanceof Error ? e.message : e);
+    return NextResponse.json({ ok: false, error: "Couldn't add that. Try again." }, { status: 500 });
   }
 });

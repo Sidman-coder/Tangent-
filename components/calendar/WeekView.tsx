@@ -394,7 +394,7 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
         <div className={`wk-due${dueOpen ? "" : " is-folded"}`}>
           <button type="button" className="wk-gutter wk-due-label" onClick={toggleDue} aria-expanded={dueOpen} aria-label={dueOpen ? "Fold due dates" : "Show due dates"}>
             Due
-            <ChevronDown size={12} strokeWidth={2} aria-hidden="true" className="wk-due-chevron" />
+            <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" className="wk-due-chevron" />
           </button>
           {days.map((d) => {
             const ymd = toYMD(d);

@@ -6,7 +6,7 @@ import type { GuardConfig, GuardContext } from "./plan-guard";
 
 type Mod = typeof import("./plan-guard");
 
-void (import("./plan-guard.ts" as string) as Promise<Mod>).then(({ checkStep, dropNote, isGenericTitle, topicWords }) => {
+void (import("./plan-guard.ts" as string) as Promise<Mod>).then(({ checkStep, dropNote, isGenericTitle, timeClash, topicWords }) => {
 
 const cfg = JSON.parse(readFileSync(path.join(import.meta.dirname, "..", "..", "config", "plan-guard.json"), "utf8")) as GuardConfig;
 
@@ -56,6 +56,20 @@ test("plan-guard: refs must point at something real", () => {
 
 test("plan-guard: topic words drop filler and fold plurals", () => {
   assert.deepEqual(topicWords("Help me get better at the problems"), ["problem"]);
+});
+
+test("plan-guard: a reason can't put the session in another part of the day (overnight 2 L2)", () => {
+  const late = "You said you do your best work late at night, so a 45-minute hashing block fits";
+  assert.equal(timeClash(late, "15:30") !== null, true);
+  assert.equal(timeClash(late, "21:30"), null);
+  assert.equal(timeClash("Saturday morning is wide open, so the timed contest goes here.", "09:30"), null);
+  assert.equal(timeClash("Saturday morning is wide open, so the timed contest goes here.", "16:00") !== null, true);
+  assert.equal(timeClash("A short block after school before soccer on Tuesday.", "15:30"), null);
+  assert.equal(timeClash("Not in the morning since you're sleepy then; this evening slot is lighter.", "19:00"), null);
+  assert.equal(timeClash("Prefix sums are the first real algorithm trick.", "15:30"), null);
+  assert.equal(timeClash(late, undefined), null);
+  const r = checkStep({ ...good, why: late, time: "15:30" }, ctx, cfg);
+  assert.equal(!r.ok && r.reason, "time_clash");
 });
 
 test("plan-guard: drop note wording", () => {

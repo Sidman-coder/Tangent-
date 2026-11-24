@@ -8,6 +8,7 @@
 import Markdown from "@/components/console/Markdown";
 import "@/components/console/chat-ux.css";
 import PlanThisRow from "./PlanThisRow";
+import BusyTimeOffer from "./BusyTimeOffer";
 import "./talk.css";
 
 export type TalkLine = {
@@ -42,7 +43,7 @@ export default function TalkThread({
   const last = lines[lines.length - 1];
   return (
     <ol className={`talk-thread${compact ? " is-compact" : ""}`} aria-label="Your talk with Tangent">
-      {lines.map((l) => (
+      {lines.map((l, i) => (
         <li key={l.id} className={`talk-line is-${l.role}`} aria-busy={l.streaming || undefined}>
           {l.role === "user" ? (
             <p className="talk-bubble">{l.text}</p>
@@ -61,6 +62,7 @@ export default function TalkThread({
               {l.offerPlan && !l.streaming && l.planGoal && onPlanThis && onNotNow && (
                 <PlanThisRow onPlan={() => onPlanThis(l)} onDismiss={() => onNotNow(l)} disabled={busy} />
               )}
+              {!compact && !l.streaming && lines[i - 1]?.role === "user" && <BusyTimeOffer text={lines[i - 1].text} />}
             </>
           )}
         </li>

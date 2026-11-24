@@ -33,6 +33,7 @@ void (import("./task-colors") as Promise<Mod>).then(({
   projectSeries,
   canvasCourseOf,
   taskSeries,
+  schoolSeries,
   readableInk,
   contrastRatio,
   seriesColor,
@@ -117,14 +118,46 @@ void (import("./task-colors") as Promise<Mod>).then(({
     assert.ok(SERIES_KEYS.includes(projectSeries("toString", "p1")));
   });
 
-  test("taskSeries: project, then course, then personal or neutral", () => {
+  test("taskSeries: each project its hue, School and Work their area, every one-off Personal (overnight 2, Phase 5)", () => {
     const base = { id: "t", title: "Call grandma", date: "2026-11-04", time: "", completed: false };
-    const plans = [{ id: "p1", color: "rose" }];
+    const plans = [
+      { id: "p1", color: "rose" },
+      { id: "s", color: "teal", kind: "school" as const },
+      { id: "w", color: "amber", kind: "work" as const },
+    ];
     assert.equal(taskSeries({ ...base, planId: "p1" }, plans), "rose");
-    assert.equal(taskSeries({ ...base, source: "canvas", title: "Lab 4 [AP Chem]" }, plans), courseColor("AP Chem"));
+    assert.equal(taskSeries({ ...base, source: "canvas", title: "Lab 4 [AP Chem]" }, plans), "teal", "Canvas is School");
+    assert.equal(taskSeries({ ...base, kind: "school", title: "Bio quiz" }, plans), "teal");
+    assert.equal(taskSeries({ ...base, kind: "commitment", title: "Shift at Target" }, plans), "amber");
+    assert.equal(taskSeries({ ...base, kind: "commitment", title: "Piano lesson" }, plans), "personal");
     assert.equal(taskSeries({ ...base, commitment: "reminder" }, plans), "personal");
     assert.equal(taskSeries({ ...base, commitment: "fixed" }, plans), "personal");
-    assert.equal(taskSeries({ ...base, commitment: "flexible" }, plans), "neutral");
+    assert.equal(taskSeries({ ...base, commitment: "flexible" }, plans), "personal", "a one-off is Personal, not grey");
+  });
+
+  test("School, Work, Personal and every project are distinct colours", () => {
+    const plans = [
+      { id: "s", color: "violet", kind: "school" as const },
+      { id: "w", color: "teal", kind: "work" as const },
+      { id: "a", color: "rose" },
+      { id: "b", color: "blue" },
+    ];
+    const t = { id: "t", title: "x", date: "2026-11-04", time: "", completed: false };
+    const colours = [
+      taskSeries({ ...t, kind: "school" }, plans),
+      taskSeries({ ...t, kind: "commitment", title: "Work" }, plans),
+      taskSeries(t, plans),
+      taskSeries({ ...t, planId: "a" }, plans),
+      taskSeries({ ...t, planId: "b" }, plans),
+    ];
+    assert.equal(new Set(colours).size, colours.length, colours.join(", "));
+  });
+
+  test("before a School project exists, School takes a hue no project uses", () => {
+    const plans = [{ id: "a", color: "violet" }, { id: "b", color: "teal" }];
+    const s = schoolSeries(plans);
+    assert.ok(!["violet", "teal", "personal"].includes(s), s);
+    assert.equal(taskSeries({ id: "t", title: "Lab 4 [AP Chem]", source: "canvas", date: "2026-11-04", time: "", completed: false }, plans), s);
   });
 
   test("a deleted project's step still gets a stable hue", () => {

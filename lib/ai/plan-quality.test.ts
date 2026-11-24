@@ -17,7 +17,16 @@ void Promise.all([import("./plan-quality.ts" as string) as Promise<Mod>, import(
     assert.deepEqual(validateQualityFile(file), []);
     assert.deepEqual(
       file.cases.map((c) => c.id),
-      ["quality-competitive-programming", "quality-ap-chem-final", "quality-instagram-growth", "quality-college-essay"]
+      [
+        "quality-competitive-programming",
+        "quality-ap-chem-final",
+        "quality-instagram-growth",
+        "quality-college-essay",
+        // Round 6 (item 2): the sim cases with their sim slots, graded for placement and reasons.
+        "trust-priya-bakery",
+        "trust-leo-test-friday",
+        "trust-maya-final",
+      ]
     );
     assert.ok(validateQualityFile({ version: 1, reference_date: "x", timezone: "", cases: [] }).length > 0);
   });

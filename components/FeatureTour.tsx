@@ -14,6 +14,7 @@ import { createPortal } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
 import * as m from "motion/react-m";
 import { useReducedMotion } from "motion/react";
+import { claimOverlay, releaseOverlay } from "@/lib/first-run-gates";
 import "./feature-tour.css";
 
 export const TOUR_EVENT = "tangent:tour";
@@ -78,7 +79,7 @@ const STEPS: Step[] = [
     route: "/calendar",
     target: [".cal-bar"],
     title: "One bar to steer the calendar",
-    body: "Week, Month or Agenda, back and forward, and what to show: School, Projects or Short-term. All in the bar at the top.",
+    body: "Week, Month or Agenda, back and forward, and what to show: School, Projects or Personal. All in the bar at the top.",
   },
   {
     route: "/calendar",
@@ -144,6 +145,13 @@ export default function FeatureTour() {
       window.localStorage.setItem(TOUR_DONE_KEY, "1");
     } catch {}
   }, []);
+
+  // The tour holds the shared overlay slot while it runs (overnight C01).
+  useEffect(() => {
+    if (index === null) return;
+    claimOverlay("tour");
+    return () => releaseOverlay("tour");
+  }, [index === null]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const start = () => {

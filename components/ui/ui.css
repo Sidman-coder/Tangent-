@@ -688,6 +688,19 @@ span.ui-task-check {
   text-overflow: ellipsis;
 }
 
+/* Overnight Phase 5 (N07): on a phone a long task title wraps to two lines
+   instead of ending in "..." mid-word, so near-identical titles stay apart. */
+@media (max-width: 899px) {
+  .ui-task-title > :first-child,
+  .ui-task-title-button > :first-child {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
 .ui-task-title-button {
   width: fit-content;
   padding: 0;
@@ -1154,6 +1167,16 @@ span.ui-task-check {
   }
 }
 
+/* A modal is open: toasts move to the top edge so they never sit on its
+   buttons (overnight C07). Still visible, still readable, never in the way. */
+body:has([aria-modal="true"]) .ui-toast-region {
+  top: calc(var(--s-4) + env(safe-area-inset-top));
+  bottom: auto;
+  align-items: center;
+  left: var(--s-4);
+  right: var(--s-4);
+}
+
 /* Up to three at once; older ones wait. */
 .ui-toast-region > .ui-toast:nth-last-child(n + 4) {
   display: none;
@@ -1547,7 +1570,7 @@ span.ui-task-check {
 
 /* Round 4 §3.6: a step's outcome, "You'll have: …". Hidden until the row is
    hovered, focused or expanded on pointer screens; always shown on touch. */
-.ui-task-outcome { margin: 2px 0 0; color: var(--text-2); font-size: 12.5px; line-height: 1.4; overflow-wrap: anywhere; }
+.ui-task-outcome { margin: 2px 0 0; color: var(--text-2); font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
 @media (hover: hover) {
   .ui-task-row .ui-task-outcome { display: none; }
   .ui-task-row:hover .ui-task-outcome,
@@ -1572,3 +1595,12 @@ span.ui-task-check {
     margin-block: -12px;
   }
 }
+
+/* A busy block (practice, a game, a shift): a quiet clock where the Done circle would be (overnight C20). */
+span.ui-task-check.is-busy-block {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-3);
+}
+span.ui-task-check.is-busy-block:hover { border-color: transparent; }
+span.ui-task-check.is-busy-block::after { content: none; }

@@ -175,7 +175,7 @@ export async function captureQuestions(
   studentContext: string
 ): Promise<ClarifyQuestion[]> {
   const result = await callClaude(
-    "clarify",
+    "captureQuestions",
     {
       system: CAPTURE_SYSTEM,
       messages: [

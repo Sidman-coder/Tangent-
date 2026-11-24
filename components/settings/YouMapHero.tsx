@@ -75,7 +75,7 @@ export default function YouMapHero({
 
       <ul
         className="you-hero-areas"
-        aria-label="Facts per area"
+        aria-label="Areas"
         onKeyDown={(e) => {
           // Escape on a chip steps the map back out, as it does on the map itself.
           if (e.key !== "Escape" || level.kind === "root") return;
@@ -88,7 +88,8 @@ export default function YouMapHero({
             <button type="button" onClick={() => onPick(group.key)} aria-pressed={level.kind !== "root" && level.key === group.key}>
               <span className="you-map-pill-dot" aria-hidden="true" />
               <span className="you-hero-area-label">{group.label}</span>
-              <b>{facts.length}</b>
+              {/* F09: no count here; it shows once, on the area's card. */}
+              {facts.length === 0 && <span className="you-hero-area-none">Not asked yet</span>}
             </button>
           </li>
         ))}

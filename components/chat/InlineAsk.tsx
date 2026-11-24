@@ -27,6 +27,7 @@ import ActionReceipt from "@/components/ActionReceipt";
 import PreviewCard from "@/components/PreviewCard";
 import Markdown from "@/components/console/Markdown";
 import PlanThisRow from "@/components/talk/PlanThisRow";
+import BusyTimeOffer from "@/components/talk/BusyTimeOffer";
 import "@/components/talk/talk.css";
 import { useAppState } from "@/components/AppStateProvider";
 import { putNewPathTitle } from "@/lib/path-handoff";
@@ -258,7 +259,7 @@ const InlineAsk = forwardRef<InlineAskHandle, {
           }}
         />
         <button type="button" className="inline-ask-send" onClick={() => void send(text)} disabled={busy || !text.trim()} aria-label="Ask">
-          {busy ? <span className="inline-ask-spinner" aria-hidden="true" /> : <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />}
+          {busy ? <span className="inline-ask-spinner" aria-hidden="true" /> : <ArrowUp size={16} strokeWidth={1.75} aria-hidden="true" />}
         </button>
       </div>
 
@@ -270,6 +271,9 @@ const InlineAsk = forwardRef<InlineAskHandle, {
                 {lines.map((l, i) => (
                   <li key={i} className={`inline-ask-line is-${l.role}`}>
                     {l.role === "assistant" ? <Markdown text={l.text} /> : l.text}
+                    {l.role === "assistant" && i === lines.length - 1 && !busy && lines[i - 1]?.role === "user" && (
+                      <BusyTimeOffer text={lines[i - 1].text} />
+                    )}
                     {l.role === "assistant" && l.offerPlan && l.planGoal && i === lines.length - 1 && (
                       <PlanThisRow
                         disabled={busy}
@@ -332,7 +336,7 @@ const InlineAsk = forwardRef<InlineAskHandle, {
             {extra.kind === "done" && <ActionReceipt actionId={extra.actionId} label={extra.summary} onUndone={() => void refresh()} />}
             {lines.length > 0 && !busy && (
               <button type="button" className="tg-clarify-quiet inline-ask-clear" onClick={clear}>
-                <X size={13} strokeWidth={2} aria-hidden="true" /> Clear
+                <X size={13} strokeWidth={1.75} aria-hidden="true" /> Clear
               </button>
             )}
           </m.div>

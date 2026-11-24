@@ -31,10 +31,16 @@ test("praises a finished day", () => {
   assert.match(getGreeting("Juann", 19, { left: 0, urgent: 0, done: 2 }, 0), /Nice work today, Juann\./);
 });
 
-test("only \"Still up\" ends in a question mark", () => {
+test("no praise while steps are still coming up this week (C08)", () => {
+  const g = getGreeting("Juann", 19, { left: 0, urgent: 0, done: 1, ahead: 3 }, 0);
+  assert.doesNotMatch(g, /Nice work|All done|clear/);
+});
+
+test("late-night greeting is neutral: no \"Still up\" question, no time judgement (C10)", () => {
   for (let seed = 0; seed < 4; seed++) {
     const g = getGreeting("Juann", 23, { left: 1, urgent: 0, done: 0 }, seed);
-    assert.ok(g.startsWith("Still up") ? g.endsWith("?") : g.endsWith("."), g);
+    assert.doesNotMatch(g, /still up|late one|\?/i, g);
+    assert.ok(g.endsWith("."), g);
   }
 });
 

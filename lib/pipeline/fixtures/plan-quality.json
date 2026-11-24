@@ -49,6 +49,130 @@
       ],
       "topicWords": ["essay", "draft", "prompt", "brainstorm", "outline", "intro", "story", "revise", "common app", "word", "paragraph", "reader", "counselor"],
       "minTopicSteps": 2
+    },
+    {
+      "id": "trust-priya-bakery",
+      "request": "ED II supplemental essay #1 draft, need it ready before Jan 5. I work at the bakery Wed 4-9pm and Sat-Sun 8am-2pm",
+      "reference_date": "2026-11-23",
+      "weekSummary": "Mon 23 Nov: school until 3pm\nTue 24 Nov: school until 3pm\nWed 25 Nov: school until 3pm\nThu 26 Nov: school until 3pm\nFri 27 Nov: school until 3pm\nSat 28 Nov: free\nSun 29 Nov: free",
+      "dates": [
+        "2026-11-23",
+        "2026-11-25",
+        "2026-11-28",
+        "2026-11-29"
+      ],
+      "times": [
+        "16:30",
+        "18:30",
+        "15:00",
+        "13:30"
+      ],
+      "school": true,
+      "expectDeadline": "2027-01-05",
+      "expectBusy": 3,
+      "facts": [
+        {
+          "id": "f1",
+          "text": "You want the essay to show who you are, not just list activities"
+        }
+      ],
+      "topicWords": [
+        "essay",
+        "supplement",
+        "supplemental",
+        "prompt",
+        "draft",
+        "outline",
+        "story",
+        "paragraph",
+        "ed",
+        "college",
+        "why"
+      ],
+      "minTopicSteps": 2
+    },
+    {
+      "id": "trust-leo-test-friday",
+      "request": "Algebra 2 test Friday on exponentials and logs, need to study but I'm also editing Sunday's video",
+      "reference_date": "2026-11-23",
+      "weekSummary": "Mon 23 Nov: school until 3pm\nTue 24 Nov: school until 3pm\nWed 25 Nov: school until 3pm\nThu 26 Nov: school until 3pm\nFri 27 Nov: school until 3pm\nSat 28 Nov: free\nSun 29 Nov: free",
+      "dates": [
+        "2026-11-23",
+        "2026-11-24",
+        "2026-11-28",
+        "2026-11-29"
+      ],
+      "times": [
+        "16:00",
+        "16:00",
+        "15:00",
+        "11:00"
+      ],
+      "school": true,
+      "expectDeadline": "2026-11-27",
+      "expectBusy": 0,
+      "facts": [
+        {
+          "id": "f1",
+          "text": "You edit a video for your channel every weekend"
+        }
+      ],
+      "topicWords": [
+        "log",
+        "logs",
+        "logarithm",
+        "exponent",
+        "exponential",
+        "exponentials",
+        "algebra",
+        "equation",
+        "problem",
+        "problems",
+        "base"
+      ],
+      "minTopicSteps": 2
+    },
+    {
+      "id": "trust-maya-final",
+      "request": "the AP Chem final is Thu Dec 17. spread study sessions over the weeks before it, not tue 3:30-5 (debate) and nothing after 11pm",
+      "reference_date": "2026-11-22",
+      "weekSummary": "Mon 23 Nov: school until 3pm\nTue 24 Nov: school until 3pm\nWed 25 Nov: school until 3pm\nTue 8 Dec: school until 3pm\nThu 17 Dec: school until 3pm",
+      "dates": [
+        "2026-11-24",
+        "2026-12-08",
+        "2026-12-17"
+      ],
+      "times": [
+        "16:30",
+        "16:00",
+        "16:30"
+      ],
+      "school": true,
+      "expectDeadline": "2026-12-17",
+      "expectBusy": 1,
+      "facts": [
+        {
+          "id": "f1",
+          "text": "You struggle most with equilibrium and Ksp"
+        }
+      ],
+      "topicWords": [
+        "chem",
+        "chemistry",
+        "equilibrium",
+        "ksp",
+        "stoichiometry",
+        "frq",
+        "unit",
+        "kinetics",
+        "thermo",
+        "acid",
+        "base",
+        "practice exam",
+        "mcq",
+        "final"
+      ],
+      "minTopicSteps": 2
     }
   ]
 }

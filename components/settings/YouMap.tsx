@@ -155,7 +155,7 @@ export default function YouMap({
   const kickRef = useRef<() => void>(() => {});
 
   // Per-node animation state and the latest screen positions (for the lines).
-  const anim = useRef(new Map<string, { mix: number; op: number; last?: Spot; w?: { tf: string; op: string; zi: string; back: string; flip: string } }>());
+  const anim = useRef(new Map<string, { mix: number; op: number; last?: Spot; pw?: number; w?: { tf: string; op: string; zi: string; back: string; flip: string } }>());
   const pos = useRef(new Map<string, { x: number; y: number; op: number }>());
 
   const areaKey = level.kind === "root" ? null : level.key;
@@ -300,9 +300,15 @@ export default function YouMap({
         else moving = true;
         const s = a.last;
         const e = a.mix * a.mix * (3 - 2 * a.mix);
-        const x = s ? p.x * R + (s.x - p.x * R) * e : p.x * R;
+        let x = s ? p.x * R + (s.x - p.x * R) * e : p.x * R;
         const y = s ? p.y * R + (s.y - p.y * R) * e : p.y * R;
-        let scale = (0.62 + depth * 0.5) * (1 - e) + e;
+        // Overnight 2 (N11): an area name never shrinks below ~12px, and never
+        // runs off the stage's side ("Classes & activities" was cut at 390).
+        let scale = (n.kind === "area" ? 0.88 + depth * 0.22 : 0.62 + depth * 0.5) * (1 - e) + e;
+        if (n.kind === "area") {
+          const half = ((a.pw ||= (el.firstElementChild as HTMLElement | null)?.offsetWidth ?? 0) * scale) / 2 + 8;
+          x = Math.max(-w / 2 + half, Math.min(w / 2 - half, x));
+        }
         if (fid === n.id) scale *= 1.5;
         // Write only what changed: z-index and data-back restyle the element,
         // so they're bucketed and skipped when equal (keeps ~150 points at 60fps).
@@ -582,10 +588,12 @@ export default function YouMap({
           );
           if (n.kind === "area") {
             return mover(
-              <button {...common} className={`you-map-pill${n.count ? "" : " is-empty"}${areaKey === n.group ? " is-open" : ""}`} aria-label={`${n.label}, ${n.count === 1 ? "1 fact" : `${n.count} facts`}`} aria-expanded={areaKey === n.group}>
+              <button {...common} className={`you-map-pill${n.count ? "" : " is-empty"}${areaKey === n.group ? " is-open" : ""}`} aria-label={`${n.label}, ${!n.count ? "not asked yet" : n.count === 1 ? "1 fact" : `${n.count} facts`}`} aria-expanded={areaKey === n.group}>
                 <span className="you-map-pill-dot" aria-hidden="true" />
                 {n.label}
-                <b>{n.count}</b>
+                {/* Overnight 2 (F09): the count shows once, on the area's card below.
+                    An area with no facts says so in neutral text, never "0" (N11). */}
+                {!n.count && <span className="you-map-pill-none">Not asked yet</span>}
               </button>
             );
           }

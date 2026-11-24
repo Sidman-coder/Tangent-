@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus, Route } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { planSeriesColor } from "@/lib/task-colors";
 import Button from "@/components/ui/Button";
@@ -18,6 +18,7 @@ import { takeAsk } from "@/lib/ask-handoff";
 import { withoutClearedCanvas } from "@/lib/canvas-clear";
 import { splitCourse } from "@/lib/course";
 import { formatTime12 } from "@/lib/dates";
+import { splitProjectNotes } from "@/lib/project-notes";
 import { courseGroups, dueThisWeek, nextDeadline, shortDate, workloadByWeek } from "@/lib/project-stats";
 import { getUserToday } from "@/lib/time";
 import type { Plan, Task } from "@/lib/types";
@@ -106,7 +107,6 @@ export default function ProjectsPage() {
           <>
             {/* Tangents live inside Projects (the sidebar shows them too, from laptop width). */}
             <Link href="/tangents" className="projects-paths-link">
-              <Route size={16} strokeWidth={1.75} aria-hidden="true" />
               Tangents
             </Link>
             {!showComposer && (
@@ -126,7 +126,7 @@ export default function ProjectsPage() {
             key={example ?? "blank"}
             variant="hero"
             defaultDest="project"
-            placeholder="Prep for my chem final on Dec 12, start a robotics club…"
+            placeholder="Prep for my chem final on Dec 12…"
             autoFocus={Boolean(example) || (composing && !handed)}
             initialText={example ?? handed ?? ""}
           />
@@ -159,7 +159,7 @@ export default function ProjectsPage() {
             <section className="school-section" aria-labelledby="areas-heading">
               <h2 id="areas-heading">School &amp; Work</h2>
               <div className="areas-grid">
-                {showSchool && <SchoolCard tasks={[...schoolTasks, ...schoolPlanTasks]} today={today} />}
+                {showSchool && <SchoolCard tasks={[...schoolTasks, ...schoolPlanTasks]} today={today} canvasConnected={canvasConnected} />}
                 {workPlan && <AreaCard plan={workPlan} tasks={(state?.tasks ?? []).filter((t) => t.planId === workPlan.id)} today={today} />}
               </div>
             </section>
@@ -187,7 +187,7 @@ export default function ProjectsPage() {
   );
 }
 
-function SchoolCard({ tasks, today }: { tasks: Task[]; today: string }) {
+function SchoolCard({ tasks, today, canvasConnected }: { tasks: Task[]; today: string; canvasConnected: boolean }) {
   const courses = courseGroups(tasks.filter((t) => t.source === "canvas"), today);
   const deadline = nextDeadline(tasks, today);
   const due = dueThisWeek(tasks, today);
@@ -196,10 +196,14 @@ function SchoolCard({ tasks, today }: { tasks: Task[]; today: string }) {
       <div className="school-card-copy">
         <span className="area-card-name">School</span>
         <strong>{deadline ? `Next: ${splitCourse(deadline).title}` : "Nothing due right now"}</strong>
-        <span>
-          {deadline ? `${shortDate(deadline.date)} · ` : ""}
-          {due} due this week · {courses.length} course{courses.length === 1 ? "" : "s"}
-        </span>
+        {deadline || canvasConnected ? (
+          <span>
+            {deadline ? `${shortDate(deadline.date)} · ` : ""}
+            {due} due this week · {courses.length} course{courses.length === 1 ? "" : "s"}
+          </span>
+        ) : (
+          <span>Add a test or assignment and it shows up here. Open School to add one.</span>
+        )}
       </div>
       <MiniWorkload weeks={workloadByWeek(tasks, today)} />
     </Link>
@@ -228,13 +232,18 @@ function AreaCard({ plan, tasks, today }: { plan: Plan; tasks: Task[]; today: st
 function ProjectCard({ project, today }: { project: ProjectSummary; today: string }) {
   const { plan, steps, done, next } = project;
   const pct = steps.length ? Math.round((done / steps.length) * 100) : 0;
+  const overdue = Boolean(next && next.date && next.date < today);
+  const goal = splitProjectNotes(plan.description).goal;
   return (
     <Link href={`/projects/${plan.id}`} className="project-card" style={{ "--project-color": planSeriesColor(plan) } as React.CSSProperties}>
       <div className="project-card-top">
         <span className="project-dot" aria-hidden="true" />
         <h3>{plan.title}</h3>
       </div>
-      {plan.description && <p className="project-card-goal">{plan.description}</p>}
+      {/* Overnight 2 (3.4 live): the description also holds the planner's brief
+          ("Brief — … Round — 2 · started …"); the card shows only the goal,
+          like the project page does. */}
+      {goal && <p className="project-card-goal">{goal}</p>}
       <div className="project-progress" aria-label={`${done} of ${steps.length} steps done`}>
         <span style={{ width: `${pct}%` }} />
       </div>
@@ -242,11 +251,14 @@ function ProjectCard({ project, today }: { project: ProjectSummary; today: strin
         {next ? (
           <>
             <span className="project-card-next">Next: {next.title}</span>
-            <span>
+            <span className={overdue ? "project-card-when is-overdue" : "project-card-when"}>
+              {overdue ? "Overdue · " : ""}
               {shortDay(next.date, today)}
               {next.time ? ` · ${formatTime12(next.time)}` : ""}
             </span>
           </>
+        ) : steps.length === 0 ? (
+          <span>No steps yet. Open it to plan the first ones.</span>
         ) : (
           <span>All {steps.length} steps done</span>
         )}

@@ -18,7 +18,7 @@ import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import type { ChangeSet } from "@/lib/pipeline/changeset";
 import { previewWeeks } from "@/lib/preview-week";
 import { roundOf, roundSteps } from "@/lib/rounds";
-import { shiftRound, startDate, START_QUESTION_ID, type ReviewAnswer, type ReviewQuestion, type StartChoice } from "@/lib/round-review";
+import { roundChangeLine, shiftRound, startDate, START_QUESTION_ID, type ReviewAnswer, type ReviewQuestion, type StartChoice } from "@/lib/round-review";
 import { getUserToday } from "@/lib/time";
 import { planSeriesColor } from "@/lib/task-colors";
 
@@ -159,6 +159,14 @@ export default function RoundReviewSheet({ open, onClose, projectId, onChanged, 
     [shifted, state?.tasks, state?.plans, oldIds]
   );
   const stepCount = shifted.filter((o) => o.op === "add_task").length;
+  const rawNote = (draft as (ChangeSet & { assumptions?: string[] }) | null)?.assumptions?.find((a) => /^Round \d+ changed because/.test(a)) ?? null;
+  // Overnight 2 Phase 3: what the review changed, read from the steps ("…, so this round is evenings").
+  const changeNote = useMemo(() => {
+    if (!rawNote) return null;
+    const oldSteps = (state?.tasks ?? []).filter((t) => oldIds.has(t.id));
+    const newSteps = shifted.filter((o): o is Extract<ChangeSet["ops"][number], { op: "add_task" }> => o.op === "add_task");
+    return roundChangeLine(rawNote, oldSteps, newSteps);
+  }, [rawNote, state?.tasks, oldIds, shifted]);
 
   const confirm = async () => {
     if (!draft) return;
@@ -285,6 +293,8 @@ export default function RoundReviewSheet({ open, onClose, projectId, onChanged, 
           <p className="round-sheet-summary">
             {stepCount} step{stepCount === 1 ? "" : "s"} from {dayLabel(start)}.
           </p>
+          {/* Overnight 2 (L12): say what the review changed. */}
+          {changeNote && <p className="round-sheet-summary round-sheet-why">{changeNote}</p>}
           {weeks.length > 0 && <PreviewWeek key={`${start}-${weeks.length}`} weeks={weeks} />}
           <ul className="round-sheet-legend" aria-label="Key" style={plan ? ({ "--project-color": planSeriesColor(plan) } as React.CSSProperties) : undefined}>
             <li><i className="is-new" aria-hidden="true" />Round {next}</li>

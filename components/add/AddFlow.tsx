@@ -35,8 +35,10 @@ import ClarifyCard, { type ClarifyAnswer, type ClarifyQuestion } from "@/compone
 import SlotQuestionCard from "@/components/grill/SlotQuestionCard";
 import { readChatReply } from "@/components/console/turns";
 import TalkThread, { type TalkLine } from "@/components/talk/TalkThread";
+import Markdown from "@/components/console/Markdown";
 import ThinkingStages from "@/components/plan/ThinkingStages";
 import PlanBrief from "@/components/plan/PlanBrief";
+import BusyTimeOffer from "@/components/talk/BusyTimeOffer";
 import type { BriefView, PlanStage } from "@/lib/voice-handler";
 
 /** "Grill until enough" so far, sent back each turn (lib/context/grill.ts). */
@@ -59,6 +61,7 @@ import { getUserToday } from "@/lib/time";
 import DestPill, { type DestChoice } from "./DestPill";
 import PlanWorkspace, { CalendarPlaceholder, type Pane } from "./PlanWorkspace";
 import { findDraft } from "@/lib/drafts/draft-store";
+import { friendlyError } from "@/lib/friendly-error";
 import "./add.css";
 
 type Dest = "calendar" | "project";
@@ -120,6 +123,16 @@ function dayName(ymd: string): string {
 
 let lineSeq = 0;
 const lineId = () => `l${Date.now().toString(36)}${(lineSeq++).toString(36)}`;
+
+/** After a few seconds of waiting, say plainly that it is still going and roughly how long it can take (overnight C09). */
+function SlowNote() {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const t = window.setTimeout(() => setSlow(true), 5000);
+    return () => window.clearTimeout(t);
+  }, []);
+  return slow ? <span className="add-slow">Still working. Longer plans can take up to 30 seconds.</span> : null;
+}
 
 export default function AddFlow({
   variant = "hero",
@@ -224,6 +237,33 @@ export default function AddFlow({
     onTextChange?.(text);
   }, [onTextChange, text]);
 
+  // Overnight 2 L11: what's typed in Home's box but not sent survives leaving
+  // Home or a reload ("drafts never lost"). This device only; sending or
+  // emptying the box clears it.
+  const unsentKey = variant === "hero" ? "tangent:home-unsent" : null;
+  const restored = useRef(false);
+  useEffect(() => {
+    if (!unsentKey || restored.current) return;
+    restored.current = true;
+    try {
+      const kept = window.localStorage.getItem(unsentKey);
+      if (kept && !initialText) setText((t) => t || kept);
+    } catch {
+      /* storage blocked: nothing to restore */
+    }
+    // Once, on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!unsentKey || !restored.current) return;
+    try {
+      if (text.trim()) window.localStorage.setItem(unsentKey, text.slice(0, 2000));
+      else window.localStorage.removeItem(unsentKey);
+    } catch {
+      /* storage blocked: the text just isn't kept */
+    }
+  }, [text, unsentKey]);
+
   // Grow with what's typed, up to a few lines.
   useEffect(() => {
     const el = inputRef.current;
@@ -293,7 +333,10 @@ export default function AddFlow({
       else setPhase({ kind: "working", text: words, thinking: !!ask || (!followUp && (/\?\s*$/.test(words) || routeAsk(words) === "question")) });
       setHelp(null);
       setStage(null);
-      const toProject = dest === "project";
+      // Overnight 2 L1/L6: on Auto, "how do I get better at…" went straight to
+      // grill cards. Only a project the student picked skips the server's
+      // talk-first router; on Auto the server decides (lib/pipeline/talk-route.ts).
+      const toProject = dest === "project" && choice?.dest === "project";
       // The talk so far rides along as context.
       const earlier = hero
         ? [...historyRef.current, ...talkRef.current]
@@ -436,8 +479,8 @@ export default function AddFlow({
         setStage(null);
         setTalk((t) => t.filter((l) => !(l.id === replyId && !l.text)).map((l) => (l.id === replyId ? { ...l, streaming: false } : l)));
         if (keepBrief) setTalkBusy(false);
-        setPhase(keepBrief ? before : { kind: "error", message: e instanceof Error ? e.message : "Something went wrong." });
-        if (keepBrief) setTalk((t) => [...t, { id: lineId(), role: "assistant", text: e instanceof Error ? e.message : "Something went wrong." }]);
+        setPhase(keepBrief ? before : { kind: "error", message: friendlyError(e, "Something went wrong.") });
+        if (keepBrief) setTalk((t) => [...t, { id: lineId(), role: "assistant", text: friendlyError(e, "Something went wrong.") }]);
       }
     },
     [dest, finish, hero, onClose, reset, router, targetProject]
@@ -473,7 +516,7 @@ export default function AddFlow({
         }
         finish(data, "", false);
       } catch (e) {
-        setPhase({ kind: "error", message: e instanceof Error ? e.message : "Something went wrong." });
+        setPhase({ kind: "error", message: friendlyError(e, "Something went wrong.") });
       }
     },
     [finish]
@@ -661,7 +704,7 @@ export default function AddFlow({
           {listening ? <AudioLines size={20} strokeWidth={1.75} aria-hidden="true" /> : <Mic size={20} strokeWidth={1.75} aria-hidden="true" />}
         </button>
         <button type="button" className="add-send" onClick={submit} disabled={busy || !text.trim()} aria-label={talking ? "Send" : "Add"}>
-          {busy ? <span className="add-spinner" aria-hidden="true" /> : <ArrowUp size={18} strokeWidth={2.25} aria-hidden="true" />}
+          {busy ? <span className="add-spinner" aria-hidden="true" /> : <ArrowUp size={18} strokeWidth={1.75} aria-hidden="true" />}
         </button>
       </div>
 
@@ -691,7 +734,7 @@ export default function AddFlow({
     <AnimatePresence mode="wait" initial={false}>
       {phase.kind === "working" && phase.text && !phase.streaming && (
         <m.p key="working" className="add-status" role="status" {...fade}>
-          <span className="add-spinner" aria-hidden="true" /> {phase.thinking ? "Thinking…" : <>Placing “{phase.text}”…</>}
+          <span className="add-spinner" aria-hidden="true" /> {phase.thinking ? "Thinking…" : <>Placing “{phase.text}”…</>} <SlowNote />
         </m.p>
       )}
       {phase.kind === "asking" && (
@@ -749,7 +792,7 @@ export default function AddFlow({
             preview={phase.preview}
             onChanged={() => void refresh()}
             grill={{ said: phase.said, asked: phase.asked }}
-            onSettled={() => window.setTimeout(() => setPhase({ kind: "compose" }), 2500)}
+            onSettled={(settled) => { if (settled !== "confirmed") window.setTimeout(() => setPhase({ kind: "compose" }), 2500); }}
           />
         </m.div>
       )}
@@ -757,6 +800,10 @@ export default function AddFlow({
         <m.div key="done" className="add-done" role="status" {...fade}>
           {phase.actionId ? (
             <ActionReceipt actionId={phase.actionId} label={phase.summary} onUndone={() => void refresh()} />
+          ) : phase.summary.includes("\n") ? (
+            // Overnight 2 (R2-L6): a talk answer in the sheet showed raw "##" and
+            // "- " in one run-on line. Multi-line answers render as Markdown.
+            <Markdown text={phase.summary} />
           ) : (
             <span>{phase.summary}</span>
           )}
@@ -850,6 +897,7 @@ export default function AddFlow({
             <>
               {historyFold}
               {phase.note && <p className="add-grill-note" role="status">{phase.note}</p>}
+              <BusyTimeOffer text={history.filter((l) => l.role === "user").map((l) => l.text).join("\n") || topic} />
               <PlanBrief
                 key={phase.changeSet.id}
                 changeSet={phase.changeSet}
@@ -858,15 +906,17 @@ export default function AddFlow({
                 goal={topic}
                 onChanged={() => void refresh()}
                 onOps={setDraftOps}
-                onSettled={() =>
+                onSettled={(settled) => {
+                  // A confirmed plan stays on screen with its "Saved" line until the
+                  // student leaves (overnight C05); a discarded or undone one closes.
+                  if (settled === "confirmed") return;
                   window.setTimeout(() => {
-                    // Still on the same settled draft: back to Today.
                     if (phaseRef.current.kind === "preview" && phaseRef.current.changeSet.id === phase.changeSet.id) {
                       setPhase({ kind: "compose" });
                       endTalk();
                     }
-                  }, 4000)
-                }
+                  }, 4000);
+                }}
                 composer={
                   <>
                     {followUps}

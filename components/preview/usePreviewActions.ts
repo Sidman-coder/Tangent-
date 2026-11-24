@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeSet } from "@/lib/pipeline/changeset";
 import type { DraftEdit, PreviewPayload } from "@/lib/pipeline/draft";
-import { findDraft, forgetDraft, keepDraft, markOpen } from "@/lib/drafts/draft-store";
+import { findDraft, forgetDraft, keepDraft, markOpen, settleDraft } from "@/lib/drafts/draft-store";
 
 export type PreviewPhase = "draft" | "confirmed" | "discarded" | "undone";
 
@@ -63,9 +63,11 @@ export function usePreviewActions({
   const originRef = useRef<string | null>(null);
   useEffect(() => markOpen(cs.id), [cs.id]);
   useEffect(() => {
-    if (phase !== "draft" || expired) return forgetDraft(cs.id);
     const kept = findDraft(cs.id);
     originRef.current ??= kept?.origin ?? window.location.pathname;
+    // Round 6 item 3: Confirm clears this pill and its older versions.
+    if (phase === "confirmed") return settleDraft(cs, originRef.current);
+    if (phase !== "draft" || expired) return forgetDraft(cs.id);
     keepDraft(cs, view, originRef.current);
   }, [phase, expired, cs, view]);
 
@@ -100,8 +102,16 @@ export function usePreviewActions({
     throw new Error(typeof data.message === "string" ? data.message : "Something went wrong.");
   };
 
-  const confirm = () =>
-    act(async () => {
+  // Overnight 2 (Maya sim): an edited time saves on blur. That blur fires on
+  // the Confirm tap's mousedown; when edits shared `busy`, Confirm was disabled
+  // before its click landed, and the tap did nothing. Edits now queue on their
+  // own, and Confirm waits for them, so it saves what's on screen.
+  const editsRef = useRef<Promise<void>>(Promise.resolve());
+  const [saving, setSaving] = useState(0);
+
+  const confirm = async () => {
+    await editsRef.current;
+    return act(async () => {
       const { status, data } = await post(`${base}/confirm`);
       if (!data.ok) return settle(status, data);
       const skipped = (data.skipped_duplicates as { titles?: string[] } | undefined)?.titles ?? [];
@@ -112,6 +122,7 @@ export function usePreviewActions({
       onChanged?.();
       if (typeof data.actionId === "string") onConfirmed?.(data.actionId, { planId });
     });
+  };
 
   const discard = () =>
     act(async () => {
@@ -137,13 +148,26 @@ export function usePreviewActions({
       onChanged?.();
     });
 
-  const edit = (body: DraftEdit) =>
-    act(async () => {
-      const { status, data } = await post(base, body, "PATCH");
-      if (!data.ok) return settle(status, data);
-      setCs(data.changeSet as ChangeSet);
-      setView((prev) => ({ ...(data.preview as PreviewPayload), factsUsed: (data.preview as PreviewPayload).factsUsed ?? prev.factsUsed }));
-    });
+  const edit = (body: DraftEdit): Promise<void> => {
+    if (busyRef.current) return Promise.resolve();
+    const run = async () => {
+      setSaving((n) => n + 1);
+      setError(null);
+      try {
+        const { status, data } = await post(base, body, "PATCH");
+        if (!data.ok) return settle(status, data);
+        setCs(data.changeSet as ChangeSet);
+        setView((prev) => ({ ...(data.preview as PreviewPayload), factsUsed: (data.preview as PreviewPayload).factsUsed ?? prev.factsUsed }));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Something went wrong.");
+      } finally {
+        setSaving((n) => n - 1);
+      }
+    };
+    const next = editsRef.current.then(run);
+    editsRef.current = next;
+    return next;
+  };
 
-  return { cs, view, phase, busy, error, result, expired, chatting, confirm, discard, justChatting, undo, edit };
+  return { cs, view, phase, busy, saving: saving > 0, error, result, expired, chatting, confirm, discard, justChatting, undo, edit };
 }

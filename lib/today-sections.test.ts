@@ -18,7 +18,7 @@ type Resolve = (specifier: string, context: unknown, next: (s: string, c: unknow
 });
 
 type Mod = typeof import("./today-sections");
-void (import("./today-sections") as Promise<Mod>).then(({ groupTodayTasks, overdueStyle, glanceLine, nowLine, dayPartOf, nothingOnDay, goalPlanFor }) => {
+void (import("./today-sections") as Promise<Mod>).then(({ groupTodayTasks, overdueStyle, glanceLine, nextAhead, nowLine, dayPartOf, nothingOnDay, goalPlanFor }) => {
   const TZ = "America/New_York";
   // Wed, Nov 4 2026, 2:00 PM in New York.
   const NOW = new Date("2026-11-04T19:00:00Z");
@@ -161,16 +161,17 @@ void (import("./today-sections") as Promise<Mod>).then(({ groupTodayTasks, overd
     assert.deepEqual([groups.pastDue, groups.comingUp], [[], []]);
   });
 
-  test("Coming up holds the next three days, grouped and in order, without done items", () => {
+  test("Coming up holds the next seven days (C11), grouped and in order, without done items", () => {
     const d3 = task({ commitment: "flexible", date: "2026-11-07" });
     const d1b = task({ commitment: "fixed", date: "2026-11-05", time: "15:00" });
     const d1a = task({ commitment: "flexible", date: "2026-11-05", time: "09:00" });
     const d1done = task({ commitment: "flexible", date: "2026-11-05", completed: true });
     const d4 = task({ commitment: "fixed", date: "2026-11-08" });
-    const { comingUp } = groupTodayTasks([d3, d1b, d1a, d1done, d4], NOW, TZ);
+    const beyond = task({ commitment: "fixed", date: "2026-11-12" });
+    const { comingUp } = groupTodayTasks([d3, d1b, d1a, d1done, d4, beyond], NOW, TZ);
     assert.deepEqual(
       comingUp.map((d) => d.date),
-      ["2026-11-05", "2026-11-07"]
+      ["2026-11-05", "2026-11-07", "2026-11-08"]
     );
     assert.deepEqual(ids(comingUp[0].tasks), [d1a.id, d1b.id]);
   });
@@ -265,7 +266,7 @@ void (import("./today-sections") as Promise<Mod>).then(({ groupTodayTasks, overd
     assert.equal(overdueStyle(task({ commitment: "fixed", date: "2026-11-05" }), NOW, TZ), null);
   });
 
-  test("glance line names what's left, what's past due and the next fixed thing", () => {
+  test("glance line names what's left, what's past due and the next fixed thing (a loose to-do is skipped)", () => {
     const dentist = task({ commitment: "fixed", title: "Dentist", time: "15:30" });
     const form = task({ commitment: "reminder", title: "Turn in form" });
     const past = task({ commitment: "fixed", title: "Missed", time: "09:00" });
@@ -273,6 +274,16 @@ void (import("./today-sections") as Promise<Mod>).then(({ groupTodayTasks, overd
     const late = task({ commitment: "reminder", date: "2026-11-03" });
     const groups = groupTodayTasks([dentist, form, past, step, late], NOW, TZ);
     assert.equal(glanceLine(groups, NOW, TZ), "4 left today · 1 past due · next: Dentist at 3:30 PM");
+  });
+
+  test("glance line names the next plan step when it comes before the next fixed item (Round 6)", () => {
+    const dentist = task({ commitment: "fixed", title: "Dentist", time: "15:30" });
+    const step = task({ commitment: "flexible", title: "Wire the motor", time: "14:30", planId: "p1" });
+    const loose = task({ commitment: "flexible", title: "Text Sam", time: "14:15" });
+    assert.equal(glanceLine(groupTodayTasks([dentist, step, loose], NOW, TZ), NOW, TZ), "3 left today · next: Wire the motor at 2:30 PM");
+    // After the fixed item, the fixed item is still named first.
+    const later = task({ commitment: "flexible", title: "Wire the motor", time: "17:00", planId: "p1" });
+    assert.equal(glanceLine(groupTodayTasks([dentist, later], NOW, TZ), NOW, TZ), "2 left today · next: Dentist at 3:30 PM");
   });
 
   test("glance line for an empty day and a finished one", () => {
@@ -286,5 +297,28 @@ void (import("./today-sections") as Promise<Mod>).then(({ groupTodayTasks, overd
       task({ commitment: "reminder", date })
     );
     assert.equal(glanceLine(groupTodayTasks(old, NOW, TZ), NOW, TZ), "Nothing planned today · 4 past due");
+  });
+
+  test("a confirmed plan's first step reaches Home when nothing is left today (C11)", () => {
+    const step = task({ title: "Outline the essay", date: "2026-11-06", time: "16:00" });
+    const groups = groupTodayTasks([step], NOW, TZ);
+    assert.equal(nextAhead(groups)?.id, step.id);
+    assert.equal(groups.comingUp.length, 1);
+  });
+
+  test("a step 6 days out is still on Home, like Calendar (C11)", () => {
+    const far = task({ date: "2026-11-10" });
+    assert.equal(groupTodayTasks([far], NOW, TZ).comingUp.length, 1);
+  });
+
+  test("no Next line while there is still something to do today (C11)", () => {
+    const now = task({ date: "2026-11-04", time: "20:00" });
+    const later = task({ date: "2026-11-06" });
+    assert.equal(nextAhead(groupTodayTasks([now, later], NOW, TZ)), null);
+  });
+
+  test("the header glance can leave the past-due count to the Catch up row (C10)", () => {
+    const old = ["2026-11-03", "2026-11-02"].map((date) => task({ commitment: "reminder", date }));
+    assert.equal(glanceLine(groupTodayTasks(old, NOW, TZ), NOW, TZ, { pastDue: false }), "Nothing planned today");
   });
 });

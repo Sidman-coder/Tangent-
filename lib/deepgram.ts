@@ -13,7 +13,9 @@ export async function transcribeAudio(audioBuffer: Buffer, mimeType: string): Pr
     throw new Error("Voice capture isn't set up yet — DEEPGRAM_API_KEY is missing from .env.local.");
   }
 
-  const res = await fetch("https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true", {
+  // mip_opt_out: Deepgram keeps the audio only as long as it takes to transcribe
+  // and doesn't use it to train (overnight 2 Phase 5; Privacy policy says so).
+  const res = await fetch("https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&mip_opt_out=true", {
     method: "POST",
     headers: {
       Authorization: `Token ${apiKey}`,

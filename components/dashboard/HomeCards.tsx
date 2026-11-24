@@ -10,7 +10,7 @@ import "./home-cards.css";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import * as m from "motion/react-m";
-import { ArrowRight, CalendarPlus, ListChecks, Route, X } from "lucide-react";
+import { ArrowRight, ListChecks, Route, X } from "lucide-react";
 import Button from "@/components/ui/Button";
 import CanvasConnectGuide from "@/components/CanvasConnectGuide";
 import { riseIn } from "@/lib/motion";
@@ -114,23 +114,17 @@ export function CanvasCard({ email }: { email: string }) {
   return (
     <>
       {visible && (
-        <m.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="home-card home-canvas" aria-labelledby="home-canvas-title">
-          <div className="home-canvas-icon" aria-hidden="true">
-            <CalendarPlus size={18} />
-          </div>
-          <div className="home-canvas-copy">
-            <h2 id="home-canvas-title">Use Canvas?</h2>
-            <p>Bring your deadlines into Tangent.</p>
-          </div>
-          <div className="home-card-actions">
-            <Button variant="quiet" size="sm" onClick={notNow}>
-              Not now
-            </Button>
-            <Button variant="primary" size="sm" onClick={() => setGuideOpen(true)}>
+        <section className="home-canvas-row" aria-label="Canvas">
+          <p>Bring your Canvas deadlines in, so plans fit around them.</p>
+          <div className="home-canvas-row-actions">
+            <button type="button" className="home-canvas-link" onClick={() => setGuideOpen(true)}>
               Connect Canvas
-            </Button>
+            </button>
+            <button type="button" className="home-canvas-link is-quiet" onClick={notNow}>
+              Not now
+            </button>
           </div>
-        </m.section>
+        </section>
       )}
       <CanvasConnectGuide
         open={guideOpen}

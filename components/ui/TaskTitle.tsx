@@ -17,7 +17,7 @@ export default function TaskTitle({ task, chip = true, projectName }: { task: Ti
   const { title, course } = clean(task, projectName);
   return (
     <>
-      {title}
+      <span className="task-title-text">{title}</span>
       {chip && course && <span className="course-chip">{course}</span>}
     </>
   );

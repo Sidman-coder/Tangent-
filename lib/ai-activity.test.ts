@@ -98,7 +98,7 @@ test("who decided, the question and the answer read as sentences", () => {
 });
 
 test("the spec's exact copy", () => {
-  assert.equal(CLEAR_CONFIRM_TEXT, "This clears the log. Your calendar stays the same.");
+  assert.equal(CLEAR_CONFIRM_TEXT, "This deletes the log from Tangent. Your calendar stays the same.");
   assert.equal(ACTIVITY_EMPTY_TEXT, "Nothing yet. When you ask Tangent AI to plan or change things, you'll see what it did here.");
 });
 

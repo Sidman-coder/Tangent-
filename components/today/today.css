@@ -69,10 +69,14 @@
 }
 .today-nudge-go:hover { background: var(--accent-soft); }
 .today-nudge-hide {
-  display: grid;
-  place-items: center;
-  width: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 44px;
   height: 44px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13px;
   border: 0;
   border-radius: var(--r-sm);
   background: transparent;
@@ -80,6 +84,10 @@
   cursor: pointer;
 }
 .today-nudge-hide:hover { background: var(--elev-2); color: var(--text); }
+/* Overnight 2 Phase 3: the day after a plan is made, its first step. */
+.today-daytwo { margin-top: 8px; }
+.today-daytwo .today-nudge-text strong { color: var(--text); font-weight: 600; }
+.today-daytwo-later { color: var(--text-2); }
 @media (max-width: 479px) {
   .today-nudge { flex-wrap: wrap; padding: 8px 2px 2px 14px; }
   .today-nudge-text { flex-basis: calc(100% - 32px); }
@@ -226,7 +234,7 @@
   max-width: calc(100vw - 32px);
   padding: 4px 4px 4px 16px;
   border: 1px solid var(--line-strong);
-  border-radius: 14px;
+  border-radius: var(--r-md);
   background: var(--surface);
   color: var(--text);
   font-size: 14px;
@@ -239,7 +247,7 @@
   min-height: 44px;
   padding: 0 12px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--accent);
   font: inherit;
@@ -271,7 +279,7 @@
   width: min(420px, calc(100vw - 32px));
   padding: var(--s-3);
   border: 1px solid var(--line-strong);
-  border-radius: 16px;
+  border-radius: var(--r-lg);
   background: var(--surface);
   color: var(--text);
   box-shadow: 0 18px 44px -18px rgb(0 0 0 / 0.45);
@@ -279,14 +287,14 @@
 }
 .step-follow-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s-2); }
 .step-follow-head p { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
-.step-follow-x { flex: none; display: grid; place-items: center; width: 32px; height: 32px; margin: -6px -6px 0 0; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
+.step-follow-x { flex: none; display: grid; place-items: center; width: 32px; height: 32px; margin: -6px -6px 0 0; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); cursor: pointer; }
 .step-follow-x:hover { background: var(--surface-2); color: var(--text); }
 .step-follow-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .step-follow-chip {
   min-height: 36px;
   padding: 0 12px;
   border: 1px solid var(--line-strong);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: transparent;
   color: var(--text);
   font: inherit;
@@ -295,14 +303,20 @@
 }
 .step-follow-chip:hover { border-color: var(--accent); }
 .step-follow-chip[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.step-follow-note { min-height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: transparent; color: var(--text); font: inherit; font-size: 14px; }
+.step-follow-note { min-height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--r-sm); background: transparent; color: var(--text); font: inherit; font-size: 14px; }
 .step-follow-note:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .step-follow-actions { display: flex; justify-content: flex-end; align-items: center; gap: var(--s-2); }
 .step-follow-quiet { justify-self: start; min-height: 36px; padding: 0 8px; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
 .step-follow-quiet:hover { color: var(--text); text-decoration: underline; }
-.step-follow-save { min-height: 36px; padding: 0 16px; border: 0; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.step-follow-save { min-height: 36px; padding: 0 16px; border: 0; border-radius: var(--r-sm); background: var(--accent); color: var(--accent-ink); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
 .step-follow-save:disabled { opacity: 0.6; cursor: default; }
 .step-follow-reply { margin: 0; font-size: 14px; line-height: 1.5; }
+.step-follow-next { margin: 0; font-size: 13px; line-height: 1.4; color: var(--text-2); overflow-wrap: anywhere; }
+/* Round 6 item 1: Save says what happened, in place. */
+.step-follow-saved { display: flex; align-items: flex-start; gap: var(--s-2); }
+.step-follow-saved svg { flex: none; margin-top: 2px; color: var(--green); }
+.step-follow-failed { display: flex; align-items: flex-start; gap: var(--s-2); margin: 0; font-size: 13px; line-height: 1.4; color: var(--red); }
+.step-follow-failed svg { flex: none; margin-top: 1px; }
 
 /* Round 4 §5.1: the day on a timeline rail. A thin line runs down the left
    with a marker and start time per part; a faint full-width divider separates
@@ -330,7 +344,8 @@
   padding-block: 4px 12px;
 }
 .today-timeline .today-part.is-empty { padding-bottom: 4px; }
-.today-timeline .today-part + .today-part::before {
+.today-timeline .today-part + .today-part::before,
+.today-timeline .today-after-first + .today-part::before {
   content: "";
   position: absolute;
   top: 0;
@@ -358,15 +373,34 @@
   top: 50%;
   right: 16px;
   color: var(--text-3);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   line-height: 1;
   white-space: nowrap;
   transform: translateY(-50%);
 }
-.today-part.is-empty .ui-group-header { min-height: 44px; color: var(--text-3); font-weight: 500; }
-.today-part-empty { color: var(--text-3); font-size: 13px; font-weight: 400; }
+.today-calm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-3);
+  margin: var(--s-2) 0;
+  color: var(--text-2);
+  font-size: 0.9375rem;
+}
+.today-calm-action {
+  min-height: 44px;
+  padding: 0 var(--s-2);
+  background: none;
+  border: 0;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: var(--r-md);
+}
+.today-calm-action:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 /* The Now line starts on the rail: its dot sits on the line. */
 .today-timeline .today-now { margin-left: calc(var(--rail-x) - var(--rail-gutter) - 3px); }
 .today-timeline .today-now-dot { width: 7px; height: 7px; }
@@ -376,3 +410,48 @@
   .today-rail-time { display: none; }
   .today-part.is-empty .ui-group-header-range { display: none; }
 }
+
+.today-next {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-1) var(--s-3);
+  margin: var(--s-2) 0;
+  font-size: 1rem;
+}
+.today-next-label { color: var(--text-2); font-size: 0.875rem; font-weight: 500; }
+.today-next-what { color: var(--text); font-weight: 600; }
+.today-next-when { color: var(--text-2); }
+
+/* ─── Next up (overnight 2, N06) ─────────────────────────────────────── */
+/* One card, the day's focal point when nothing is left today: a 3px project
+   stripe, the title on up to two lines, when, one line of why. */
+.today-nextup {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--row-tint, var(--accent));
+  border-radius: var(--r-md);
+}
+.today-nextup-label { margin: 0; color: var(--text-3); font-size: 13px; font-weight: 500; }
+.today-nextup-project { color: var(--text-3); }
+.today-nextup-main { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+.today-nextup-check { margin-top: 1px; flex: none; }
+.today-nextup-copy { display: grid; gap: 2px; min-width: 0; }
+.today-nextup-title { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.3; color: var(--text); }
+.today-nextup-title .ui-task-title-button {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  white-space: normal;
+}
+.today-nextup-when { margin: 0; color: var(--text-2); font-size: 14px; font-variant-numeric: tabular-nums; }
+.today-nextup-why { margin: 0; color: var(--text-3); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.today-nextup-actions { display: flex; gap: 4px; justify-content: flex-end; }
+.today-after-first { padding-block: 4px 8px; }

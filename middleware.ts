@@ -71,6 +71,8 @@ export async function middleware(request: NextRequest) {
       return withCookies(NextResponse.json({ ok: false, error: decision.error }, { status: decision.status }), response);
     case "redirect":
       return withCookies(NextResponse.redirect(new URL(decision.to, request.url)), response);
+    case "rewrite":
+      return withCookies(NextResponse.rewrite(new URL(decision.to, request.url)), response);
   }
 }
 

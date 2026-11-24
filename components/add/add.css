@@ -200,7 +200,7 @@
   flex: none;
   width: 8px;
   height: 8px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
 }
 
 /* Mic (ghost) and send (filled), both 44px. */
@@ -255,7 +255,7 @@
 .add-spinner {
   width: 16px;
   height: 16px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   border: 2px solid currentColor;
   border-right-color: transparent;
   animation: add-spin 0.7s linear infinite;
@@ -310,6 +310,12 @@
 .add-done {
   color: var(--text);
 }
+.add-done > .tg-md {
+  flex: 1 1 100%;
+  min-width: 0;
+  max-height: 50vh;
+  overflow-y: auto;
+}
 .add-where {
   display: inline-flex;
   align-items: center;
@@ -362,7 +368,7 @@
 .add-grill-note {
   margin: 0 0 10px;
   color: var(--text-2);
-  font-size: 13.5px;
+  font-size: 14px;
   line-height: 1.45;
 }
 
@@ -421,4 +427,11 @@
   .plan-ws-panes { grid-template-columns: minmax(0, 1fr); }
   .plan-ws-left[data-active="false"], .plan-ws-right[data-active="false"] { display: none; }
   .plan-ws-right { position: static; }
+}
+
+.add-slow {
+  display: block;
+  margin-top: var(--s-1);
+  color: var(--text-2);
+  font-size: 0.875rem;
 }

@@ -18,6 +18,8 @@ export type StepIntent = {
   why: string;
   why_ref: WhyRef | null;
   youll_have: string;
+  /** The session's fixed "HH:MM" (overnight 2 L2), so the guard can check the why against it. */
+  time?: string;
 };
 
 export type PlanBrief = {
@@ -42,6 +44,8 @@ export type BriefInput = {
   facts: readonly RecallFact[];
   /** Session dates the plan will use (YYYY-MM-DD). */
   dates: readonly string[];
+  /** Overnight 2 (L2): each date's fixed start time ("HH:MM"), same order, when the spacing found one. */
+  times?: readonly (string | undefined)[];
   /** The student already answered the brief's question: never ask again. */
   noQuestion?: boolean;
   guard: GuardConfig;
@@ -87,12 +91,25 @@ const FIX_SCHEMA = {
 } as const;
 
 const STEP_RULES = `Each step:
-- what: 3 to 8 words, starts with a verb, names the real thing ("Solve 3 USACO Bronze prefix-sum problems", "Draft the intro paragraph of the Common App essay"). Never only generic words like "Practice problems" or "Study session".
+- what: 2 to 6 words, starts with a verb, names the real thing ("Solve 3 USACO prefix-sum problems", "Draft the Common App intro"). Never only generic words like "Practice problems" or "Study session".
 - when_hint: which day and part of day, from their week ("Tue after soccer", "Sat morning").
 - why: one plain sentence (25 to 160 characters) saying why THIS step, THEN, for THIS student. Tie it to a real thing: a busy or free day in their week, something they told you, or the topic itself. When you use something they told you, say so ("Since you mentioned you're sleepy in the morning, this one is light.").
 - why_ref: what the why points at: {"kind":"calendar","ref":"YYYY-MM-DD"} for a day in the window, {"kind":"fact","ref":"<fact id>"} for something they told you (only ids listed below), or {"kind":"topic","ref":"<words from their request>"}.
 - youll_have: under 12 words, the concrete result ("a solved set of 3 prefix-sum problems").
 Never write boilerplate: no "stay consistent", "work hard", "you're aiming for a top result", "build momentum", "you've got this".`;
+
+/** "15:30" → "3:30 PM". */
+function time12(t: string): string {
+  const m = /^(\d{1,2}):(\d{2})/.exec(t);
+  if (!m) return t;
+  const h = Number(m[1]);
+  return `${h % 12 || 12}:${m[2]} ${h < 12 ? "AM" : "PM"}`;
+}
+
+/** "2026-11-24 at 3:30 PM, …" when the times are known; plain dates otherwise. */
+export function sessionLine(dates: readonly string[], times?: readonly (string | undefined)[]): string {
+  return dates.map((d, i) => (times?.[i] ? `${d} at ${time12(times[i]!)}` : d)).join(", ");
+}
 
 const clip = (s: unknown, max: number): string => (typeof s === "string" ? s.replace(/\s+/g, " ").trim().slice(0, max) : "");
 
@@ -138,7 +155,7 @@ export async function buildPlanBrief(input: BriefInput): Promise<PlanBrief | nul
   const n = input.dates.length;
   const system = `You are Tangent's planner. Before any session is written, you decide what each session is for and why, for this one student.
 ${input.dateContext}
-The plan has ${n} session${n === 1 ? "" : "s"} on these dates: ${input.dates.join(", ")}.
+The plan has ${n} session${n === 1 ? "" : "s"} on these dates: ${sessionLine(input.dates, input.times)}.${input.times?.some(Boolean) ? "\nThose times are fixed. Never describe a session's part of day differently from its time (no \"late at night\" for a 3:30 PM session), and don't call a day free if you also call it busy." : ""}
 
 THEIR WEEK:
 ${input.weekSummary || "(nothing scheduled)"}
@@ -170,14 +187,15 @@ ${STEP_RULES}`;
     dates: input.dates,
     topicText: `${input.request} ${clip(json.goal_line, 240)}`,
   };
-  const steps = readSteps(json.step_intents).slice(0, n);
+  const steps = readSteps(json.step_intents).slice(0, n).map((s, i) => (input.times?.[i] ? { ...s, time: input.times[i] } : s));
   const first = guardSteps(steps, ctx, input.guard);
   let pass = first.pass;
   let kept = steps.map((_, i) => i);
   const fail = first.fail;
   let dropped = 0;
   if (fail.length > 0) {
-    const fixed = await fixSteps(fail, ctx, input);
+    // A rewrite keeps its slot's time, so the guard checks it again.
+    const fixed = (await fixSteps(fail, ctx, input)).map((s, i) => (fail[i].step.time ? { ...s, time: fail[i].step.time } : s));
     const again = guardSteps(fixed, ctx, input.guard);
     // Keep date order: rebuild from the original order, swapping in fixes.
     const fixedByWhat = new Map(fail.map((f, i) => [f.step.what, again.pass.includes(fixed[i]) ? fixed[i] : null]));
@@ -204,6 +222,7 @@ async function fixSteps(fail: { step: StepIntent; reason: string }[], ctx: Guard
   const system = `You fix steps in a student's plan that failed a quality check. Rewrite each one so it passes, keeping its day and purpose.
 ${input.dateContext}
 Valid fact ids: ${ctx.factIds.join(", ") || "(none)"}. Valid dates: ${ctx.dates.join(", ")}.
+A step's "time" is fixed: its why must not put it in another part of the day.
 WHAT THEY'VE TOLD YOU:
 ${factLines(input.facts)}
 

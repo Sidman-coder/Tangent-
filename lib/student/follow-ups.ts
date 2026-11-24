@@ -9,7 +9,7 @@
 // again.
 
 import { factCategoryFor, isFactCategory, isVagueValue, type FactCategory } from "./facts";
-import { looksDistressed } from "./sensitive";
+import { isSensitive, looksDistressed } from "./sensitive";
 
 export type FollowUp = {
   /** Stable id, remembered once answered or dismissed. */
@@ -282,6 +282,7 @@ export function followUpById(id: string, facts: KnownFact[]): FollowUp | null {
 
 export type FollowUpReply =
   | { kind: "distress" }
+  | { kind: "sensitive" }
   | { kind: "empty" }
   | { kind: "confirm" }
   | { kind: "reject" }
@@ -295,6 +296,8 @@ const NO = /^(?:no|nope|nah|not really|wrong|not true|that's wrong)\b[.!\s]*$/i;
 export function replyFor(followUp: Pick<FollowUp, "lead" | "checkId">, answer: string): FollowUpReply {
   const text = answer.replace(/\s+/g, " ").trim().slice(0, 300);
   if (looksDistressed(text)) return { kind: "distress" };
+  // Teen privacy: health, mental-health and family details are never kept.
+  if (isSensitive(text)) return { kind: "sensitive" };
   if (followUp.checkId) {
     if (YES.test(text)) return { kind: "confirm" };
     if (NO.test(text)) return { kind: "reject" };

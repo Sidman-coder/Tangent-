@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, type ReactNode } from "react";
 import Link from "next/link";
 import { m, useReducedMotion } from "motion/react";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
@@ -24,7 +24,7 @@ import SidePeek from "@/components/ui/SidePeek";
 import { handleResourceClick } from "@/lib/task-utils";
 import { toYMD, formatTime12 } from "@/lib/dates";
 import { isCanvasCleared } from "@/lib/canvas-clear";
-import { CATEGORY_LABEL, TASK_GROUPS, planSeriesColor, seriesColor, taskCategory, taskGroup, taskSeries, type TaskGroup } from "@/lib/task-colors";
+import { CATEGORY_LABEL, TASK_GROUPS, planSeriesColor, schoolSeries, seriesColor, taskCategory, taskGroup, taskSeries, type TaskGroup } from "@/lib/task-colors";
 import { noteParts } from "@/lib/note-parts";
 import { canDragTask } from "@/lib/calendar-drag";
 import { coversDay, formatDuration, shiftedEndDate } from "@/lib/task-span";
@@ -35,12 +35,14 @@ import "./calendar.css";
 import { initialCalendarView, prefsOf } from "@/lib/personalize";
 import { announceUndo, openRecentChanges } from "@/lib/undo-events";
 import type { Plan, Task } from "@/lib/types";
-import { X, Check, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil, Undo2, Trash2 } from "lucide-react";
+import { X, Check, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil, History, Trash2 } from "lucide-react";
 import WeekView from "@/components/calendar/WeekView";
+import StepFollowUp, { type FollowUp } from "@/components/today/StepFollowUp";
 import AgendaView from "@/components/calendar/AgendaView";
 import TaskTip from "@/components/calendar/TaskTip";
 import CalendarRail from "@/components/calendar/CalendarRail";
 import TaskTitle from "@/components/ui/TaskTitle";
+import Skeleton from "@/components/ui/Skeleton";
 import Toast, { ToastPortal } from "@/components/ui/Toast";
 
 type CalView = "week" | "month" | "agenda";
@@ -462,12 +464,16 @@ export default function CalendarPage() {
   const prevMonth = () => { setMonthDir(-1); if (month === 0) { setYear((y) => y - 1); setMonth(11); } else setMonth((mo) => mo - 1); };
   const nextMonth = () => { setMonthDir(1); if (month === 11) { setYear((y) => y + 1); setMonth(0); } else setMonth((mo) => mo + 1); };
 
+  // Overnight 2 (Jordan sim): Done on Calendar asks how it went, like Home.
+  const [followUp, setFollowUp] = useState<FollowUp | null>(null);
   const toggleTask = async (id: string) => {
-    await fetch("/api/tasks", {
+    const task = state?.tasks.find((t) => t.id === id);
+    const res = await fetch("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "toggle_task", id }),
     });
+    if (res.ok && task && !task.completed) setFollowUp({ kind: "check_in", task });
     await refresh();
   };
 
@@ -600,6 +606,13 @@ export default function CalendarPage() {
   const viewPanel = { id: "calendar-view-panel", role: "tabpanel", "aria-labelledby": `cal-view-tab-${view}` } as const;
   const openAddAt = (ymd: string, time?: string) => { setAddModalDate(ymd); setAddModalTime(time); setShowAddModal(true); };
   const activePlan = planFilter ? getPlan(planFilter) : null;
+  const legendDot = (color: string, key?: string) => <span key={key} className="cal-legend-dot" style={{ background: color }} aria-hidden="true" />;
+  const projectDots = plans.filter((p) => !p.kind).slice(0, 3);
+  const legendDots: Partial<Record<TaskGroup | "all", ReactNode>> = {
+    school: legendDot(seriesColor(schoolSeries(plans))),
+    projects: projectDots.length ? <span className="cal-legend-stack" aria-hidden="true">{projectDots.map((p) => legendDot(planSeriesColor(p), p.id))}</span> : undefined,
+    short: legendDot(seriesColor("personal")),
+  };
 
   return (
     <>
@@ -627,16 +640,29 @@ export default function CalendarPage() {
               options={VIEWS.map((v) => ({ value: v.id, label: v.id === "week" && narrow ? "3 days" : v.label, controls: "calendar-view-panel" }))}
               className="cal-bar-tabs"
             />
-            <IconButton label="Recent changes" icon={<Undo2 size={18} strokeWidth={1.75} />} onClick={openRecentChanges} tooltipSide="left" />
+            <Button variant="quiet" size="sm" className="cal-recent" onClick={openRecentChanges} icon={<History size={16} strokeWidth={1.75} aria-hidden="true" />}>
+              {/* On a phone the views need the room: "Changes", same name for screen readers. */}
+              <span className="cal-recent-long">Recent changes</span>
+              <span className="cal-recent-short" aria-hidden="true">Changes</span>
+            </Button>
           </div>
+          {/* The filter chips are also the colour key: the same colours as the blocks (overnight 2, Phase 5). */}
           <div className="cal-bar-filters" role="group" aria-label="Show">
             {[{ id: "all" as const, label: "All" }, ...TASK_GROUPS].map((g) => (
-              <Chip key={g.id} variant="filter" selected={group === g.id} onClick={() => setGroup(g.id)}>
+              <Chip key={g.id} variant="filter" selected={group === g.id} onClick={() => setGroup(g.id)} icon={legendDots[g.id]}>
                 {g.label}
               </Chip>
             ))}
           </div>
         </header>
+
+      {!state && <Skeleton rows={4} label="Loading your calendar" />}
+      {state && view !== "agenda" && onScreen.length === 0 && (
+        <p className="cal-empty-line">
+          Nothing on the calendar {view === "week" ? "this week" : "this month"}.
+          <button type="button" className="cal-empty-action" onClick={() => openAddAt(todayYmd)}>Add something</button>
+        </p>
+      )}
 
       {activePlan && (
         <div className="plan-filter-banner" style={{ borderLeft: `3px solid ${planSeriesColor(activePlan)}` }}>
@@ -796,7 +822,7 @@ export default function CalendarPage() {
                         setShowAddModal(true);
                       }}
                     >
-                      <Plus size={14} strokeWidth={2} aria-hidden="true" />
+                      <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
                     </button>
                   )}
                 </div>
@@ -876,7 +902,7 @@ export default function CalendarPage() {
                             type="button"
                             className="ui-task-check"
                             aria-pressed={t.completed}
-                            aria-label={`${t.completed ? "Mark incomplete" : "Complete"} ${t.title}`}
+                            aria-label={t.completed ? `Not done: ${t.title}` : `Done: ${t.title}`}
                             onClick={() => void toggleTask(t.id)}
                           >
                             {t.completed && <Check size={12} strokeWidth={2.8} aria-hidden="true" />}
@@ -1118,6 +1144,10 @@ export default function CalendarPage() {
           onSuccess={() => void refresh()}
           onDuplicate={() => setDuplicateToast(true)}
         />
+      )}
+
+      {followUp && (
+        <StepFollowUp key={`${followUp.kind}-${followUp.task.id}`} followUp={followUp} onWhyNot={() => setFollowUp(null)} onClose={() => setFollowUp(null)} />
       )}
 
       <ToastPortal>

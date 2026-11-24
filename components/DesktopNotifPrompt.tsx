@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { claimOverlay, hasFirstRealItem, overlayHolder, releaseOverlay, subscribeOverlay } from "@/lib/first-run-gates";
 import { useAppState } from "./AppStateProvider";
 import {
   getDesktopNotifPermission,
@@ -10,34 +11,41 @@ import {
   requestDesktopNotifPermission,
 } from "@/lib/desktop-notifications";
 
-// Shown once, after onboarding is complete and the student's first task
-// exists — either the onboarding-generated School block or their first
-// manual/voice-created task. Respects the browser's own permission state:
+// Shown once, after onboarding is complete and the student has added their own
+// first item (not the School block, not a Canvas import), and only when no
+// other optional overlay is open (overnight C01). Respects the browser's own permission state:
 // once the student answers (grant or deny) or dismisses this explanation,
 // it never asks again (see hasPromptedForDesktopNotifs / markPromptedForDesktopNotifs).
 export default function DesktopNotifPrompt() {
   const { state } = useAppState();
   const [visible, setVisible] = useState(false);
 
+  const [tick, setTick] = useState(0);
+  useEffect(() => subscribeOverlay(() => setTick((n) => n + 1)), []);
+
   useEffect(() => {
     if (visible) return;
-    if (!state || state.tasks.length === 0) return;
+    if (!state || !hasFirstRealItem(state.tasks)) return;
     if (typeof window === "undefined") return;
     if (!state.user.onboardedAt) return;
     if (!isDesktopNotifSupported()) return;
     if (getDesktopNotifPermission() !== "default") return;
     if (hasPromptedForDesktopNotifs()) return;
+    if (overlayHolder() !== null) return;
+    if (!claimOverlay("desktop-notifs")) return;
     setVisible(true);
-  }, [state, visible]);
+  }, [state, visible, tick]);
 
   const dismiss = () => {
     markPromptedForDesktopNotifs();
     setVisible(false);
+    releaseOverlay("desktop-notifs");
   };
 
   const enable = async () => {
     await requestDesktopNotifPermission();
     setVisible(false);
+    releaseOverlay("desktop-notifs");
   };
 
   if (!visible) return null;

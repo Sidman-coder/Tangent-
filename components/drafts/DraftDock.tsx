@@ -2,10 +2,11 @@
 
 // Round 5A 4.2: unconfirmed plan drafts, Gmail-style. A small pill sits
 // bottom-right on any page where the draft isn't already open:
-// "Draft plan · Competitive programming · 5 steps", with ✕ to discard (and
-// Undo). Click it and a floating card opens: the brief layered on top of a
-// calendar card, with Confirm / Discard / "Open full view" (back to where it
-// was drafted). Up to 2 stack; a third asks before replacing the oldest.
+// "Draft plan · Competitive programming · 5 steps", with Hide (Round 6: hides
+// the pill everywhere but the page it was drafted on; discards nothing).
+// Click it and a floating card opens: the brief layered on top of a calendar
+// card, with Confirm / Discard (with Undo) / "Open full view" (back to where
+// it was drafted). Up to 2 stack; a third asks before replacing the oldest.
 // The list lives in sessionStorage (lib/drafts/draft-store.ts).
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -23,6 +24,7 @@ import {
   EMPTY,
   acceptPending,
   forgetDraft,
+  hideDraft,
   loadDrafts,
   openDraftIds,
   saveDrafts,
@@ -44,7 +46,19 @@ export default function DraftDock() {
   const pathname = usePathname();
   const [state, setState] = useState<DraftState>(EMPTY);
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
-  const [cardId, setCardId] = useState<string | null>(null);
+  // The open card keeps its own copy of the entry. Confirm or an expired draft
+  // makes the store forget it; deriving the card from the list unmounted it
+  // before "Added 5 steps" or the error could show (overnight 2, Sam sim).
+  const [openCard, setOpenCard] = useState<DraftEntry | null>(null);
+  const cardId = openCard?.id ?? null;
+  const setCardId = useCallback((next: string | null | ((id: string | null) => string | null)) => {
+    setOpenCard((prev) => {
+      const id = typeof next === "function" ? next(prev?.id ?? null) : next;
+      if (!id) return null;
+      if (prev?.id === id) return prev;
+      return loadDrafts().drafts.find((d) => d.id === id) ?? null;
+    });
+  }, []);
   const [held, setHeld] = useState<DraftEntry | null>(null);
   const timer = useRef<number | null>(null);
 
@@ -59,9 +73,10 @@ export default function DraftDock() {
   }, []);
 
   // A new page: the card closes.
-  useEffect(() => setCardId(null), [pathname]);
+  useEffect(() => setCardId(null), [pathname, setCardId]);
 
-  // ✕ hides it now and discards for real when the Undo toast ends.
+  // Discard (in the card) takes it away now and discards for real when the
+  // Undo toast ends.
   const remove = useCallback((d: DraftEntry) => {
     if (timer.current) window.clearTimeout(timer.current);
     setHeld((prev) => {
@@ -75,7 +90,7 @@ export default function DraftDock() {
       setHeld(null);
       timer.current = null;
     }, UNDO_MS);
-  }, []);
+  }, [setCardId]);
 
   const undoRemove = () => {
     if (!held) return;
@@ -88,15 +103,15 @@ export default function DraftDock() {
 
   // The floating card marks its own draft open too; that one stays listed.
   const onScreen = new Set(Array.from(openIds).filter((id) => id !== cardId));
-  const shown = visibleDrafts(state, onScreen);
-  const card = shown.find((d) => d.id === cardId) ?? null;
+  const shown = visibleDrafts(state, onScreen, Date.now(), pathname);
+  const card = openCard;
   const pending = state.pending;
 
   return (
     <>
       <div className="draft-dock" aria-label="Draft plans" role="region">
         <AnimatePresence initial={false}>
-          {card && <DraftCard key={card.id} draft={card} onClose={() => setCardId(null)} />}
+          {card && <DraftCard key={card.id} draft={card} onClose={() => setCardId(null)} onDiscard={() => remove(card)} />}
         </AnimatePresence>
         {pending && (
           <div className="draft-ask" role="alertdialog" aria-labelledby="draft-ask-text">
@@ -137,15 +152,23 @@ export default function DraftDock() {
                 aria-expanded={cardId === d.id}
                 onClick={() => setCardId((id) => (id === d.id ? null : d.id))}
               >
-                <FileClock size={15} strokeWidth={2} aria-hidden="true" />
+                <FileClock size={15} strokeWidth={1.75} aria-hidden="true" />
                 <span className="draft-pill-kind">Draft plan</span>
                 <span className="draft-pill-title">{d.title}</span>
                 <span className="draft-pill-count">
                   {d.stepCount} step{d.stepCount === 1 ? "" : "s"}
                 </span>
               </button>
-              <button type="button" className="draft-pill-x" aria-label={`Discard draft ${d.title}`} onClick={() => remove(d)}>
-                <X size={14} strokeWidth={2} aria-hidden="true" />
+              <button
+                type="button"
+                className="draft-pill-hide"
+                aria-label={`Hide draft ${d.title}`}
+                onClick={() => {
+                  if (cardId === d.id) setCardId(null);
+                  updateDrafts((st) => hideDraft(st, d.id));
+                }}
+              >
+                Hide
               </button>
             </div>
           ))}
@@ -171,12 +194,12 @@ export default function DraftDock() {
   );
 }
 
-function DraftCard({ draft, onClose }: { draft: DraftEntry; onClose: () => void }) {
+function DraftCard({ draft, onClose, onDiscard }: { draft: DraftEntry; onClose: () => void; onDiscard: () => void }) {
   const router = useRouter();
   const reduce = useReducedMotion();
   const { state, refresh } = useAppState();
   const timezone = useUserTimezone();
-  const { cs, view, phase, busy, error, result, confirm, discard } = usePreviewActions({
+  const { cs, view, phase, busy, error, result, confirm } = usePreviewActions({
     changeSet: draft.changeSet,
     preview: draft.preview,
     onChanged: () => void refresh(),
@@ -207,7 +230,7 @@ function DraftCard({ draft, onClose }: { draft: DraftEntry; onClose: () => void 
         <div className="draft-card-head">
           <span className="draft-card-kicker">Draft plan</span>
           <button type="button" className="draft-pill-x" aria-label="Close" onClick={onClose}>
-            <X size={14} strokeWidth={2} aria-hidden="true" />
+            <X size={14} strokeWidth={1.75} aria-hidden="true" />
           </button>
         </div>
         <h2 className="draft-card-title">{draft.title}</h2>
@@ -239,7 +262,7 @@ function DraftCard({ draft, onClose }: { draft: DraftEntry; onClose: () => void 
               <Button variant="primary" size="sm" loading={busy} onClick={() => void confirm()}>
                 Confirm
               </Button>
-              <Button variant="ghost" size="sm" disabled={busy} onClick={() => void discard()}>
+              <Button variant="ghost" size="sm" disabled={busy} onClick={onDiscard}>
                 Discard
               </Button>
               <Button

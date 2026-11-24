@@ -28,7 +28,11 @@ import { AREA_CATEGORY, NOT_KEPT, localFact, tellReply } from "@/lib/you-map-edi
 import { isSensitive, looksDistressed } from "@/lib/student/sensitive";
 import type { FactCategory } from "@/lib/student/facts";
 import { UNDO_TOAST_MS } from "@/lib/undo-events";
+import type { Noticed } from "@/lib/student/observations";
 import KnowsTell from "./KnowsTell";
+
+/** "Tangent noticed" rows share the fact rows' Forget-with-Undo, under this id. */
+const NOTICED_ID = "noticed:";
 
 /** Dev previews (/dev/app/settings-context*) hand the page sample facts here
  *  instead of it fetching them; saving is then local only. */
@@ -122,10 +126,10 @@ function FieldActions({ onSave, onCancel, saving, what }: { onSave: () => void; 
   return (
     <div className="you-fact-meta is-editing">
       <button type="button" className="you-fact-icon is-save" onClick={onSave} disabled={saving} aria-label={`Save ${what}`}>
-        <Check size={15} strokeWidth={2.2} aria-hidden="true" />
+        <Check size={15} strokeWidth={1.75} aria-hidden="true" />
       </button>
       <button type="button" className="you-fact-icon" onClick={onCancel} aria-label="Cancel">
-        <X size={15} strokeWidth={2} aria-hidden="true" />
+        <X size={15} strokeWidth={1.75} aria-hidden="true" />
       </button>
       <span className="you-fact-keys" aria-hidden="true">Enter to save · Esc to cancel</span>
     </div>
@@ -138,6 +142,8 @@ export default function WhatTangentKnows() {
   const sample = useContext(SampleKnowsContext);
   const [entries, setEntries] = useState<ContextEntry[] | null>(null);
   const [summary, setSummary] = useState("");
+  // Overnight 2, Phase 6: habits from the observation log, in the student's words.
+  const [noticed, setNoticed] = useState<Noticed[]>([]);
   const [confirmingForget, setConfirmingForget] = useState(false);
   const [forgetting, setForgetting] = useState(false);
   const [note, setNote] = useState<{ tone: "success" | "error"; text: string } | null>(null);
@@ -168,9 +174,10 @@ export default function WhatTangentKnows() {
       .catch(() => setUsage([]));
     try {
       const res = await fetch("/api/context", { cache: "no-store" });
-      const data = (await res.json()) as { context?: { entries?: ContextEntry[]; compressedSummary?: string } };
+      const data = (await res.json()) as { context?: { entries?: ContextEntry[]; compressedSummary?: string }; noticed?: Noticed[] };
       setEntries(data.context?.entries ?? []);
       setSummary(data.context?.compressedSummary ?? "");
+      setNoticed(Array.isArray(data.noticed) ? data.noticed : []);
     } catch {
       setEntries([]);
     }
@@ -227,7 +234,8 @@ export default function WhatTangentKnows() {
 
   const sendForget = (id: string) => {
     if (sample || id.startsWith("local-")) return;
-    void send({ action: "forget", id }, true).then((r) => !r.ok && void load());
+    const body = id.startsWith(NOTICED_ID) ? { action: "forget_noticed", key: id.slice(NOTICED_ID.length) } : { action: "forget", id };
+    void send(body, true).then((r) => !r.ok && void load());
   };
 
   // Forget: the row says "Forgotten" with Undo; the forget is sent once Undo has gone.
@@ -235,6 +243,7 @@ export default function WhatTangentKnows() {
     timers.current.delete(id);
     setPending((cur) => new Set(Array.from(cur).filter((x) => x !== id)));
     setEntries((list) => list?.filter((e) => e.id !== id) ?? null);
+    setNoticed((list) => list.filter((n) => NOTICED_ID + n.key !== id));
     sendForget(id);
   };
   const forget = (id: string) => {
@@ -335,6 +344,7 @@ export default function WhatTangentKnows() {
     setForgetting(false);
     setConfirmingForget(false);
     setNote(ok ? { tone: "success", text: "Tangent forgot everything it knew about you." } : { tone: "error", text: "Couldn't forget that. Try again." });
+    if (ok) setNoticed([]);
     if (sample) setEntries([]);
     else void load();
   };
@@ -496,12 +506,12 @@ export default function WhatTangentKnows() {
                         disabled={isAdding}
                         aria-label={`Add to ${group.label}`}
                       >
-                        <Plus size={14} strokeWidth={2} aria-hidden="true" />
+                        <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
                         Add
                       </button>
                     </header>
                     {facts.length === 0 && !isAdding ? (
-                      <p className="you-card-empty">{group.empty} Nothing yet.</p>
+                      <p className="you-card-empty">{group.empty} Not asked yet.</p>
                     ) : (
                       <ul>
                         {factRows(facts)}
@@ -524,16 +534,58 @@ export default function WhatTangentKnows() {
                   <ul>{factRows(facts)}</ul>
                 </section>
               ))}
+
+              {/* Overnight 2, Phase 6: the habits Tangent plans with, from what
+                  the student does with steps (never their titles or notes). */}
+              {noticed.length > 0 && (
+                <section className="you-card is-habits" style={{ "--c": "var(--map-work)" } as React.CSSProperties} aria-labelledby="you-card-noticed">
+                  <header>
+                    <span className="you-card-icon" aria-hidden="true">
+                      <Gauge size={16} strokeWidth={1.75} />
+                    </span>
+                    <h3 id="you-card-noticed">Tangent noticed</h3>
+                  </header>
+                  <p className="you-card-note">From what you do with your steps, never what they say.</p>
+                  <ul>
+                    {noticed.map((n) => {
+                      const id = NOTICED_ID + n.key;
+                      if (pending.has(id)) {
+                        return (
+                          <li key={id} className="you-fact is-forgotten" role="status">
+                            <p>Forgotten.</p>
+                            <button type="button" className="you-fact-btn is-strong" onClick={() => undoForget(id)} aria-label={`Undo forget: ${n.title}`}>
+                              Undo
+                            </button>
+                          </li>
+                        );
+                      }
+                      return (
+                        <li key={id} className="you-fact is-habit">
+                          <p className="you-noticed-title">{n.title}</p>
+                          {n.lines.map((line) => (
+                            <p key={line}>{line}</p>
+                          ))}
+                          <div className="you-fact-meta">
+                            <button type="button" className="you-fact-btn" onClick={() => forget(id)} aria-label={`Forget: ${n.title}`}>
+                              Forget
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              )}
             </div>
 
             <KnowsTell onTell={tell} />
 
-            {(entries.length > 0 || summary) && (
+            {(entries.length > 0 || summary || noticed.length > 0) && (
               <div className="settings-card knows-card knows-danger">
                 <div className={`settings-row${confirmingForget ? " is-stacked" : ""}`}>
                   <div className="settings-row-copy">
                     <strong>Forget everything</strong>
-                    <span>Clears every fact here. Your tasks, projects and chats stay.</span>
+                    <span>Clears every fact here and the habits Tangent noticed. Your tasks, projects and chats stay.</span>
                   </div>
                   {confirmingForget ? (
                     <ConfirmPanel
@@ -545,7 +597,7 @@ export default function WhatTangentKnows() {
                       onCancel={() => setConfirmingForget(false)}
                       onConfirm={() => void forgetAll()}
                     >
-                      <p>Tangent will plan without any of these facts until it learns them again. This can&apos;t be undone.</p>
+                      <p>Tangent deletes these facts and its record of how you work and plan (your pace, best hours and days). It plans without them until it learns them again. This can&apos;t be undone.</p>
                     </ConfirmPanel>
                   ) : (
                     <Button size="sm" variant="danger" onClick={() => setConfirmingForget(true)}>Forget everything</Button>

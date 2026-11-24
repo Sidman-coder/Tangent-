@@ -64,6 +64,18 @@ void (import("./talk-route") as Promise<typeof import("./talk-route")>).then(({ 
     assert.equal(r.schedulable, true);
   });
 
+  test("a 'How do I prepare for…' question is answered first, with a plan offer, dates or not (C15)", () => {
+    for (const t of [
+      "How do I prepare for the AP Chem final on Thu Dec 17? I have debate Tuesday 3:30-5:00",
+      "How do I study for my AP Chem final next week",
+      "how should I get ready for my physics test on Friday",
+    ]) {
+      const r = routeMessage(t, { scope: "home" });
+      assert.equal(r.kind, "answer", t);
+      assert.equal(r.schedulable, true, `${t} offers the plan row`);
+    }
+  });
+
   test("inside a project, an explicit ask extends it and talk stays talk", () => {
     assert.equal(routeMessage("plan it", { scoped: "p-chem" }).kind, "extend");
     assert.equal(routeMessage("how am I doing?", { scoped: "p-chem" }).kind, "answer");

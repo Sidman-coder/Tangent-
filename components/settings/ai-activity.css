@@ -41,13 +41,13 @@
   display: inline-flex;
   padding: 3px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
 }
 .aia-days button {
   height: 28px;
   padding: 0 12px;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: transparent;
   color: var(--text-2);
   font: 600 12.5px/1 var(--font-body);
@@ -123,7 +123,7 @@
 .aia-token {
   padding: 2px 7px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   color: var(--text-3);
   font: 600 11px/1.2 var(--font-body);
 }
@@ -156,7 +156,7 @@
   display: inline-block;
   padding: 3px 9px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   color: var(--text-2);
   font: 600 12px/1.2 var(--font-body);
   white-space: nowrap;
@@ -256,7 +256,7 @@
   margin-left: auto;
   padding: 4px 10px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: transparent;
   color: var(--text-2);
   font: 600 12px/1.2 var(--font-body);

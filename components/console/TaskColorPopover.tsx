@@ -105,10 +105,10 @@ export default function TaskColorPopover({ task, anchor, onClose }: Props) {
           <span className="tg-pop-month">{monthLabel}</span>
           <div className="tg-pop-nav">
             <button type="button" aria-label="Previous month" onClick={() => shift(-1)}>
-              <ChevronLeft size={14} strokeWidth={2} />
+              <ChevronLeft size={14} strokeWidth={1.75} />
             </button>
             <button type="button" aria-label="Next month" onClick={() => shift(1)}>
-              <ChevronRight size={14} strokeWidth={2} />
+              <ChevronRight size={14} strokeWidth={1.75} />
             </button>
           </div>
         </div>

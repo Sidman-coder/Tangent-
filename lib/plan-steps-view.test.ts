@@ -17,7 +17,7 @@ type Resolve = (specifier: string, context: unknown, next: (s: string, c: unknow
   },
 });
 
-void (import("./plan-steps-view.ts" as string) as Promise<typeof import("./plan-steps-view")>).then(({ stepCards, whenLabel }) => {
+void (import("./plan-steps-view.ts" as string) as Promise<typeof import("./plan-steps-view")>).then(({ stepCards, whenLabel, reasonLines }) => {
   test("step cards: op title and day, why from the notes, the brief fills gaps", () => {
     const cards = stepCards(
       [
@@ -31,7 +31,7 @@ void (import("./plan-steps-view.ts" as string) as Promise<typeof import("./plan-
       ]
     );
     assert.equal(cards.length, 2);
-    assert.deepEqual(cards[0], { index: 1, title: "Solve 3 Bronze prefix-sum problems", date: "2026-11-16", time: "16:30", why: "you said evenings work best", youllHave: "3 solved problems" });
+    assert.deepEqual(cards[0], { index: 1, title: "Solve 3 Bronze prefix-sum problems", date: "2026-11-16", time: "16:30", why: "you said evenings work best", because: "", youllHave: "3 solved problems", ifThen: "At 4:30 PM Monday, then solve 3 Bronze prefix-sum problems." });
     assert.equal(cards[1].index, 2);
     assert.equal(cards[1].why, "brief why 2");
     assert.equal(cards[1].youllHave, "brief have 2");
@@ -41,5 +41,14 @@ void (import("./plan-steps-view.ts" as string) as Promise<typeof import("./plan-
     assert.equal(whenLabel("2026-11-16", "16:30"), "Mon, Nov 16 · 4:30 PM");
     assert.equal(whenLabel("2026-11-16", "00:05"), "Mon, Nov 16 · 12:05 AM");
     assert.equal(whenLabel("2026-11-16", ""), "Mon, Nov 16");
+  });
+
+  test("reasonLines drops project-template lines on an exam plan and keeps at most three (C13)", () => {
+    const lines = ["Starting from the idea stage", "Standard milestones: idea, research, build, write-up, practice", "45-minute sessions", "At your open times after school", "Every section", "45-minute sessions"];
+    assert.deepEqual(reasonLines(lines, "Prepare for the AP Chem final"), ["45-minute sessions", "At your open times after school", "Every section"]);
+  });
+
+  test("reasonLines keeps template lines on a real project goal (C13)", () => {
+    assert.deepEqual(reasonLines(["Starting from the idea stage"], "Build a robot for the science fair"), ["Starting from the idea stage"]);
   });
 });

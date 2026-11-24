@@ -114,7 +114,26 @@
 .draft-pill-x:hover {
   background: var(--surface-2);
 }
+/* Round 6 item 3: Hide, a quiet text button; nothing is discarded. */
+.draft-pill-hide {
+  flex: none;
+  min-height: 36px;
+  margin-right: var(--s-1);
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.draft-pill-hide:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
 .draft-pill-open:focus-visible,
+.draft-pill-hide:focus-visible,
 .draft-pill-x:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -233,4 +252,10 @@
     margin-top: -90px;
     max-height: 50vh;
   }
+}
+
+/* A modal is open: the draft pill steps aside so it never covers the
+   modal's buttons (overnight C07). It is back the moment the modal closes. */
+body:has([aria-modal="true"]) .draft-dock {
+  display: none;
 }

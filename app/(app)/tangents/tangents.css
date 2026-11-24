@@ -228,7 +228,7 @@
   width: max-content;
   padding: 7px 13px 7px 9px;
   border: 1px solid var(--path-edge);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--path-node-work);
   backdrop-filter: blur(8px);
   color: var(--path-ink);
@@ -269,7 +269,7 @@
   width: max-content;
   max-width: 216px;
   border: 1px solid rgba(92, 200, 189, 0.38);
-  border-radius: 12px;
+  border-radius: var(--r-md);
   /* Opaque: when two branches end close together the cards stack cleanly
      instead of their words bleeding through each other. */
   background: var(--path-node-idea);
@@ -300,7 +300,7 @@
   background: none;
   color: var(--path-ink);
   font-family: var(--font-body);
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.35;
   text-align: left;
   cursor: pointer;
@@ -338,7 +338,7 @@
   gap: 2px;
   padding: 4px;
   border: 1px solid var(--path-edge-strong);
-  border-radius: 14px;
+  border-radius: var(--r-md);
   background: var(--path-panel);
   backdrop-filter: blur(12px);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
@@ -361,7 +361,7 @@
   height: 34px;
   padding: 0 12px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--path-ink);
   font-family: var(--font-body);
@@ -414,7 +414,7 @@
 /* The one standalone chip left: "New path" in the Tangents bar. */
 .path-chip {
   border: 1px solid var(--path-edge-strong);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--path-panel);
   padding: 0 14px;
 }
@@ -485,7 +485,7 @@
   width: 28px;
   height: 28px;
   border: 1px solid var(--path-edge);
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   background: none;
   color: var(--path-ink-2);
   cursor: pointer;
@@ -498,7 +498,7 @@
 .path-inspector-kind {
   margin: 0;
   color: var(--path-idea);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
 }
 .path-inspector-title {
@@ -512,7 +512,7 @@
 .path-inspector-body {
   margin: 0;
   color: var(--path-ink-2);
-  font-size: 13.5px;
+  font-size: 14px;
   line-height: 1.55;
   max-width: 60ch;
 }
@@ -523,7 +523,7 @@
   margin: 2px 0 0;
   padding: 12px;
   border: 1px solid var(--path-edge);
-  border-radius: 12px;
+  border-radius: var(--r-md);
 }
 .path-facts div {
   display: flex;
@@ -536,7 +536,7 @@
 }
 .path-facts dd {
   margin: 0;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
 }
 
@@ -561,7 +561,7 @@
   height: 34px;
   padding: 0 13px;
   border: 1px solid var(--path-edge-strong);
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   background: rgba(255, 255, 255, 0.04);
   color: var(--path-ink);
   font-family: var(--font-body);
@@ -662,11 +662,11 @@
   height: 38px;
   padding: 0 11px;
   border: 1px solid var(--path-edge-strong);
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   background: rgba(10, 8, 18, 0.6);
   color: var(--path-ink);
   font-family: var(--font-body);
-  font-size: 13.5px;
+  font-size: 14px;
 }
 .path-form input::placeholder,
 .path-setup input::placeholder {
@@ -682,7 +682,7 @@
   grid-column: 1 / -1;
   margin: 0;
   color: var(--path-danger);
-  font-size: 12.5px;
+  font-size: 13px;
 }
 .path-form-actions {
   grid-column: 1 / -1;
@@ -717,7 +717,7 @@
 .path-setup p {
   margin: 0;
   color: var(--path-ink-2);
-  font-size: 13.5px;
+  font-size: 14px;
   line-height: 1.55;
 }
 
@@ -792,7 +792,7 @@
   transform: translateX(-50%);
   padding: 9px 14px;
   border: 1px solid rgba(255, 143, 143, 0.4);
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   background: var(--path-panel);
   backdrop-filter: blur(12px);
   z-index: 5;
@@ -966,7 +966,7 @@
 .tangents-intake-step {
   color: var(--path-ink-2);
   font-family: var(--font-body);
-  font-size: 12.5px;
+  font-size: 13px;
 }
 .tangents-intake-progress {
   display: flex;
@@ -1024,7 +1024,7 @@
 
 .tangents-intake-field > span {
   color: var(--path-ink-2);
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
 }
 
@@ -1032,11 +1032,11 @@
   width: 100%;
   padding: 11px 13px;
   border: 1px solid var(--path-edge-strong);
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   background: rgba(10, 8, 18, 0.6);
   color: var(--path-ink);
   font-family: var(--font-body);
-  font-size: 14.5px;
+  font-size: 15px;
   resize: vertical;
 }
 .tangents-intake-input.is-area {
@@ -1061,7 +1061,7 @@
   gap: 3px;
   padding: 14px 14px 13px;
   border: 1px solid var(--path-edge);
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   background: none;
   color: var(--path-ink);
   text-align: left;
@@ -1084,7 +1084,7 @@
   width: 34px;
   height: 34px;
   margin-bottom: 8px;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   border: 1px solid var(--path-edge);
   background: rgba(154, 136, 239, 0.1);
   color: var(--path-work);
@@ -1102,11 +1102,11 @@
   height: 30px;
   padding: 0 12px;
   border: 1px solid var(--path-edge-strong);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: transparent;
   color: var(--path-ink-2);
   font-family: var(--font-body);
-  font-size: 12.5px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
   transition: border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
@@ -1126,7 +1126,7 @@
 }
 .tangents-kind span {
   color: var(--path-ink-2);
-  font-size: 11.5px;
+  font-size: 12px;
 }
 .tangents-intake-foot {
   display: flex;
@@ -1171,7 +1171,7 @@
   justify-content: center;
   width: 34px;
   height: 34px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--path-danger-soft);
   color: var(--path-danger);
 }
@@ -1187,7 +1187,7 @@
   margin: 0;
   color: var(--path-ink-2);
   font-family: var(--font-body);
-  font-size: 13.5px;
+  font-size: 14px;
   line-height: 1.5;
 }
 .tangents-confirm p strong {
@@ -1288,11 +1288,11 @@
   height: 30px;
   padding: 0 11px;
   border: 0;
-  border-radius: 9px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--path-ink-2);
   font-family: var(--font-body);
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
@@ -1415,14 +1415,14 @@
   gap: 4px;
   padding: 11px 12px;
   border: 1px solid var(--path-edge);
-  border-radius: 12px;
+  border-radius: var(--r-md);
   background: rgba(10, 8, 18, 0.35);
 }
 .path-inspector-part h3 {
   margin: 0;
   color: var(--path-ink-2);
   font-family: var(--font-body);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0;
 }
@@ -1499,7 +1499,7 @@
   min-height: 40px;
   padding: 6px 12px;
   border: 1px solid rgba(92, 200, 189, 0.45);
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   background: var(--path-idea-soft);
   color: var(--path-ink);
   font-family: var(--font-body);
@@ -1510,7 +1510,7 @@
 }
 .path-step-chip small {
   color: var(--path-ink-2);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
 }
 .path-step-chip:hover:not(:disabled) {
@@ -1532,7 +1532,7 @@
   height: 34px;
   padding: 0 10px;
   border: 1px solid var(--path-edge-strong);
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   background: rgba(255, 255, 255, 0.04);
   color: var(--path-ink);
   color-scheme: dark;
@@ -1559,7 +1559,7 @@
 .tangents-intake-known {
   margin: -4px 0 10px;
   color: var(--path-work);
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
 }
 .tangents-intake-row {
@@ -1578,7 +1578,7 @@
   height: 40px;
   flex: none;
   border: 1px solid var(--path-edge-strong);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: transparent;
   color: var(--path-work);
   cursor: pointer;
@@ -1627,13 +1627,13 @@
 
 .path-dock,
 .path-zoombar {
-  border-radius: 999px;
+  border-radius: var(--r-pill);
 }
 
 .path-filter-pill.is-on,
 .path-filter-pill[aria-pressed="true"],
 .path-filter-pill[aria-checked="true"] {
-  border-radius: 999px;
+  border-radius: var(--r-pill);
 }
 
 
@@ -1670,7 +1670,7 @@
 .tangents-intake,
 .tangents-confirm {
   border: 1px solid var(--tg-glass-edge, rgb(255 255 255 / 0.12));
-  border-radius: 22px;
+  border-radius: var(--r-xl);
   background: rgb(22 18 40 / 0.72);
   -webkit-backdrop-filter: blur(28px) saturate(170%) brightness(1.05);
   backdrop-filter: blur(28px) saturate(170%) brightness(1.05);
@@ -1687,7 +1687,7 @@
 .path-filter-pill,
 .path-zoombar-btn,
 .path-inspector-close {
-  border-radius: 999px;
+  border-radius: var(--r-pill);
 }
 
 .path-btn:not(.is-primary):not(.is-danger),
@@ -1788,13 +1788,13 @@
   gap: 14px;
   padding: 14px;
   border: 1px solid rgb(92 200 189 / 0.3);
-  border-radius: 18px;
+  border-radius: var(--r-lg);
   background: rgb(92 200 189 / 0.06);
 }
 .path-ask h3 {
   margin: 0;
   color: var(--path-ink);
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 600;
 }
 .path-ask-q {
@@ -1805,7 +1805,7 @@
 .path-ask-q p {
   margin: 0;
   color: var(--path-ink);
-  font-size: 13.5px;
+  font-size: 14px;
   line-height: 1.4;
 }
 .path-ask-chips {
@@ -1822,10 +1822,10 @@
   height: 36px;
   padding: 0 14px;
   border: 1px solid var(--tg-glass-edge, rgb(255 255 255 / 0.12));
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: rgb(255 255 255 / 0.06);
   color: var(--path-ink);
-  font-size: 13.5px;
+  font-size: 14px;
 }
 .path-ask-actions {
   display: flex;
@@ -1854,7 +1854,7 @@
   }
   .path-filter-btn {
     padding-inline: 9px;
-    font-size: 12.5px;
+    font-size: 13px;
   }
 }
 
@@ -1901,7 +1901,7 @@
   gap: 10px;
   padding: 20px;
   border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
-  border-radius: 22px;
+  border-radius: var(--r-xl);
   background: var(--surface);
   box-shadow: 0 1px 2px rgb(26 23 32 / 0.04), 0 12px 32px -20px rgb(26 23 32 / 0.16);
   color: var(--text);
@@ -1931,7 +1931,7 @@
 .tg-path-when {
   flex: none;
   padding: 3px 10px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--path-idea-soft);
   color: var(--path-idea);
   font-size: 12px;
@@ -1944,7 +1944,7 @@
 }
 .tg-path-bar {
   height: 6px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: rgb(from var(--text) r g b / 0.07);
   overflow: hidden;
 }
@@ -1970,7 +1970,7 @@
 }
 .tg-paths-suggest > span {
   color: var(--text-3);
-  font-size: 12.5px;
+  font-size: 13px;
 }
 .tg-paths-suggest > div {
   display: flex;
@@ -1989,7 +1989,7 @@
   align-items: center;
   gap: 6px;
   color: var(--text-2);
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 500;
   text-decoration: none;
 }
@@ -2031,7 +2031,7 @@
   gap: 2px;
   padding: 3px;
   border: 1px solid var(--lg-edge);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--glass-catch), var(--lg-fill-strong);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
@@ -2044,11 +2044,11 @@
   height: 32px;
   padding: 0 14px;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: transparent;
   color: var(--text-2);
   font: inherit;
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -2064,7 +2064,7 @@ body :is(button).pplan-icon {
   height: 36px;
   padding: 0;
   border: 1px solid var(--lg-edge);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--glass-catch), var(--lg-fill-strong);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
@@ -2081,7 +2081,7 @@ body :is(button).pplan-icon:hover {
 }
 .pplan-progress span {
   padding: 5px 12px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: rgb(from var(--text) r g b / 0.05);
   color: var(--text-2);
   font-size: 13px;
@@ -2103,7 +2103,7 @@ body :is(button).pplan-icon:hover {
   gap: 16px;
   padding: 18px 18px 18px 22px;
   border: 1px solid rgb(from var(--accent) r g b / 0.18);
-  border-radius: 22px;
+  border-radius: var(--r-xl);
   background: linear-gradient(135deg, rgb(from var(--accent) r g b / 0.09), rgb(31 122 116 / 0.06));
 }
 .pplan-next > div {
@@ -2115,7 +2115,7 @@ body :is(button).pplan-icon:hover {
 }
 .pplan-label {
   color: var(--accent);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -2128,7 +2128,7 @@ body :is(button).pplan-icon:hover {
 }
 .pplan-next > div > span:last-child {
   color: var(--text-2);
-  font-size: 13.5px;
+  font-size: 14px;
 }
 .pplan-head {
   display: flex;
@@ -2155,7 +2155,7 @@ body :is(button).pplan-icon:hover {
   gap: 12px;
   padding: 18px 20px;
   border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
-  border-radius: 22px;
+  border-radius: var(--r-xl);
   background: var(--surface);
   box-shadow: 0 1px 2px rgb(26 23 32 / 0.04), 0 12px 32px -20px rgb(26 23 32 / 0.16);
   scroll-margin: 120px;
@@ -2173,7 +2173,7 @@ body :is(button).pplan-icon:hover {
 }
 .pplan-facts {
   color: var(--text-3);
-  font-size: 12.5px;
+  font-size: 13px;
 }
 .pplan-confirm {
   display: inline-flex;
@@ -2210,7 +2210,7 @@ body :is(button).pplan-icon:hover {
   gap: 8px;
   padding: 14px 16px;
   border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
-  border-radius: 16px;
+  border-radius: var(--r-lg);
   background: rgb(from var(--text) r g b / 0.02);
   scroll-margin: 120px;
 }
@@ -2242,8 +2242,8 @@ body :is(button).pplan-icon:hover {
 .pplan-status {
   flex: none;
   padding: 3px 9px;
-  border-radius: 999px;
-  font-size: 11.5px;
+  border-radius: var(--r-pill);
+  font-size: 12px;
   font-weight: 600;
 }
 .pplan-status.is-suggested {
@@ -2301,7 +2301,7 @@ body :is(button).pplan-icon:hover {
   gap: 10px;
   padding: 22px;
   border: 1px dashed color-mix(in srgb, var(--line) 90%, transparent);
-  border-radius: 22px;
+  border-radius: var(--r-xl);
   background: color-mix(in srgb, var(--surface) 50%, transparent);
 }
 .pplan-empty strong {
@@ -2328,7 +2328,7 @@ body :is(button).pplan-icon:hover {
   min-height: 0;
   height: max(520px, calc(100dvh - 300px));
   overflow: hidden;
-  border-radius: 22px;
+  border-radius: var(--r-xl);
   box-shadow: 0 20px 50px -24px rgb(10 8 18 / 0.5);
 }
 .pplan-page .pplan-map .path-inspector {
@@ -2341,7 +2341,7 @@ body :is(button).pplan-icon:hover {
 .pplan-schedule .path-step {
   padding: 12px 14px;
   border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
-  border-radius: 14px;
+  border-radius: var(--r-md);
   background: var(--surface);
   color: var(--text);
 }
@@ -2433,7 +2433,7 @@ body :is(button).pplan-icon:hover {
 .tangents-layer.tangents-light .tangents-intake .tangents-intake-input:is(input, textarea),
 .tangents-layer.tangents-light .path-form label :is(input, select) {
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: var(--r-md);
   background: var(--surface);
   color: var(--text);
   box-shadow: none;
@@ -2459,7 +2459,7 @@ body :is(button).pplan-icon:hover {
   transform: translateX(-50%);
   padding: 10px 16px;
   border: 1px solid rgb(from var(--red) r g b / 0.3);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--surface);
   color: var(--red);
   box-shadow: 0 12px 30px -14px rgb(26 23 32 / 0.3);

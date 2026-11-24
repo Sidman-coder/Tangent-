@@ -67,6 +67,8 @@ void Promise.all([import("./routes") as Promise<Routes>, import("./notification-
 
     test("export never includes the Canvas link or pen key", () => {
       assert.ok(exp.EXPORT_TABLES.includes("canvas_feeds"));
+      // Round 6: check-in codes are the student's data too.
+      assert.ok(exp.EXPORT_TABLES.includes("step_events"));
       const feed = exp.redactExportRow("canvas_feeds", {
         user_id: "u",
         ics_url: "https://x.instructure.com/feeds/calendars/user_SECRET.ics",

@@ -8,6 +8,7 @@
     { "text": "help me get better at competitive programming", "kind": "answer", "schedulable": true },
     { "text": "I want to get better at chess", "kind": "answer", "schedulable": true },
     { "text": "help me prepare for the SAT", "kind": "answer", "schedulable": true },
+    { "text": "help me get a 1400 on the SAT", "kind": "answer", "schedulable": true, "note": "Round 6 (was requests.json r4-help-me-sat): a goal with no date gets the answer plus the Plan this offer (Sid, NEEDS-SID)." },
     { "text": "how do I get 10k followers", "kind": "answer", "schedulable": true },
     { "text": "help me grow my instagram", "kind": "answer", "schedulable": true },
     { "text": "how should I study for a quiz?", "kind": "answer" },

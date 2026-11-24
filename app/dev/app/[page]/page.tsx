@@ -4,7 +4,7 @@
 // (lib/dev/sample-state.ts), for design review without an account.
 // /dev/app/today, /dev/app/calendar, /dev/app/projects, /dev/app/project, /dev/app/school, /dev/app/settings, /dev/app/settings-account (…-security, -schedule,
 // -notifications, -context (sample facts on the map; -context-dense has ~150), -activity, -data),
-// /dev/app/tangents, /dev/app/notifications (…-empty), /dev/app/draft (an unconfirmed plan; leave the page and the draft pill shows), /dev/app/preview, /dev/app/color, /dev/app/grill. 404s in production. API calls fail here (no session), so
+// /dev/app/tangents, /dev/app/notifications (…-empty), /dev/app/draft (an unconfirmed plan; leave the page and the draft pill shows), /dev/app/preview, /dev/app/color, /dev/app/grill, /dev/app/review-mockup (static, overnight 4.5). 404s in production. API calls fail here (no session), so
 // anything loaded from the server shows its empty or error state.
 
 import { notFound, useParams } from "next/navigation";
@@ -26,6 +26,7 @@ import ColorPicker from "@/components/projects/ColorPicker";
 import RoundReviewSheet, { type RoundReviewSample } from "@/components/projects/RoundReviewSheet";
 import { startQuestion } from "@/lib/round-review";
 import SlotQuestionCard from "@/components/grill/SlotQuestionCard";
+import ReviewMockup from "@/components/dev/ReviewMockup";
 import { useEffect, useMemo, useState } from "react";
 import { GET_TO_KNOW_EVENT } from "@/components/GetToKnowYou";
 import { followUpById, followUpStorageKey } from "@/lib/student/follow-ups";
@@ -230,6 +231,7 @@ const PAGES: Record<string, React.ComponentType> = {
     return <RoundReviewSample at={3} />;
   },
   grill: GrillSample,
+  "review-mockup": ReviewMockup,
   followup: FollowUpSample,
   setup: function SetupSample() {
     return <FirstRun onComplete={() => {}} />;

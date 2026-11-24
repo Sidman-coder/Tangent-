@@ -81,7 +81,7 @@ export default function CommitmentsList({
                 <div className="cmt-card-top">
                   <span className="cmt-kind">{COMMITMENT_KIND_LABELS[c.kind]}</span>
                   <button type="button" className="cmt-icon" aria-label={`Remove ${label}`} onClick={() => remove(i)}>
-                    <X size={16} strokeWidth={1.9} aria-hidden="true" />
+                    <X size={16} strokeWidth={1.75} aria-hidden="true" />
                   </button>
                 </div>
 
@@ -202,7 +202,7 @@ export default function CommitmentsList({
                         <input id={`${id}-${k}-end`} className="cmt-input cmt-time" type="time" value={b.end} onChange={(e) => setBlock(i, k, { end: e.target.value })} />
                         {c.blocks.length > 1 && (
                           <button type="button" className="cmt-icon" aria-label={`Remove time ${k + 1}`} onClick={() => set(i, { blocks: c.blocks.filter((_, x) => x !== k) })}>
-                            <X size={15} strokeWidth={1.9} aria-hidden="true" />
+                            <X size={15} strokeWidth={1.75} aria-hidden="true" />
                           </button>
                         )}
                       </div>
@@ -210,7 +210,7 @@ export default function CommitmentsList({
                   ))}
                   {c.blocks.length < MAX_BLOCKS && (
                     <button type="button" className="cmt-link" onClick={() => set(i, { blocks: [...c.blocks, nextBlock(c)] })}>
-                      <Plus size={14} strokeWidth={2} aria-hidden="true" /> Add another time
+                      <Plus size={14} strokeWidth={1.75} aria-hidden="true" /> Add another time
                     </button>
                   )}
                 </div>
@@ -227,7 +227,7 @@ export default function CommitmentsList({
         <div className="cmt-add" role="group" aria-label="Add something you're busy with">
           {COMMITMENT_KINDS.map((kind) => (
             <button key={kind} type="button" className="cmt-chip" onClick={() => add(kind)}>
-              <Plus size={14} strokeWidth={2} aria-hidden="true" />
+              <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
               {COMMITMENT_KIND_LABELS[kind]}
             </button>
           ))}

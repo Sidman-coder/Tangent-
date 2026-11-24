@@ -36,10 +36,10 @@ export default function SlotQuestionCard({ card, score, checkIn, disabled, onAns
 
   const bar = (
     <div className="slot-progress">
-      <div className="slot-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label="Tangent knows enough">
+      <div className="slot-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label="How much Tangent has to plan with">
         <div className="slot-progress-fill" style={{ width: `${pct}%` }} />
       </div>
-      <span className="slot-progress-label">Tangent knows enough: {pct}%</span>
+      <span className="slot-progress-label">{pct >= 100 ? "Enough to plan" : "Getting the picture"}</span>
     </div>
   );
 

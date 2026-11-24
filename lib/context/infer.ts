@@ -6,8 +6,18 @@ import { slotValue, type SlotKey, type SlotMap } from "./slots";
 const MONTHS = "jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec";
 const NUM: Record<string, number> = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6 };
 
+// Whole month names only, so "mark 12" is never a date (overnight C04).
+const MONTH_NAME = "(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)";
+const WEEKDAY = "(?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)(?:day|sday|nesday|rsday|urday)?";
+
 const DEADLINE = new RegExp(
   [
+    // "Thu Dec 17", "Dec 17", "December 17th": a typed date is a stated date.
+    `\\b(?:${WEEKDAY}\\.?,? )?${MONTH_NAME}\\.? \\d{1,2}(?:st|nd|rd|th)?\\b`,
+    `\\b(?:due|until|till|by|before|on) (?:this |next )?${WEEKDAY}\\b`,
+    `\\bnext ${WEEKDAY}\\b`,
+    `\\b(?:due|by|before|on) \\d{1,2}/\\d{1,2}\\b`,
+    `\\b(?:due|by|before|on) the \\d{1,2}(?:st|nd|rd|th)\\b`,
     `\\bin (?:a|an|one|two|three|four|five|six|\\d+) (?:day|week|month)s?\\b`,
     `\\b(?:by|before|on) (?:${MONTHS})[a-z]*\\.? \\d{1,2}(?:st|nd|rd|th)?\\b`,
     `\\b(?:by|before|on) (?:mon|tues|wednes|thurs|fri|satur|sun)day\\b`,

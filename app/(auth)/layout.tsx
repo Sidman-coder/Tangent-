@@ -6,7 +6,7 @@ import "./auth.css";
 // here describes something the app actually does today.
 const POINTS = [
   { icon: Mic, title: "Say it, it's saved", body: "Tap the mic and talk. Tangent turns it into a task on the right day in about a second." },
-  { icon: MessageCircleQuestion, title: "It asks before it guesses", body: "Big or vague? A couple of sharp questions first, built from what it already knows about you." },
+  { icon: MessageCircleQuestion, title: "It asks before it guesses", body: "Big or vague? A couple of sharp questions first, based on what you've told it." },
   { icon: Scale, title: "No day gets buried", body: "It knows how much you can handle and puts new work on lighter days." },
   { icon: CalendarCheck2, title: "Canvas, handled", body: "Assignments and due dates flow in on their own, next to everything else." },
   { icon: Orbit, title: "Built for big goals", body: "Turn big goals into projects with steps, and see what to do next." },
@@ -21,12 +21,12 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           <span className="auth-brand-word">Tangent</span>
         </div>
         <h2 className="auth-headline">Your week, planned around you.</h2>
-        <p className="auth-sub">The planner for high school students that listens, asks the right questions, and spaces everything out so nothing piles up.</p>
+        <p className="auth-sub">The planner for high school students. Say it or type it, and it asks the right questions and spaces everything out so nothing piles up.</p>
         <ul className="auth-features">
           {POINTS.map(({ icon: Icon, title, body }) => (
             <li key={title}>
               <span className="auth-feature-icon" aria-hidden="true">
-                <Icon size={18} strokeWidth={2} />
+                <Icon size={18} strokeWidth={1.75} />
               </span>
               <span>
                 <strong>{title}</strong>

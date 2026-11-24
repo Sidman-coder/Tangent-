@@ -119,6 +119,25 @@ void Promise.all([import("./facts") as Promise<Facts>, import("./sensitive") as 
       assert.equal(looksDistressed("I don't want to be alive anymore"), true);
       assert.equal(looksDistressed("this calc homework is killing me lol"), false);
       assert.equal(looksDistressed("I'm dying to finish this"), false);
+      // Overnight 2 L13: the live line that slipped through, and close cousins.
+      for (const text of [
+        "honestly chem, I've been so stressed I feel like I can't keep going and don't want to be here anymore",
+        "i cant keep going",
+        "I don't want to be here anymore",
+        "sometimes I wish I wasn't alive",
+        "I wish I was dead",
+        "everyone would be better off without me",
+        "there's no point in living",
+        "I just want to disappear forever",
+        "thinking about kms",
+      ]) assert.equal(looksDistressed(text), true, text);
+      for (const text of [
+        "I can't keep going to debate on Tuesdays",
+        "can't keep going with this essay tonight, I'll finish tomorrow",
+        "I don't want to be here at 7am for zero period",
+        "this homework is going to kill me",
+        "I'm dead tired",
+      ]) assert.equal(looksDistressed(text), false, text);
       assert.match(DISTRESS_REPLY, /988/);
       assert.match(DISTRESS_REPLY, /trusted adult/);
     });

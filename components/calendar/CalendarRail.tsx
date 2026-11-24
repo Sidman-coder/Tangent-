@@ -12,33 +12,10 @@
 import { useMemo, useRef } from "react";
 import InlineAsk, { type InlineAskHandle } from "@/components/chat/InlineAsk";
 import type { ChangeOp } from "@/lib/pipeline/changeset";
-import { addDaysYMD } from "@/lib/time";
-import { commitmentOf } from "@/lib/task-kind";
+import { weekLines } from "@/lib/week-lines";
 import type { Task } from "@/lib/types";
 
 const SUGGESTIONS = ["When am I free this week?", "What could I move to make room?", "Is this week too much?"];
-
-function dayName(ymd: string, today: string): string {
-  if (ymd === today) return "today";
-  if (ymd === addDaysYMD(today, 1)) return "tomorrow";
-  const [y, m, d] = ymd.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "long" });
-}
-
-export function weekLines(tasks: Task[], today: string): string[] {
-  const days = Array.from({ length: 7 }, (_, i) => addDaysYMD(today, i));
-  const inWeek = tasks.filter((t) => t.date >= days[0] && t.date <= days[6]);
-  if (inWeek.length === 0) return ["Nothing on your calendar for the next 7 days."];
-  const open = inWeek.filter((t) => !t.completed);
-  const perDay = days.map((d) => ({ d, n: open.filter((t) => t.date === d).length }));
-  const busiest = [...perDay].sort((a, b) => b.n - a.n)[0];
-  const free = perDay.filter((p) => p.n === 0).map((p) => dayName(p.d, today));
-  const mustDo = open.filter((t) => commitmentOf(t) === "fixed" || t.source === "canvas").length;
-  const lines = [`${open.length} thing${open.length === 1 ? "" : "s"} to do in the next 7 days${mustDo ? `, ${mustDo} at a set time or date` : ""}.`];
-  if (busiest.n > 1) lines.push(`Busiest: ${dayName(busiest.d, today)}, with ${busiest.n}.`);
-  if (free.length > 0) lines.push(free.length === 1 ? `Open: ${free[0]}.` : `Open: ${free.slice(0, 3).join(", ")}${free.length > 3 ? " and more" : ""}.`);
-  return lines;
-}
 
 export default function CalendarRail({
   tasks,
@@ -66,7 +43,7 @@ export default function CalendarRail({
           ref={talk}
           scope={{ rail: true }}
           label="Ask about your week"
-          placeholder="“Can I fit a run in on Thursday?”"
+          placeholder="Can I fit a run in?"
           className="cal-rail-talk"
           onOps={onDraftOps}
         />

@@ -96,9 +96,9 @@
   --page-gutter: 16px;
 
   /* motion */
-  --dur-fast: 150ms;
+  --dur-fast: 120ms;
   --dur: 200ms;
-  --dur-slow: 250ms;
+  --dur-slow: 320ms;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
 

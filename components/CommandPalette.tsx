@@ -18,7 +18,7 @@ import ActionReceipt from "@/components/ActionReceipt";
 import Toast, { ToastPortal } from "@/components/ui/Toast";
 import PreviewCard from "@/components/PreviewCard";
 import { usePipelineV2 } from "@/components/PipelineFlag";
-import { chatOnly, fetchOpenDrafts } from "@/components/console/pipeline-intake";
+import { chatOnly } from "@/components/console/pipeline-intake";
 import type { ChangeSet } from "@/lib/pipeline/changeset";
 import type { PreviewPayload } from "@/lib/pipeline/draft";
 import {
@@ -138,10 +138,9 @@ export default function CommandPalette() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, closePalette]);
 
-  // Pipeline V2: on open, bring back the newest draft still waiting for Confirm.
-  useEffect(() => {
-    if (open && v2) void fetchOpenDrafts().then((d) => d[0] && setDraft((cur) => cur ?? d[0]));
-  }, [open, v2]);
+  // Overnight 2 (R2-L6): opening the box used to bring back the newest waiting
+  // draft as a floating card over it, so a plan from an hour ago covered what
+  // the student came to type. Waiting drafts live in the Draft dock instead.
 
   // A toast with Undo stays as long as the app-level Undo toast (8 s).
   const showToast = useCallback((text: string, withUndo = false) => {

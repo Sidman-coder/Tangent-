@@ -15,6 +15,7 @@ import type { PathDraft } from "@/components/tangents/NewPathDialog";
 import { useAppState } from "@/components/AppStateProvider";
 import { takeNewPathTitle } from "@/lib/path-handoff";
 import { initialPathKind, pathsEmptyCopy, prefsOf } from "@/lib/personalize";
+import { friendlyError } from "@/lib/friendly-error";
 import "./tangents.css";
 
 type PathWithCounts = Path & {
@@ -66,7 +67,7 @@ export default function TangentsPage() {
       setPaths(data.paths ?? []);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't load your Tangents.");
+      setError(friendlyError(e, "Couldn't load your Tangents."));
       setPaths([]);
     }
   }, []);
@@ -88,7 +89,7 @@ export default function TangentsPage() {
       router.push(`/tangents/${data.path.id}`);
       return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't create the Tangent.");
+      setError(friendlyError(e, "Couldn't create the Tangent."));
       return false;
     }
   };

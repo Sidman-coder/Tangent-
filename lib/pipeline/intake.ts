@@ -23,6 +23,7 @@ import { respondWithDraft } from "./drafting";
 import { logEvent } from "./events";
 import { countScheduleLines, isAddShownPlan, isCompleteSchedule, parsePlanText, skippedNotes, stripModeSwitchLine } from "./plan-text";
 import { understandAndRoute } from "./understand";
+import type { OpenTask } from "./intent";
 
 export type IntakeOptions = {
   onProgress?: (event: PlanProgress) => void;
@@ -38,6 +39,8 @@ export type IntakeOptions = {
   project?: CalendarReplyOptions["project"];
   /** The client can show Juann's question card (app/api/chat body.clarify). */
   clarify?: boolean;
+  /** Typed in a task's chat: that task, for the router. */
+  openTask?: OpenTask | null;
 };
 
 /**
@@ -83,7 +86,7 @@ export async function handleRequest(messages: ChatMessage[], opts: IntakeOptions
   }
 
   if (opts.route !== "chat" && !opts.answered && !opts.project?.forcePlan) {
-    return understandAndRoute(messages, userText, { source, onProgress: opts.onProgress, pipelineText: opts.pipelineText ?? userText, clarify: opts.clarify });
+    return understandAndRoute(messages, userText, { source, onProgress: opts.onProgress, pipelineText: opts.pipelineText ?? userText, clarify: opts.clarify, openTask: opts.openTask });
   }
   if (opts.route === "chat") {
     logEvent("request_received", { route: "chat", fast: false, source });

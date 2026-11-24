@@ -24,9 +24,9 @@
   gap: 10px;
   min-height: 40px;
   padding: 0 12px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   color: var(--text-2);
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 500;
   text-decoration: none;
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
@@ -81,7 +81,7 @@
   min-height: 36px;
   padding: 0 12px 0 8px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--surface);
   color: var(--text-2);
   font: 500 13.5px/1 var(--font-body);
@@ -152,6 +152,15 @@
   flex: none;
   text-decoration: none;
 }
+/* Overnight Phase 5 (N10): a label never ends in a hard cut. The strip scrolls
+   sideways, so it has side room and a soft fade at both edges, and the
+   current tab centres itself (SettingsNav). */
+.settings-tabs.ui-tabs--underline {
+  padding-inline: 16px;
+  scroll-padding-inline: 24px;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%);
+}
 .settings-tabs .ui-tab[aria-current="page"] {
   color: var(--text);
   font-weight: 600;
@@ -161,7 +170,7 @@
   margin-top: 8px;
   padding: 0 4px;
   color: var(--text-3);
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 .settings-days {
@@ -174,7 +183,7 @@
   height: 44px;
   padding: 0 10px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: transparent;
   color: var(--text-2);
   font-size: 13px;
@@ -200,7 +209,7 @@
 
 .form-message {
   margin: 8px 4px 0;
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.45;
 }
 .form-message.is-info { color: var(--text-3); }
@@ -214,13 +223,13 @@
   width: 100%;
   padding: 14px 16px;
   border: 1px solid rgb(from var(--red) r g b / 0.35);
-  border-radius: 16px;
+  border-radius: var(--r-lg);
   background: rgb(from var(--red) r g b / 0.05);
 }
 .confirm-panel-title {
   margin: 0;
   color: var(--text);
-  font-size: 14.5px;
+  font-size: 15px;
   font-weight: 600;
 }
 .confirm-panel-body {
@@ -241,7 +250,7 @@
   height: 40px;
   padding: 0 14px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--surface);
   font-size: 14px;
   letter-spacing: 0.04em;
@@ -267,6 +276,7 @@
   .settings-page.is-knows .settings-tabs { display: none; }
   .settings-page.is-knows .settings-back--phone {
     display: inline-flex;
+    min-height: var(--tap);
     position: sticky;
     top: calc(var(--shell-top, 0px) + 8px);
     z-index: 5;
@@ -352,5 +362,5 @@
   padding: 0;
   list-style: none;
   color: var(--text-2);
-  font-size: 13.5px;
+  font-size: 14px;
 }

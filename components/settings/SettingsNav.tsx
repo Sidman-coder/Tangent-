@@ -3,18 +3,19 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
-import { Bell, CalendarClock, ChevronRight, Database, History, KeyRound, Sparkles, UserRound, type LucideIcon } from "lucide-react";
+import { Bell, CalendarClock, ChevronRight, Database, History, KeyRound, LifeBuoy, Lightbulb, UserRound, type LucideIcon } from "lucide-react";
 import type { SettingsPage } from "@/lib/settings/routes";
 
 /** Round 5B Phase 1: "What Tangent knows" leads the list and is featured. */
 export const SETTINGS_NAV: { page: SettingsPage; label: string; description: string; icon: LucideIcon; featured?: boolean }[] = [
-  { page: "context", label: "What Tangent knows", description: "The facts it plans with, and questions it still has.", icon: Sparkles, featured: true },
+  { page: "context", label: "What Tangent knows", description: "The facts it plans with, and questions it still has.", icon: Lightbulb, featured: true },
   { page: "account", label: "Account", description: "Your name, look, and signing out.", icon: UserRound },
   { page: "security", label: "Security", description: "Your password and how you sign in.", icon: KeyRound },
   { page: "schedule", label: "Schedule", description: "School, Canvas, calendars, and how much fits in a day.", icon: CalendarClock },
   { page: "notifications", label: "Notifications", description: "When Tangent nudges you, and when it stays quiet.", icon: Bell },
   { page: "activity", label: "AI activity", description: "Everything Tangent changed for you, with undo.", icon: History },
   { page: "data", label: "Your data", description: "Export it, see what's stored, or delete it.", icon: Database },
+  { page: "privacy", label: "Help and privacy", description: "Where your words go, the policies, and how to reach us.", icon: LifeBuoy },
 ];
 
 export function settingsMeta(page: SettingsPage) {

@@ -78,7 +78,7 @@ export default function AgendaView({ days, todayYmd, tasksForDay, colorFor, onOp
                     type="button"
                     className="ag-check"
                     aria-pressed={t.completed}
-                    aria-label={t.completed ? `Mark ${t.title} not done` : `Mark ${t.title} done`}
+                    aria-label={t.completed ? `Not done: ${t.title}` : `Done: ${t.title}`}
                     onClick={() => onToggle(t.id)}
                   >
                     {t.completed && <Check size={12} strokeWidth={3} aria-hidden="true" />}

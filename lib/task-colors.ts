@@ -13,7 +13,6 @@
 // items with no project, neutral for the rest. Text never uses a series color.
 
 import { isOnboardingSchoolTask } from "./school-block";
-import { commitmentOf } from "./task-kind";
 import type { Plan, Task, TaskKind } from "./types";
 
 export type SeriesKey =
@@ -142,14 +141,31 @@ export function canvasCourseOf(title: string): string {
   return m ? m[1] : "Canvas";
 }
 
-export function taskSeries(task: Task, plans: readonly Pick<Plan, "id" | "color">[]): TaskSeries {
+type SeriesPlan = Pick<Plan, "id" | "color"> & { kind?: Plan["kind"] };
+
+/** A commitment that reads as a job. Commitment tasks don't store their
+ *  commitment's kind, so the title is the signal (overnight 2, O2-D47). */
+const JOB_TITLE = /\b(work|job|shift|shifts)\b/i;
+
+/** The School colour: the School project's hue, or, before there is one, the
+ *  hue no project uses yet, so School never matches a project. */
+export function schoolSeries(plans: readonly SeriesPlan[]): SeriesKey {
+  const school = plans.find((p) => p.kind === "school");
+  if (school) return projectSeries(school.color, school.id);
+  return assignProjectColor(plans.map((p) => projectSeries(p.color, p.id)));
+}
+
+/** One colour per area (overnight 2, Phase 5): each project its own hue,
+ *  School and Work their project's hue, and every one-off the Personal slate. */
+export function taskSeries(task: Task, plans: readonly SeriesPlan[]): TaskSeries {
   if (task.planId) {
     const plan = plans.find((p) => p.id === task.planId);
     return projectSeries(plan?.color, task.planId);
   }
-  if (task.source === "canvas") return courseColor(canvasCourseOf(task.title));
-  if (isOnboardingSchoolTask(task)) return "neutral";
-  return commitmentOf(task) === "flexible" ? "neutral" : "personal";
+  if (task.source === "canvas" || task.kind === "school" || isOnboardingSchoolTask(task)) return schoolSeries(plans);
+  const work = plans.find((p) => p.kind === "work");
+  if (work && task.kind === "commitment" && JOB_TITLE.test(task.title)) return projectSeries(work.color, work.id);
+  return "personal";
 }
 
 export type TaskCategory = "canvas" | "academic" | "ec" | "other";
@@ -199,13 +215,14 @@ export const KIND_LABEL: Record<TaskKind, string> = {
 
 
 /** How the calendar groups work: school (classes and Canvas), projects
- *  (steps of a project), and short-term (everything else you added). */
+ *  (steps of a project), and personal (everything else you added). One name,
+ *  "Personal", everywhere, matching its colour (overnight 2, N15/F03). */
 export type TaskGroup = "school" | "projects" | "short";
 
 export const TASK_GROUPS: { id: TaskGroup; label: string }[] = [
   { id: "school", label: "School" },
   { id: "projects", label: "Projects" },
-  { id: "short", label: "Short-term" },
+  { id: "short", label: "Personal" },
 ];
 
 export function taskGroup(task: Pick<Task, "planId" | "kind" | "source">): TaskGroup {

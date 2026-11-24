@@ -7,13 +7,23 @@
 // The actions are the same calls as PreviewCard (usePreviewActions).
 
 import { useEffect, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { Check, X } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { usePreviewActions } from "@/components/preview/usePreviewActions";
 import type { ChangeSet } from "@/lib/pipeline/changeset";
 import type { PreviewPayload } from "@/lib/pipeline/draft";
-import { stepCards, whenLabel } from "@/lib/plan-steps-view";
+import { reasonLines, stepCards, whenLabel } from "@/lib/plan-steps-view";
 import type { BriefView } from "@/lib/voice-handler";
+
+/** What Confirm did, in plain words. Duplicates the server skipped are said out loud so the count never disagrees with the cards (overnight C05). */
+function savedLine(created: number | undefined, shown: number): string {
+  const n = created !== undefined && created >= 0 ? created : shown;
+  const steps = `${n} step${n === 1 ? "" : "s"}`;
+  if (n === 0) return "Nothing new to add. These were already on your calendar.";
+  if (n < shown) return `Saved ${steps} of ${shown}. The rest were already on your calendar.`;
+  return `Saved ${steps} to your calendar.`;
+}
 
 export default function PlanBrief({
   changeSet,
@@ -45,10 +55,19 @@ export default function PlanBrief({
     onConfirmed: () => onConfirmed?.(stepCards(cs.ops).length),
   });
   const [editing, setEditing] = useState(false);
+  // Once the student changes anything, the notes about the first draft no longer apply (overnight C12).
+  const [edited, setEdited] = useState(false);
+  const change = (body: Parameters<typeof edit>[0]) => {
+    setEdited(true);
+    return edit(body);
+  };
   const cards = stepCards(cs.ops, brief?.steps);
   const newPlan = cs.ops.find((o) => o.op === "create_plan");
   const goalLine = brief?.goalLine || (newPlan && "title" in newPlan ? newPlan.title : "") || goal;
   const used = brief?.used.length ? brief.used : view.factsUsed ?? [];
+  const planIndex = cs.ops.findIndex((o) => o.op === "create_plan");
+  const why = reasonLines(cs.assumptions, `${goalLine} ${goal}`);
+  const showWhy = phase === "draft" && !editing && !edited && (used.length > 0 || why.length > 0);
 
   useEffect(() => {
     if (phase !== "draft") {
@@ -61,7 +80,20 @@ export default function PlanBrief({
 
   return (
     <article className="plan-brief" aria-labelledby="plan-brief-goal">
-      <h2 id="plan-brief-goal" className="plan-brief-goal">{goalLine}</h2>
+      {editing && planIndex >= 0 ? (
+        <input
+          id="plan-brief-goal"
+          className="plan-brief-goal plan-brief-goal-input"
+          name="plan-title"
+          aria-label="Plan title"
+          maxLength={200}
+          defaultValue={goalLine}
+          disabled={busy}
+          onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== goalLine && void change({ type: "title", index: planIndex, title: e.target.value })}
+        />
+      ) : (
+        <h2 id="plan-brief-goal" className="plan-brief-goal">{goalLine}</h2>
+      )}
 
       <section aria-labelledby="plan-brief-round">
         <h3 id="plan-brief-round" className="plan-brief-h">Round 1: what you&apos;ll get this week</h3>
@@ -69,24 +101,44 @@ export default function PlanBrief({
           {cards.map((c) => (
             <li key={`${c.index}-${c.title}`} className="plan-step-card">
               <div className="plan-step-head">
-                <p className="plan-step-what">{c.title}</p>
+                {editing ? (
+                  <input
+                    className="plan-step-what plan-step-title-input"
+                    name="step-title"
+                    aria-label={`Title for ${c.title}`}
+                    maxLength={200}
+                    defaultValue={c.title}
+                    disabled={busy}
+                    onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== c.title && void change({ type: "title", index: c.index, title: e.target.value })}
+                  />
+                ) : (
+                  <p className="plan-step-what">{c.title}</p>
+                )}
                 {editing && (
-                  <button type="button" className="plan-step-remove" aria-label={`Remove: ${c.title}`} disabled={busy} onClick={() => void edit({ type: "remove", index: c.index })}>
+                  <button type="button" className="plan-step-remove" aria-label={`Remove: ${c.title}`} disabled={busy} onClick={() => void change({ type: "remove", index: c.index })}>
                     <X size={16} strokeWidth={1.75} aria-hidden="true" />
                   </button>
                 )}
               </div>
               {editing ? (
                 <div className="plan-step-edit">
-                  <input name="step-date" type="date" aria-label={`Day for ${c.title}`} defaultValue={c.date} disabled={busy} onChange={(e) => e.target.value && void edit({ type: "date", index: c.index, date: e.target.value })} />
-                  <input name="step-time" type="time" aria-label={`Time for ${c.title}`} defaultValue={c.time} disabled={busy} onBlur={(e) => e.target.value !== c.time && void edit({ type: "time", index: c.index, time: e.target.value })} />
+                  <input name="step-date" type="date" aria-label={`Day for ${c.title}`} defaultValue={c.date} disabled={busy} onChange={(e) => e.target.value && void change({ type: "date", index: c.index, date: e.target.value })} />
+                  <input name="step-time" type="time" aria-label={`Time for ${c.title}`} defaultValue={c.time} disabled={busy} onBlur={(e) => e.target.value !== c.time && void change({ type: "time", index: c.index, time: e.target.value })} />
                 </div>
               ) : (
-                <p className="plan-step-when">{whenLabel(c.date, c.time)}</p>
+                <>
+                  {c.ifThen && <p className="plan-step-ifthen">{c.ifThen}</p>}
+                  <p className="plan-step-when">{whenLabel(c.date, c.time)}</p>
+                </>
               )}
               {c.why && (
                 <p className="plan-step-detail">
                   <span>Why</span> {c.why}
+                </p>
+              )}
+              {c.because && (
+                <p className="plan-step-detail plan-step-because">
+                  <span>Because</span> {c.because}
                 </p>
               )}
               {c.youllHave && (
@@ -100,28 +152,31 @@ export default function PlanBrief({
         {brief?.dropNote && <p className="plan-brief-note">{brief.dropNote}</p>}
       </section>
 
-      {used.length > 0 && (
-        <section aria-labelledby="plan-brief-used">
-          <h3 id="plan-brief-used" className="plan-brief-h">What I used about you</h3>
-          <ul className="plan-brief-list">
-            {used.slice(0, 6).map((u) => <li key={u}>{u}</li>)}
-          </ul>
-        </section>
+      {showWhy && (
+        <details className="plan-brief-why">
+          <summary>Why this plan</summary>
+          {used.length > 0 && (
+            <section aria-labelledby="plan-brief-used">
+              <h3 id="plan-brief-used" className="plan-brief-h">What I used about you</h3>
+              <ul className="plan-brief-list">
+                {used.slice(0, 4).map((u) => <li key={u}>{u}</li>)}
+              </ul>
+            </section>
+          )}
+          {why.length > 0 && (
+            <section aria-labelledby="plan-brief-assumed">
+              <h3 id="plan-brief-assumed" className="plan-brief-h">What I assumed</h3>
+              <ul className="plan-brief-list">
+                {why.map((a) => <li key={a}>{a}</li>)}
+              </ul>
+            </section>
+          )}
+        </details>
       )}
 
-      {cs.assumptions.length > 0 && (
-        <section aria-labelledby="plan-brief-assumed">
-          <h3 id="plan-brief-assumed" className="plan-brief-h">What I assumed</h3>
-          <ul className="plan-brief-list">
-            {cs.assumptions.map((a) => <li key={a}>{a}</li>)}
-          </ul>
-        </section>
-      )}
-
-      <section aria-labelledby="plan-brief-next">
-        <h3 id="plan-brief-next" className="plan-brief-h">What happens next</h3>
+      {phase === "draft" && (
         <p className="plan-brief-text">Nothing is on your calendar until you confirm. When you finish these, tell me how they went and I&apos;ll plan round 2.</p>
-      </section>
+      )}
 
       {view.likelyDuplicates.length > 0 && <p className="plan-brief-note">Probably already on your calendar, will be skipped: {view.likelyDuplicates.join(", ")}</p>}
       {error && <p className="plan-brief-error" role="alert">{error}</p>}
@@ -142,10 +197,12 @@ export default function PlanBrief({
         <div className="plan-brief-done" role="status">
           {phase === "confirmed" ? (
             <>
-              <Check size={16} strokeWidth={2} aria-hidden="true" />
-              <span>
-                {result && result.created >= 0 ? `Added ${result.created} step${result.created === 1 ? "" : "s"} to your calendar.` : "Added to your calendar."}
+              <Check size={16} strokeWidth={1.75} aria-hidden="true" />
+              <span className="plan-brief-done-text">
+                <strong>{savedLine(result?.created, cards.length)}</strong>
+                {cards[0] && <> First up: {cards[0].title}, {whenLabel(cards[0].date, cards[0].time)}.</>}
               </span>
+              <Link className="plan-brief-done-link" href="/calendar">View in Calendar</Link>
               <Button variant="ghost" size="sm" onClick={() => void undo()} disabled={busy}>
                 Undo
               </Button>

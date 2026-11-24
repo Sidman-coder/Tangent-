@@ -54,7 +54,7 @@ void (import("./capture-outcome") as Promise<Mod>).then(({ outcomeFromReply, out
   });
 
   test("with nothing heard, the error carries why instead of a dead retry", () => {
-    assert.deepEqual(outcomeFromError("", "Microphone access denied"), { kind: "error", said: "", message: "Microphone access denied" });
+    assert.deepEqual(outcomeFromError("", "Microphone access denied"), { kind: "error", said: "", message: "Tangent can't use the microphone. Allow it in your browser settings, or tap to type instead." });
     assert.deepEqual(outcomeFromError(""), { kind: "error", said: "", message: "Couldn't hear that. Hold again to talk." });
   });
 

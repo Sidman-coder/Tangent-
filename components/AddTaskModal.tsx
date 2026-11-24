@@ -4,7 +4,7 @@ import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { getUserToday } from "@/lib/time";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Repeat, Sparkles } from "lucide-react";
+import { Repeat, ListPlus } from "lucide-react";
 import { putAsk } from "@/lib/ask-handoff";
 import type { TaskCommitment } from "@/lib/types";
 import { addDays, formatDuration } from "@/lib/task-span";
@@ -279,7 +279,7 @@ export default function AddTaskModal({ initialDate, initialTime, initialCalendar
           onClick={(e) => e.stopPropagation()}
         >
           <span className="add-build-icon" aria-hidden="true">
-            <Sparkles size={18} strokeWidth={1.75} />
+            <ListPlus size={18} strokeWidth={1.75} />
           </span>
           <h3 id="add-build-title">Want Tangent to build on this in {buildAsk.planTitle}?</h3>
           <p className="add-build-copy">

@@ -387,7 +387,7 @@
     border-radius: var(--r-pill);
     background: var(--accent);
     color: var(--accent-ink);
-    font-size: 10px;
+    font-size: 12px;
     text-align: center;
   }
   .app-sidebar [aria-haspopup] .app-nav-count { display: none; }
@@ -816,3 +816,39 @@
 }
 .notif-item-dismiss:hover { background: var(--elev-2); color: var(--text); }
 .notif-item-dismiss:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+/* The phone mic never sits on the last row of a page: leave room under the content (overnight C17). */
+@media (max-width: 899px) {
+  .calendar-page, .projects-page { padding-bottom: calc(56px + var(--s-4) * 2); }
+}
+.app-fab { box-shadow: var(--shadow-md); }
+/* Overnight Phase 5 (N09): Projects with its own box open has its own mic, so no second one. */
+body:has(.projects-new) .app-fab { display: none; }
+
+/* Touch targets on phones: 44px for everything you press (Round 4.1).
+   Small marks keep their look and get an invisible hit area. */
+@media (max-width: 899px) {
+  .ui-tabs .ui-tab,
+  .cal-bar-nav .ui-button,
+  .action-receipt-undo,
+  .ag-day-head,
+  .ag-title,
+  .settings-back--phone,
+  .add-pill,
+  .tg-chip {
+    min-height: var(--tap);
+  }
+  .ag-check,
+  .you-map-pill,
+  .you-map-sat {
+    position: relative;
+  }
+  .you-map-sat { position: absolute; }
+  .ag-check::after,
+  .you-map-pill::after,
+  .you-map-sat::after {
+    content: "";
+    position: absolute;
+    inset: -12px;
+  }
+}

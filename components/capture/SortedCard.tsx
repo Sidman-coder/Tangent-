@@ -12,6 +12,10 @@ import ActionReceipt from "@/components/ActionReceipt";
 import PreviewCard from "@/components/PreviewCard";
 import Markdown from "@/components/console/Markdown";
 import PlanThisRow from "@/components/talk/PlanThisRow";
+import BusyTimeOffer from "@/components/talk/BusyTimeOffer";
+import { useAppState } from "@/components/AppStateProvider";
+import { busyOffer } from "@/lib/busy-offer";
+import { commitmentsFromTasks } from "@/lib/commitments";
 import { answerQuestions, dismissQuestions, type QuestionSet } from "@/lib/questions-client";
 import type { CaptureOutcome } from "@/lib/capture-outcome";
 
@@ -27,6 +31,8 @@ type Props = {
   /** The oldest question set already waiting, offered when this capture has none. */
   parkedSet: QuestionSet | null;
   line: { title: string; color: string } | null;
+  /** Round 6 (item 5): what the student said, for "Add bakery shifts as busy time?". */
+  said?: string;
   onDismiss: () => void;
   onRetry: (said: string) => void;
   onConfirm: (id: string, yes: boolean) => void;
@@ -36,7 +42,7 @@ type Props = {
   onChanged: () => void;
 };
 
-export default function SortedCard({ outcome, freshSet, questionsPending, parkedSet, line, onDismiss, onRetry, onConfirm, onAsk, onPlanThis, onChanged }: Props) {
+export default function SortedCard({ outcome, freshSet, questionsPending, parkedSet, line, said, onDismiss, onRetry, onConfirm, onAsk, onPlanThis, onChanged }: Props) {
   const reduced = useReducedMotion();
   const set = outcome.kind === "saved" ? freshSet ?? (questionsPending ? null : parkedSet) : null;
   const parked = Boolean(set && set !== freshSet);
@@ -50,13 +56,20 @@ export default function SortedCard({ outcome, freshSet, questionsPending, parked
     setAnswers([]);
   }, [set?.id]);
 
+  const { state } = useAppState();
+  // A busy-time offer waits for its tap: the card doesn't put itself away under it.
+  const offering = useMemo(
+    () => Boolean(said && outcome.kind !== "error" && busyOffer(said, commitmentsFromTasks(state?.tasks ?? []))),
+    [said, outcome.kind, state?.tasks]
+  );
   const settles = outcome.kind === "saved" && !set && !questionsPending;
   useEffect(() => {
     const nothingToResend = outcome.kind === "error" && !outcome.said;
+    if (offering) return;
     if (!settles && !thanks && outcome.kind !== "duplicate" && outcome.kind !== "unsure" && !nothingToResend) return;
     const t = window.setTimeout(onDismiss, thanks ? 1400 : AUTO_DISMISS_MS);
     return () => window.clearTimeout(t);
-  }, [settles, thanks, outcome, onDismiss]);
+  }, [settles, thanks, outcome, onDismiss, offering]);
 
   const questions = set?.questions.slice(0, MAX_IN_A_ROW) ?? [];
   const question = questions[step];
@@ -216,6 +229,7 @@ export default function SortedCard({ outcome, freshSet, questionsPending, parked
             ) : null}
           </m.div>
         )}
+        {said && outcome.kind !== "error" && <BusyTimeOffer text={said} />}
       </m.section>
     </>
   );

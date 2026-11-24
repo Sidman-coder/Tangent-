@@ -21,6 +21,10 @@ export const CALENDAR_QUESTION =
 const PROJECT_CUE =
   /\b(?:project|prep(?:are)? for|study for|get ready for|final(?:s)? (?:exam|prep)|science fair|portfolio|application|essay for|over the next \d+ (?:weeks|months)|for the next \d+ (?:weeks|months)|\d+[- ]week|by (?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*|before (?:the )?(?:end of|winter|spring|summer)|launch|build (?:a|an|my)|start (?:a|an|my)\b[\w\s'-]{0,30}?\b(?:club|team|business|nonprofit|podcast|channel|company|organization)|make (?:me )?a plan)\b/i;
 
+/** "How do I prepare for / study for / get ready for / finish…": advice first,
+ *  then "Want me to plan it?" (overnight C15). Dates in the sentence don't matter. */
+export const HOWTO_DO = /^(?:how (?:do|can|should|would) (?:i|we)|what(?:'s| is) the best way to|any (?:tips|advice) (?:for|on))\b.*\b(?:prepare|prep|study|revise|review|get ready|learn|practi[cs]e|finish|start|write|build|train|memori[sz]e|cram)\b/i;
+
 export const GOAL_CUE =
   /\b(?:get into|get admitted|admission to|become (?:a|an)|land (?:a|an)|win (?:a|an|the)|qualify for|reach (?:a )?\d{3,4}|\d{3,4} (?:rating|elo|sat|act)|(?:sat|act) score|long[- ]term|in (?:\d+|a few|two|three) years|by (?:junior|senior) year|by (?:20\d\d)|someday|dream (?:school|job))\b/i;
 
@@ -30,6 +34,8 @@ export function routeAsk(text: string): AskRoute {
   if (CALENDAR_QUESTION.test(s)) return "do";
   // Round 4 §3.1: "break down…", "help me…", "how do I get…" ask for a plan,
   // not an answer: plan it (a Tangent when it's long-range).
+  // "How do I prepare for the AP Chem final?" is a question: advice first (talk-route agrees).
+  if (HOWTO_DO.test(s) && !GOAL_CUE.test(s)) return "question";
   if (isPlanningRequest(s)) return GOAL_CUE.test(s) ? "goal" : "project";
   // A question about a goal or project ("how should I study for…") is still
   // a question: talk it through first.

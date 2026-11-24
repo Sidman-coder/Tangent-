@@ -3,6 +3,7 @@
 // read never sit in the same list. Rules first; below CLASSIFY_CONFIDENCE_FLOOR
 // at capture, lib/task-kind-ai.ts asks Haiku.
 
+import { isDueOnly } from "./dates";
 import type { Task, TaskCommitment } from "./types";
 
 export type TaskSource = "capture" | "calendar" | "canvas" | "plan" | "manual";
@@ -140,3 +141,20 @@ export const COMMITMENT_OPTIONS: { value: TaskCommitment; label: string }[] = [
   { value: "reminder", label: "Reminder" },
   { value: "flexible", label: "Goal step" },
 ];
+
+/** Graded or due work: it gets a Done circle even when it has a time. */
+const GRADED_WORK = /\b(exam|test|quiz|midterm|final|essay|assignment|homework|due)\b/i;
+
+/** Words for something you attend. A timed goal ("weekly video upload") is still work. */
+const SHOW_UP_WORDS = /\b(practice|game|match|shift|lesson|class|rehearsal|meeting|appointment|appt|dentist|doctor|ortho|orthodontist|therapy|tutoring|recital|flight|training|tournament|meet)\b/i;
+
+/** Something you show up to (practice, a game, a shift, a lesson) rather than
+ *  finish: it shows as a busy block with no Done circle (overnight C20). A
+ *  deadline, a graded test or anything in a project keeps its circle. */
+export function isBusyBlock(task: Task): boolean {
+  if (task.source === "canvas" || task.planId || isDueOnly(task)) return false;
+  // A stored "commitment" still needs to read like one: a long goal title is work to finish.
+  if (task.kind === "commitment") return SHOW_UP_WORDS.test(task.title) || task.title.trim().split(/\s+/).length <= 5;
+  if (GRADED_WORK.test(task.title)) return false;
+  return commitmentOf(task) === "fixed" && SHOW_UP_WORDS.test(task.title);
+}

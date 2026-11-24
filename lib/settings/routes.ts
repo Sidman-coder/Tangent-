@@ -2,9 +2,9 @@
 // /settings?activity=…, /settings?reset=1#security) still have to land on the
 // right page. The server never sees a #hash, so this runs in the browser.
 
-export type SettingsPage = "account" | "security" | "schedule" | "notifications" | "context" | "activity" | "data";
+export type SettingsPage = "account" | "security" | "schedule" | "notifications" | "context" | "activity" | "data" | "privacy";
 
-export const SETTINGS_PAGES: readonly SettingsPage[] = ["account", "security", "schedule", "notifications", "context", "activity", "data"];
+export const SETTINGS_PAGES: readonly SettingsPage[] = ["account", "security", "schedule", "notifications", "context", "activity", "data", "privacy"];
 
 const HASH_TARGETS: Record<string, SettingsPage> = {
   "ai-activity": "activity",
@@ -19,6 +19,8 @@ const HASH_TARGETS: Record<string, SettingsPage> = {
   "your-data": "data",
   data: "data",
   account: "account",
+  privacy: "privacy",
+  help: "privacy",
 };
 
 /** Where an old single-page Settings link goes now, or null if it isn't one. */

@@ -3,7 +3,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 // Dev-only timing for the plan / chat pipeline. Measures, never changes
 // behavior: every helper returns exactly what the wrapped call returns. In
-// production (NODE_ENV=production) nothing is recorded or logged.
+// production (NODE_ENV=production) nothing is recorded or logged, unless
+// TANGENT_PERF=1 is set (local cost measurement on a production build).
 //
 // One trace per request (withPerfTrace). Inside it:
 //   - perfClaude logs each Claude call: label, model, input/output tokens, ms
@@ -12,7 +13,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 //   - perfCount tallies things like tool-loop turns
 // When the trace ends, one summary line is printed.
 
-export const perfEnabled = () => process.env.NODE_ENV !== "production";
+export const perfEnabled = () => process.env.NODE_ENV !== "production" || process.env.TANGENT_PERF === "1";
 
 type Db = { reads: number; writes: number; ms: number };
 type Trace = {

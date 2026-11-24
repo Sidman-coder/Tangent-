@@ -86,7 +86,7 @@ export default function KnowsTell({ onTell }: { onTell: (text: string) => Promis
           maxLength={600}
         />
         <button type="submit" className="knows-tell-send" disabled={busy || !draft.trim()} aria-label="Send">
-          <ArrowUp size={18} strokeWidth={2} aria-hidden="true" />
+          <ArrowUp size={18} strokeWidth={1.75} aria-hidden="true" />
         </button>
       </form>
       {voiceNote && <p className="knows-tell-note" role="status">{voiceNote}</p>}

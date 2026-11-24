@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { addContextEntry, clearContextEntries, confirmContextEntry, getUserContext, getContextAsString, removeContextEntry } from "@/lib/store";
+import { addContextEntry, clearContextEntries, confirmContextEntry, forgetObservations, getUserContext, getContextAsString, removeContextEntry } from "@/lib/store";
+import { readStepEvents } from "@/lib/student/step-events";
+import { NOTICED_KINDS, noticedHabits, type NoticedKey } from "@/lib/student/observations";
 import { extractContextFacts } from "@/lib/context-extract";
 import { factsFromText } from "@/lib/ai/import-context";
 import { withUser } from "@/lib/request-context";
@@ -16,6 +18,8 @@ export const GET = withUser(async () => {
   return NextResponse.json({
     context: await getUserContext(),
     contextString: await getContextAsString(),
+    // Overnight 2, Phase 6: the habits the AI uses, said to the student.
+    noticed: noticedHabits(await readStepEvents()),
   });
 });
 
@@ -71,6 +75,15 @@ export const POST = withUser(async (request: Request) => {
     if (body.action === "forget_all") {
       if (body.confirm !== "FORGET") return NextResponse.json({ ok: false, error: "Type FORGET to confirm" }, { status: 400 });
       const removed = await clearContextEntries();
+      // Overnight 2, Phase 6 (Sid approved): the observed habits go too.
+      const observations = await forgetObservations();
+      return NextResponse.json({ ok: true, removed, observations });
+    }
+    // "Tangent noticed" → Forget: deletes the events behind that one row.
+    if (body.action === "forget_noticed") {
+      const key = String(body.key ?? "") as NoticedKey;
+      if (!Object.prototype.hasOwnProperty.call(NOTICED_KINDS, key)) return NextResponse.json({ ok: false, error: "Unknown habit" }, { status: 400 });
+      const removed = await forgetObservations(NOTICED_KINDS[key]);
       return NextResponse.json({ ok: true, removed });
     }
     if (body.action === "extract") {

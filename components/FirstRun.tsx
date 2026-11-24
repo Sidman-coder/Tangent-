@@ -11,6 +11,7 @@
 import "./FirstRun.css";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { ArrowLeft, Check, Plus } from "lucide-react";
 import TangentLogo from "@/components/TangentLogo";
@@ -244,7 +245,7 @@ export default function FirstRun({ onComplete }: { onComplete: () => Promise<voi
         <div className="onb-top-row">
           {index > 0 && step !== "ready" ? (
             <button type="button" className="onb-back" onClick={back} aria-label="Back">
-              <ArrowLeft size={18} strokeWidth={1.9} aria-hidden="true" />
+              <ArrowLeft size={18} strokeWidth={1.75} aria-hidden="true" />
             </button>
           ) : (
             <span className="onb-back-spacer" aria-hidden="true" />
@@ -587,7 +588,7 @@ function TellMeMore({
           setOpen(true);
         }}
       >
-        <Plus size={15} strokeWidth={2.2} aria-hidden="true" />
+        <Plus size={15} strokeWidth={1.75} aria-hidden="true" />
         Tell me more
       </button>
     );
@@ -700,6 +701,12 @@ function AboutStep({
       {more}
       <p className="onb-error" role="alert">
         {error ?? ""}
+      </p>
+      {/* Overnight 2, Phase 6 (Sid approved; Apple 5.1.2(i)): who else sees
+          what the student sends, before anything is sent. */}
+      <p className="onb-consent">
+        To plan with you, Tangent sends what you type to Anthropic&apos;s Claude and what you say to Deepgram to turn it into text. Neither trains on it.
+        Continuing means you&apos;re OK with that. <Link href="/privacy" target="_blank" rel="noopener">How we handle your data</Link>
       </p>
       <div className="onb-cta">
         <Button type="submit" variant="primary" disabled={!ready} loading={busy} loadingLabel="Saving…">

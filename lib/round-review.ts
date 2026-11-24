@@ -8,6 +8,7 @@
 
 import { addDaysYMD, daysBetweenYMD } from "./time";
 import { prepareFact } from "./student/facts";
+import { minutesFromNotes } from "./load";
 import { roundOf, withRound, type RoundInfo } from "./rounds";
 import type { ChangeSet } from "./pipeline/changeset";
 
@@ -34,6 +35,8 @@ export type RoundFacts = {
   early: number;
   /** Past its date and still not done. */
   missed: string[];
+  /** Not done, whatever its date (overnight 2 L12: a step due later this week is still open). */
+  open: string[];
   /** Moved to another day at least once ("rescheduled" events). */
   moved: number;
   /** Skipped steps ("skipped" events), each step once. */
@@ -94,6 +97,7 @@ export function roundFacts(steps: readonly ReviewStep[], codes: readonly StepCod
     late: late.sort((a, b) => b.days - a.days),
     early,
     missed,
+    open: steps.filter((s) => !s.completed).map((s) => s.title),
     moved: movedIds.size + movedLoose,
     skipped: skippedIds.size,
     feel,
@@ -109,6 +113,8 @@ export function factLines(f: RoundFacts): string[] {
   if (f.late.length) lines.push(`${f.late.length} finished late: ${f.late.slice(0, 3).map((l) => `"${l.title}" (${l.days} day${l.days === 1 ? "" : "s"} late)`).join(", ")}.`);
   if (f.early) lines.push(`${f.early} finished early.`);
   if (f.missed.length) lines.push(`Not done yet: ${f.missed.slice(0, 3).map((t) => `"${t}"`).join(", ")}.`);
+  const later = f.open.filter((t) => !f.missed.includes(t));
+  if (later.length) lines.push(`Still open (its day hasn't passed): ${later.slice(0, 3).map((t) => `"${t}"`).join(", ")}.`);
   if (f.moved) lines.push(`${f.moved} step${f.moved === 1 ? " was" : "s were"} moved to another day.`);
   if (f.skipped) lines.push(`${f.skipped} step${f.skipped === 1 ? " was" : "s were"} skipped.`);
   const checked = f.feel.nailed + f.feel.okay + f.feel.struggled;
@@ -147,10 +153,18 @@ export function readQuestions(raw: unknown, f: RoundFacts): ReviewQuestion[] {
       .filter((c, i, all) => c && all.indexOf(c) === i)
       .slice(0, 5);
     if (!text || chips.length < 2 || /when should round/i.test(text)) continue;
-    out.push({ id: `q${out.length + 1}`, text, chips, kind: "answer" });
+    out.push({ id: `q${out.length + 1}`, text: namedStep(text, f), chips, kind: "answer" });
     if (out.length === 4) break;
   }
   return [...(out.length >= 2 ? out : fallbackQuestions(f)), startQuestion(f.next)];
+}
+
+/** Overnight 2 (L12): "Which step did you not finish?" when only one is open
+ *  asks what Tangent knows. Name it instead. */
+export function namedStep(text: string, f: Pick<RoundFacts, "open">): string {
+  if (f.open.length !== 1 || !/\bwhich (?:step|one)\b/i.test(text)) return text;
+  const tail = /\b(what got in the way|why)\b/i.test(text) ? " What got in the way?" : " What happened?";
+  return `"${f.open[0]}" didn't get done.${tail}`;
 }
 
 /** Questions from the data alone, for when the AI is unavailable. */
@@ -158,8 +172,8 @@ export function fallbackQuestions(f: RoundFacts): ReviewQuestion[] {
   const qs: Omit<ReviewQuestion, "id">[] = [];
   if (f.late.length >= 2 || f.moved >= 2) {
     qs.push({ text: `${f.late.length >= 2 ? `${f.late.length} steps finished late` : `${f.moved} steps got moved`}. Was the timing too tight?`, chips: ["Too tight", "About right", "Life got busy"], kind: "answer" });
-  } else if (f.missed.length) {
-    qs.push({ text: `"${f.missed[0]}" didn't happen yet. Keep it for round ${f.next}?`, chips: ["Keep it", "Drop it", "Make it smaller"], kind: "answer" });
+  } else if (f.open.length) {
+    qs.push({ text: `"${f.open[0]}" didn't happen yet. Keep it for round ${f.next}?`, chips: ["Keep it", "Drop it", "Make it smaller"], kind: "answer" });
   } else {
     qs.push({ text: `You finished ${f.done} of ${f.total} steps. How did the pace feel?`, chips: ["Too slow", "About right", "Too much"], kind: "answer" });
   }
@@ -188,6 +202,74 @@ export function answerFacts(answers: readonly ReviewAnswer[], project: string, r
     if (prepared.ok) out.push(prepared.fact);
   }
   return out;
+}
+
+/** Overnight 2 (L12): one line on the next round's draft saying what changed
+ *  and why, from the review's answers ("Round 2 changed because you said: more
+ *  practice; ran out of time."). Typed words go through the fact filter first. */
+export function reviewChangeNote(answers: readonly ReviewAnswer[], next: number): string {
+  const said: string[] = [];
+  for (const a of answers) {
+    if (a.questionId === START_QUESTION_ID) continue;
+    const chip = clip(a.chip, 40);
+    const typed = clip(a.text, 80);
+    const typedOk = typed && prepareFact({ category: "general", fact: typed, source: "manual", factSource: "said" }).ok;
+    const bit = typedOk ? typed : chip;
+    if (bit) said.push(bit.replace(/[.!]+$/, "").toLowerCase());
+  }
+  if (said.length === 0) return "";
+  return `Round ${next} changed because you said: ${said.slice(0, 3).join("; ")}.`;
+}
+
+type TimedStep = { time?: string | null; notes?: string | null };
+
+const partOfDay = (time: string | null | undefined): string | null => {
+  if (!time || !/^\d{2}:\d{2}/.test(time) || time.startsWith("23:59")) return null;
+  const h = Number(time.slice(0, 2));
+  return h < 12 ? "mornings" : h < 17 ? "afternoons" : "evenings";
+};
+
+/** The part of the day most of these steps sit in, when most of them agree. */
+function mainPartOfDay(steps: readonly TimedStep[]): string | null {
+  const counts = new Map<string, number>();
+  for (const s of steps) {
+    const p = partOfDay(s.time);
+    if (p) counts.set(p, (counts.get(p) ?? 0) + 1);
+  }
+  const [best] = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+  return best && best[1] * 2 > steps.length ? best[0] : null;
+}
+
+function medianMinutes(steps: readonly TimedStep[]): number | null {
+  const mins = steps
+    .map((s) => minutesFromNotes(s.notes ?? undefined))
+    .filter((v): v is number => v !== null)
+    .sort((a, b) => a - b);
+  return mins.length ? mins[Math.floor(mins.length / 2)] : null;
+}
+
+/** Overnight 2 Phase 3: the review's change, said the way a coach would ("Last
+ *  round you said mornings didn't stick, so this round is evenings"). What
+ *  changed is read from the steps themselves (old round vs the new draft): the
+ *  part of the day, step length, step count. Nothing changed that can be seen:
+ *  it says the round is planned around what they said. */
+export function roundChangeLine(note: string, oldSteps: readonly TimedStep[], newSteps: readonly TimedStep[]): string {
+  const m = /^Round (\d+) changed because you said: (.+?)\.?$/.exec(note);
+  if (!m) return note;
+  const [, next, said] = m;
+  const so: string[] = [];
+  const was = mainPartOfDay(oldSteps);
+  const now = mainPartOfDay(newSteps);
+  if (was && now && was !== now) so.push(`this round is ${now}`);
+  const a = medianMinutes(oldSteps);
+  const b = medianMinutes(newSteps);
+  if (a && b && b <= a * 0.75) so.push(`steps are shorter (${b} min, not ${a})`);
+  else if (a && b && b >= a * 1.25) so.push(`steps are longer (${b} min, not ${a})`);
+  if (so.length < 2 && oldSteps.length && newSteps.length && newSteps.length !== oldSteps.length) {
+    so.push(`round ${next} has ${newSteps.length} step${newSteps.length === 1 ? "" : "s"}, not ${oldSteps.length}`);
+  }
+  if (!so.length) return `Last round you said ${said}. Round ${next} is planned around that.`;
+  return `Last round you said ${said}, so ${so.slice(0, 2).join(" and ")}.`;
 }
 
 // ─── The next round's dates and round line ──────────────────────────────────

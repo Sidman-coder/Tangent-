@@ -3,6 +3,7 @@
 // shows under "Any" in the "No time yet" group. Pure, so it can be tested.
 
 import { isDueOnly } from "./dates";
+import { taskCategory } from "./task-colors";
 import { addDaysYMD } from "./time";
 import { startOfPreviewWeek, type WeekStart } from "./month-grid";
 
@@ -92,12 +93,15 @@ export const TASK_VIEWS: { id: TaskView; label: string }[] = [
   { id: "personal", label: "Personal" },
 ];
 
-type Viewable = { source?: string | null; kind?: string | null; planId?: string | null; pathNodeId?: string | null };
+type Viewable = { source?: string | null; kind?: string | null; planId?: string | null; pathNodeId?: string | null; title?: string; calendarId?: string | null };
 
 export function taskView(task: Viewable): Exclude<TaskView, "all"> {
   if (task.planId || task.pathNodeId) return "projects";
   if (task.source === "canvas" || task.kind === "school") return "school";
-  return "personal";
+  // Exam prep, quizzes and homework a student typed in are school work, not
+  // Personal, same words and filing as the calendar's colors (overnight C20).
+  const category = taskCategory(task as Parameters<typeof taskCategory>[0]);
+  return category === "academic" || category === "canvas" ? "school" : "personal";
 }
 
 export function inView(task: Viewable, view: TaskView): boolean {

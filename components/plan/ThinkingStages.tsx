@@ -23,7 +23,7 @@ export default function ThinkingStages({ current }: { current: PlanStage | null 
         return (
           <li key={s.id} className={`plan-stage is-${state}`}>
             <span className="plan-stage-mark" aria-hidden="true">
-              {state === "done" ? <Check size={14} strokeWidth={2} /> : state === "now" ? <span className="add-spinner" /> : null}
+              {state === "done" ? <Check size={14} strokeWidth={1.75} /> : state === "now" ? <span className="add-spinner" /> : null}
             </span>
             <span>{s.label}</span>
             {state === "done" && <span className="sr-only">, done</span>}

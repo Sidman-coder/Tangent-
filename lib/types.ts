@@ -214,6 +214,9 @@ export interface CanvasFeedStatus {
   connectedAt: string;
   lastSyncedAt: string | null;
   lastSyncCount: number;
+  /** Overnight 2, Phase 6: how many Canvas items sit in the student's
+   *  calendar now, for the Disconnect question. */
+  itemCount?: number;
 }
 
 // An Anthropic Message Batch submitted by the daily-brief cron job, awaiting a

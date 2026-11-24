@@ -5,6 +5,7 @@
 
 import type { ChangeSet } from "./pipeline/changeset";
 import type { PreviewPayload } from "./pipeline/draft";
+import { friendlyMessage } from "./friendly-error";
 
 /** The non-streaming /api/chat reply, as AddFlow reads it (components/add/AddFlow.tsx). */
 export type ChatReply = {
@@ -75,5 +76,5 @@ export const NOTHING_HEARD = "Couldn't hear that. Hold again to talk.";
 
 export function outcomeFromError(said: string, message?: string): CaptureOutcome {
   if (said) return { kind: "error", said };
-  return { kind: "error", said: "", message: message || NOTHING_HEARD };
+  return { kind: "error", said: "", message: message ? friendlyMessage(message, NOTHING_HEARD) : NOTHING_HEARD };
 }

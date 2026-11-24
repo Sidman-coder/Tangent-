@@ -17,7 +17,7 @@ import { getAllPlans, getAllTasks, getPathGoals, getUserContext, markFactsUsed }
 import { noteFactsUsed, trackPending } from "@/lib/request-context";
 import { readStepEvents } from "@/lib/student/step-events";
 import { behaviourLines, calibrationLines } from "@/lib/student/observations";
-import { DEFAULT_BUDGET, KEEP, factLine, fitBudget, rankFacts, type ContextPurpose, type PackSection } from "@/lib/student/context-pack";
+import { DEFAULT_BUDGET, KEEP, clipTitle, dueNotInWeek, factLine, fitBudget, packLogLine, rankFacts, type ContextPurpose, type PackSection } from "@/lib/student/context-pack";
 import { cleanCourse } from "@/lib/course";
 import { describeLoad, formatMinutes } from "@/lib/load";
 import { schoolHoursFromTasks } from "@/lib/school-block";
@@ -171,8 +171,6 @@ export async function buildStudentContext(opts: ContextPackOptions = {}): Promis
     .filter((t) => t.title.trim().toLowerCase() !== "school")
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, MAX_DEADLINES);
-  if (due.length > 0) push("due", 60, `COMING UP FOR SCHOOL:\n${due.map((t) => `- ${t.date}: ${t.title}`).join("\n")}`);
-
   // The actual work: what's overdue and what's open this week, so "plan my
   // week" starts from their real list instead of asking what's on it.
   const work = tasks.filter((t) => !t.completed && !isBusyBlock(t));
@@ -183,7 +181,7 @@ export async function buildStudentContext(opts: ContextPackOptions = {}): Promis
       65,
       `OVERDUE (${overdue.length}):\n${overdue
         .slice(0, MAX_LISTED)
-        .map((t) => `- ${t.date}: ${t.title}`)
+        .map((t) => `- ${t.date}: ${clipTitle(t.title)}`)
         .join("\n")}${overdue.length > MAX_LISTED ? `\n- …and ${overdue.length - MAX_LISTED} more` : ""}`,
     );
   }
@@ -197,10 +195,13 @@ export async function buildStudentContext(opts: ContextPackOptions = {}): Promis
       75,
       `OPEN THIS WEEK (${week.length}):\n${week
         .slice(0, MAX_LISTED)
-        .map((t) => `- ${t.date}${t.time && t.time !== "23:59" ? ` ${t.time}` : ""}: ${t.title}${t.source === "canvas" ? " (due)" : ""}`)
+        .map((t) => `- ${t.date}${t.time && t.time !== "23:59" ? ` ${t.time}` : ""}: ${clipTitle(t.title)}${t.source === "canvas" ? " (due)" : ""}`)
         .join("\n")}`,
     );
   }
+  // Deadlines further out; ones already in the week list are not repeated.
+  const laterDue = dueNotInWeek(due, week);
+  if (laterDue.length > 0) push("due", 60, `COMING UP FOR SCHOOL:\n${laterDue.map((t) => `- ${t.date}: ${clipTitle(t.title)}`).join("\n")}`);
 
   // Their classes, by the names Canvas uses, so "my chem final" can be matched
   // to the real class instead of asking which one.
@@ -242,6 +243,8 @@ export async function buildStudentContext(opts: ContextPackOptions = {}): Promis
   }
 
   const fitted = fitBudget(sections, opts.budget ?? BUDGET[purpose] ?? DEFAULT_BUDGET);
+  // Round 6: the pack's size per call. Section names only, never student text.
+  console.log(packLogLine(purpose, fitted.tokens, sections.map((s) => s.key), fitted.dropped));
   const factsUsed = fitted.dropped.includes("facts") ? [] : ranked.map((f) => ({ id: f.id, text: f.text }));
   recordUsed(factsUsed);
   return {
