@@ -6,6 +6,10 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
+import CanvasConnectGuide from "@/components/CanvasConnectGuide";
+import { useCanvasStatus } from "@/components/settings/useCanvasStatus";
+import Button from "@/components/ui/Button";
+import Skeleton from "@/components/ui/Skeleton";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import ProjectStats from "@/components/projects/ProjectStats";
 import { openTask } from "@/components/TaskDetail";
@@ -22,6 +26,8 @@ export default function SchoolPage() {
   const tz = useUserTimezone();
   const today = getUserToday(tz);
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
+  const canvas = useCanvasStatus();
+  const [guideOpen, setGuideOpen] = useState(false);
 
   const tasks = useMemo(
     () =>
@@ -31,6 +37,20 @@ export default function SchoolPage() {
     [state, today, overrides]
   );
   const courses = useMemo(() => courseGroups(tasks, today), [tasks, today]);
+  // Round 5A Phase 3: School is a project (plans.kind). Its own steps (not
+  // from Canvas) list above the courses.
+  const schoolPlan = state?.plans.find((p) => p.kind === "school") ?? null;
+  const ownSteps = useMemo(
+    () =>
+      schoolPlan
+        ? (state?.tasks ?? [])
+            .filter((t) => t.planId === schoolPlan.id && t.source !== "canvas")
+            .map((t) => (t.id in overrides ? { ...t, completed: overrides[t.id] } : t))
+            .filter((t) => !t.completed || t.id in overrides)
+            .sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999") || a.time.localeCompare(b.time))
+        : [],
+    [state, schoolPlan, overrides]
+  );
 
   const toggle = async (task: Task) => {
     const completed = !task.completed;
@@ -51,7 +71,13 @@ export default function SchoolPage() {
     }
   };
 
-  if (!state) return <div className="project-page" aria-busy="true" />;
+  if (!state) {
+    return (
+      <div className="project-page" aria-busy="true">
+        <Skeleton rows={4} label="Loading School" />
+      </div>
+    );
+  }
 
   return (
     <div className="project-page">
@@ -61,11 +87,41 @@ export default function SchoolPage() {
       <header className="project-head">
         <h1 className="project-title-input">School</h1>
       </header>
-      {tasks.length === 0 ? (
-        <p className="project-empty">Nothing from Canvas right now. New assignments show up here after the next sync.</p>
+      {canvas.syncFailed && (
+        <div className="school-sync-note" role="status">
+          <p>Canvas didn&apos;t update. Your last assignments are still here.</p>
+          <Button variant="secondary" size="sm" onClick={() => setGuideOpen(true)}>Reconnect</Button>
+        </div>
+      )}
+      {tasks.length === 0 && ownSteps.length === 0 ? (
+        <div className="project-empty school-empty">
+          <p>
+            {canvas.connected
+              ? "Nothing due from Canvas right now. New assignments show up here after the next sync."
+              : "Nothing here yet. Connect Canvas and your assignments and due dates land here."}
+          </p>
+          {canvas.loaded && !canvas.connected && (
+            <Button variant="primary" size="sm" onClick={() => setGuideOpen(true)}>
+              Connect Canvas
+            </Button>
+          )}
+        </div>
       ) : (
         <div className="project-layout">
           <div className="project-main">
+            {ownSteps.length > 0 && (
+              <section className="school-course" aria-label="School steps">
+                <div className="school-course-head">
+                  <h2>Your steps</h2>
+                  <span>{ownSteps.length} open</span>
+                </div>
+                <div className="project-step-list">
+                  {ownSteps.map((task) => (
+                    <TaskRow key={task.id} task={task} showDate kindColor={seriesColor(taskSeries(task, state?.plans ?? []))} onComplete={() => void toggle(task)} onOpen={() => openTask(task.id)} />
+                  ))}
+                </div>
+              </section>
+            )}
             {courses.map((c) => (
               <section key={c.course} className="school-course" aria-label={c.course}>
                 <div className="school-course-head">
@@ -85,6 +141,7 @@ export default function SchoolPage() {
           </aside>
         </div>
       )}
+      <CanvasConnectGuide open={guideOpen} onClose={() => setGuideOpen(false)} />
     </div>
   );
 }

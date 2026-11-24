@@ -27,6 +27,8 @@ RULES
 - A single dated item is add_task, never new_plan.
 - "break down …", "make a plan/path for …", "help me …", "steps to …", "how do I get …" ask for planning: new_plan (or new_project), never add_task. The goal is never a task title.
 - new_plan and new_project only for multi-step goals.
+- A goal with a time frame and no other verb ("run a 5k in 6 weeks", "fight Mike Tyson in 2 weeks", "learn guitar by summer") is new_plan, even when it sounds silly, huge or physical; the plan handles safety and scale. clarify is only for words you can't resolve (an "it", a plan name that fits two plans), never for an unusual goal.
+- When the message was asked from a task's chat, "it", "this", "the final", "the test" mean that task. Correcting its date and asking for study time or sessions ("the final is Dec 17 not tomorrow, spread study sessions before it") is new_plan; only a date or time change with nothing else is change_task.
 - A question that asks for nothing to change is question, even if it says "plan" or "schedule".
 - "take out", "remove", "delete", "clear" with tasks is delete_task or delete_plan_tasks. Never treat it as clearing the whole calendar unless they say everything or all tasks.
 - Spoken filler ("um", "like", "uh") means nothing. Spelled letters ("eye see eff") may be a plan name ("ICF").

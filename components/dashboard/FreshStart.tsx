@@ -29,7 +29,7 @@ export default function FreshStart({
     <div className="today-fresh">
       {!open && (
         <div className="today-fresh-row">
-          {backlog && <p>A lot piled up. A fresh start could clear it.</p>}
+          {backlog && <p>Want a clean slate? This moves old steps to the days ahead.</p>}
           <button type="button" className="today-fresh-link" onClick={() => setOpen(true)}>
             <RotateCcw size={14} aria-hidden="true" /> Fresh start
           </button>

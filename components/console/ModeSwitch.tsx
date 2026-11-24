@@ -33,7 +33,7 @@ export default function ModeSwitch({ mode, onChange, disabled }: Props) {
           disabled={disabled}
           onClick={() => onChange(m)}
         >
-          <Icon size={14} strokeWidth={2} aria-hidden="true" />
+          <Icon size={14} strokeWidth={1.75} aria-hidden="true" />
           {label}
         </button>
       ))}

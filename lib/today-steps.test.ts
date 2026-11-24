@@ -33,6 +33,10 @@ void (import("./today-steps") as Promise<Mod>).then(
     planFreshStart,
     planMissReplan,
     planNotToday,
+    notTodayFloor,
+    lightestDay,
+    nextStepAfter,
+    planDeadlineCap,
   }) => {
 const TODAY = "2026-11-04"; // a Wednesday
 const ctx = { now: { date: TODAY, minutes: 15 * 60 }, cap: { weekday: 150, weekend: 240 } } as Parameters<Mod["planMissReplan"]>[1];
@@ -146,6 +150,82 @@ test("Not today lands tomorrow or later and pushes the project's next step", () 
   const moved = new Map(moves.map((m) => [m.taskId, m]));
   assert.ok(moved.get(step.id)!.date >= "2026-11-05");
   assert.ok(moved.get(next.id)!.date > moved.get(step.id)!.date);
+});
+
+test("Not today never moves a later step earlier, and a second tap moves it again (overnight 2 L9)", () => {
+  assert.equal(notTodayFloor({ date: TODAY }, TODAY), "2026-11-05");
+  assert.equal(notTodayFloor({ date: "2026-11-03" }, TODAY), "2026-11-05");
+  assert.equal(notTodayFloor({ date: "2026-11-06" }, TODAY), "2026-11-07");
+  const fri = task({ date: "2026-11-06" });
+  const [m] = planNotToday([fri], fri, ctx);
+  assert.ok(m.date >= "2026-11-07", m.date);
+  const tomorrow = task({ date: "2026-11-05" });
+  const [again] = planNotToday([tomorrow], tomorrow, ctx);
+  assert.ok(again && again.date >= "2026-11-06");
+});
+
+test("after Done, Next is the project's next open step, else the next step anywhere (overnight 2 L8)", () => {
+  const done = task({ planId: "p", completed: true });
+  const other = task({ time: "18:00" });
+  const sameLater = task({ planId: "p", date: "2026-11-06" });
+  const school = task({ kind: "school", time: "16:00" });
+  assert.equal(nextStepAfter([done, other, sameLater, school], done, TODAY)?.id, sameLater.id);
+  const loose = task({ completed: true });
+  assert.equal(nextStepAfter([loose, other, sameLater], loose, TODAY)?.id, other.id);
+  assert.equal(nextStepAfter([loose], loose, TODAY), null);
+});
+
+test("Not today stays in the next few days when one has room, not an empty weekend two weeks out (overnight 2 R2-L9)", () => {
+  // Tomorrow is full and the weekend has some work; Monday is empty. The
+  // 13-day ranking used to prefer the empty Saturday after (bigger weekend cap).
+  const step = task({ notes: "TIME: about 45 min" });
+  const week = [
+    task({ date: "2026-11-05", time: "16:00", notes: "TIME: about 120 min" }),
+    task({ date: "2026-11-06", time: "16:00", notes: "TIME: about 60 min" }),
+    task({ date: "2026-11-07", time: "10:00", notes: "TIME: about 90 min" }),
+    task({ date: "2026-11-08", time: "10:00", notes: "TIME: about 90 min" }),
+  ];
+  const [m] = planNotToday([step, ...week], step, ctx);
+  assert.ok(m.date >= "2026-11-05" && m.date <= "2026-11-09", m.date);
+  // Every near day is over the limit: it may look further.
+  const packed = ["2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08", "2026-11-09"].map((d) => task({ date: d, time: "10:00", notes: "TIME: about 240 min" }));
+  const [far] = planNotToday([step, ...packed], step, ctx);
+  assert.ok(far.date > "2026-11-09", far.date);
+});
+
+test("'No time' sends the step to the lightest day coming up", () => {
+  const step = task();
+  const busy = [task({ date: "2026-11-05", time: "16:00" }), task({ date: "2026-11-05", time: "18:00" }), task({ date: "2026-11-06", time: "16:00" })];
+  assert.equal(lightestDay([step, ...busy], "2026-11-05", step.id), "2026-11-07");
+  const [m] = planNotToday([step, ...busy], step, ctx, "no_time");
+  assert.equal(m.date, "2026-11-07");
+  const [plain] = planNotToday([step, ...busy], step, ctx, "forgot");
+  assert.ok(plain.date < "2026-11-07", plain.date);
+});
+
+test("a re-plan never moves a prep step past its project's test (overnight 2, AI-JUDGMENT-1 #1)", () => {
+  // Wed today; the project's Chem test is Friday morning.
+  const exam = task({ planId: "p", title: "Chem test", date: "2026-11-06", time: "08:00" });
+  assert.equal(planDeadlineCap([exam], "p", TODAY), "2026-11-05");
+  assert.equal(planDeadlineCap([exam], "other", TODAY), null);
+  // A missed step lands before the test, even when Thursday is the busier day.
+  const missed = task({ planId: "p", date: "2026-11-02" });
+  const busyThu = task({ date: "2026-11-05", time: "16:00", notes: "TIME: about 120 min" });
+  const { moves } = planMissReplan([missed, exam, busyThu], ctx);
+  const m = moves.find((x) => x.taskId === missed.id);
+  assert.ok(m && m.date >= TODAY && m.date <= "2026-11-05", m?.date);
+  assert.ok(!moves.some((x) => x.taskId === exam.id));
+  // "No time" picks the lightest day only when it's before the test.
+  const step = task({ planId: "p" });
+  const busyFri = [task({ date: "2026-11-05", time: "16:00" }), task({ date: "2026-11-06", time: "16:00" })];
+  const [nt] = planNotToday([step, exam, ...busyFri], step, ctx, "no_time");
+  assert.equal(nt?.date, "2026-11-05");
+  // No room before the test: the step stays where it is.
+  const thu = task({ planId: "p", date: "2026-11-05" });
+  assert.deepEqual(planNotToday([thu, exam], thu, ctx), []);
+  // A real due date in the project caps it too; a project with no deadline doesn't.
+  const due = task({ planId: "q", title: "Essay due", date: "2026-11-09", time: "23:59" });
+  assert.equal(planDeadlineCap([due], "q", TODAY), "2026-11-08");
 });
 
 test("cleanSplit keeps two or three usable pieces and clamps their size", () => {

@@ -24,6 +24,8 @@ export const EXPORT_TABLES: readonly string[] = [
   "path_nodes",
   "voice_logs",
   "pen_devices",
+  // Round 6: the check-in and Not today codes (nailed / okay / no_time …).
+  "step_events",
 ];
 
 const SECRET_COLUMNS: Record<string, readonly string[]> = {

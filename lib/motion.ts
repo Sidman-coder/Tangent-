@@ -33,6 +33,9 @@ export const spring = {
   soft: { type: "spring", visualDuration: 0.35, bounce: 0 },
   /** List reflow when rows are added, completed, or removed. */
   layout: { type: "spring", visualDuration: 0.32, bounce: 0 },
+  /** The one exception: the notifications popover springs out of the bell
+   *  with a slight overshoot (Round 5A Phase 6, TANGENT-STYLE.md motion). */
+  pop: { type: "spring", visualDuration: 0.25, bounce: 0.3 },
 } satisfies Record<string, Transition>;
 
 /** Parent container that staggers its sections in on first paint. */

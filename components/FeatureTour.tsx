@@ -14,6 +14,7 @@ import { createPortal } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
 import * as m from "motion/react-m";
 import { useReducedMotion } from "motion/react";
+import { claimOverlay, releaseOverlay } from "@/lib/first-run-gates";
 import "./feature-tour.css";
 
 export const TOUR_EVENT = "tangent:tour";
@@ -84,7 +85,7 @@ const STEPS: Step[] = [
     route: "/calendar",
     target: [".cal-bar"],
     title: "One bar to steer the calendar",
-    body: "Week, Month or Agenda, back and forward, and what to show: School, Projects or Short-term. All in the bar at the top.",
+    body: "Week, Month or Agenda, back and forward, and what to show: School, Projects or Personal. All in the bar at the top.",
   },
   {
     route: "/calendar",
@@ -105,33 +106,21 @@ const STEPS: Step[] = [
     body: "A Tangent is a goal a year or more away, like a college or a career. Tangent maps the moves from what you already do, and your projects branch off it. New Tangent starts one.",
   },
   {
-    route: "/settings/your-tangent",
-    target: [".you-hero-stage", "#what-tangent-knows"],
-    title: "Your Tangent",
-    body: "The main page of Settings. You, mapped is everything Tangent knows about you, by area. Scroll down to fix or forget a fact, or add one right inside its area.",
-  },
-  {
-    route: "/settings/your-tangent",
-    target: ["#planning"],
-    title: "Your week",
-    body: "Your regular commitments, and how much work fits on a school night or a weekend day. Tangent plans around these, so no day gets more than you can handle.",
-  },
-  {
-    route: "/settings/your-tangent",
+    route: "/settings/context",
     target: ["#onboarding"],
-    title: "Getting to know you",
-    body: "Tangent's questions about you, Grill me, and your setup answers, each with whether it's done. You can take this tour again from the card just above.",
+    title: "Set Tangent up in Settings",
+    body: "Getting to know you has this tour, Tangent's first questions about you, Grill me and your setup answers. Canvas and your Google, Apple or Outlook calendar live under Schedule.",
   },
   {
-    route: "/settings/connectors",
-    target: ["#connections"],
-    title: "Connectors",
-    body: "Canvas, your Google, Apple or Outlook calendar, and notes or what another AI like ChatGPT or Claude knows about you. The more Tangent can see, the less it has to ask.",
+    route: "/settings/context",
+    target: ["#what-tangent-knows"],
+    title: "What Tangent knows",
+    body: "Everything Tangent has learned about you, in one place. Forget anything wrong, or tell it something new.",
   },
   {
     route: "/",
     title: "That's Tangent",
-    body: "Add it, answer a question or two, and let Tangent place it. You can take this tour again from Settings → Your Tangent.",
+    body: "Add it, answer a question or two, and let Tangent place it. You can take this tour again from Settings → Onboarding.",
   },
 ];
 
@@ -168,6 +157,13 @@ export default function FeatureTour() {
       window.localStorage.setItem(TOUR_DONE_KEY, "1");
     } catch {}
   }, []);
+
+  // The tour holds the shared overlay slot while it runs (overnight C01).
+  useEffect(() => {
+    if (index === null) return;
+    claimOverlay("tour");
+    return () => releaseOverlay("tour");
+  }, [index === null]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const start = () => {

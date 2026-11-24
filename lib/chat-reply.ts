@@ -6,13 +6,16 @@ import "server-only";
 import { handlePendingAnswer, handleVoiceText, type PlanProgress, type VoiceOptions } from "@/lib/voice-handler";
 import type { PendingQuestion } from "@/lib/pending-question";
 import { extractContextFacts } from "@/lib/context-extract";
-import { getUserTimezone } from "@/lib/store";
+import { ensureAreaProjects, getUserTimezone } from "@/lib/store";
 import { promptDateContext } from "@/lib/time";
+import { humanizeDates } from "@/lib/human-dates";
 import { buildStudentContext } from "@/lib/ai/student-context";
 import { reliefSuggestion } from "@/lib/spacing";
 import { callClaude, messageText, streamClaude } from "@/lib/ai/call";
 import { cacheHistory, withDateLast } from "@/lib/ai/cache";
 import { chatTier } from "@/lib/ai/models";
+import { recallable, recallBlock } from "@/lib/student/recall";
+import { serverFailureMessage } from "@/lib/friendly-error";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -75,6 +78,13 @@ export async function planReply(
   return cleanPlanText(text);
 }
 
+/** Overnight 2 (L10, L11): answers wrote ISO dates, invented a "late-night
+ *  work block", put "right after school" on Thanksgiving and drifted to
+ *  another project. Shared by the answer and talk prompts. */
+const GROUNDING = `- Write dates the way a person says them ("Monday, Nov 23"), never as 2026-11-23.
+- Only name blocks, classes, shifts and events that are in their context. If a day is a holiday or break, there's no school that day; don't say "after school".
+- In a project's chat, stay on that project unless they ask about something else.`;
+
 /** Round 4 Phase 4: Home's answers, shown under the box. */
 export const ANSWER_SYSTEM = `You are Tangent, a planning companion for a high-school student. They typed into Tangent's Home box, and your reply appears right under it.
 - Answer what they asked, directly, in the first sentence. Then give the specifics that make it useful to them.
@@ -82,6 +92,7 @@ export const ANSWER_SYSTEM = `You are Tangent, a planning companion for a high-s
 - If they ask how they're doing, say what's finished, what's next, and whether they're on pace.
 - If the answer suggests new work for a project, end with one short line offering it, like "Want me to plan these as your next steps?" Never add anything yourself.
 - If something you need is truly missing, give your best answer first and ask one short question at the end.
+${GROUNDING}
 - Under 130 words. Plain sentences and simple "- " bullets. No headings, tables, bold or code. Warm and plain, like a sharp older friend; no hype.
 - Never give medical, legal or financial advice. If they seem in real distress, be kind and suggest talking to a trusted adult or calling or texting 988 (US).`;
 
@@ -106,12 +117,51 @@ export async function answerReply(
   const tier = chatTier(messages);
   const onText = opts.onText;
   const res = onText
-    ? await streamClaude("chatPlan", request, { tier, onText: (t) => onText(cleanPlanText(t)) })
+    ? await streamClaude("chatPlan", request, { tier, onText: (t) => onText(humanizeDates(cleanPlanText(t))) })
     : await callClaude("chatPlan", request, { tier });
   if (!res.ok) throw new Error(res.budgetExceeded ? res.error : `Anthropic error ${res.status}`);
   const text = messageText(res.message);
   if (!text) throw new Error("Empty answer");
-  return cleanPlanText(text);
+  return humanizeDates(cleanPlanText(text));
+}
+
+/** Round 5A 2.1: talk mode. A goal or a question gets a real answer first,
+ *  written for the student, with markdown. Planning happens only when they
+ *  ask (lib/pipeline/talk-route.ts). */
+export const TALK_SYSTEM = `You are Tangent, a planning companion for a high-school student. They're talking to you; this is a conversation, not a form.
+- Give a real, specific answer to what they said, the way a sharp older friend who knows the subject would. Name concrete things: resources, topics, techniques, numbers, the order to do them in. Avoid generic advice ("stay consistent", "work hard", "you're aiming for a top result").
+- Fit the answer to them. Use their schedule, projects and what they've told you, given below. Never ask for something that's already there.
+- You may use markdown: a short "## " heading or two, "- " lists, and **bold** for the few words that matter. Keep it scannable, under 220 words.
+- If one or two facts about them would change your advice and aren't known, ask them at the end, as at most 2 short questions. Otherwise ask nothing.
+- Don't offer to plan, schedule or add anything; the app shows its own button for that. Never say you added something.
+${GROUNDING}
+- Never give medical, legal or financial advice. If they seem in real distress, be kind and suggest talking to a trusted adult or calling or texting 988 (US).`;
+
+/** Talk mode's reply, streamed as markdown. `facts` power "Since you mentioned…" (R2). */
+export async function talkReply(
+  messages: { role: "user" | "assistant"; content: string }[],
+  opts: { projectId?: string | null; projectNotes?: string[]; onText?: (textSoFar: string) => void } = {}
+): Promise<{ text: string; factIds: string[] }> {
+  const lastAsk = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
+  const ctx = await buildStudentContext({ purpose: "chat", query: lastAsk, projectId: opts.projectId ?? null }).catch(() => null);
+  const recall = recallBlock(ctx?.factsUsed ?? []);
+  const notes = (opts.projectNotes ?? []).filter(Boolean).join("\n\n");
+  const context = [ctx?.text ?? "", notes ? `THEIR PROJECTS (steps marked done are finished):\n${notes}` : "", recall].filter(Boolean).join("\n\n");
+  const request = {
+    system: context
+      ? [
+          { type: "text" as const, text: TALK_SYSTEM },
+          { type: "text" as const, text: `STUDENT CONTEXT:\n${context}` },
+        ]
+      : TALK_SYSTEM,
+    messages: withDateLast(cacheHistory(messages.slice(-12)), promptDateContext(await getUserTimezone())),
+  };
+  const onText = opts.onText;
+  const res = onText ? await streamClaude("talk", request, { onText: (t) => onText(humanizeDates(t.trim())) }) : await callClaude("talk", request);
+  if (!res.ok) throw new Error(res.budgetExceeded ? res.error : `Anthropic error ${res.status}`);
+  const text = humanizeDates(messageText(res.message).replace(/```[\s\S]*?```/g, "").trim());
+  if (!text) throw new Error("Empty talk reply");
+  return { text, factIds: recallable(ctx?.factsUsed ?? []).map((f) => f.id) };
 }
 
 /** Code fences and bold are dropped: schedule lines must stay parseable
@@ -136,6 +186,9 @@ export function extractContextFireAndForget(userMessage: string, finalResponse: 
 Assistant: ${finalResponse}`, "chat").catch((e) => {
     console.error("[api/chat] context extraction failed:", e instanceof Error ? e.message : e);
   });
+  // Round 5A Phase 3: "I work at Target" gives the student a Work project.
+  // Only the student's own words count, and this never throws.
+  void ensureAreaProjects({ chatMentions: [userMessage] });
 }
 
 export type CalendarReplyOptions = {
@@ -206,6 +259,8 @@ async function replyFromVoice(
   let voicePreview: unknown;
   let voiceQuestions: unknown;
   let voicePendingQuestion: unknown;
+  let voiceBrief: unknown;
+  let voicePlanQuestion = false;
   try {
     if (!voiceRes) throw new Error("no response");
     const voiceData = (await voiceRes.json()) as {
@@ -223,6 +278,8 @@ async function replyFromVoice(
       preview?: unknown;
       questions?: unknown;
       pendingQuestion?: unknown;
+      brief?: unknown;
+      planQuestion?: boolean;
     };
     voiceResponse = voiceData.response ?? "";
     voiceAction = voiceData.action ?? "";
@@ -239,6 +296,8 @@ async function replyFromVoice(
     voicePreview = voiceData.preview;
     voiceQuestions = voiceData.questions;
     voicePendingQuestion = voiceData.pendingQuestion;
+    voiceBrief = voiceData.brief;
+    voicePlanQuestion = voiceData.planQuestion === true;
   } catch (err) {
     console.error("[api/chat] Voice pipeline error:", err);
   }
@@ -259,6 +318,7 @@ async function replyFromVoice(
       action: voiceAction,
       changeSet: voiceChangeSet,
       preview: voicePreview,
+      ...(voiceBrief ? { brief: voiceBrief } : {}),
       ok: true,
     };
   }
@@ -293,6 +353,7 @@ async function replyFromVoice(
       plan: voicePlan,
       projectId: project?.projectId ?? voicePlan?.id,
       recurringCount: voiceAction === "add_recurring_task" ? voiceCount : undefined,
+      ...(voicePlanQuestion ? { planQuestion: true } : {}),
       ok: true,
     };
   }
@@ -303,7 +364,7 @@ async function replyFromVoice(
   const reason = voiceError || voiceResponse || "the task pipeline did not respond";
   console.error("[api/chat] Voice pipeline did not act:", reason);
   return {
-    message: `I couldn't do that — ${reason}.`,
+    message: serverFailureMessage(reason),
     action: "error",
     ok: true,
   };

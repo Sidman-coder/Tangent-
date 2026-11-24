@@ -19,7 +19,8 @@ import type { Plan, Task } from "./types";
 
 /** Past due shows the last three days; anything older waits behind Fresh start. */
 export const PAST_DUE_DAYS = 3;
-export const COMING_UP_DAYS = 3;
+/** "This week": Home lists a full week ahead so it never disagrees with Calendar (overnight C11). */
+export const COMING_UP_DAYS = 7;
 
 export type DayPart = "morning" | "afternoon" | "evening" | "night" | "anytime";
 
@@ -251,19 +252,38 @@ export function nothingOnDay(groups: TodayGroups): boolean {
   return groups.parts.every((p) => p.tasks.length === 0);
 }
 
-/** The line under the greeting: "4 left today · 1 past due · next: Dentist at 3:30 PM". */
-export function glanceLine(groups: TodayGroups, now: Date, tz: string): string {
+/** The first open step in the days ahead, for "Next: ..." when nothing is left today. */
+export function nextAhead(groups: TodayGroups): Task | null {
+  if (groups.counts.left > 0) return null;
+  for (const day of groups.comingUp) {
+    const first = day.tasks.find((t) => !t.completed);
+    if (first) return first;
+  }
+  return null;
+}
+
+/** The line under the greeting: "4 left today · 1 past due · next: Dentist at 3:30 PM".
+ *  "next" is the next fixed item or plan step, whichever comes first. */
+export function glanceLine(groups: TodayGroups, now: Date, tz: string, opts: { pastDue?: boolean } = {}): string {
   const minutes = localNow(tz, now).minutes;
   const { left, pastDue, done } = groups.counts;
-  const next = groups.parts
-    .flatMap((p) => p.tasks)
-    .find((t) => {
-      const at = clockMinutes(t.time);
-      return !t.completed && commitmentOf(t) !== "flexible" && at !== null && at >= minutes;
-    });
+  // Round 6: a plan step counts too, so "next:" names it when it comes
+  // before the next fixed item (earliest by time). A loose flexible to-do
+  // still doesn't.
+  let next: Task | undefined;
+  let nextAt = Infinity;
+  for (const t of groups.parts.flatMap((p) => p.tasks)) {
+    const at = clockMinutes(t.time);
+    if (t.completed || at === null || at < minutes) continue;
+    if (commitmentOf(t) === "flexible" && !t.planId) continue;
+    if (at < nextAt) {
+      next = t;
+      nextAt = at;
+    }
+  }
 
   const parts = [left > 0 ? `${left} left today` : done > 0 ? "All done for today" : "Nothing planned today"];
-  if (pastDue > 0) parts.push(`${pastDue} past due`);
+  if (pastDue > 0 && opts.pastDue !== false) parts.push(`${pastDue} past due`);
   if (next) parts.push(`next: ${next.title} at ${formatTime12(next.time)}`);
   return parts.join(" · ");
 }

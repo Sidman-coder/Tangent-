@@ -10,16 +10,17 @@
 
 import Link from "next/link";
 import { commitmentLabel } from "@/lib/task-kind";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeSet } from "@/lib/pipeline/changeset";
-import type { DraftEdit, PreviewPayload } from "@/lib/pipeline/draft";
+import type { PreviewPayload } from "@/lib/pipeline/draft";
+import { usePreviewActions, type PreviewPhase } from "@/components/preview/usePreviewActions";
 import { receiptView } from "@/lib/pipeline/receipt";
 import PlanCalendarPreview from "@/components/preview/PlanCalendarPreview";
 import { getUserToday } from "@/lib/time";
 import HelpPlanBetter from "@/components/grill/HelpPlanBetter";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 
-type Phase = "draft" | "confirmed" | "discarded" | "undone";
+type Phase = PreviewPhase;
 
 type Props = {
   changeSet: ChangeSet;
@@ -45,42 +46,18 @@ type Props = {
   onOps?: (ops: ChangeSet["ops"]) => void;
 };
 
-async function post(url: string, body?: unknown, method = "POST"): Promise<{ status: number; data: Record<string, unknown> }> {
-  const res = await fetch(url, {
-    method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-  return { status: res.status, data };
-}
-
-const phaseOf = (status: unknown): Phase | null =>
-  status === "confirmed" || status === "discarded" || status === "undone" || status === "draft" ? status : null;
-
 export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed, autoFocus = false, className, onSettled, onJustChatting, grill, hideCalendar = false, onOps }: Props) {
   const { state } = useAppState();
   const timezone = useUserTimezone();
-  const [cs, setCs] = useState(changeSet);
-  const [view, setView] = useState(preview);
-  const [phase, setPhase] = useState<Phase>(phaseOf(changeSet.status) ?? "draft");
-  const [busy, setBusy] = useState(false);
+  const actions = usePreviewActions({ changeSet, preview, onChanged, onConfirmed, onJustChatting, onOps });
+  const { cs, view, phase, busy, error, result, expired, chatting, edit, undo } = actions;
   const [editing, setEditing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ created: number; skipped: string[]; planId: string | null } | null>(null);
   /** Master fix Phase 4: "See all N sessions", grouped by week. */
   const [allOpen, setAllOpen] = useState(false);
-  const [chatting, setChatting] = useState(false);
-  const [expired, setExpired] = useState(false);
   const hasCalendar = useMemo(() => cs.ops.some((op) => op.op === "add_task" || op.op === "move_task"), [cs.ops]);
   const cardRef = useRef<HTMLDivElement>(null);
-  const shownRef = useRef(false);
-  const base = `/api/changesets/${encodeURIComponent(cs.id)}`;
   const settledRef = useRef(onSettled);
   settledRef.current = onSettled;
-  const opsRef = useRef(onOps);
-  opsRef.current = onOps;
-  useEffect(() => opsRef.current?.(cs.ops), [cs.ops]);
 
   // A confirmed plan stays put until its "Help Tangent plan better" is through.
   const [grillDone, setGrillDone] = useState(false);
@@ -88,88 +65,17 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
   const grillWaiting = phase === "confirmed" && Boolean(grillPlan) && !grillDone;
 
   useEffect(() => {
+    if (phase !== "draft") setEditing(false);
     if (phase !== "draft" && !grillWaiting) settledRef.current?.(phase);
   }, [phase, grillWaiting]);
 
-  // preview_shown, once per card.
   useEffect(() => {
-    if (shownRef.current) return;
-    shownRef.current = true;
-    void fetch(`${base}/shown`, { method: "POST" }).catch(() => {});
     if (autoFocus) cardRef.current?.focus();
-  }, [base, autoFocus]);
+  }, [autoFocus]);
 
-  const act = useCallback(
-    async (fn: () => Promise<void>) => {
-      if (busy) return;
-      setBusy(true);
-      setError(null);
-      try {
-        await fn();
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Something went wrong.");
-      } finally {
-        setBusy(false);
-      }
-    },
-    [busy]
-  );
-
-  /** A refused action (409) means another tab or click already moved it on. */
-  const settle = (status: number, data: Record<string, unknown>) => {
-    const p = phaseOf(data.status);
-    if (data.reason === "expired") setExpired(true);
-    if (status === 409 && p && p !== "draft") setPhase(p);
-    throw new Error(typeof data.message === "string" ? data.message : "Something went wrong.");
-  };
-
-  const confirm = () =>
-    act(async () => {
-      const { status, data } = await post(`${base}/confirm`);
-      if (!data.ok) return settle(status, data);
-      const skipped = (data.skipped_duplicates as { titles?: string[] } | undefined)?.titles ?? [];
-      const created = typeof data.createdTaskCount === "number" ? data.createdTaskCount : -1;
-      const planId = typeof data.planId === "string" ? data.planId : null;
-      setResult({ created, skipped, planId });
-      setPhase("confirmed");
-      setEditing(false);
-      onChanged?.();
-      if (typeof data.actionId === "string") onConfirmed?.(data.actionId, { planId });
-    });
-
-  const discard = () =>
-    act(async () => {
-      const { status, data } = await post(`${base}/discard`);
-      if (!data.ok) return settle(status, data);
-      setPhase("discarded");
-      setEditing(false);
-    });
-
-  const justChatting = () =>
-    act(async () => {
-      const { status, data } = await post(`${base}/discard`, { reason: "just_chatting" });
-      if (!data.ok) return settle(status, data);
-      setChatting(true);
-      setPhase("discarded");
-      setEditing(false);
-      onJustChatting?.();
-    });
-
-  const undo = () =>
-    act(async () => {
-      const { status, data } = await post(`${base}/undo`);
-      if (!data.ok) return settle(status, data);
-      setPhase("undone");
-      onChanged?.();
-    });
-
-  const edit = (body: DraftEdit) =>
-    act(async () => {
-      const { status, data } = await post(base, body, "PATCH");
-      if (!data.ok) return settle(status, data);
-      setCs(data.changeSet as ChangeSet);
-      setView((prev) => ({ ...(data.preview as PreviewPayload), factsUsed: (data.preview as PreviewPayload).factsUsed ?? prev.factsUsed }));
-    });
+  const confirm = actions.confirm;
+  const discard = actions.discard;
+  const justChatting = actions.justChatting;
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (phase !== "draft" || busy) return;
@@ -344,7 +250,7 @@ export default function PreviewCard({ changeSet, preview, onChanged, onConfirmed
 
       {cs.assumptions.length > 0 && (
         <ul className="preview-card-assumptions">
-          {cs.assumptions.map((a) => (
+          {cs.assumptions.slice(0, 3).map((a) => (
             <li key={a}>{a}</li>
           ))}
         </ul>

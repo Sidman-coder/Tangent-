@@ -35,6 +35,16 @@ const TASKS = [
 const PLANS = [SAT_PLAN, ICF_PLAN];
 
 void (import("./delete-scope") as Promise<Mod>).then(({ isFullClearRequest, parseDeleteScope, matchScope, planBulkDelete, bulkDeleteMessage, emptiedPlans }) => {
+  test("two named plans joined by 'and' propose exactly those two (overnight 2 eval)", () => {
+    const plans = [...PLANS, { id: "p-des", title: "Desmos Calculator Drills" }];
+    const tasks = [...TASKS, { id: "t8", title: "Desmos graphing", planId: "p-des" }];
+    const plan = planBulkDelete("delete my SAT Prep and ICF essay tasks", tasks, plans);
+    assert.ok(plan && plan.kind === "propose");
+    assert.deepEqual(plan.tasks.map((t) => t.id).sort(), ["t1", "t2", "t3", "t6"]);
+    // A side that matches nothing falls back to the usual ask.
+    assert.equal(planBulkDelete("delete my SAT Prep and guitar tasks", tasks, plans)?.kind, "ask");
+  });
+
   test("the reported request proposes only the SAT tasks", () => {
     const plan = planBulkDelete("Actually, nevermind I dont want the SAT tasks. Take out all of the SAT tasks", TASKS, PLANS);
     assert.equal(plan?.kind, "propose");

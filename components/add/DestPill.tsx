@@ -5,7 +5,7 @@
 // for this one send. docs/design/TANGENT-STYLE.md §8 "Input with mic".
 
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
-import { CalendarDays, Check, ChevronDown, FolderPlus, Sparkles } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, Compass, FolderPlus } from "lucide-react";
 
 export type DestChoice = { dest: "calendar" } | { dest: "project"; projectId: string | "new" };
 
@@ -127,7 +127,7 @@ export default function DestPill({ choice, projects, onChange, disabled }: Props
                 onClick={() => pick(item)}
               >
                 <span className="add-pill-icon" aria-hidden="true">
-                  {item.icon === "auto" && <Sparkles size={16} strokeWidth={1.75} />}
+                  {item.icon === "auto" && <Compass size={16} strokeWidth={1.75} />}
                   {item.icon === "calendar" && <CalendarDays size={16} strokeWidth={1.75} />}
                   {item.icon === "new" && <FolderPlus size={16} strokeWidth={1.75} />}
                   {item.color && <span className="add-project-dot" style={{ background: item.color }} />}

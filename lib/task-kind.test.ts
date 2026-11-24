@@ -19,7 +19,23 @@ type Resolve = (specifier: string, context: unknown, next: (s: string, c: unknow
 
 type Mod = typeof import("./task-kind");
 void (import("./task-kind") as Promise<Mod>).then(
-  ({ classifyTaskKind, classifyWithAsk, commitmentOf, commitmentLabel, createClassifyCache, isCalendarImport, CLASSIFY_CONFIDENCE_FLOOR }) => {
+  ({ classifyTaskKind, classifyWithAsk, commitmentOf, commitmentLabel, createClassifyCache, isBusyBlock, isCalendarImport, CLASSIFY_CONFIDENCE_FLOOR }) => {
+    test("practice, games and shifts are busy blocks with no Done circle; deadlines and graded tests keep theirs (C20)", () => {
+      const task = (over: Record<string, unknown>) => ({ id: "t", title: "x", date: "2026-11-18", time: "16:00", completed: false, ...over }) as never;
+      assert.equal(isBusyBlock(task({ title: "Soccer practice 5pm" })), true);
+      assert.equal(isBusyBlock(task({ title: "Saturday game", kind: "commitment" })), true);
+      assert.equal(isBusyBlock(task({ title: "Dentist appointment Thursday 3pm" })), true);
+      assert.equal(isBusyBlock(task({ title: "Math exam 9am" })), false);
+      assert.equal(isBusyBlock(task({ title: "Essay", time: "23:59" })), false);
+      assert.equal(isBusyBlock(task({ title: "Quiz", source: "canvas" })), false);
+      assert.equal(isBusyBlock(task({ title: "Practice the regionals run", planId: "p1", kind: "academic-ec" })), false);
+      assert.equal(isBusyBlock(task({ title: "Read chapter 4", time: "" })), false);
+      assert.equal(isBusyBlock(task({ title: "Keeping a weekly Sunday video upload going without my chem and algebra grades slipping", kind: "commitment" })), false);
+      assert.equal(isBusyBlock(task({ title: "Orchestra", kind: "commitment" })), true);
+      // A timed goal is still work to finish, not something you attend.
+      assert.equal(isBusyBlock(task({ title: "Keeping a weekly Sunday video upload going", commitment: "fixed" })), false);
+    });
+
     type Source = "capture" | "calendar" | "canvas" | "plan" | "manual";
     const cases: [string, boolean, Source, string | null, string][] = [
       ["Dentist appointment Thursday 3pm", false, "capture", null, "fixed"],

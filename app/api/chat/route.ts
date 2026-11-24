@@ -1,17 +1,19 @@
 import { NextResponse } from "next/server";
 import { withUser } from "@/lib/request-context";
 import { trackEvent } from "@/lib/analytics";
-import { DISTRESS_REPLY, looksDistressed } from "@/lib/student/sensitive";
-import { answerReply, calendarReply, lastUserMessage, pendingAnswerReply, planReply, type CalendarReplyOptions } from "@/lib/chat-reply";
+import { DISTRESS_REPLY, isSensitive, looksDistressed } from "@/lib/student/sensitive";
+import { reportFeel, reportedStep } from "@/lib/progress-report";
+import { calendarReply, lastUserMessage, pendingAnswerReply, planReply, talkReply, type CalendarReplyOptions } from "@/lib/chat-reply";
 import { parsePendingQuestion, PENDING_QUESTION_ID } from "@/lib/pending-question";
 import { TANGENT_PIPELINE_V2 } from "@/lib/pipeline/flags";
 import { handleRequest } from "@/lib/pipeline/intake";
 import { routeAnswerReply } from "@/lib/pipeline/understand";
-import { homeRoute, type HomeKind } from "@/lib/pipeline/home-route";
+import { type HomeKind } from "@/lib/pipeline/home-route";
+import { planRequestText, routeMessage, type TalkScope } from "@/lib/pipeline/talk-route";
 import { extendPlan } from "@/lib/pipeline/extend-plan";
-import { addPendingConfirmation, addTask, addVoiceLog, countChatSessions, getAllPlans, getAllTasks, getUserTimezone, recordAction, setCapacity } from "@/lib/store";
+import { addPendingConfirmation, addTask, addVoiceLog, completeTask, countChatSessions, getAllPlans, getAllTasks, getUserTimezone, recordAction, setCapacity, updateTask } from "@/lib/store";
 import { proposeBulk } from "@/lib/pipeline/bulk-action-run";
-import { quickCapture, type QuickCapture } from "@/lib/ai/router";
+import { isDatedExam, quickCapture, splitCaptureItems, type QuickCapture } from "@/lib/ai/router";
 import { inferCalendarGroup } from "@/lib/calendars";
 import { dayName } from "@/lib/load";
 import { formatTime12 } from "@/lib/dates";
@@ -42,6 +44,31 @@ type ChatMode = "plan" | "calendar";
 const projectBrief = (projectId: string, summary?: string | null) => projectContext(projectId, summary);
 const findTaskBrief = (taskId: string, summary?: string | null) => taskContext(taskId, summary);
 
+/** Overnight 2 (Jordan sim): "drafted the club pitch, went fine" logs how
+ *  that step went, like the check-in sheet (app/api/today "check_in"), and
+ *  marks it done if it wasn't. Null when no recent step matches. No model. */
+async function logProgressReport(text: string): Promise<Record<string, unknown> | null> {
+  const today = localNow(await getUserTimezone()).date;
+  const step = reportedStep(await getAllTasks(), text, today);
+  if (!step) return null;
+  let actionId: string | undefined;
+  if (!step.completed) {
+    await completeTask(step.id);
+    actionId = (await recordAction("complete_task", `Completed "${step.title}"`, { completedTaskId: step.id })).id;
+  }
+  const feel = reportFeel(text);
+  if (feel) logStepEvents([{ kind: "check_in", task: step, code: feel }]);
+  const said = text.replace(/\s+/g, " ").trim().slice(0, 280);
+  // Teen privacy: health, family or distress never get written down.
+  if (said && !looksDistressed(said) && !isSensitive(said)) {
+    const kept = (step.notes ?? "").replace(/(?:^|\n)\s*HOW IT WENT:[^\n]*/gi, "").trim();
+    await updateTask(step.id, { notes: [kept, `HOW IT WENT: ${said}`].filter(Boolean).join("\n") }).catch(() => null);
+  }
+  trackEvent("step_check_in", { task_id: step.id, count: feel ? 1 : 0 });
+  const message = `Logged how “${step.title}” went${actionId ? ", and marked it done" : ""}. Thanks for telling me. It helps size the next steps.`;
+  return { ok: true, action: "chat_reply", message, ...(actionId ? { actionId } : {}) };
+}
+
 /** Saves a quick capture: spacing brain for the when, no model. */
 async function saveQuickCapture(quick: QuickCapture): Promise<Record<string, unknown>> {
   const placed = await placeNewTask({ date: quick.date ?? null, time: quick.time ?? null, deadline: quick.deadline ?? null });
@@ -62,15 +89,57 @@ async function saveQuickCapture(quick: QuickCapture): Promise<Record<string, unk
   const today = localNow(tz).date;
   const day =
     task.date === today ? "today" : task.date === addDaysYMD(today, 1) ? "tomorrow" : `${dayName(task.date)}`;
+  // An exam with no day said: the day is only a placeholder (overnight 2, Maya sim).
+  const placeholder = !quick.date && !quick.deadline && isDatedExam(task.title);
   return {
     ok: true,
     action: "add_task",
-    message: `Added ${task.title} for ${day} at ${formatTime12(task.time)}.${placed.note ? ` ${placed.note}` : ""}`,
+    message: placeholder
+      ? `Added ${task.title} to ${day} for now. When is it? Open it and tell me the date, and I'll move it and plan study time before it.`
+      : `Added ${task.title} for ${day} at ${formatTime12(task.time)}.${placed.note ? ` ${placed.note}` : ""}`,
     actionId: record.id,
     taskId: task.id,
     taskDate: task.date,
     quick: true,
     suggestion: await reliefSuggestion(),
+  };
+}
+
+/** Two or more dated to-dos typed in one line: each is saved with the day it was typed with (overnight C09). */
+async function saveQuickCaptures(items: QuickCapture[]): Promise<Record<string, unknown>> {
+  const saved: { id: string; title: string; date: string; time: string; due: string | null }[] = [];
+  let skipped = 0;
+  for (const quick of items) {
+    const placed = await placeNewTask({ date: quick.date ?? null, time: quick.time ?? null, deadline: quick.deadline ?? null });
+    // "math hw due Thu" is worked on before Thursday; keep the due day on it
+    // so the detail doesn't say "for tomorrow" (overnight 2, live L4).
+    const due = !quick.date && quick.deadline ? quick.deadline : null;
+    const task = await addTask({
+      title: cleanTitle(quick.title),
+      // The day the student typed stands; only the time is chosen for them.
+      date: quick.date ?? placed.date,
+      time: placed.time,
+      completed: false,
+      calendarId: inferCalendarGroup(quick.title),
+      ...(due ? { notes: `DUE: ${dayName(due)} ${due}` } : {}),
+    });
+    if (task.wasDuplicate) skipped++;
+    else saved.push({ id: task.id, title: task.title, date: task.date, time: task.time, due });
+  }
+  if (saved.length === 0) return { ok: true, action: "add_task", message: "Those are already on your calendar." };
+  const record = await recordAction("add_task", `Added ${saved.length} to-dos`, { addedTaskIds: saved.map((t) => t.id) });
+  trackEvent("capture", { count: saved.length, source: "quick_multi" });
+  const list = saved
+    .map((t) => `${t.title} (${dayName(t.date)}${t.due && t.due !== t.date ? `, due ${dayName(t.due)}` : ""})`)
+    .join(", ");
+  return {
+    ok: true,
+    action: "add_task",
+    message: `Found ${saved.length} things and added them: ${list}.${skipped ? ` ${skipped} already on your calendar.` : ""}`,
+    actionId: record.id,
+    taskId: saved[0].id,
+    taskDate: saved[0].date,
+    quick: true,
   };
 }
 
@@ -127,6 +196,14 @@ export const POST = withUser(async (req: Request) => {
        *  Routed first (lib/pipeline/home-route.ts): answered, extended,
        *  grilled, planned or added — never grilled about what's known. */
       home?: unknown;
+      /** Round 5A 2.1: "Plan this into my calendar" (or the answer to the plan's one question). */
+      planThis?: unknown;
+      /** The message the "Plan this" row sat under. */
+      planGoal?: unknown;
+      /** { question, answer }: the reply to the plan brief's one question. */
+      planAnswer?: unknown;
+      /** Where it was typed (home, capture, task, project, rail, palette). Logged only. */
+      scope?: unknown;
     };
     const mode: ChatMode = body.mode === "plan" ? "plan" : "calendar";
     const raw = body.messages;
@@ -221,14 +298,43 @@ export const POST = withUser(async (req: Request) => {
     // A question is answered from their projects and finished steps; more
     // steps for a project they have are previewed; only a new goal (or "grill
     // me") is asked about.
+    //
+    // Round 5A 2.1/2.5: talk first (lib/pipeline/talk-route.ts). A goal is
+    // answered, with a "Plan this into my calendar" row when it could be
+    // scheduled (`schedulable`); a plan is built only when asked in words or
+    // with that button (`planThis`), and never after grill cards.
     let homeKind: HomeKind | null = null;
     const firstTurn = parseAnswers(body.answers).length === 0 && body.slotTurn == null;
-    if (body.home === true && body.talk !== true && body.route !== "chat" && body.newProject !== true && firstTurn) {
+    const planThis = body.planThis === true;
+    if (body.home === true && body.talk !== true && body.route !== "chat" && body.newProject !== true && (firstTurn || planThis)) {
       const plans = await getAllPlans().catch(() => []);
-      const routed = homeRoute(userText, plans.map((p) => ({ id: p.id, title: p.title })), projectId || null);
+      const scope = parseScope(body.scope);
+      const routed = routeMessage(userText, { projects: plans.map((p) => ({ id: p.id, title: p.title })), scoped: projectId || null, planThis, scope });
+      if (routed.kind === "report") {
+        const logged = await logProgressReport(userText).catch(() => null);
+        if (logged) {
+          console.log("[api/chat] talk route: report (logged on a step)");
+          if (body.stream !== true) return NextResponse.json(logged);
+          return new Response(JSON.stringify({ type: "result", ...logged }) + "\n", {
+            headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" },
+          });
+        }
+        // No step it could be about: talk, never a new task.
+        routed.kind = "answer";
+      }
       homeKind = routed.kind;
       if (routed.projectId && !projectId) projectId = routed.projectId;
-      console.log("[api/chat] home route:", routed.kind, routed.projectId ? "(project)" : "");
+      console.log("[api/chat] talk route:", routed.kind, scope, routed.projectId ? "(project)" : "", routed.schedulable ? "schedulable" : "");
+      if (routed.kind === "plan" || (routed.kind === "extend" && planThis)) {
+        // Explicit: the brief, one question at most, then a draft to confirm
+        // (Round 5A Q3: always previewed). Stages stream as they start.
+        const goal = planRequestText(messages, { goal: typeof body.planGoal === "string" ? body.planGoal.slice(0, 2000) : null, answer: parsePlanAnswer(body.planAnswer) });
+        const project: CalendarReplyOptions["project"] = projectId ? { projectId } : { forcePlan: true, projectGoal: goal.split("\n")[0].slice(0, 300) };
+        const planned = (onProgress?: Parameters<typeof calendarReply>[2]) =>
+          calendarReply(messages, aboutTask ? `${goal}\n\n${aboutTask.brief}` : goal, onProgress, { project, preview: true, source }).then((r) => ({ ...r, planGoal: goal.split("\n\nMy answers")[0] }));
+        if (body.stream !== true) return NextResponse.json(await planned());
+        return ndjson(async (send) => planned(send));
+      }
       if (routed.kind === "action" && routed.action) {
         // Round 5A 1.6: a bulk command. A confirm card with counts; never
         // planned, never asked about.
@@ -241,18 +347,24 @@ export const POST = withUser(async (req: Request) => {
         });
       }
       if (routed.kind === "answer") {
-        // The project it's about, or their newest few when it names none.
+        // The project it's about, or their newest few when it names none (a
+        // brand-new goal leans on what they've told Tangent, not old projects).
         const ids = projectId
           ? [projectId]
-          : [...plans].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 3).map((p) => p.id);
+          : routed.schedulable
+            ? []
+            : [...plans].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 3).map((p) => p.id);
         const notes = [
           ...(aboutTask ? [`THE STEP THEY'RE ASKING ABOUT:\n${aboutTask.brief}`] : []),
           ...(await Promise.all(ids.map((id) => projectBrief(id, threadSummary).catch(() => null)))).filter((n): n is string => !!n),
         ];
+        // Talk mode: a real, specific answer in markdown; nothing is added.
         const answer = async (onText?: (text: string) => void) => ({
           ok: true,
           action: "chat_reply",
-          message: await answerReply(messages, { projectNotes: notes, onText }),
+          message: (await talkReply(messages, { projectId: projectId || null, projectNotes: notes, onText })).text,
+          schedulable: routed.schedulable,
+          planGoal: routed.schedulable ? userText.slice(0, 2000) : undefined,
           ...(projectId ? { projectId } : {}),
         });
         if (body.stream !== true) return NextResponse.json(await answer());
@@ -275,8 +387,11 @@ export const POST = withUser(async (req: Request) => {
     // way — and polished a moment later by /api/questions (enrich). Anything
     // that might be a command goes through the full pipeline below.
     if (body.capture === true && messages.length === 1 && !projectId && homeKind !== "grill" && homeKind !== "plan") {
-      const quick = quickCapture(userText, await getUserTimezone());
+      const tzNow = await getUserTimezone();
+      const quick = quickCapture(userText, tzNow);
       if (quick) return NextResponse.json(await saveQuickCapture(quick));
+      const several = splitCaptureItems(userText, tzNow);
+      if (several) return NextResponse.json(await saveQuickCaptures(several));
     }
 
     // Answers to Tangent's questions ride along with the original request, so
@@ -350,7 +465,7 @@ export const POST = withUser(async (req: Request) => {
         if (weekday) await setCapacity({ weekday, weekend: Math.min(720, Math.round(weekday * 1.6)) });
       }
       pipelineText = `${userText}\n\nMy answers to your questions:\n${answers.map((a) => `- ${a.question} ${a.answer}`).join("\n")}`;
-    } else if (body.route !== "chat" && body.clarify === true && mayAsk && (body.newProject === true || homeKind === "grill" || shouldConsiderClarifying(userText))) {
+    } else if (!slotTurn?.stopped && body.route !== "chat" && body.clarify === true && mayAsk && (body.newProject === true || homeKind === "grill" || shouldConsiderClarifying(userText))) {
       // A new project is always grilled first: it's the biggest ask there is.
       const picture = await buildStudentContext({ purpose: "grill", query: userText }).catch(() => null);
       const questions = picture
@@ -402,6 +517,7 @@ export const POST = withUser(async (req: Request) => {
             answered: answers.length > 0 || slotDrafted,
             source,
             clarify: body.clarify === true,
+            openTask: aboutTask ? { title: aboutTask.title, when: aboutTask.when } : null,
           })
         : calendarReply(messages, pipelineText, onProgress, { project, preview: !project || TANGENT_PIPELINE_V2 });
 
@@ -449,4 +565,16 @@ function ndjson(run: (send: (line: object) => void) => Promise<Record<string, un
   return new Response(stream, {
     headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" },
   });
+}
+
+const SCOPES: readonly TalkScope[] = ["home", "capture", "task", "project", "rail", "palette"];
+function parseScope(raw: unknown): TalkScope {
+  return SCOPES.includes(raw as TalkScope) ? (raw as TalkScope) : "home";
+}
+
+function parsePlanAnswer(raw: unknown): { question: string; answer: string } | null {
+  if (!raw || typeof raw !== "object") return null;
+  const { question, answer } = raw as { question?: unknown; answer?: unknown };
+  if (typeof question !== "string" || typeof answer !== "string" || !answer.trim()) return null;
+  return { question: question.slice(0, 300), answer: answer.trim().slice(0, 500) };
 }

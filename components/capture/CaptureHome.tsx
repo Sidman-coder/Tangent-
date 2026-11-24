@@ -11,17 +11,18 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
-import { Check } from "lucide-react";
+import { Check, ChevronRight } from "lucide-react";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { openTask } from "@/components/TaskDetail";
 import { OPEN_PALETTE_EVENT, useVoiceCapture } from "@/hooks/useVoiceCapture";
 import { useQuestionSets } from "@/hooks/useQuestionSets";
 import { useBrowserCaption } from "@/hooks/useBrowserCaption";
 import { captionWords, liveCaption } from "@/lib/live-caption";
-import { CAPTURE_LENSES, buildCaptureList, captureSections, parseCaptureLens, type CaptureLens } from "@/lib/capture-list";
+import { CAPTURE_LENSES, buildCaptureList, captureSections, parseCaptureLens, urgentRows, type CaptureLens, type CaptureSection } from "@/lib/capture-list";
 import { holdReducer, initialHold, listeningWithoutPress, spaceStartsHold, type Hold, type HoldEvent } from "@/lib/hold-gesture";
 import { heardSomethingToAdd, soundsLikeATask } from "@/lib/voice-intent";
 import { putAsk } from "@/lib/ask-handoff";
+import { putTalkHandoff } from "@/lib/talk-handoff";
 import { planSeriesColor, seriesColor, taskSeries } from "@/lib/task-colors";
 import { toYMD } from "@/lib/dates";
 import { wallClockNow } from "@/lib/time";
@@ -61,6 +62,8 @@ export default function CaptureHome() {
   const [words, setWords] = useState("");
   const [interim, setInterim] = useState("");
   const [outcome, setOutcome] = useState<CaptureOutcome | null>(null);
+  // Round 6 (item 5): the words this outcome came from, for the busy-time offer.
+  const [sortedSaid, setSortedSaid] = useState("");
   const [done, setDone] = useState<Record<string, boolean>>({});
   const islandRef = useRef<HTMLButtonElement>(null);
   const [origin, setOrigin] = useState<Point>({ x: 0, y: 0 });
@@ -118,10 +121,16 @@ export default function CaptureHome() {
       clearFreshSet();
       const result = await capture(said);
       if (seq !== holdRef.current.seq) return;
+      setSortedSaid(said);
       setOutcome(result);
       finishSort(seq);
+      // Asked for a plan in words: Home's planning view builds it.
+      if (result.kind === "plan") {
+        putTalkHandoff({ lines: [], goal: result.said });
+        router.push("/?plan=1");
+      }
     },
-    [capture, clearFreshSet, finishSort]
+    [capture, clearFreshSet, finishSort, router]
   );
 
   const voice = useVoiceCapture({
@@ -354,10 +363,69 @@ export default function CaptureHome() {
   const washOn = listening;
   const wash = revealCircle(origin, typeof window === "undefined" ? { width: 0, height: 0 } : { width: window.innerWidth, height: window.innerHeight });
   const count = sections.reduce((n, sec) => n + sec.rows.length, 0);
-  const urgentCount = lens === "all" ? sections.find((sec) => sec.group === "urgent")?.rows.length ?? 0 : 0;
+  const urgentCount = useMemo(() => (lens === "all" ? urgentRows(allRows, state?.plans ?? [], today).length : 0), [lens, allRows, state?.plans, today]);
+  const nowSections = sections.filter((sec) => sec.group !== "projects");
+  const projectSections = sections.filter((sec) => sec.group === "projects");
+
+  const renderSection = (sec: CaptureSection, sub = false) => (
+    <section key={sec.id} className={`capture-section is-${sec.group}${sub ? " is-sub" : ""}`} aria-label={sec.label}>
+      <h2 className="capture-section-head">
+        <span>{sec.label}</span>
+        <span className="capture-section-count">{sec.rows.length}</span>
+      </h2>
+      <ul className="capture-list">
+        <AnimatePresence initial={false}>
+          {sec.rows.map(({ task, sub: line, overdue }) => (
+            <m.li
+              key={task.id}
+              layout={!reduced}
+              className={`capture-row${overdue ? " is-overdue" : ""}`}
+              style={{ "--row-tint": seriesColor(taskSeries(task, state?.plans ?? [])) } as React.CSSProperties}
+              initial={reduced ? { opacity: 0 } : { opacity: 0, y: -10, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={reduced ? { opacity: 0 } : { opacity: 0, x: 24, transition: { duration: 0.22 } }}
+              transition={{ type: "spring", visualDuration: 0.45, bounce: 0.25 }}
+            >
+              <button type="button" className="capture-check" aria-label={`Complete ${task.title}`} onClick={() => void complete(task)}>
+                <Check size={12} strokeWidth={3} aria-hidden="true" />
+              </button>
+              <button type="button" className="capture-row-body" onClick={() => openTask(task.id)}>
+                <span className="capture-row-title">{task.title}</span>
+                {line && <span className="capture-row-sub">{line}</span>}
+              </button>
+              {task.id === firstId && (
+                <button type="button" className="capture-start" onClick={(e) => startFocusOn(task, e.currentTarget)}>
+                  Start
+                </button>
+              )}
+            </m.li>
+          ))}
+        </AnimatePresence>
+      </ul>
+    </section>
+  );
 
   return (
     <div className="capture-home">
+      {/* Round 5A Phase 3: the mic and composer come first, above the list.
+          Outside the scaled page, and opacity-only, so the press animation
+          doesn't move the island under your thumb. */}
+      <m.div className="capture-head" animate={{ opacity: leaving ? 0 : 1 }} transition={{ duration: 0.17, ease: EASE_IN }}>
+        <header className="capture-top">
+          <span className="capture-wordmark">tangent</span>
+          <Link href="/" className="capture-open-app" onClick={openApp}>Open app →</Link>
+        </header>
+        <CaptureIsland
+          ref={islandRef}
+          state={hold.state}
+          level={voice.getLevel}
+          transcriptTail={liveCaption(words, lastCaption)}
+          transcribing={voice.status === "transcribing" && !words}
+          tapToStop={tapToStop}
+          onEvent={dispatch}
+        />
+      </m.div>
+
       <m.div
         className="capture-page"
         // Transform and opacity only: they stay on the compositor. An animated
@@ -370,14 +438,10 @@ export default function CaptureHome() {
         transition={{ duration: leaving ? 0.17 : washOn ? 0.6 : 0.45, ease: leaving ? EASE_IN : EASE_OUT }}
         aria-hidden={washOn}
       >
-        <header className="capture-top">
-          <span className="capture-wordmark">tangent</span>
-          <Link href="/" className="capture-open-app" onClick={openApp}>Open app →</Link>
-        </header>
-
         <h1 className="capture-title">To do</h1>
         <p className="capture-count">
-          {count === 1 ? "1 thing" : `${count} things`}
+          {/* Overnight Phase 5 (N08): "0 things" read as an empty list while later work exists below All tasks. */}
+          {count === 0 && lens === "all" ? (allRows.length > 0 ? "Nothing due now" : "Nothing to check off") : count === 1 ? "1 thing" : `${count} things`}
           {urgentCount > 0 && <span className="capture-count-urgent"> · {urgentCount} urgent</span>}
         </p>
 
@@ -393,54 +457,27 @@ export default function CaptureHome() {
 
         {state && allRows.length === 0 ? (
           <p className="capture-empty">Nothing to do. Hold to add something.</p>
-        ) : state && count === 0 ? (
+        ) : state && count === 0 && lens !== "all" ? (
           <p className="capture-empty">{lens === "urgent" ? "Nothing urgent. Nice." : "No project steps in the next two weeks."}</p>
         ) : (
           <div className="capture-sections">
-            {sections.map((sec) => (
-              <section key={sec.id} className={`capture-section is-${sec.group}`} aria-label={sec.label}>
-                <h2 className="capture-section-head">
-                  <span>{sec.label}</span>
-                  <span className="capture-section-count">{sec.rows.length}</span>
-                </h2>
-                <ul className="capture-list">
-                  <AnimatePresence initial={false}>
-                    {sec.rows.map(({ task, sub, overdue }) => (
-                      <m.li
-                        key={task.id}
-                        layout={!reduced}
-                        className={`capture-row${overdue ? " is-overdue" : ""}`}
-                        style={{ "--row-tint": seriesColor(taskSeries(task, state?.plans ?? [])) } as React.CSSProperties}
-                        initial={reduced ? { opacity: 0 } : { opacity: 0, y: -10, scale: 0.96 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={reduced ? { opacity: 0 } : { opacity: 0, x: 24, transition: { duration: 0.22 } }}
-                        transition={{ type: "spring", visualDuration: 0.45, bounce: 0.25 }}
-                      >
-                        <button type="button" className="capture-check" aria-label={`Complete ${task.title}`} onClick={() => void complete(task)}>
-                          <Check size={12} strokeWidth={3} aria-hidden="true" />
-                        </button>
-                        <button type="button" className="capture-row-body" onClick={() => openTask(task.id)}>
-                          <span className="capture-row-title">{task.title}</span>
-                          {sub && <span className="capture-row-sub">{sub}</span>}
-                        </button>
-                        {task.id === firstId && (
-                          <button type="button" className="capture-start" onClick={(e) => startFocusOn(task, e.currentTarget)}>
-                            Start
-                          </button>
-                        )}
-                      </m.li>
-                    ))}
-                  </AnimatePresence>
-                </ul>
-              </section>
-            ))}
+            {nowSections.map((sec) => renderSection(sec))}
+            {lens === "all" && state && nowSections.length === 0 && <p className="capture-empty is-inline">Nothing due today. Later work is under All tasks.</p>}
+            {lens === "all" && (
+              <Link href="/tasks" className="capture-all-tasks">
+                All tasks <ChevronRight size={15} aria-hidden="true" />
+              </Link>
+            )}
+            {projectSections.length > 0 && lens === "all" && (
+              <div className="capture-group" role="group" aria-label="Projects & goals">
+                <p className="capture-group-head">Projects &amp; goals</p>
+                {projectSections.map((sec) => renderSection(sec, true))}
+              </div>
+            )}
+            {lens !== "all" && projectSections.map((sec) => renderSection(sec))}
           </div>
         )}
       </m.div>
-
-      {/* The list dissolves into the page behind the island instead of running
-          under it (it steps aside while the wash is up). */}
-      <div className={`capture-fade${washOn ? " is-hidden" : ""}`} aria-hidden="true" />
 
       {/* The lavender takeover, grown from the island's centre. */}
       <AnimatePresence>
@@ -490,6 +527,7 @@ export default function CaptureHome() {
             questionsPending={questionsPending}
             parkedSet={parkedSet}
             line={savedLine}
+            said={sortedSaid}
             onDismiss={dismiss}
             onRetry={(said) => {
               setOutcome(null);
@@ -506,6 +544,11 @@ export default function CaptureHome() {
             onAsk={(said) => {
               putAsk("ai", said);
               router.push("/?ask=1");
+            }}
+            onPlanThis={(said, answer, goal) => {
+              // Round 5A 2.5: Home's planning view, with this talk carried over.
+              putTalkHandoff({ lines: [{ role: "user", text: said }, { role: "assistant", text: answer }], goal });
+              router.push("/?plan=1");
             }}
             onChanged={() => void refresh()}
           />
@@ -532,18 +575,6 @@ export default function CaptureHome() {
         )}
       </AnimatePresence>
 
-      {/* Opacity only: a transform here would become the fixed island's containing block. */}
-      <m.div animate={{ opacity: leaving ? 0 : 1 }} transition={{ duration: 0.17, ease: EASE_IN }}>
-        <CaptureIsland
-          ref={islandRef}
-          state={hold.state}
-          level={voice.getLevel}
-          transcriptTail={liveCaption(words, lastCaption)}
-          transcribing={voice.status === "transcribing" && !words}
-          tapToStop={tapToStop}
-          onEvent={dispatch}
-        />
-      </m.div>
     </div>
   );
 }

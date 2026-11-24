@@ -150,7 +150,7 @@ export default function CalendarImport() {
 
       {progress && !events && (
         <p className="cal-import-done" role="status">
-          Added {progress.added}{progress.skipped ? `; ${progress.skipped} were already there` : ""}. They&apos;re on your calendar under Short-term.
+          Added {progress.added}{progress.skipped ? `; ${progress.skipped} were already there` : ""}. They&apos;re on your calendar under Personal.
         </p>
       )}
       {error && <p className="cal-import-error" role="alert">{error}</p>}

@@ -107,6 +107,31 @@ export function logStepEvent(event: StepEventInput): void {
   logStepEvents([event]);
 }
 
+/** Ids of steps the student checked in on in the last `days` days (the daily
+ *  bubble never asks about those again: lib/student/step-follow-up.ts). Empty
+ *  before the migration or on any error. */
+export async function checkedInTaskIds(days = 3): Promise<Set<string>> {
+  if (tableMissing()) return new Set();
+  try {
+    const { db, userId } = getRequestContext();
+    const since = new Date(Date.now() - days * 86_400_000).toISOString();
+    const { data, error } = await db
+      .from("step_events")
+      .select("task_id")
+      .eq("user_id", userId)
+      .eq("kind", "check_in")
+      .gte("created_at", since)
+      .limit(200);
+    if (error) {
+      noteMissing(error);
+      return new Set();
+    }
+    return new Set((data ?? []).map((r: { task_id: string | null }) => r.task_id).filter((id: string | null): id is string => !!id));
+  } catch {
+    return new Set();
+  }
+}
+
 /** The student's recent observations, newest first (the last 120 days, up to
  *  500). Empty before the migration. */
 export async function readStepEvents(): Promise<StepEvent[]> {
@@ -163,6 +188,32 @@ export async function readPlanStepCodes(planId: string, sinceYmd: string): Promi
     return (data ?? [])
       .filter((r: { kind: unknown; code: unknown }) => isStepEventKind(r.kind) && typeof r.code === "string")
       .map((r: { task_id: string | null; kind: StepEventKind; code: string }) => ({ taskId: r.task_id, kind: r.kind, code: r.code }));
+  } catch {
+    return [];
+  }
+}
+
+/** Round 5A Phase 5: the round review also counts moved steps, which are
+ *  logged with no code. Codes and kinds only, never notes or titles. */
+export async function readPlanReviewCodes(planId: string, sinceYmd: string): Promise<{ taskId: string | null; kind: StepEventKind; code: string }[]> {
+  if (tableMissing() || !UUID_RE.test(planId)) return [];
+  try {
+    const { db, userId } = getRequestContext();
+    const { data, error } = await db
+      .from("step_events")
+      .select("task_id, kind, code")
+      .eq("user_id", userId)
+      .eq("plan_id", planId)
+      .in("kind", ["check_in", "not_today", "rescheduled", "skipped"])
+      .gte("created_at", `${sinceYmd}T00:00:00Z`)
+      .limit(400);
+    if (error) {
+      if (!noteMissing(error)) console.warn("[step-events] could not read review codes:", error.code ?? "unknown");
+      return [];
+    }
+    return (data ?? [])
+      .filter((r: { kind: unknown; code: unknown }) => isStepEventKind(r.kind) && (typeof r.code === "string" || r.kind === "rescheduled" || r.kind === "skipped"))
+      .map((r: { task_id: string | null; kind: StepEventKind; code: string | null }) => ({ taskId: r.task_id, kind: r.kind, code: r.code ?? "" }));
   } catch {
     return [];
   }

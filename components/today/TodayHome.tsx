@@ -16,17 +16,17 @@ import "@/components/dashboard/today-home.css";
 import { useQuestionSets } from "@/hooks/useQuestionSets";
 import { useGrillQueue } from "@/hooks/useGrillQueue";
 import { withoutClearedCanvas } from "@/lib/canvas-clear";
-import { toYMD } from "@/lib/dates";
+import { formatTime12, toYMD } from "@/lib/dates";
 import { getGreeting } from "@/lib/greetings";
 import { todayQueue } from "@/lib/grill-queue";
 import { riseIn, staggerChildren } from "@/lib/motion";
 import { prefsOf } from "@/lib/personalize";
 import { isOnboardingSchoolTask } from "@/lib/school-block";
 import { inView } from "@/lib/task-filters";
-import { localNow, wallClockNow } from "@/lib/time";
+import { addDaysYMD, getUserToday, localNow, wallClockNow } from "@/lib/time";
 import { bumpPutOff, readReplanDay, readSetAside, writeReplanDay, writeSetAside } from "@/lib/today-local";
 import { glanceLine, groupTodayTasks } from "@/lib/today-sections";
-import { MAX_AUTO_MOVES, canMoveStep, freshStartSteps, missedSteps, type SmallerStep } from "@/lib/today-steps";
+import { MAX_AUTO_MOVES, canMoveStep, dayTwoStep, freshStartSteps, missedSteps, nextStepAfter, type SmallerStep } from "@/lib/today-steps";
 import type { ActionRecord, Task } from "@/lib/types";
 import TodayFilter, { useTodayView } from "./TodayFilter";
 import StepFollowUp, { type FollowUp } from "./StepFollowUp";
@@ -136,6 +136,8 @@ export default function TodayHome() {
 
   const tasks = useMemo(() => serverTasks.map((t) => (overrides[t.id] ? { ...t, ...overrides[t.id] } : t)), [overrides, serverTasks]);
   const plans = useMemo(() => state?.plans ?? [], [state]);
+  /** A project the student confirmed (School and Work areas don't count). */
+  const hasProject = plans.some((p) => !p.kind);
 
   const grillToday = useMemo(
     () => todayQueue(grillItems, today, (at) => new Date(at).toLocaleDateString("en-CA", { timeZone: tz })),
@@ -172,10 +174,14 @@ export default function TodayHome() {
   const displayName = state?.user.displayName?.trim() ?? "";
   const leftToday = groups.counts.left;
   const doneToday = useMemo(() => tasks.filter((t) => t.date === today && t.completed && !isOnboardingSchoolTask(t)).length, [tasks, today]);
+  const aheadThisWeek = useMemo(() => {
+    const end = addDaysYMD(today, 7);
+    return tasks.filter((t) => !t.completed && t.date > today && t.date <= end && !isOnboardingSchoolTask(t)).length;
+  }, [tasks, today]);
   useEffect(() => {
     const hour = localNow(tz).hour;
-    setGreeting(displayName ? getGreeting(displayName, hour, { left: leftToday, urgent: groups.counts.must, done: doneToday }) : greetingFor(hour));
-  }, [displayName, tz, leftToday, doneToday, groups.counts.must]);
+    setGreeting(displayName ? getGreeting(displayName, hour, { left: leftToday, urgent: groups.counts.must, done: doneToday, ahead: aheadThisWeek }) : greetingFor(hour));
+  }, [displayName, tz, leftToday, doneToday, groups.counts.must, aheadThisWeek]);
 
   const showReceipt = useCallback((label: string, onUndo?: () => void) => {
     setReceipt({
@@ -232,6 +238,7 @@ export default function TodayHome() {
   // Round 4 §3.4: after Done, a skippable check-in; the second Not today on a
   // step asks why first.
   const [followUp, setFollowUp] = useState<FollowUp | null>(null);
+  const [splitAsk, setSplitAsk] = useState<string | null>(null);
 
   const onDone = (task: Task) => {
     void setCompleted(task, true).then((ok) => {
@@ -240,7 +247,9 @@ export default function TodayHome() {
         setFollowUp((f) => (f?.task.id === task.id ? null : f));
         void setCompleted(task, false);
       });
-      setFollowUp({ kind: "check_in", task });
+      const after = nextStepAfter(tasks, task, today);
+      const next = after ? `${after.title} · ${shortDay(after.date, today)}${after.time ? ` ${formatTime12(after.time)}` : ""}` : null;
+      setFollowUp({ kind: "check_in", task, next });
     });
   };
 
@@ -262,6 +271,8 @@ export default function TodayHome() {
 
   const onWhyNot = (task: Task, reason: string | null) => {
     setFollowUp(null);
+    // Too big: the row opens its split preview; nothing moves until the student picks.
+    if (reason === "too_big") return setSplitAsk(task.id);
     moveOffToday(task, reason);
   };
 
@@ -272,10 +283,11 @@ export default function TodayHome() {
       result = await postJson("/api/today", { action: "not_today", taskId: task.id, reason });
     }).then((ok) => {
       if (!ok) return showReceipt("That didn't move. Try again.");
-      const { actionId, date } = result;
+      const { actionId, date, note } = result;
       if (typeof actionId !== "string") return setAsideForToday(task);
       const day = typeof date === "string" ? shortDay(date, today) : "the days ahead";
-      showReceipt(`Moved “${task.title}” to ${day}`, () => void undoAction(actionId));
+      const why = note === "the lightest day coming up" ? `, ${note}` : typeof note === "string" ? `. Next: ${note}` : "";
+      showReceipt(`Moved “${task.title}” to ${day}${why}`, () => void undoAction(actionId));
     });
   };
 
@@ -317,6 +329,9 @@ export default function TodayHome() {
       });
     });
   };
+
+  // Overnight 2 Phase 3: the day after a plan is confirmed, its first step leads Home.
+  const dayTwo = useMemo(() => dayTwoStep(doable, plans, today, (at) => getUserToday(tz, new Date(at))), [doable, plans, today, tz]);
 
   const clearedSteps = useMemo(() => freshStartSteps(doable, { date: today, minutes: now.getHours() * 60 + now.getMinutes() }), [doable, now, today]);
   const missedCount = useMemo(() => missedSteps(doable, today).length, [doable, today]);
@@ -364,8 +379,9 @@ export default function TodayHome() {
   const user = state?.user;
   const prefs = useMemo(() => prefsOf(user), [user]);
   const startingIntent = prefs.startingIntent;
-  const showCanvasCard = Boolean(user?.email && prefs.helpFocus && !startingIntent);
-  const glance = useMemo(() => glanceLine(groups, instant, tz), [groups, instant, tz]);
+  // Quiet one-line row, and only once the student has a plan of their own (overnight C14).
+  const showCanvasCard = Boolean(user?.email && prefs.helpFocus && !startingIntent && plans.length > 0);
+  const glance = useMemo(() => glanceLine(groups, instant, tz, { pastDue: false }), [groups, instant, tz]);
   const dateLabel = now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 
   const rowActions = { onDone, onUndone, onNotToday, onSplit, onDismiss };
@@ -397,10 +413,22 @@ export default function TodayHome() {
         <AddFlow variant="hero" placeholder="Type or say anything…" />
       </m.div>
 
-      {!questionsOpen && (
-        <m.div variants={riseIn}>
-          <TodayNudge today={today} questionCount={questionCount} setupLeft={setupLeft} onAnswer={() => setQuestionsOpen(true)} />
-        </m.div>
+      {dayTwo && !questionsOpen && (
+        <m.section variants={riseIn} className="today-nudge today-daytwo" aria-label="Your new plan">
+          <p className="today-nudge-text">
+            {dayTwo.madeOn === addDaysYMD(today, -1) ? "Yesterday" : `On ${shortDay(dayTwo.madeOn, today)}`} you planned “{dayTwo.planTitle}”. First up today:{" "}
+            <strong>{dayTwo.step.title}</strong>
+            {dayTwo.step.time && dayTwo.step.time !== "23:59" ? ` · ${formatTime12(dayTwo.step.time)}` : ""}
+          </p>
+          <span className="today-nudge-actions">
+            <button type="button" className="today-nudge-go" disabled={busyTaskId === dayTwo.step.id} onClick={() => onDone(dayTwo.step)}>
+              Done
+            </button>
+            <button type="button" className="today-nudge-go today-daytwo-later" disabled={busyTaskId === dayTwo.step.id} onClick={() => onNotToday(dayTwo.step)}>
+              Not today
+            </button>
+          </span>
+        </m.section>
       )}
 
       {questionsOpen && (
@@ -428,7 +456,16 @@ export default function TodayHome() {
             timezone={tz}
             busyTaskId={busyTaskId}
             questionTaskIds={questionTaskIds}
+            splitTaskId={splitAsk}
+            onSplitAsked={() => setSplitAsk(null)}
             freshStart={view === "all" && clearedSteps.length > 0 ? <FreshStart count={clearedSteps.length} backlog={missedCount > MAX_AUTO_MOVES} onConfirm={freshStart} /> : null}
+            // Overnight 2, N16: the question strip sits under the first day
+            // section, and asks nothing before the first confirmed project.
+            afterFirst={
+              questionsOpen ? null : (
+                <TodayNudge today={today} questionCount={hasProject ? questionCount : 0} setupLeft={setupLeft} onAnswer={() => setQuestionsOpen(true)} />
+              )
+            }
             {...rowActions}
           />
         </div>

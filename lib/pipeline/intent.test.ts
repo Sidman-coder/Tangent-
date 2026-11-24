@@ -139,6 +139,9 @@ void (import("./intent") as Promise<Mod>).then(
       assert.match(msg, /Sunday, 2026-10-11/);
       assert.match(msg, /"ICF Prep"/);
       assert.match(routerUserMessage("hi", TODAY, []), /plans and projects: none/);
+      // Overnight 2 (Maya sim): a task chat names its task for the router.
+      assert.match(routerUserMessage("the final is Dec 17", TODAY, [], { title: "AP Chem final", when: "2026-10-12 at 15:30" }), /chat of their task: "AP Chem final" \(now set for 2026-10-12 at 15:30\)/);
+      assert.doesNotMatch(routerUserMessage("hi", TODAY, []), /chat of their task/);
       if (m.calls[0]) {
         assert.doesNotMatch(m.calls[0].system, /2026|ICF Prep/);
       }

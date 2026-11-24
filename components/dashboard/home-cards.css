@@ -7,7 +7,7 @@
   margin-bottom: 20px;
   padding: 18px 20px;
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: var(--r-lg);
   background: var(--surface);
   box-shadow: var(--shadow-sm);
 }
@@ -22,7 +22,7 @@
 .home-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .home-card-eyebrow {
   margin: 0;
-  font-size: 11px !important;
+  font-size: 12px !important;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -35,7 +35,7 @@
   width: 28px;
   height: 28px;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: none;
   color: var(--text-3);
   cursor: pointer;
@@ -65,7 +65,7 @@
   flex: none;
   width: 36px;
   height: 36px;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   background: color-mix(in srgb, var(--highlight) 14%, transparent);
   color: var(--highlight);
 }
@@ -78,7 +78,7 @@
   height: 4px;
   max-width: 260px;
   margin-top: 6px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--line);
   overflow: hidden;
 }
@@ -91,3 +91,30 @@
   .home-card { padding: 16px; }
   .home-canvas .home-card-actions { margin-left: 0; width: 100%; }
 }
+
+/* Canvas offer: one quiet line, not a card (overnight C14). */
+.home-canvas-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-3);
+  padding: var(--s-2) 0;
+  border-top: 1px solid var(--line);
+  color: var(--text-2);
+  font-size: 0.875rem;
+}
+.home-canvas-row p { margin: 0; flex: 1; min-width: 200px; }
+.home-canvas-row-actions { display: flex; gap: var(--s-1); margin-left: auto; }
+.home-canvas-link {
+  min-height: 44px;
+  padding: 0 var(--s-2);
+  background: none;
+  border: 0;
+  border-radius: var(--r-md);
+  color: var(--accent);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+.home-canvas-link.is-quiet { color: var(--text-2); font-weight: 400; }
+.home-canvas-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

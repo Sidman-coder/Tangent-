@@ -39,9 +39,12 @@ import type {
   PathNode,
   TangentStatus,
   BatchUndoStep,
+  PlanKind,
 } from "./types";
 import { commitmentOf } from "./task-kind";
+import { shiftedEndDate } from "./task-span";
 import { createColumnMemo, schemaErrorKind, warnSchemaOnce } from "./schema-compat";
+import { AREA_TITLE, areasFor, missingAreas, type AreaSignals } from "./school-work";
 import { dedupeFacts, factCategoryFor, factKey, factView, isFactCategory, isFactSource, prepareFact, type FactView } from "./student/facts";
 import { isStudentSlot } from "./context/goal-slots";
 import { isGlobalSlotKey } from "./context/slots";
@@ -129,6 +132,9 @@ type TaskRow = {
   overdue_dismissed_at?: string | null;
   /** Absent until migration 20261105060000 has run. */
   completed_at?: string | null;
+  /** Absent until migration 20261114010000 has run. */
+  duration_min?: number | null;
+  end_date?: string | null;
 };
 const BASE_TASK_COLUMNS =
   "id, title, date, time, completed, kind, calendar_id, plan_id, notes, recurring, resources, start_action, source, external_id, path_node_id";
@@ -137,7 +143,7 @@ const BASE_TASK_COLUMNS =
 // database doesn't have yet is left out of reads and writes until a re-check
 // finds it, and the app reads the missing value through the same rules
 // (commitmentOf in lib/task-kind.ts).
-const OPTIONAL_TASK_COLUMNS = ["commitment_type", "overdue_dismissed_at", "completed_at"] as const;
+const OPTIONAL_TASK_COLUMNS = ["commitment_type", "overdue_dismissed_at", "completed_at", "duration_min", "end_date"] as const;
 const missingTaskColumns = createColumnMemo();
 
 function taskColumns(): string {
@@ -190,6 +196,8 @@ function taskFromRow(r: TaskRow): Task {
   if (r.commitment_type) t.commitment = r.commitment_type;
   if (r.overdue_dismissed_at) t.overdueDismissedAt = r.overdue_dismissed_at;
   if (r.completed_at) t.completedAt = r.completed_at;
+  if (typeof r.duration_min === "number") t.durationMin = r.duration_min;
+  if (r.end_date && r.end_date > r.date) t.endDate = r.end_date;
   // Old ids (Personal/Work/Study/custom) become School or No school here, so
   // nothing above the store sees them (lib/calendars.ts).
   t.calendarId = calendarGroupOf({ ...t, calendarId: r.calendar_id ?? undefined });
@@ -223,6 +231,8 @@ function taskPatchToRow(patch: Partial<Omit<Task, "id">>): Record<string, unknow
   if (has("externalId")) row.external_id = patch.externalId ?? null;
   if (has("commitment")) row.commitment_type = patch.commitment ?? null;
   if (has("overdueDismissedAt")) row.overdue_dismissed_at = patch.overdueDismissedAt ?? null;
+  if (has("durationMin")) row.duration_min = patch.durationMin ?? null;
+  if (has("endDate")) row.end_date = patch.endDate ?? null;
   return row;
 }
 
@@ -481,6 +491,12 @@ export async function toggleTask(id: string): Promise<Task | null> {
 
 export async function updateTask(id: string, patch: Partial<Omit<Task, "id">>): Promise<Task | null> {
   if (!isUuid(id)) return null;
+  // Round 5A 4.3: a range task moved by any path (calendar, AI, Today, undo)
+  // keeps its length in days, and its end never lands before its start.
+  if (patch.date != null && !Object.prototype.hasOwnProperty.call(patch, "endDate") && !missingTaskColumns.isMissing("end_date")) {
+    const current = await getTask(id);
+    if (current?.endDate && current.date !== patch.date) patch = { ...patch, endDate: shiftedEndDate(current, patch.date) };
+  }
   const row = taskPatchToRow(patch);
   if (Object.keys(row).length === 0) return getTask(id);
   const { db, userId } = ctx();
@@ -879,7 +895,17 @@ export async function getNotificationPrefs(): Promise<NotificationPrefs> {
 }
 
 export async function setNotificationPrefs(prefs: NotificationPrefs): Promise<boolean> {
-  return updateProfileOptional("setNotificationPrefs", { notification_prefs: parseNotificationPrefs(prefs) });
+  // The proactive check's last run is the server's, never the settings form's.
+  const { proactiveAt } = await getNotificationPrefs();
+  const next = { ...parseNotificationPrefs(prefs), proactiveAt };
+  if (!proactiveAt) delete next.proactiveAt;
+  return updateProfileOptional("setNotificationPrefs", { notification_prefs: next });
+}
+
+/** Overnight 2, Phase 4: note that the proactive check ran (4-hour gate). */
+export async function markProactiveRun(at: Date): Promise<boolean> {
+  const prefs = await getNotificationPrefs();
+  return updateProfileOptional("markProactiveRun", { notification_prefs: { ...prefs, proactiveAt: at.toISOString() } });
 }
 
 /** Every row the student owns, for "Export my data". Secrets are dropped
@@ -1058,7 +1084,7 @@ export async function replaceSchoolBlock(hours: SchoolHours | null, timezone: st
 // No table of their own: the recurring busy blocks on the calendar are the
 // record, and each series id says which commitment and repeat it came from
 // (lib/commitments.ts). Saving replaces every series, so the editor in
-// onboarding and Settings → Your Tangent can't stack duplicates.
+// onboarding and Settings → Schedule can't stack duplicates.
 
 /** The student's commitments, read back from their busy blocks. A School
  *  block saved before commitments existed shows up as a School commitment. */
@@ -1099,6 +1125,8 @@ export async function replaceCommitments(list: Commitment[], timezone: string): 
     if (error) fail("replaceCommitments", error);
   }
   console.log("[store] replaceCommitments — removed series:", stale.length, "| commitments:", list.length, "| rows:", rows.length);
+  // Round 5A Phase 3: a school or work commitment gives that area a project.
+  await ensureAreaProjects({ commitmentKinds: list.map((c) => c.kind) });
   return rows.length;
 }
 
@@ -1118,7 +1146,8 @@ type PlanRow = {
   task_count: number;
   color: string;
   created_at: string;
-  /** Only once migration 20261114000000 has run (plans are read with `*`). */
+  kind?: string | null;
+  /** Only once migration 20261114020000 has run (plans are read with `*`). */
   last_opened_at?: string | null;
 };
 
@@ -1132,6 +1161,7 @@ function planFromRow(r: PlanRow): Plan {
     color: projectSeries(r.color, r.id),
     createdAt: r.created_at,
     taskCount: r.task_count,
+    ...(r.kind === "school" || r.kind === "work" ? { kind: r.kind } : {}),
   };
   if (r.last_opened_at) plan.lastOpenedAt = iso(r.last_opened_at);
   return plan;
@@ -1143,6 +1173,48 @@ export async function getAllPlans(): Promise<Plan[]> {
     db.from("plans").select("*").eq("user_id", userId).order("created_at").order("id").range(from, to)
   );
   return rows.map(planFromRow);
+}
+
+const missingPlanKind = createColumnMemo();
+
+/** Round 5A Phase 3: creates the School and/or Work project the student has
+ *  told Tangent about (lib/school-work.ts areasFor), once each. Never throws:
+ *  an area project is a nicety, so the caller's save always stands. Does
+ *  nothing before migration 20261114000000_plan_kind runs. */
+export async function ensureAreaProjects(signals: AreaSignals): Promise<PlanKind[]> {
+  const wanted = areasFor(signals);
+  if (wanted.length === 0 || missingPlanKind.isMissing("kind")) return [];
+  try {
+    const { db, userId } = ctx();
+    const { data, error } = await db.from("plans").select("id, kind, color").eq("user_id", userId);
+    if (error) {
+      if (schemaErrorKind(error) === "missing_column") {
+        missingPlanKind.markMissing("kind");
+        warnSchemaOnce("plans.kind", "plans.kind is missing; apply the migrations in docs/MANUAL-STEPS.md");
+        return [];
+      }
+      fail("ensureAreaProjects", error);
+    }
+    const existing = (data ?? []) as { id: string; kind: PlanKind | null; color: string | null }[];
+    const toMake = missingAreas(wanted, existing);
+    const used: SeriesKey[] = existing.map((p) => projectSeries(p.color, p.id));
+    const made: PlanKind[] = [];
+    for (const kind of toMake) {
+      const color = assignProjectColor(used);
+      used.push(color);
+      const { error: insertError } = await db
+        .from("plans")
+        .insert({ user_id: userId, title: AREA_TITLE[kind], description: "", task_ids: [], task_count: 0, color, kind });
+      // 23505: a parallel request made it first. That's the goal anyway.
+      if (insertError && insertError.code !== "23505") fail("ensureAreaProjects", insertError);
+      if (!insertError) made.push(kind);
+    }
+    if (made.length) console.log("[store] ensureAreaProjects — created:", made.join(", "));
+    return made;
+  } catch (e) {
+    console.warn("[store] ensureAreaProjects failed:", e instanceof Error ? e.message : e);
+    return [];
+  }
 }
 
 export async function addPlan(plan: Omit<Plan, "id" | "createdAt" | "color">): Promise<Plan> {
@@ -1398,6 +1470,49 @@ export async function attachFactsUsed(table: "change_sets" | "ai_decisions", id:
     console.warn(`[store] attachFactsUsed(${table}):`, error.code ?? "unknown");
   } catch {
     // A nicety; the change itself is saved.
+  }
+}
+
+/** One confirmed plan change and the facts it used (Round 5B: the map links
+ *  facts to the projects that used them). `planTitle` is the new plan's
+ *  title for an add_plan change set, whose id isn't stored on the row. */
+export type FactUsage = { planId: string | null; planTitle: string | null; factIds: string[] };
+
+/**
+ * The student's confirmed change sets that recorded facts_used, newest first
+ * (at most 200). Empty when the column is missing (the migration hasn't run)
+ * or on any error: the map just draws no usage lines.
+ */
+export async function listFactUsage(): Promise<FactUsage[]> {
+  if (missingFactsUsed.isMissing("change_sets")) return [];
+  try {
+    const { db, userId } = ctx();
+    const { data, error } = await db
+      .from("change_sets")
+      .select("target_plan_id, ops, facts_used")
+      .eq("user_id", userId)
+      .eq("status", "confirmed")
+      .not("facts_used", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (error) {
+      if (schemaErrorKind(error) === "missing_column") missingFactsUsed.markMissing("change_sets");
+      return [];
+    }
+    const out: FactUsage[] = [];
+    for (const row of (data ?? []) as { target_plan_id: string | null; ops: unknown; facts_used: unknown }[]) {
+      const factIds = (Array.isArray(row.facts_used) ? row.facts_used : [])
+        .map((f) => (f && typeof f === "object" ? String((f as { id?: unknown }).id ?? "") : ""))
+        .filter(Boolean);
+      if (!factIds.length) continue;
+      const addPlan = (Array.isArray(row.ops) ? row.ops : []).find((o) => o && typeof o === "object" && (o as { op?: unknown }).op === "add_plan") as
+        | { title?: unknown }
+        | undefined;
+      out.push({ planId: row.target_plan_id ?? null, planTitle: typeof addPlan?.title === "string" ? addPlan.title : null, factIds });
+    }
+    return out;
+  } catch {
+    return [];
   }
 }
 
@@ -3050,7 +3165,14 @@ async function applyUndo(record: ActionRecord): Promise<void> {
     }
     case "reschedule_task": {
       const r = snap.rescheduled;
-      if (r) await updateTask(r.taskId, { date: r.fromDate, time: r.fromTime });
+      if (r) {
+        await updateTask(r.taskId, {
+          date: r.fromDate,
+          time: r.fromTime,
+          // Only a move that also shifted a range's end records it.
+          ...(r.fromEndDate !== undefined ? { endDate: r.fromEndDate } : {}),
+        });
+      }
       for (const move of snap.rescheduledMany ?? []) {
         await updateTask(move.taskId, { date: move.fromDate, time: move.fromTime });
       }
@@ -3463,7 +3585,49 @@ export async function getCanvasFeedStatus(): Promise<CanvasFeedStatus | null> {
     connectedAt: feed.connectedAt,
     lastSyncedAt: feed.lastSyncedAt,
     lastSyncCount: feed.lastSyncCount,
+    itemCount: await countCanvasTasks(),
   };
+}
+
+/** How many Canvas items (done or not) are in this student's calendar. */
+export async function countCanvasTasks(): Promise<number> {
+  const { db, userId } = ctx();
+  const { data, error } = await db.from("tasks").select("id").eq("user_id", userId).eq("source", "canvas");
+  if (error) fail("countCanvasTasks", error);
+  return data?.length ?? 0;
+}
+
+/** Overnight 2, Phase 6 (Sid approved): Disconnect Canvas. Always deletes the
+ *  stored feed link, so nothing syncs again; deletes the items it brought in
+ *  only when the student said so. Only this student's rows. */
+export async function disconnectCanvas(opts: { removeItems: boolean }): Promise<{ removedItems: number }> {
+  const { db, userId } = ctx();
+  const { error } = await db.from("canvas_feeds").delete().eq("user_id", userId);
+  if (error) fail("disconnectCanvas feed", error);
+  let removedItems = 0;
+  if (opts.removeItems) {
+    const { data, error: taskError } = await db.from("tasks").delete().eq("user_id", userId).eq("source", "canvas").select("id");
+    if (taskError) fail("disconnectCanvas tasks", taskError);
+    removedItems = data?.length ?? 0;
+  }
+  console.log("[store] disconnectCanvas: removed items:", removedItems);
+  return { removedItems };
+}
+
+/** Overnight 2, Phase 6: deletes this student's observation log rows
+ *  (`step_events`), all of them or only some kinds ("Tangent noticed" →
+ *  Forget). Nothing to do on a database without the table. */
+export async function forgetObservations(kinds?: readonly string[]): Promise<number> {
+  const { db, userId } = ctx();
+  if (kinds && kinds.length === 0) return 0;
+  let q = db.from("step_events").delete().eq("user_id", userId);
+  if (kinds) q = q.in("kind", kinds as string[]);
+  const { data, error } = await q.select("id");
+  if (error) {
+    if (schemaErrorKind(error) === "missing_table") return 0;
+    fail("forgetObservations", error);
+  }
+  return data?.length ?? 0;
 }
 
 export async function saveCanvasFeed(icsUrl: string): Promise<CanvasFeedConfig> {
@@ -3478,6 +3642,8 @@ export async function saveCanvasFeed(icsUrl: string): Promise<CanvasFeedConfig> 
     .single();
   if (error) fail("saveCanvasFeed", error);
   console.log("[store] saveCanvasFeed: connected");
+  // Round 5A Phase 3: Canvas means school, so the student gets School.
+  await ensureAreaProjects({ canvasConnected: true });
   return canvasFeedFromRow(data as CanvasFeedRow);
 }
 
@@ -3679,14 +3845,14 @@ async function selectPathNodes(where: string, pathId?: string): Promise<PathNode
 
 // ─── Last opened (projects and Tangents) ─────────────────────────────────────
 // The sidebar lists what a student actually opens. last_opened_at arrives with
-// migration 20261114000000; until then reads skip it and opening is a no-op.
+// migration 20261114020000; until then reads skip it and opening is a no-op.
 
 const missingLastOpened = createColumnMemo();
 
 function noteMissingLastOpened(table: string, error: { code?: string; message?: string }): boolean {
   if (schemaErrorKind(error) !== "missing_column") return false;
   missingLastOpened.markMissing(table);
-  warnSchemaOnce(`last_opened_at:${table}`, `${table}.last_opened_at is missing; run migration 20261114000000_last_opened.sql`);
+  warnSchemaOnce(`last_opened_at:${table}`, `${table}.last_opened_at is missing; run migration 20261114020000_last_opened.sql`);
   return true;
 }
 

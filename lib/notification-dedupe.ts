@@ -49,3 +49,36 @@ export function collapseDuplicates<T extends { id?: string; title: string; type?
   }
   return kept.map((k) => k.item);
 }
+
+// Round 5A Phase 6: "Six tasks are overdue" and "Post your first Reel is
+// overdue" say the same thing twice. When an aggregate overdue alert is in the
+// list, it absorbs the single overdue alerts (their ids join its duplicateIds,
+// so dismissing it dismisses them). Reschedule offers are kept: they carry
+// their own action.
+
+const AGGREGATE =
+  /\b(?:\d+|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|several|multiple|many|some)\s+(?:\w+\s+){0,2}(?:tasks|steps|things|items)\b.*\boverdue\b|\boverdue\s+(?:tasks|steps)\b/i;
+
+/** True for an alert about several overdue tasks at once. */
+export function isAggregateOverdue(n: { type?: string; title: string }): boolean {
+  return n.type === "overdue_task" && AGGREGATE.test(n.title);
+}
+
+/** One overdue alert instead of an aggregate plus each single one. The list
+ *  is newest first, so the newest aggregate is the one kept. */
+export function mergeOverdue<T extends { id?: string; title: string; type?: string; duplicateIds?: string[] }>(list: T[]): T[] {
+  const aggregate = list.find((n) => isAggregateOverdue(n));
+  if (!aggregate) return list;
+  const absorbed: string[] = [];
+  const kept: T[] = [];
+  for (const n of list) {
+    if (n !== aggregate && n.type === "overdue_task") {
+      if (n.id) absorbed.push(n.id);
+      absorbed.push(...(n.duplicateIds ?? []));
+    } else {
+      kept.push(n);
+    }
+  }
+  if (absorbed.length === 0) return list;
+  return kept.map((n) => (n === aggregate ? { ...n, duplicateIds: [...(n.duplicateIds ?? []), ...absorbed] } : n));
+}

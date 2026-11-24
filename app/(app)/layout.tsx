@@ -7,6 +7,7 @@ import FeatureTour from "@/components/FeatureTour";
 import TaskDetail from "@/components/TaskDetail";
 import RecentChanges from "@/components/RecentChanges";
 import UndoToast from "@/components/UndoToast";
+import DraftDock from "@/components/drafts/DraftDock";
 
 // Signed-in app chrome. Sign-in, waitlist and under-13 pages live outside this group
 // so they don't mount the shell or start polling student data.
@@ -23,6 +24,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <TaskDetail />
           <RecentChanges />
           <UndoToast />
+          <DraftDock />
         </MotionProvider>
       </AppStateProvider>
     </PipelineFlagProvider>

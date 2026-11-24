@@ -1,25 +1,28 @@
 "use client"
-import { useState, useEffect, useCallback, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, useCallback, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from "react"
 import { createPortal } from "react-dom"
-import { AnimatePresence } from "motion/react"
+import { AnimatePresence, useReducedMotion } from "motion/react"
 import * as m from "motion/react-m"
 import { PHONE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery"
-import { duration, ease } from "@/lib/motion"
+import { duration, ease, spring } from "@/lib/motion"
 import { Sun, Lightbulb, AlertTriangle, Clock, Calendar, Bell, X, type LucideIcon } from "lucide-react"
 import { Notification } from "@/lib/types"
 import { notifyNewDesktopNotifications } from "@/lib/desktop-notifications"
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider"
 import { getUserToday } from "@/lib/time"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { QUESTIONS_EVENT } from "@/lib/questions-client"
 import { claimPopups, getInAppPopupsEnabled, planToasts, popupCandidates, type Toast } from "@/lib/notification-popups"
 import NotificationToasts from "@/components/NotificationToasts"
 import Sheet from "@/components/ui/Sheet"
 import Button from "@/components/ui/Button"
-import EmptyState from "@/components/ui/EmptyState"
 import { humanizeTimestamps } from "@/lib/humanize"
-import { collapseDuplicates } from "@/lib/notification-dedupe"
+import { collapseDuplicates, mergeOverdue } from "@/lib/notification-dedupe"
+import { groupByDay, relativeTime } from "@/lib/relative-time"
 import { TODAYS_SUMMARY_ENABLED, visibleNotifications } from "@/lib/feature-flags"
+
+/** /dev/app only: sample notifications instead of the server's list. */
+export const SampleNotificationsContext = createContext<Notification[] | null>(null)
 
 type NotificationBellProps = {
   open: boolean
@@ -35,7 +38,10 @@ type NotificationBellProps = {
  */
 export default function NotificationBell({ open, onOpenChange, onUnreadChange }: NotificationBellProps) {
   const tz = useUserTimezone()
-  const email = useAppState().state?.user.email ?? ""
+  const sample = useContext(SampleNotificationsContext)
+  const userEmail = useAppState().state?.user.email ?? ""
+  // Samples never pop toasts or claim anything on the server.
+  const email = sample ? "" : userEmail
   const [toasts, setToasts] = useState<Toast[]>([])
   // Ids already asked about in this tab, so each poll only claims new ones.
   const askedRef = useRef<Set<string>>(new Set())
@@ -47,36 +53,59 @@ export default function NotificationBell({ open, onOpenChange, onUnreadChange }:
   const setOpen = onOpenChange
 
   const fetchNotifications = useCallback(async () => {
+    if (sample) {
+      // Loaded once; dismiss and clear only change the local copy.
+      if (lastFetchRef.current === 0) setNotifications(visibleNotifications(mergeOverdue(collapseDuplicates(sample))))
+      lastFetchRef.current = Date.now()
+      return
+    }
     lastFetchRef.current = Date.now()
     try {
       const r = await fetch("/api/notifications")
       const data = await r.json()
       const raw: Notification[] = data.notifications || []
-      // One per reminder: the reminder job can repeat itself (lib/notification-dedupe.ts).
+      // One per reminder: the reminder job can repeat itself, and "Six tasks
+      // are overdue" absorbs the single overdue alerts (lib/notification-dedupe.ts).
       // Today's summary is hidden for now (lib/feature-flags.ts).
-      const list = visibleNotifications(collapseDuplicates(raw))
+      const list = visibleNotifications(mergeOverdue(collapseDuplicates(raw)))
       setNotifications(list)
       // Desktop notifications piggyback on this same poll — no extra fetch.
       // See lib/desktop-notifications.ts for the opt-in + anti-spam rules.
       notifyNewDesktopNotifications(list)
     } catch {}
-  }, [])
+  }, [sample])
 
   const unreadCount = notifications.filter(n => !n.read).length
   useEffect(() => {
     onUnreadChange?.(unreadCount)
   }, [onUnreadChange, unreadCount])
 
-  // The proactive check runs once on load, then the list polls every minute.
+  // The list loads once, then polls every minute.
   useEffect(() => {
+    void fetchNotifications()
+    if (sample) return
+    const interval = setInterval(fetchNotifications, 60000)
+    return () => clearInterval(interval)
+  }, [fetchNotifications, sample])
+
+  // Overnight 2, Phase 4: the proactive check runs only from Home and
+  // Calendar, and the server runs it at most once per 4 hours (lib/proactive.ts).
+  // This tab asks at most every 30 minutes, so moving between pages costs nothing.
+  const pathname = usePathname()
+  const proactiveAskedRef = useRef(0)
+  useEffect(() => {
+    if (sample || !(pathname === "/" || pathname?.startsWith("/calendar"))) return
+    if (Date.now() - proactiveAskedRef.current < 30 * 60 * 1000) return
+    proactiveAskedRef.current = Date.now()
     fetch("/api/proactive", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ trigger: "page_load" })
-    }).catch(() => {}).finally(() => void fetchNotifications())
-    const interval = setInterval(fetchNotifications, 60000)
-    return () => clearInterval(interval)
-  }, [fetchNotifications])
+    })
+      .then((r) => r.json().catch(() => ({})))
+      .then((data: { generated?: number }) => { if (data.generated) void fetchNotifications() })
+      .catch(() => {})
+  }, [pathname, sample, fetchNotifications])
 
   // Refetch as soon as the tab comes back (not a second loop — one fetch per
   // return, and never twice within 5 s since focus and visibility fire together).
@@ -129,6 +158,10 @@ export default function NotificationBell({ open, onOpenChange, onUnreadChange }:
   }, [open])
 
   const handleDismiss = async (id: string) => {
+    if (sample) {
+      setNotifications(list => list.filter(n => n.id !== id))
+      return
+    }
     // Its hidden copies go with it, so an older twin doesn't take its place.
     const twins = (notifications.find(n => n.id === id) as (Notification & { duplicateIds?: string[] }) | undefined)?.duplicateIds ?? []
     await Promise.all([id, ...twins].map(one => fetch("/api/notifications", {
@@ -141,6 +174,10 @@ export default function NotificationBell({ open, onOpenChange, onUnreadChange }:
 
   const handleMarkRead = async (n: Notification) => {
     if (n.read) return
+    if (sample) {
+      setNotifications(list => list.map(one => (one.id === n.id ? { ...one, read: true } : one)))
+      return
+    }
     await fetch("/api/notifications", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -160,6 +197,10 @@ export default function NotificationBell({ open, onOpenChange, onUnreadChange }:
   }
 
   const handleClearAll = async () => {
+    if (sample) {
+      setNotifications([])
+      return
+    }
     setClearing(true)
     try {
       await fetch("/api/notifications", {
@@ -175,6 +216,7 @@ export default function NotificationBell({ open, onOpenChange, onUnreadChange }:
   }
 
   const handleReschedule = async (n: Notification) => {
+    if (sample) return handleDismiss(n.id)
     await fetch("/api/reschedule", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -197,6 +239,10 @@ export default function NotificationBell({ open, onOpenChange, onUnreadChange }:
   const today = getUserToday(tz)
   const pinnedBrief = notifications.find(n => n.type === 'daily_brief' && getUserToday(tz, new Date(n.timestamp)) === today)
   const restNotifications = notifications.filter(n => n !== pinnedBrief)
+  // Read at render: the list re-renders on every poll, so "5m ago" stays close.
+  const now = new Date()
+  const dayOf = (at: Date) => getUserToday(tz, at)
+  const groups = groupByDay(restNotifications, now, dayOf)
 
   const renderNotif = (n: Notification, pinned = false) => {
     const Icon = getIcon(n.type)
@@ -214,12 +260,16 @@ export default function NotificationBell({ open, onOpenChange, onUnreadChange }:
           </p>
           <p className="notif-item-body">{humanizeTimestamps(n.body)}</p>
           <div className="notif-item-meta">
-            <time className="notif-item-time" dateTime={n.timestamp}>
-              {new Date(n.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+            <time
+              className="notif-item-time"
+              dateTime={n.timestamp}
+              title={new Date(n.timestamp).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+            >
+              {relativeTime(n.timestamp, now, dayOf)}
             </time>
             {n.actionLabel && (
               <Button
-                variant="secondary"
+                variant="soft"
                 size="sm"
                 className="notif-item-action"
                 onClick={e => {
@@ -260,13 +310,20 @@ export default function NotificationBell({ open, onOpenChange, onUnreadChange }:
         onAction={n => void handleReschedule(n)}
         onOpenInbox={() => setOpen(true)}
       />
-      <NotifSurface open={open} onClose={() => setOpen(false)}>
-        {((TODAYS_SUMMARY_ENABLED && !pinnedBrief) || notifications.length > 0) && (
-        <div className="notif-actions">
-          {TODAYS_SUMMARY_ENABLED && !pinnedBrief && (
+      <NotifSurface
+        open={open}
+        onClose={() => setOpen(false)}
+        clearAll={notifications.length > 0 && (
+          <Button size="sm" variant="ghost" className="notif-clear" loading={clearing} onClick={() => void handleClearAll()}>
+            Dismiss all
+          </Button>
+        )}
+      >
+        {TODAYS_SUMMARY_ENABLED && !pinnedBrief && (
+          <div className="notif-actions">
             <Button
               size="sm"
-              variant="secondary"
+              variant="soft"
               icon={<Sun size={16} strokeWidth={1.75} aria-hidden="true" />}
               loading={loading}
               loadingLabel="Writing today's summary"
@@ -274,26 +331,32 @@ export default function NotificationBell({ open, onOpenChange, onUnreadChange }:
             >
               Today&apos;s summary
             </Button>
-          )}
-          {notifications.length > 0 && (
-            <Button size="sm" variant="ghost" loading={clearing} onClick={() => void handleClearAll()}>
-              Clear all
-            </Button>
-          )}
-        </div>
+          </div>
         )}
         {notifications.length === 0 ? (
-          <EmptyState
-            icon={<Bell strokeWidth={1.75} aria-hidden="true" />}
-            title="Nothing new"
-          >
-            Tangent is keeping an eye on your week.
-          </EmptyState>
+          <div className="notif-empty">
+            <span className="notif-empty-icon" aria-hidden="true"><Bell size={22} strokeWidth={1.75} /></span>
+            <p className="notif-empty-title">You&apos;re all caught up</p>
+            <p className="notif-empty-body">Tangent is keeping an eye on your week.</p>
+          </div>
         ) : (
-          <ul className="notif-list">
-            {pinnedBrief && renderNotif(pinnedBrief, true)}
-            {restNotifications.map(n => renderNotif(n))}
-          </ul>
+          <>
+            {(pinnedBrief || groups.today.length > 0) && (
+              <section className="notif-group" aria-labelledby="notif-group-today">
+                <h3 id="notif-group-today" className="notif-group-label">Today</h3>
+                <ul className="notif-list">
+                  {pinnedBrief && renderNotif(pinnedBrief, true)}
+                  {groups.today.map(n => renderNotif(n))}
+                </ul>
+              </section>
+            )}
+            {groups.earlier.length > 0 && (
+              <section className="notif-group" aria-labelledby="notif-group-earlier">
+                <h3 id="notif-group-earlier" className="notif-group-label">Earlier</h3>
+                <ul className="notif-list">{groups.earlier.map(n => renderNotif(n))}</ul>
+              </section>
+            )}
+          </>
         )}
       </NotifSurface>
     </>
@@ -305,7 +368,7 @@ export default function NotificationBell({ open, onOpenChange, onUnreadChange }:
  * the bell on desktop (no sliding panel from the side), a bottom sheet on a
  * phone. Escape and a click outside close it; focus goes back to the bell.
  */
-function NotifSurface({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
+function NotifSurface({ open, onClose, clearAll, children }: { open: boolean; onClose: () => void; clearAll: ReactNode; children: ReactNode }) {
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
   const isPhone = useMediaQuery(PHONE_QUERY, { sync: true })
@@ -313,12 +376,13 @@ function NotifSurface({ open, onClose, children }: { open: boolean; onClose: () 
   if (isPhone) {
     return (
       <Sheet open={open} onClose={onClose} title="Notifications" className="notif-sheet">
+        {clearAll && <div className="notif-sheet-tools">{clearAll}</div>}
         {children}
       </Sheet>
     )
   }
   return createPortal(
-    <AnimatePresence>{open && <NotifPopover key="notif" onClose={onClose}>{children}</NotifPopover>}</AnimatePresence>,
+    <AnimatePresence>{open && <NotifPopover key="notif" onClose={onClose} clearAll={clearAll}>{children}</NotifPopover>}</AnimatePresence>,
     document.body,
   )
 }
@@ -329,20 +393,27 @@ function visibleBell(): HTMLElement | null {
   return bells.find(b => b.getClientRects().length > 0) ?? null
 }
 
-const GAP = 10
+const GAP = 14
 const EDGE = 12
+/** The tail never sits in the rounded corner. */
+const TAIL_MIN = 26
 
-function NotifPopover({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+type Side = "left" | "top"
+type Tail = { side: Side; style: CSSProperties; origin: string }
+
+function NotifPopover({ onClose, clearAll, children }: { onClose: () => void; clearAll: ReactNode; children: ReactNode }) {
   const panelRef = useRef<HTMLDivElement>(null)
   const openerRef = useRef<HTMLElement | null>(null)
+  const reduce = useReducedMotion()
   const [pos, setPos] = useState<CSSProperties>({ visibility: "hidden" })
-  const [origin, setOrigin] = useState("left bottom")
+  const [tail, setTail] = useState<Tail | null>(null)
   // The parent passes a fresh onClose each render; the listeners below stay put.
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
 
   // Sit beside the bell: to its right when it is in the sidebar, under it when
-  // it is in a top bar. Keep inside the window either way.
+  // it is in a top bar. Keep inside the window either way. The tail points at
+  // the bell's middle and the spring grows out of the tail.
   useLayoutEffect(() => {
     openerRef.current = visibleBell()
     const place = () => {
@@ -351,24 +422,32 @@ function NotifPopover({ onClose, children }: { onClose: () => void; children: Re
       const vh = window.innerHeight
       if (!bell) {
         setPos({ right: EDGE, top: EDGE })
-        setOrigin("right top")
+        setTail(null)
         return
       }
       const r = bell.getBoundingClientRect()
+      const width = panelRef.current?.offsetWidth ?? 380
       if (r.left < vw / 2) {
         // Sidebar bell: open to its right. Low in the window, bottoms line up;
         // higher up, tops line up and the list scrolls inside what is left.
-        const left = Math.min(r.right + GAP, vw - EDGE - 380)
+        const left = Math.min(r.right + GAP, vw - EDGE - width)
+        const mid = r.top + r.height / 2
         if (r.top > vh / 2) {
-          setPos({ left, bottom: Math.max(EDGE, vh - r.bottom) })
-          setOrigin("left bottom")
+          const bottom = Math.max(EDGE, vh - r.bottom - 6)
+          const fromBottom = Math.max(TAIL_MIN, vh - bottom - mid)
+          setPos({ left, bottom })
+          setTail({ side: "left", style: { bottom: fromBottom - 7 }, origin: `0px calc(100% - ${fromBottom}px)` })
         } else {
-          setPos({ left, top: Math.max(EDGE, r.top), maxHeight: Math.min(560, vh - Math.max(EDGE, r.top) - EDGE) })
-          setOrigin("left top")
+          const top = Math.max(EDGE, r.top - 6)
+          const fromTop = Math.max(TAIL_MIN, mid - top)
+          setPos({ left, top, maxHeight: Math.min(560, vh - top - EDGE) })
+          setTail({ side: "left", style: { top: fromTop - 7 }, origin: `0px ${fromTop}px` })
         }
       } else {
-        setPos({ right: Math.max(EDGE, vw - r.right), top: r.bottom + GAP })
-        setOrigin("right top")
+        const right = Math.max(EDGE, vw - r.right - 8)
+        const fromRight = Math.max(TAIL_MIN, vw - right - (r.left + r.width / 2))
+        setPos({ right, top: r.bottom + GAP })
+        setTail({ side: "top", style: { right: fromRight - 7 }, origin: `calc(100% - ${fromRight}px) 0px` })
       }
     }
     place()
@@ -402,26 +481,44 @@ function NotifPopover({ onClose, children }: { onClose: () => void; children: Re
     }
   }, [])
 
+  // Springs out of the bell with a slight overshoot (TANGENT-STYLE.md motion
+  // exception); reduced motion is a plain fade.
+  const motionProps = reduce
+    ? {
+        initial: { opacity: 0 },
+        animate: { opacity: 1, transition: { duration: 0.1 } },
+        exit: { opacity: 0, transition: { duration: 0.1 } },
+      }
+    : {
+        initial: { opacity: 0, scale: 0.6 },
+        animate: { opacity: 1, scale: 1, transition: { scale: spring.pop, opacity: { duration: duration.fast, ease: ease.out } } },
+        exit: { opacity: 0, scale: 0.92, transition: { duration: duration.fast, ease: ease.in } },
+      }
+
   return (
     <m.div
       ref={panelRef}
-      className="notif-popover"
+      className={`notif-popover${tail ? ` has-tail-${tail.side}` : ""}`}
       role="dialog"
       aria-modal="false"
       aria-labelledby="notif-popover-title"
       tabIndex={-1}
-      style={{ ...pos, transformOrigin: origin }}
-      initial={{ opacity: 0, scale: 0.96, y: 4 }}
-      animate={{ opacity: 1, scale: 1, y: 0, transition: { duration: duration.base, ease: ease.out } }}
-      exit={{ opacity: 0, scale: 0.97, y: 4, transition: { duration: duration.fast, ease: ease.in } }}
+      style={{ ...pos, transformOrigin: tail?.origin ?? "right top" }}
+      {...motionProps}
     >
-      <div className="notif-popover-head">
-        <h2 id="notif-popover-title" className="notif-popover-title">Notifications</h2>
-        <button type="button" className="notif-popover-close" aria-label="Close notifications" onClick={onClose}>
-          <X size={16} strokeWidth={1.75} aria-hidden="true" />
-        </button>
+      {tail && <span className={`notif-popover-tail is-${tail.side}`} style={tail.style} aria-hidden="true" />}
+      <div className="notif-popover-inner">
+        <div className="notif-popover-head">
+          <h2 id="notif-popover-title" className="notif-popover-title">Notifications</h2>
+          <div className="notif-popover-tools">
+            {clearAll}
+            <button type="button" className="notif-popover-close" aria-label="Close notifications" onClick={onClose}>
+              <X size={16} strokeWidth={1.75} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+        <div className="notif-popover-body">{children}</div>
       </div>
-      <div className="notif-popover-body">{children}</div>
     </m.div>
   )
 }

@@ -19,6 +19,7 @@ import { withUser } from "@/lib/request-context";
 import { trackEvent } from "@/lib/analytics";
 import { logServerError } from "@/lib/server-log";
 import { normalizeTime, taskFieldError } from "@/lib/task-input";
+import { isMultiDay, spanFieldError } from "@/lib/task-span";
 import { logStepEvent } from "@/lib/student/step-events";
 
 const TASK_KINDS: TaskKind[] = ["school", "academic-ec", "side-ec", "personal", "commitment"];
@@ -56,6 +57,11 @@ export const POST = withUser(async (req: Request) => {
       date?: string;
       time?: string;
       kind?: string;
+      /** Round 5A 4.3: the last day of a range task (null = single date).
+       *  Not `endDate`, which is the end of a repeat rule. */
+      rangeEnd?: string | null;
+      /** Round 5A 4.3: block length in minutes (null = the default). */
+      durationMin?: number | null;
       commitment?: string;
       completed?: boolean;
       calendarId?: string | null;
@@ -80,6 +86,8 @@ export const POST = withUser(async (req: Request) => {
     // Values Postgres would reject become a 400 here, not a 500 from the insert.
     const fieldError = taskFieldError(body);
     if (fieldError) return NextResponse.json({ ok: false, error: fieldError }, { status: 400 });
+    const spanError = spanFieldError({ date: body.date, endDate: body.rangeEnd, durationMin: body.durationMin });
+    if (spanError) return NextResponse.json({ ok: false, error: spanError }, { status: 400 });
     if (typeof body.time === "string") body.time = normalizeTime(body.time);
 
     // Round 4 Phase 4.2: the add form can put a task in a project and say what
@@ -97,9 +105,10 @@ export const POST = withUser(async (req: Request) => {
       if (!body.title?.trim()) {
         return NextResponse.json({ ok: false, error: "title is required" }, { status: 400 });
       }
+      const addDate = body.date ?? getUserToday(await getUserTimezone());
       const task = await addTask({
         title: body.title.trim(),
-        date: body.date ?? getUserToday(await getUserTimezone()),
+        date: addDate,
         time: body.time ?? "09:00",
         kind: TASK_KINDS.includes(body.kind as TaskKind) ? (body.kind as TaskKind) : undefined,
         completed: false,
@@ -107,6 +116,8 @@ export const POST = withUser(async (req: Request) => {
         notes: body.notes?.trim() || undefined,
         ...(addPlanId ? { planId: addPlanId } : {}),
         ...(addCommitment ? { commitment: addCommitment } : {}),
+        ...(body.durationMin ? { durationMin: body.durationMin } : {}),
+        ...(body.rangeEnd && isMultiDay({ date: addDate, endDate: body.rangeEnd }) ? { endDate: body.rangeEnd } : {}),
       });
       if (task.wasDuplicate) {
         console.log("[api/tasks] add_task skipped duplicate:", task.id);
@@ -188,6 +199,8 @@ export const POST = withUser(async (req: Request) => {
         patch.kind = body.kind as TaskKind;
       }
       if (body.completed !== undefined) patch.completed = body.completed;
+      if (body.durationMin !== undefined) patch.durationMin = body.durationMin;
+      if (body.rangeEnd !== undefined) patch.endDate = body.rangeEnd;
       const moved = body.date !== undefined || body.time !== undefined;
       const task = await updateTask(body.id, patch);
       if (!task) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
@@ -197,6 +210,33 @@ export const POST = withUser(async (req: Request) => {
         logStepEvent({ kind: "done", task });
       } else if (moved) logStepEvent({ kind: "rescheduled", task });
       return NextResponse.json({ ok: true, task, state: await getAppState() });
+    }
+
+    // Round 5A 4.3: the calendar's resize handle. One undoable change.
+    if (action === "resize_task") {
+      if (!body.id) return NextResponse.json({ ok: false, error: "id is required" }, { status: 400 });
+      if (body.durationMin === undefined && body.rangeEnd === undefined) {
+        return NextResponse.json({ ok: false, error: "durationMin or rangeEnd is required" }, { status: 400 });
+      }
+      const before = await updateTask(body.id, {});
+      if (!before) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
+      const endError = spanFieldError({ date: before.date, endDate: body.rangeEnd });
+      if (endError) return NextResponse.json({ ok: false, error: endError }, { status: 400 });
+      const task = await updateTask(body.id, {
+        ...(body.durationMin !== undefined ? { durationMin: body.durationMin } : {}),
+        ...(body.rangeEnd !== undefined ? { endDate: body.rangeEnd && body.rangeEnd > before.date ? body.rangeEnd : null } : {}),
+      });
+      if (!task) return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
+      // False until migration 20261114010000 has run: nothing was stored.
+      const saved =
+        (body.durationMin === undefined || task.durationMin === body.durationMin) &&
+        (body.rangeEnd === undefined || (task.endDate ?? null) === (body.rangeEnd && body.rangeEnd > before.date ? body.rangeEnd : null));
+      const record = saved
+        ? await recordAction("reschedule_task", `Changed how long "${task.title}" runs`, {
+            restoredFields: [{ taskId: task.id, fields: { durationMin: before.durationMin ?? null, endDate: before.endDate ?? null } }],
+          })
+        : null;
+      return NextResponse.json({ ok: true, task, saved, actionId: record?.id ?? null, state: await getAppState() });
     }
 
     // The Type selector in task detail. `saved` is false until the column exists.

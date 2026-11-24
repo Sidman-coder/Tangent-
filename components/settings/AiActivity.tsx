@@ -137,22 +137,22 @@ export default function AiActivity() {
       <h2 id="ai-activity-title" className="settings-group-title">Requests</h2>
       <p className="settings-group-note">
         Every request Tangent AI handled, what it understood, and what happened. For what Tangent knows about you, see{" "}
-        <a href="/settings/your-tangent">Your Tangent</a>.
+        <a href="/settings/context">What Tangent knows</a>.
       </p>
       <div className="settings-card aia-card">
       {rows.length > 0 && !confirmClear && (
         <div className="aia-card-actions">
           <button type="button" className="knows-secondary" onClick={() => setConfirmClear(true)}>
-            Clear activity
+            Delete activity
           </button>
         </div>
       )}
 
       {confirmClear && (
-        <div className="aia-confirm" role="alertdialog" aria-label="Clear AI activity" aria-describedby="aia-confirm-text">
+        <div className="aia-confirm" role="alertdialog" aria-label="Delete AI activity" aria-describedby="aia-confirm-text">
           <span id="aia-confirm-text">{CLEAR_CONFIRM_TEXT}</span>
-          <Button variant="danger" size="sm" loading={clearing} loadingLabel="Clearing…" onClick={() => void clearAll()}>
-            Clear activity
+          <Button variant="danger" size="sm" loading={clearing} loadingLabel="Deleting…" onClick={() => void clearAll()}>
+            Delete activity
           </Button>
           <Button variant="quiet" size="sm" onClick={() => setConfirmClear(false)}>
             Keep it

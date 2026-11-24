@@ -1,7 +1,7 @@
 // The Chats library (/ai): every task, project and general chat in one list,
 // newest first. Pure, so it is tested without a database.
 
-import { projectSeries, taskSeries, SERIES_KEYS, type SeriesKey } from "../task-colors";
+import { projectSeries, taskSeries, SERIES_KEYS, type SeriesKey, type TaskSeries } from "../task-colors";
 import type { ChatSession, Plan, Task } from "../types";
 import { scopeOfSession, type ChatScopeType } from "./scope";
 
@@ -10,7 +10,7 @@ export type LibraryEntry = {
   scope: ChatScopeType;
   title: string;
   preview: string;
-  color: SeriesKey | "neutral";
+  color: TaskSeries;
   updatedAt: string;
   /** Where the entry opens; null for a task chat (it opens in the task sheet). */
   href: string | null;
@@ -30,7 +30,7 @@ function previewOf(session: ChatSession): string {
   return words.length > 140 ? `${words.slice(0, 139).trimEnd()}…` : words;
 }
 
-const asSeries = (s: string): SeriesKey | "neutral" => ((SERIES_KEYS as string[]).includes(s) ? (s as SeriesKey) : "neutral");
+const asSeries = (s: string): TaskSeries => (s === "personal" || (SERIES_KEYS as string[]).includes(s) ? (s as TaskSeries) : "neutral");
 
 export function libraryEntries(sessions: ChatSession[], tasks: Task[], plans: Plan[]): LibraryEntry[] {
   const taskById = new Map(tasks.map((t) => [t.id, t]));

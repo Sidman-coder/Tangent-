@@ -8,14 +8,27 @@
 // Same /api/chat as Home's box (home: true), scoped to the project or step,
 // so the server answers from what that project already knows
 // (lib/pipeline/home-route.ts) and never asks what it can see.
+//
+// Round 5A 4.1: the Calendar rail uses it too (scope "rail"): answers stay in
+// the rail, and a drafted plan's ops go up through onOps so the main
+// calendar can show them (null once it's gone).
+//
+// Round 5A 2.5: the same talk-first router as Home (lib/pipeline/talk-route.ts).
+// Answers are markdown; a goal's answer offers "Plan this into my calendar",
+// and the plan's one question can be answered in the box or skipped.
 
-import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { findDraft } from "@/lib/drafts/draft-store";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
 import { ArrowUp, X } from "lucide-react";
 import ActionReceipt from "@/components/ActionReceipt";
 import PreviewCard from "@/components/PreviewCard";
+import Markdown from "@/components/console/Markdown";
+import PlanThisRow from "@/components/talk/PlanThisRow";
+import BusyTimeOffer from "@/components/talk/BusyTimeOffer";
+import "@/components/talk/talk.css";
 import { useAppState } from "@/components/AppStateProvider";
 import { putNewPathTitle } from "@/lib/path-handoff";
 import type { ChangeSet } from "@/lib/pipeline/changeset";
@@ -23,7 +36,12 @@ import type { PreviewPayload } from "@/lib/pipeline/draft";
 import "@/components/console/clarify-card.css";
 import "./inline-ask.css";
 
-type Line = { role: "user" | "assistant"; text: string };
+type Line = { role: "user" | "assistant"; text: string; planGoal?: string; offerPlan?: boolean; planQuestion?: boolean };
+
+/** Planning asked for: the button, or an answer to the plan's one question. */
+type PlanAsk = { planThis: true; planGoal: string; planAnswer?: { question: string; answer: string } };
+
+const SKIP_ANSWER = "No preference, use your best guess";
 
 type Reply = {
   ok?: boolean;
@@ -35,6 +53,9 @@ type Reply = {
   pending?: { id: string; message: string };
   changeSet?: ChangeSet;
   preview?: PreviewPayload;
+  schedulable?: boolean;
+  planGoal?: string;
+  planQuestion?: boolean;
 };
 
 type Extra =
@@ -56,12 +77,14 @@ function clean(text: string | undefined, fallback: string): string {
 }
 
 const InlineAsk = forwardRef<InlineAskHandle, {
-  scope: { projectId?: string; taskId?: string };
+  scope: { projectId?: string; taskId?: string; rail?: boolean };
   /** For screen readers: "Ask about Instagram Growth to 10K". */
   label: string;
   placeholder?: string;
   className?: string;
-}>(function InlineAsk({ scope, label, placeholder = "Ask anything, or ask for more steps…", className }, ref) {
+  /** The drafted plan's ops while one is showing; null when it's gone. */
+  onOps?: (ops: ChangeSet["ops"] | null) => void;
+}>(function InlineAsk({ scope, label, placeholder = "Ask anything, or ask for more steps…", className, onOps }, ref) {
   const router = useRouter();
   const { refresh } = useAppState();
   const reduce = useReducedMotion();
@@ -70,21 +93,45 @@ const InlineAsk = forwardRef<InlineAskHandle, {
   const [extra, setExtra] = useState<Extra>({ kind: "none" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Round 5A 4.2: "Open full view" on a draft pill drafted in this chat
+  // comes back with ?draft=<id>; the plan reopens here.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const id = url.searchParams.get("draft");
+    if (!id) return;
+    const d = findDraft(id);
+    if (!d || d.origin !== url.pathname) return;
+    url.searchParams.delete("draft");
+    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+    setExtra({ kind: "preview", changeSet: d.changeSet, preview: d.preview });
+  }, []);
+  const opsRef = useRef(onOps);
+  opsRef.current = onOps;
+  useEffect(() => {
+    if (extra.kind !== "preview") opsRef.current?.(null);
+  }, [extra.kind]);
+  useEffect(() => () => opsRef.current?.(null), []);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const boxRef = useRef<HTMLElement>(null);
   const linesRef = useRef(lines);
   linesRef.current = lines;
+  // The plan's one question, waiting for a typed answer.
+  const pendingPlan = useRef<{ goal: string; question: string } | null>(null);
 
   const send = useCallback(
-    async (said: string) => {
+    async (said: string, ask?: PlanAsk) => {
       const words = said.trim();
       if (!words || busy) return;
+      const pending = pendingPlan.current;
+      pendingPlan.current = null;
+      if (!ask && pending) ask = { planThis: true, planGoal: pending.goal, planAnswer: { question: pending.question, answer: words } };
       setBusy(true);
       setError(null);
       setExtra({ kind: "none" });
       setText("");
       const earlier = linesRef.current.slice(-12).map((l) => ({ role: l.role, content: l.text }));
-      setLines((l) => [...l, { role: "user", text: words }]);
+      setLines((l) => [...l.map((x) => ({ ...x, offerPlan: false })), { role: "user", text: words }]);
       try {
         const res = await fetch("/api/chat", {
           method: "POST",
@@ -96,6 +143,8 @@ const InlineAsk = forwardRef<InlineAskHandle, {
             home: true,
             capture: false,
             clarify: false,
+            scope: scope.rail ? "rail" : scope.taskId ? "task" : "project",
+            ...(ask ?? {}),
             ...(scope.taskId ? { taskId: scope.taskId } : {}),
             ...(scope.projectId ? { projectId: scope.projectId } : {}),
           }),
@@ -114,7 +163,19 @@ const InlineAsk = forwardRef<InlineAskHandle, {
           setExtra({ kind: "done", actionId: data.actionId, summary: clean(data.message ?? data.response, "Done.") });
           void refresh();
         } else {
-          setLines((l) => [...l, { role: "assistant", text: clean(data.message ?? data.response, "I'm not sure. Can you say a bit more?") }]);
+          const text = (data.message ?? data.response ?? "").trim() || "I'm not sure. Can you say a bit more?";
+          const goal = data.planGoal?.trim() || "";
+          const asking = !!data.planQuestion && !!goal;
+          if (asking) pendingPlan.current = { goal, question: text };
+          setLines((l) => [
+            ...l,
+            {
+              role: "assistant",
+              text,
+              ...(asking ? { planQuestion: true, planGoal: goal } : {}),
+              ...(data.schedulable && goal && !asking ? { offerPlan: true, planGoal: goal } : {}),
+            },
+          ]);
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Something went wrong.");
@@ -122,7 +183,7 @@ const InlineAsk = forwardRef<InlineAskHandle, {
         setBusy(false);
       }
     },
-    [busy, refresh, router, scope.projectId, scope.taskId]
+    [busy, refresh, router, scope.projectId, scope.taskId, scope.rail]
   );
 
   const resolveConfirm = useCallback(
@@ -172,6 +233,7 @@ const InlineAsk = forwardRef<InlineAskHandle, {
       };
 
   const clear = () => {
+    pendingPlan.current = null;
     setLines([]);
     setExtra({ kind: "none" });
     setError(null);
@@ -197,7 +259,7 @@ const InlineAsk = forwardRef<InlineAskHandle, {
           }}
         />
         <button type="button" className="inline-ask-send" onClick={() => void send(text)} disabled={busy || !text.trim()} aria-label="Ask">
-          {busy ? <span className="inline-ask-spinner" aria-hidden="true" /> : <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />}
+          {busy ? <span className="inline-ask-spinner" aria-hidden="true" /> : <ArrowUp size={16} strokeWidth={1.75} aria-hidden="true" />}
         </button>
       </div>
 
@@ -208,7 +270,33 @@ const InlineAsk = forwardRef<InlineAskHandle, {
               <ol className="inline-ask-log">
                 {lines.map((l, i) => (
                   <li key={i} className={`inline-ask-line is-${l.role}`}>
-                    {l.role === "assistant" ? l.text.split(/\n{2,}/).map((para, j) => <p key={j}>{para}</p>) : l.text}
+                    {l.role === "assistant" ? <Markdown text={l.text} /> : l.text}
+                    {l.role === "assistant" && i === lines.length - 1 && !busy && lines[i - 1]?.role === "user" && (
+                      <BusyTimeOffer text={lines[i - 1].text} />
+                    )}
+                    {l.role === "assistant" && l.offerPlan && l.planGoal && i === lines.length - 1 && (
+                      <PlanThisRow
+                        disabled={busy}
+                        onPlan={() => void send("Plan this into my calendar", { planThis: true, planGoal: l.planGoal! })}
+                        onDismiss={() => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, offerPlan: false } : x)))}
+                      />
+                    )}
+                    {l.role === "assistant" && l.planQuestion && l.planGoal && i === lines.length - 1 && !busy && (
+                      <p className="talk-question-hint">
+                        Answer in the box, or{" "}
+                        <button
+                          type="button"
+                          className="talk-link"
+                          onClick={() => {
+                            pendingPlan.current = null;
+                            void send("Skip, use your best guess", { planThis: true, planGoal: l.planGoal!, planAnswer: { question: l.text, answer: SKIP_ANSWER } });
+                          }}
+                        >
+                          skip and plan it anyway
+                        </button>
+                        .
+                      </p>
+                    )}
                   </li>
                 ))}
               </ol>
@@ -228,7 +316,12 @@ const InlineAsk = forwardRef<InlineAskHandle, {
                 changeSet={extra.changeSet}
                 preview={extra.preview}
                 onChanged={() => void refresh()}
-                onSettled={() => window.setTimeout(() => setExtra({ kind: "none" }), 2500)}
+                onOps={(ops) => opsRef.current?.(ops)}
+                hideCalendar={!!scope.rail}
+                onSettled={() => {
+                  opsRef.current?.(null);
+                  window.setTimeout(() => setExtra({ kind: "none" }), 2500);
+                }}
               />
             )}
             {extra.kind === "confirm" && (
@@ -243,7 +336,7 @@ const InlineAsk = forwardRef<InlineAskHandle, {
             {extra.kind === "done" && <ActionReceipt actionId={extra.actionId} label={extra.summary} onUndone={() => void refresh()} />}
             {lines.length > 0 && !busy && (
               <button type="button" className="tg-clarify-quiet inline-ask-clear" onClick={clear}>
-                <X size={13} strokeWidth={2} aria-hidden="true" /> Clear
+                <X size={13} strokeWidth={1.75} aria-hidden="true" /> Clear
               </button>
             )}
           </m.div>

@@ -15,9 +15,13 @@ import { callClaude } from "../ai/call";
 import { buildStudentContext } from "../ai/student-context";
 import { extractStructuredJson } from "../anthropic-json";
 import { inferCalendarGroup } from "../calendars";
-import { spreadPlanDates } from "../spacing";
+import { placementContext, spreadPlanDates } from "../spacing";
 import { getAllTasks, getPlanById, getUserTimezone } from "../store";
-import { localNow, promptDateContext } from "../time";
+import { addDaysYMD, localNow, promptDateContext } from "../time";
+import { minutesFromNotes } from "../load";
+import { deadlineFromNotes, planConstraints, type Deadline } from "../plan-constraints";
+import { checkPlacement } from "../placement-check";
+import { planDeadlineCap } from "../today-steps";
 import { respondWithDraft } from "./drafting";
 import { EXTEND_SYSTEM } from "./extend-plan-prompt";
 import { applyPlacements, EXTEND_JSON_SCHEMA, extendHeader, extendOps, readExtendOutput, spacingNotes, targetDates } from "./extend-plan-core";
@@ -29,7 +33,8 @@ export async function extendPlan(planId: string, request: string, source: "typed
   if (!plan) return { ok: false, reason: "no_plan", message: "I couldn't find that plan anymore." };
   const tz = await getUserTimezone();
   const today = localNow(tz).date;
-  const existing = (await getAllTasks()).filter((t) => t.planId === planId).sort((a, b) => a.date.localeCompare(b.date));
+  const allTasks = await getAllTasks();
+  const existing = allTasks.filter((t) => t.planId === planId).sort((a, b) => a.date.localeCompare(b.date));
   const picture = await buildStudentContext({ purpose: "extend", projectId: planId, query: request }).catch(() => null);
 
   const listed = existing
@@ -67,11 +72,30 @@ export async function extendPlan(planId: string, request: string, source: "typed
   const open = existing.filter((t) => !t.completed && t.date >= today);
   const lastDate = open.length ? open[open.length - 1].date : null;
   const targets = targetDates(out.tasks, today, lastDate);
-  const spaced: { date: string; time: string; note?: string }[] = await spreadPlanDates(targets, plan.id).catch((e) => {
+  // Round 6 (item 2): busy times in the request and the plan's deadline are
+  // hard rules here too (the request, then the plan's notes, then its own fixed item).
+  const cons = planConstraints(request, today);
+  let deadline: Deadline | null = cons.deadline ?? deadlineFromNotes(plan.description ?? "");
+  const cap = deadline ? null : planDeadlineCap(allTasks, plan.id, today);
+  if (cap) deadline = { date: addDaysYMD(cap, 1), label: "the deadline" };
+  const lastDay = deadline && addDaysYMD(deadline.date, -1) >= today ? addDaysYMD(deadline.date, -1) : undefined;
+  const spaced: { date: string; time: string; note?: string }[] = await spreadPlanDates(targets, plan.id, { avoid: cons.avoid, lastDate: lastDay }).catch((e) => {
     console.warn("[extend-plan] spacing failed, using target dates:", e instanceof Error ? e.message : e);
     return targets.map((date) => ({ date, time: "16:00" }));
   });
-  const placed = applyPlacements(out.tasks, spaced);
+  const spacedPlaced = applyPlacements(out.tasks, spaced);
+  // The placement check covers what spacing placed; a day and time the student said stay theirs.
+  const pctx = await placementContext().catch(() => null);
+  const checked = pctx
+    ? checkPlacement(
+        spacedPlaced.filter((t) => t.spacedTime).map((t) => ({ ...t, minutes: minutesFromNotes(t.notes) ?? undefined })),
+        { ...pctx, rules: { ...pctx.rules, avoid: cons.avoid }, deadline }
+      )
+    : null;
+  const placed = checked
+    ? [...spacedPlaced.filter((t) => !t.spacedTime), ...checked.steps.map(({ index: _index, minutes: _minutes, ...t }) => t)]
+    : spacedPlaced;
+  if (placed.length === 0 && out.tasks.length > 0 && !out.new_title) return { ok: false, reason: "no_tasks", message: checked?.notes[0] ?? `I couldn't fit anything new into ${plan.title}.` };
   const calendarId = existing[0]?.calendarId ?? inferCalendarGroup(plan.title);
 
   const response = await respondWithDraft(
@@ -83,7 +107,7 @@ export async function extendPlan(planId: string, request: string, source: "typed
       intent: out.tasks.length ? "add_to_plan" : "change_plan",
       targetPlanId: plan.id,
       ops: extendOps(plan.id, placed, out.new_title, calendarId),
-      assumptions: [...spacingNotes(placed), ...Array.from(new Set(spaced.flatMap((s) => (s.note ? [s.note] : []))))],
+      assumptions: [...spacingNotes(placed), ...Array.from(new Set(spaced.flatMap((s) => (s.note ? [s.note] : [])))), ...(checked?.notes ?? [])],
     },
     { text: request, today, route: "extend_plan" }
   );

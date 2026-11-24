@@ -66,7 +66,11 @@ export type DeleteScope =
  */
 export function parseDeleteScope(text: string): DeleteScope | null {
   const s = normalize(text).replace(TRAILING_WHERE, "");
-  const withNoun = new RegExp(`\\b${VERB}\\s+(all\\s+(?:of\\s+)?|every\\s+|each\\s+)?((?:[a-z0-9]+\\s+){0,6}?)${GROUP_NOUN}\\b`).exec(s);
+  // Up to 6 words name a group; up to 13 when they are a list with "and"
+  // ("my SAT Reading Score Boost and SAT Math Geometry Sprint tasks").
+  const withNoun =
+    new RegExp(`\\b${VERB}\\s+(all\\s+(?:of\\s+)?|every\\s+|each\\s+)?((?:[a-z0-9]+\\s+){0,6}?)${GROUP_NOUN}\\b`).exec(s) ??
+    new RegExp(`\\b${VERB}\\s+(all\\s+(?:of\\s+)?|every\\s+|each\\s+)?((?:[a-z0-9]+\\s+){1,6}and\\s+(?:[a-z0-9]+\\s+){1,6}?)${GROUP_NOUN}\\b`).exec(s);
   const allNoNoun = new RegExp(`\\b${VERB}\\s+(all\\s+(?:of\\s+)?|every\\s+)((?:[a-z0-9]+\\s*){1,6})$`).exec(s);
   const m = withNoun ?? allNoNoun;
   if (!m) return null;
@@ -188,6 +192,8 @@ export function planBulkDelete<T extends ScopeTask>(text: string, tasks: readonl
   const scope = parseDeleteScope(text);
   if (!scope) return null;
   if (scope.kind === "unclear") return { kind: "ask", message: ASK_WHICH };
+  const listed = listedGroups(scope.words, tasks, plans);
+  if (listed) return listed;
   let match = matchScope(scope.words, tasks, plans);
   if (match.kind === "none" && scope.extra?.length) match = matchScope([...scope.words, ...scope.extra], tasks, plans);
   if (match.kind === "none") {
@@ -203,6 +209,25 @@ export function planBulkDelete<T extends ScopeTask>(text: string, tasks: readonl
     };
   }
   return { kind: "propose", tasks: match.tasks, all: false, label: match.label };
+}
+
+/** Overnight 2 (eval multi-delete-two-of-three): "X and Y tasks" where X and
+ *  Y each match exactly one group is both groups, nothing else. Null when
+ *  there is no "and" or a side doesn't match cleanly (the usual path asks). */
+function listedGroups<T extends ScopeTask>(words: string[], tasks: readonly T[], plans: readonly ScopePlan[]): BulkDeletePlan<T> | null {
+  if (!words.includes("and")) return null;
+  const sides: string[][] = [[]];
+  for (const w of words) w === "and" ? sides.push([]) : sides[sides.length - 1].push(w);
+  if (sides.some((s) => s.length === 0)) return null;
+  const matches = sides.map((s) => matchScope(s, tasks, plans));
+  if (!matches.every((m) => m.kind === "match")) return null;
+  const chosen = new Map<string, T>();
+  const labels: string[] = [];
+  for (const m of matches as Extract<ScopeMatch<T>, { kind: "match" }>[]) {
+    for (const t of m.tasks) chosen.set(t.id, t);
+    labels.push(m.label);
+  }
+  return { kind: "propose", tasks: Array.from(chosen.values()), all: false, label: labels.join(" and ") };
 }
 
 /** A few task titles, so a plan named "SAT Reading Score Boost" is known to

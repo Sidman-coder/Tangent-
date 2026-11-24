@@ -1,4 +1,4 @@
-// "You, mapped" (Settings › Your Tangent, Round 4 §5.4): the facts
+// "You, mapped" (Settings › What Tangent knows, Round 4 §5.4): the facts
 // Tangent plans with, grouped into six areas, each fact labelled with where it
 // came from. Pure and client-safe: no fact rules or prompts in here.
 
@@ -10,19 +10,20 @@ export type MapGroupKey = "goals" | "classes" | "commitments" | "work" | "hard" 
 export type MapGroup = {
   key: MapGroupKey;
   label: string;
-  /** A --series-* key: the cluster's colour on the map and its card. */
+  /** A --map-* token name (Round 5B pastels): the area's colour on the map
+   *  and its card, used as var(--map-<color>). */
   color: string;
   /** Shown when the group has nothing yet. */
   empty: string;
 };
 
 export const MAP_GROUPS: MapGroup[] = [
-  { key: "goals", label: "Goals", color: "violet", empty: "What you're working toward." },
-  { key: "classes", label: "Classes & activities", color: "blue", empty: "Your classes, clubs and teams." },
-  { key: "commitments", label: "Commitments", color: "amber", empty: "The fixed parts of your week." },
-  { key: "work", label: "How you work", color: "teal", empty: "When and how you get things done." },
-  { key: "hard", label: "What's hard", color: "rose", empty: "What tends to get in the way." },
-  { key: "future", label: "Future", color: "green", empty: "Where you want to end up." },
+  { key: "goals", label: "Goals", color: "goals", empty: "What you're working toward." },
+  { key: "classes", label: "Classes & activities", color: "classes", empty: "Your classes, clubs and teams." },
+  { key: "commitments", label: "Commitments", color: "commitments", empty: "The fixed parts of your week." },
+  { key: "work", label: "How you work", color: "work", empty: "When and how you get things done." },
+  { key: "hard", label: "What's hard", color: "hard", empty: "What tends to get in the way." },
+  { key: "future", label: "Future", color: "future", empty: "Where you want to end up." },
 ];
 
 /** What a fact added inside an area's card is saved as, so it lands back in

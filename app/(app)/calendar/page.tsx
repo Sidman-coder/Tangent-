@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, type ReactNode } from "react";
 import Link from "next/link";
 import { m, useReducedMotion } from "motion/react";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
@@ -12,7 +12,10 @@ import PreviewCard from "@/components/PreviewCard";
 import type { ChangeSet } from "@/lib/pipeline/changeset";
 import type { PreviewPayload } from "@/lib/pipeline/draft";
 import { PENDING_QUESTION_ID, type PendingQuestion } from "@/lib/pending-question";
-import { openTask } from "@/components/TaskDetail";
+import { openTask as openTaskById } from "@/components/TaskDetail";
+import { draftTasks, isDraftTask, type DraftStep } from "@/lib/calendar-draft";
+import type { ChangeOp } from "@/lib/pipeline/changeset";
+import { addedColor, opDates } from "@/lib/preview-week";
 import Button from "@/components/ui/Button";
 import Chip from "@/components/ui/Chip";
 import IconButton from "@/components/ui/IconButton";
@@ -21,9 +24,10 @@ import SidePeek from "@/components/ui/SidePeek";
 import { handleResourceClick } from "@/lib/task-utils";
 import { toYMD, formatTime12 } from "@/lib/dates";
 import { isCanvasCleared } from "@/lib/canvas-clear";
-import { CATEGORY_LABEL, TASK_GROUPS, planSeriesColor, seriesColor, taskCategory, taskGroup, taskSeries, type TaskGroup } from "@/lib/task-colors";
+import { CATEGORY_LABEL, TASK_GROUPS, planSeriesColor, schoolSeries, seriesColor, taskCategory, taskGroup, taskSeries, type TaskGroup } from "@/lib/task-colors";
 import { noteParts } from "@/lib/note-parts";
 import { canDragTask } from "@/lib/calendar-drag";
+import { coversDay, formatDuration, shiftedEndDate } from "@/lib/task-span";
 import { useMonthDrag } from "@/components/calendar/useMonthDrag";
 import { isOnboardingSchoolTask } from "@/lib/school-block";
 import { baseTitle, useShortTitles } from "@/lib/short-titles";
@@ -31,12 +35,14 @@ import "./calendar.css";
 import { initialCalendarView, prefsOf } from "@/lib/personalize";
 import { announceUndo, openRecentChanges } from "@/lib/undo-events";
 import type { Plan, Task } from "@/lib/types";
-import { X, Check, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil, Undo2, Trash2 } from "lucide-react";
+import { X, Check, ChevronLeft, ChevronRight, Plus, PlusCircle, Repeat, Pencil, History, Trash2 } from "lucide-react";
 import WeekView from "@/components/calendar/WeekView";
+import StepFollowUp, { type FollowUp } from "@/components/today/StepFollowUp";
 import AgendaView from "@/components/calendar/AgendaView";
 import TaskTip from "@/components/calendar/TaskTip";
 import CalendarRail from "@/components/calendar/CalendarRail";
 import TaskTitle from "@/components/ui/TaskTitle";
+import Skeleton from "@/components/ui/Skeleton";
 import Toast, { ToastPortal } from "@/components/ui/Toast";
 
 type CalView = "week" | "month" | "agenda";
@@ -140,7 +146,8 @@ export default function CalendarPage() {
   // Clicking one event opens just that event; clicking the date opens the day.
   const [removed, setRemoved] = useState<{ actionId: string; title: string; label?: string } | null>(null);
   /** A dragged block stays where it was dropped while the save is in flight. */
-  const [moving, setMoving] = useState<{ id: string; date: string; time: string } | null>(null);
+  // A move or resize in flight, shown before the server answers.
+  const [moving, setMoving] = useState<{ id: string; date: string; time: string; endDate?: string | null; durationMin?: number | null } | null>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
   /** Master fix Phase 5: Remove on a busy day picks tasks with the B6 chips;
    *  this is the task that was clicked (chosen to start with). */
@@ -162,6 +169,15 @@ export default function CalendarPage() {
 
   const plans: Plan[] = useMemo(() => state?.plans ?? [], [state?.plans]);
 
+  // Round 5A 4.1: a plan drafted in the rail shows here before it's
+  // confirmed: its steps in colour, everything else grey. Draft steps can't
+  // be opened or dragged; Confirm / Edit / Discard stay in the rail.
+  const [railOps, setRailOps] = useState<ChangeOp[] | null>(null);
+  const draftSteps: DraftStep[] = useMemo(() => (railOps ? draftTasks(railOps, { datesOf: opDates, colorOf: (op) => addedColor(op, plans) }) : []), [railOps, plans]);
+  const openTask = useCallback((id: string) => {
+    if (!isDraftTask({ id })) openTaskById(id);
+  }, []);
+
   const getPlan = useCallback((planId: string | null | undefined): Plan | null => {
     if (!planId) return null;
     return plans.find((p) => p.id === planId) ?? null;
@@ -169,8 +185,12 @@ export default function CalendarPage() {
 
   const getTaskCategoryColor = useCallback(
     // Handled Canvas work (lib/canvas-clear) stays to look back on, in grey.
-    (t: Task): string => (isCanvasCleared(t, todayYmd) ? seriesColor("neutral") : seriesColor(taskSeries(t, plans))),
-    [todayYmd, plans]
+    (t: Task): string => {
+      if (isDraftTask(t)) return (t as DraftStep).draftColor;
+      if (railOps || isCanvasCleared(t, todayYmd)) return seriesColor("neutral");
+      return seriesColor(taskSeries(t, plans));
+    },
+    [todayYmd, plans, railOps]
   );
 
   const tasksForDay = useCallback((ymd: string): Task[] => {
@@ -179,12 +199,26 @@ export default function CalendarPage() {
     let tasks = (state?.tasks ?? []).filter((t) => !isOnboardingSchoolTask(t));
     if (group !== "all") tasks = tasks.filter((t) => taskGroup(t) === group);
     if (planFilter) tasks = tasks.filter((t) => t.planId === planFilter);
-    if (moving) tasks = tasks.map((t) => (t.id === moving.id ? { ...t, date: moving.date, time: moving.time } : t));
-    return tasks.filter((t) => t.date === ymd);
-  }, [state, group, planFilter, moving]);
+    if (moving) {
+      tasks = tasks.map((t) =>
+        t.id === moving.id
+          ? {
+              ...t,
+              date: moving.date,
+              time: moving.time,
+              endDate: moving.endDate !== undefined ? moving.endDate : shiftedEndDate(t, moving.date),
+              ...(moving.durationMin !== undefined ? { durationMin: moving.durationMin } : {}),
+            }
+          : t
+      );
+    }
+    // Round 5A 4.3: a range task shows on every day it covers.
+    return [...tasks.filter((t) => coversDay(t, ymd)), ...draftSteps.filter((t) => t.date === ymd)];
+  }, [state, group, planFilter, moving, draftSteps]);
 
   // Same record as any reschedule, so the Undo toast and Recent changes revert it.
   const moveTask = useCallback(async (t: Task, date: string, time: string) => {
+    if (isDraftTask(t)) return;
     setMoveError(null);
     setMoving({ id: t.id, date, time });
     try {
@@ -202,6 +236,34 @@ export default function CalendarPage() {
       }
     } catch {
       setMoveError(`Couldn't move “${t.title}”. It's back where it was.`);
+    } finally {
+      setMoving(null);
+    }
+  }, [refresh]);
+
+  // Round 5A 4.3: the week grid's bottom-edge handle. Undo puts the old length
+  // and end date back.
+  const resizeTask = useCallback(async (t: Task, span: { durationMin: number; endDate: string | null }) => {
+    if (isDraftTask(t)) return;
+    setMoveError(null);
+    setMoving({ id: t.id, date: t.date, time: t.time, endDate: span.endDate, durationMin: span.durationMin });
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resize_task", id: t.id, durationMin: span.durationMin, rangeEnd: span.endDate }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; saved?: boolean; actionId?: string | null; error?: string };
+      if (!res.ok || !data.ok) throw new Error(data.error ?? "resize failed");
+      await refresh();
+      if (data.saved === false) {
+        setMoveError("Task lengths and multi-day tasks need a database update first (docs/MANUAL-STEPS.md).");
+      } else if (data.actionId) {
+        const until = span.endDate ? `, until ${new Date(`${span.endDate}T12:00:00`).toLocaleDateString(undefined, { weekday: "short" })}` : "";
+        announceUndo({ actionId: data.actionId, label: `“${t.title}” now takes ${formatDuration(span.durationMin)}${until}` });
+      }
+    } catch {
+      setMoveError(`Couldn't change “${t.title}”. It's back how it was.`);
     } finally {
       setMoving(null);
     }
@@ -402,12 +464,16 @@ export default function CalendarPage() {
   const prevMonth = () => { setMonthDir(-1); if (month === 0) { setYear((y) => y - 1); setMonth(11); } else setMonth((mo) => mo - 1); };
   const nextMonth = () => { setMonthDir(1); if (month === 11) { setYear((y) => y + 1); setMonth(0); } else setMonth((mo) => mo + 1); };
 
+  // Overnight 2 (Jordan sim): Done on Calendar asks how it went, like Home.
+  const [followUp, setFollowUp] = useState<FollowUp | null>(null);
   const toggleTask = async (id: string) => {
-    await fetch("/api/tasks", {
+    const task = state?.tasks.find((t) => t.id === id);
+    const res = await fetch("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "toggle_task", id }),
     });
+    if (res.ok && task && !task.completed) setFollowUp({ kind: "check_in", task });
     await refresh();
   };
 
@@ -540,6 +606,13 @@ export default function CalendarPage() {
   const viewPanel = { id: "calendar-view-panel", role: "tabpanel", "aria-labelledby": `cal-view-tab-${view}` } as const;
   const openAddAt = (ymd: string, time?: string) => { setAddModalDate(ymd); setAddModalTime(time); setShowAddModal(true); };
   const activePlan = planFilter ? getPlan(planFilter) : null;
+  const legendDot = (color: string, key?: string) => <span key={key} className="cal-legend-dot" style={{ background: color }} aria-hidden="true" />;
+  const projectDots = plans.filter((p) => !p.kind).slice(0, 3);
+  const legendDots: Partial<Record<TaskGroup | "all", ReactNode>> = {
+    school: legendDot(seriesColor(schoolSeries(plans))),
+    projects: projectDots.length ? <span className="cal-legend-stack" aria-hidden="true">{projectDots.map((p) => legendDot(planSeriesColor(p), p.id))}</span> : undefined,
+    short: legendDot(seriesColor("personal")),
+  };
 
   return (
     <>
@@ -567,16 +640,29 @@ export default function CalendarPage() {
               options={VIEWS.map((v) => ({ value: v.id, label: v.id === "week" && narrow ? "3 days" : v.label, controls: "calendar-view-panel" }))}
               className="cal-bar-tabs"
             />
-            <IconButton label="Recent changes" icon={<Undo2 size={18} strokeWidth={1.75} />} onClick={openRecentChanges} tooltipSide="left" />
+            <Button variant="quiet" size="sm" className="cal-recent" onClick={openRecentChanges} icon={<History size={16} strokeWidth={1.75} aria-hidden="true" />}>
+              {/* On a phone the views need the room: "Changes", same name for screen readers. */}
+              <span className="cal-recent-long">Recent changes</span>
+              <span className="cal-recent-short" aria-hidden="true">Changes</span>
+            </Button>
           </div>
+          {/* The filter chips are also the colour key: the same colours as the blocks (overnight 2, Phase 5). */}
           <div className="cal-bar-filters" role="group" aria-label="Show">
             {[{ id: "all" as const, label: "All" }, ...TASK_GROUPS].map((g) => (
-              <Chip key={g.id} variant="filter" selected={group === g.id} onClick={() => setGroup(g.id)}>
+              <Chip key={g.id} variant="filter" selected={group === g.id} onClick={() => setGroup(g.id)} icon={legendDots[g.id]}>
                 {g.label}
               </Chip>
             ))}
           </div>
         </header>
+
+      {!state && <Skeleton rows={4} label="Loading your calendar" />}
+      {state && view !== "agenda" && onScreen.length === 0 && (
+        <p className="cal-empty-line">
+          Nothing on the calendar {view === "week" ? "this week" : "this month"}.
+          <button type="button" className="cal-empty-action" onClick={() => openAddAt(todayYmd)}>Add something</button>
+        </p>
+      )}
 
       {activePlan && (
         <div className="plan-filter-banner" style={{ borderLeft: `3px solid ${planSeriesColor(activePlan)}` }}>
@@ -604,6 +690,7 @@ export default function CalendarPage() {
             onOpenDay={setSelectedDay}
             onAddAt={(ymd, time) => openAddAt(ymd, time)}
             onMoveTask={(t, ymd, time) => void moveTask(t, ymd, time)}
+            onResizeTask={(t, span) => void resizeTask(t, span)}
             toYMD={toYMD}
             startHour={startHour}
           />
@@ -735,7 +822,7 @@ export default function CalendarPage() {
                         setShowAddModal(true);
                       }}
                     >
-                      <Plus size={14} strokeWidth={2} aria-hidden="true" />
+                      <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
                     </button>
                   )}
                 </div>
@@ -759,7 +846,7 @@ export default function CalendarPage() {
         );
       })()}
       </div>
-      <CalendarRail tasks={state?.tasks ?? []} today={todayYmd} />
+      <CalendarRail tasks={state?.tasks ?? []} today={todayYmd} onDraftOps={setRailOps} />
       </div>
 
       <SidePeek open={!!selectedDay} titleId="calendar-day-title" className="calendar-day-sheet" onClose={() => { setSelectedDay(null); setRemoved(null); }}>
@@ -815,7 +902,7 @@ export default function CalendarPage() {
                             type="button"
                             className="ui-task-check"
                             aria-pressed={t.completed}
-                            aria-label={`${t.completed ? "Mark incomplete" : "Complete"} ${t.title}`}
+                            aria-label={t.completed ? `Not done: ${t.title}` : `Done: ${t.title}`}
                             onClick={() => void toggleTask(t.id)}
                           >
                             {t.completed && <Check size={12} strokeWidth={2.8} aria-hidden="true" />}
@@ -1057,6 +1144,10 @@ export default function CalendarPage() {
           onSuccess={() => void refresh()}
           onDuplicate={() => setDuplicateToast(true)}
         />
+      )}
+
+      {followUp && (
+        <StepFollowUp key={`${followUp.kind}-${followUp.task.id}`} followUp={followUp} onWhyNot={() => setFollowUp(null)} onClose={() => setFollowUp(null)} />
       )}
 
       <ToastPortal>

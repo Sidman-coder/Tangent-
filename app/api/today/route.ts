@@ -95,15 +95,26 @@ export const POST = withUser(async (request: Request) => {
   if (action === "not_today") {
     // The screen sets these aside itself: their dates are facts.
     if (!canMoveStep(task)) return NextResponse.json({ ok: true, moved: 0, actionId: null });
-    const moves = planNotToday(tasks, task, ctx);
+    const code = isNotTodayReason(reason) ? reason : null;
+    const moves = planNotToday(tasks, task, ctx, code);
     const actionId = await applyMoves(moves, `Moved "${task.title}" off today`);
     trackEvent("not_today", { task_id: task.id, count: moves.length });
-    logStepEvent({ kind: "not_today", task, code: isNotTodayReason(reason) ? reason : null });
+    logStepEvent({ kind: "not_today", task, code });
+    // Overnight 2 L9: the reason now shows in what happens next.
+    const note =
+      code === "no_time" || code === "too_tired"
+        ? "the lightest day coming up"
+        : code === "unclear"
+          ? "open it and ask Tangent for the first move"
+          : code === "blocked"
+            ? "open it and tell Tangent what's in the way"
+            : null;
     return NextResponse.json({
       ok: true,
       moved: moves.length,
       actionId,
       date: moves.find((m) => m.taskId === task.id)?.date ?? null,
+      note,
     });
   }
 

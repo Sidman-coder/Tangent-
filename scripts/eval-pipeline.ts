@@ -5,6 +5,8 @@
 //
 //   npm run eval:pipeline -- --check   validate fixtures + modules, print the
 //                                      cost estimate; no database, no AI
+//   npm run eval:pipeline -- --quality [--check]   Round 5A plan specificity
+//                                      (plan-quality.json; no database)
 //   npm run eval:pipeline              the real run (calls the AI, writes to
 //                                      the eval account's rows only)
 //
@@ -32,6 +34,7 @@ async function main() {
   const check = process.argv.includes("--check");
   if (process.argv.includes("--round2")) return round2(check);
   if (process.argv.includes("--context")) return contextSwap(check);
+  if (process.argv.includes("--quality")) return planQuality(check);
   // Drafting is gated on the flag, read when lib/pipeline/flags.ts loads.
   process.env.TANGENT_PIPELINE_V2 = "true";
 
@@ -46,7 +49,10 @@ async function main() {
     process.exit(1);
   }
   const fixtures: FixtureFile = parsed.data;
-  const cases = fixtures.cases;
+  // `--only id1,id2` reruns just those cases (overnight 2, to chase one flake).
+  const onlyAt = process.argv.indexOf("--only");
+  const only = onlyAt > 0 ? new Set((process.argv[onlyAt + 1] ?? "").split(",").filter(Boolean)) : null;
+  const cases = only ? fixtures.cases.filter((c) => only.has(c.id)) : fixtures.cases;
   const ai = cases.filter((c) => !c.no_ai);
   const plans = ai.filter((c) => c.expected.intent === "new_plan");
 
@@ -94,6 +100,12 @@ async function main() {
     return;
   }
 
+  // Overnight 2: the live pipeline reads the real clock, so seeded tasks move
+  // by whole weeks from reference_date to the first same weekday on or after
+  // today ("this week", "friday" keep their meaning; weekdays don't change).
+  seedShiftDays = shiftDaysFor(fixtures.reference_date, fixtures.timezone);
+  console.log(`Seed dates shifted by ${seedShiftDays} days (reference ${fixtures.reference_date}).`);
+
   const rows: Row[] = [];
   for (const c of cases) {
     const row = await runAsUser(userId, () => runCase(c, fixtures.timezone)).catch(
@@ -131,6 +143,7 @@ async function main() {
 
     const data = await handleRequest([{ role: "user", content: c.text }], { source: c.source });
     const action = String(data.action ?? "");
+    if (only) console.log(`  ${c.id} action=${action} reply=${JSON.stringify(String(data.response ?? data.message ?? "")).slice(0, 300)}`);
 
     let graded: Graded | null = null;
     let reason = "";
@@ -141,6 +154,9 @@ async function main() {
       await store.markChangeSet(cs.id, "discarded", { from: "draft" });
     } else if (action === "chat_reply" || action === "plan_reply") {
       graded = { intent: "question", target_plan_id: null, ops: [] };
+    } else if (action === "confirm_required" && (graded = await pendingAsOps(data))) {
+      // Overnight 2: a delete that asks "Delete X?" first is the safe, correct
+      // route (every destructive action asks). Grade the ops it would run.
     } else if (action === "confirm_required" || action === "clarify") {
       // A question back (A1 "Which plan?", B1 "What did you mean?").
       graded = { intent: "clarify", target_plan_id: null, ops: [] };
@@ -156,6 +172,7 @@ async function main() {
 
     const seedTasks = c.expected.delete_from ? (await store.getAllTasks()).map((t) => ({ id: t.id, planId: t.planId })) : undefined;
     const grade = graded ? gradeCase(c.expected, graded, { plans: seedPlans, tasks: seedTasks }) : { pass: false, failures: [reason] };
+    if (only && graded) console.log(`  ${c.id} ops:`, JSON.stringify(graded.ops).slice(0, 1500));
     const target = graded?.target_plan_id ? seedPlans.find((p) => p.id === graded!.target_plan_id)?.title ?? "other plan" : graded?.ops.some((o) => o.op === "create_plan") ? "NEW" : "none";
     return {
       id: c.id,
@@ -168,8 +185,50 @@ async function main() {
   }
 }
 
+let seedShiftDays = 0;
+
+/** Whole weeks (in days) from the fixture's reference date to the first same
+ *  weekday on or after today in `tz`. 0 when the reference is today or later. */
+export function shiftDaysFor(referenceDate: string, tz: string, now = new Date()): number {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  const diff = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${referenceDate}T00:00:00Z`)) / 86_400_000);
+  return diff > 0 ? Math.ceil(diff / 7) * 7 : 0;
+}
+
+function shiftDate(date: string | undefined): string | undefined {
+  if (!date || !seedShiftDays || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+  return new Date(Date.parse(`${date}T00:00:00Z`) + seedShiftDays * 86_400_000).toISOString().slice(0, 10);
+}
+
 function seedTask(t: FixtureCase["seed"]["tasks"][number]): Omit<Task, "id" | "planId"> {
-  return { title: t.title, date: t.date, time: t.time, completed: t.completed ?? false };
+  return { title: t.title, date: shiftDate(t.date) as string, time: t.time, completed: t.completed ?? false };
+}
+
+/** A "Delete X?" confirmation, read back as the ops it would run, then
+ *  cleared so nothing is left waiting. Null for any other kind. */
+async function pendingAsOps(data: Record<string, unknown>): Promise<Graded | null> {
+  const store = await import("@/lib/store");
+  const id = (data.pending as { id?: unknown } | undefined)?.id;
+  if (typeof id !== "string") return null;
+  const p = await store.getPendingConfirmation(id);
+  await store.resolvePendingConfirmation(id);
+  if (!p) return null;
+  const pay = p.payload as { taskId?: unknown; taskIds?: unknown; planIds?: unknown; date?: unknown; time?: unknown; bulk?: unknown };
+  // "Move "Dentist" to Fri?": the fast path's single reschedule, confirmed first.
+  if (p.kind === "reschedule_task" && !pay.bulk && typeof pay.taskId === "string" && typeof pay.date === "string") {
+    const move = { op: "move_task", task_id: pay.taskId, date: pay.date, ...(typeof pay.time === "string" && pay.time ? { time: pay.time } : {}) };
+    return { intent: "change_task", target_plan_id: null, ops: [move as unknown as ChangeOp] };
+  }
+  if (p.kind !== "delete_task") return null;
+  const taskIds = [...(typeof pay.taskId === "string" ? [pay.taskId] : []), ...(Array.isArray(pay.taskIds) ? pay.taskIds.filter((t): t is string => typeof t === "string") : [])];
+  const planIds = Array.isArray(pay.planIds) ? pay.planIds.filter((t): t is string => typeof t === "string") : [];
+  if (taskIds.length === 0) return null;
+  const op = (o: Record<string, unknown>) => o as unknown as ChangeOp;
+  return {
+    intent: "delete_task",
+    target_plan_id: null,
+    ops: [...taskIds.map((task_id) => op({ op: "delete_task", task_id })), ...planIds.map((plan_id) => op({ op: "delete_plan", plan_id }))],
+  };
 }
 
 /** A fast path wrote directly (by design: no AI). Grade what it did. */
@@ -188,6 +247,80 @@ function fastStandIn(route: FastRoute): Graded {
     case "due":
       return { intent: "question", target_plan_id: null, ops: [] };
   }
+}
+
+/**
+ * Round 5A (2.4): plan specificity, from lib/pipeline/fixtures/plan-quality.json.
+ * Each case runs the brief-building call (plus at most one fix call) on its
+ * fixture week and facts, then gradePlanQuality checks every kept step is
+ * specific and on topic. No database, nothing saved. `--quality --check` is free.
+ */
+async function planQuality(check: boolean) {
+  const { validateQualityFile, gradePlanQuality } = await import("@/lib/ai/plan-quality");
+  const { estimateCostUsd, modelFor } = await import("@/lib/ai/models");
+  const raw = (await import("@/lib/pipeline/fixtures/plan-quality.json")).default as unknown;
+  const problems = validateQualityFile(raw);
+  if (problems.length > 0) {
+    console.error("plan-quality.json is invalid:\n" + problems.join("\n"));
+    process.exit(1);
+  }
+  const file = raw as import("@/lib/ai/plan-quality").QualityFile;
+  // Round 6: `--only id1,id2` runs just those cases (targeted before/after).
+  const onlyAt = process.argv.indexOf("--only");
+  const only = onlyAt > 0 ? new Set((process.argv[onlyAt + 1] ?? "").split(",").filter(Boolean)) : null;
+  const cases = only ? file.cases.filter((c) => only.has(c.id)) : file.cases;
+  const perCase = 2 * estimateCostUsd(modelFor("SMART"), PLAN_OUTLINE);
+  const cost = MARGIN * cases.length * perCase;
+  console.log(`Plan quality: ${cases.length} cases on ${modelFor("SMART")}`);
+  console.log(`Estimated cost: at most about $${cost.toFixed(2)} (x${MARGIN} margin; a fix call only when a step fails)`);
+
+  const { buildPlanBrief } = await import("@/lib/ai/plan-brief-call");
+  const { PLAN_GUARD } = await import("@/lib/ai/plan-guard-config");
+  const guard = await import("@/lib/ai/plan-guard");
+  const { gradePlacement } = await import("@/lib/ai/placement-grade");
+  const { promptDateContext } = await import("@/lib/time");
+  if (check) {
+    console.log("Check OK: plan-quality fixtures valid, modules load. No AI calls made.");
+    return;
+  }
+  if (!(await ask(`This calls the AI for ${cases.length} cases (about $${cost.toFixed(2)}). Type y to continue: `))) {
+    console.log("Stopped. Nothing was spent.");
+    return;
+  }
+  // Real spend, from the [perf] claude lines each call prints (dev mode).
+  let spent = 0;
+  const log = console.log;
+  console.log = (...args: unknown[]) => {
+    const m = typeof args[0] === "string" ? /^\[perf\] claude [^:]+: (\S+) \| in (\d+) tok.*?, out (\d+) tok/.exec(args[0]) : null;
+    if (m) spent += estimateCostUsd(m[1], { input_tokens: Number(m[2]), output_tokens: Number(m[3]) });
+    else log(...args);
+  };
+  let passed = 0;
+  for (const c of cases) {
+    const before = spent;
+    const at = new Date(`${c.reference_date ?? file.reference_date}T12:00:00Z`);
+    const brief = await buildPlanBrief({
+      request: c.request,
+      dateContext: promptDateContext(file.timezone, at),
+      weekSummary: c.weekSummary,
+      facts: c.facts,
+      dates: c.dates,
+      times: c.times,
+      noQuestion: true,
+      guard: PLAN_GUARD,
+    }).catch(() => null);
+    const g = gradePlanQuality(c, brief, PLAN_GUARD, guard);
+    const p = gradePlacement(c, brief, file.reference_date);
+    const pass = g.pass && (p?.pass ?? true);
+    if (pass) passed++;
+    const failures = [...g.failures, ...(p?.failures ?? [])];
+    console.log(`${pass ? "PASS" : "FAIL"}  ${c.id}  ($${(spent - before).toFixed(3)})${pass ? "" : `  (${failures.join("; ")})`}`);
+    if (p) console.log(`        ${p.summary}`);
+    // With a placement grade, the steps print at their final slot with the reason the student sees.
+    for (const line of p?.lines ?? (brief?.steps ?? []).map((s) => `${s.what} | ${s.why}`)) console.log(`        - ${line}`);
+  }
+  console.log = log;
+  console.log(`\n${passed}/${cases.length} passed · spent about $${spent.toFixed(3)} ($${(spent / Math.max(1, cases.length)).toFixed(3)} per plan brief)`);
 }
 
 function ask(question: string): Promise<boolean> {

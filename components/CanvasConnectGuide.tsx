@@ -8,16 +8,10 @@ import { useAppState } from "@/components/AppStateProvider";
 
 const STEPS = [
   {
-    title: "Open Calendar in Canvas",
-    instruction: "In Canvas, open Calendar from the main navigation. Switch to Month view so the Calendar Feed link is easy to find.",
+    title: "Find your Calendar Feed in Canvas",
+    instruction: "In Canvas, open Calendar from the main navigation, switch to Month view, then select Calendar Feed under the calendar list on the right.",
     image: "/guides/canvas-calendar.png",
-    alt: "Canvas Calendar month view with the Calendar Feed link visible on the right",
-  },
-  {
-    title: "Select Calendar Feed",
-    instruction: "Find Calendar Feed beneath the calendar list on the right side, then select it to open your personal feed link.",
-    image: "/guides/canvas-calendar.png",
-    alt: "Canvas Calendar showing the Calendar Feed action in the right sidebar",
+    alt: "Canvas Calendar month view with the Calendar Feed link in the right sidebar",
   },
   {
     title: "Copy your feed link",
@@ -132,7 +126,7 @@ export default function CanvasConnectGuide({ open, onClose }: { open: boolean; o
             <span className="canvas-guide-icon" aria-hidden="true"><CalendarDays size={18} /></span>
             <div>
               <h2 id="canvas-guide-title">Connect Canvas</h2>
-              <p>Bring assignments into Tangent with your calendar feed.</p>
+              <p>We keep your private feed link and the due dates it brings in. Delete all my data under Your data removes them.</p>
             </div>
           </div>
           <button type="button" className="canvas-guide-close" onClick={onClose} aria-label="Close Canvas guide" disabled={status === "loading"}>
@@ -167,22 +161,20 @@ export default function CanvasConnectGuide({ open, onClose }: { open: boolean; o
                 <Image src={current.image} alt={current.alt} width={1920} height={1000} priority sizes="(max-width: 720px) 92vw, 820px" />
               </div>
 
-              {isFinalStep && (
-                <label className="canvas-guide-field">
-                  <span>Paste your calendar feed link here</span>
-                  <div className="canvas-guide-input-row">
-                    <Link2 size={17} aria-hidden="true" />
-                    <input
-                      name="canvas-ics-url"
-                      type="url"
-                      value={icsUrl}
-                      onChange={(event) => { setIcsUrl(event.target.value); if (status === "error") setStatus("idle"); }}
-                      placeholder="https://canvas.instructure.com/feeds/calendars/user_…"
-                      autoComplete="off"
-                    />
-                  </div>
-                </label>
-              )}
+              <label className="canvas-guide-field">
+                <span>Paste your calendar feed link here</span>
+                <div className="canvas-guide-input-row">
+                  <Link2 size={17} aria-hidden="true" />
+                  <input
+                    name="canvas-ics-url"
+                    type="url"
+                    value={icsUrl}
+                    onChange={(event) => { setIcsUrl(event.target.value); if (status === "error") setStatus("idle"); }}
+                    placeholder="https://canvas.instructure.com/feeds/calendars/user_…"
+                    autoComplete="off"
+                  />
+                </div>
+              </label>
               {status === "error" && <p className="canvas-guide-error" role="alert">{error}</p>}
             </div>
 
@@ -190,7 +182,7 @@ export default function CanvasConnectGuide({ open, onClose }: { open: boolean; o
               <Button variant="quiet" onClick={() => step === 0 ? onClose() : setStep((value) => value - 1)} icon={step > 0 ? <ChevronLeft size={16} /> : undefined} disabled={status === "loading"}>
                 {step === 0 ? "Cancel" : "Back"}
               </Button>
-              {isFinalStep ? (
+              {isFinalStep || icsUrl.trim() ? (
                 <Button variant="primary" onClick={() => void connect()} loading={status === "loading"} loadingLabel="Connecting…">Connect</Button>
               ) : (
                 <Button variant="primary" onClick={() => setStep((value) => value + 1)}>Next <ChevronRight size={16} /></Button>

@@ -33,7 +33,7 @@ export default function TangentsPage() {
     router.replace("/tangents");
   }, [router]);
 
-  const suggestions = useTangentSuggestions((state?.plans ?? []).map((p) => p.title));
+  const suggestions = useTangentSuggestions((state?.plans ?? []).filter((p) => !p.kind).map((p) => p.title)); // School & Work area projects aren't Tangent ideas
   const create = useCreateTangent(useCallback((message: string) => setCreateError(message), []));
   const start = (title: string | null) => {
     setSeedTitle(title);

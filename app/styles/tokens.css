@@ -50,6 +50,8 @@
   --shadow-sm: 0 1px 2px rgb(28 26 38 / 0.06);
   --shadow-md: 0 4px 16px rgb(28 26 38 / 0.08);
   --shadow-lg: 0 12px 40px rgb(28 26 38 / 0.14);
+  /* The notifications popover only (Round 5A Phase 6). */
+  --shadow-pop: 0 18px 48px rgb(28 26 38 / 0.16), 0 2px 8px rgb(28 26 38 / 0.06);
   --scrim: rgb(18 17 25 / 0.32);
   --tint-amount: 14%;
 
@@ -69,6 +71,7 @@
   --r-sm: 8px;
   --r-md: 12px;
   --r-lg: 16px;
+  --r-xl: 22px;
   --r-pill: 999px;
 
   /* spacing */
@@ -93,11 +96,28 @@
   --page-gutter: 16px;
 
   /* motion */
-  --dur-fast: 150ms;
+  --dur-fast: 120ms;
   --dur: 200ms;
-  --dur-slow: 250ms;
+  --dur-slow: 320ms;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
+
+  /* Round 5B "You, mapped": the map's own ivory and pastel palette (no purple
+     on the map; components/settings/you-map.css). */
+  --map-bg: #fbf8f1;
+  --map-bg-2: #f3eee3;
+  --map-ring: #e4dccb;
+  --map-line: #cfc3ad;
+  --map-pill: #ffffff;
+  --map-core-1: #ffffff;
+  --map-core-2: #ece4d4;
+  --map-ink: #3a342a;
+  --map-goals: #f0ad84;
+  --map-classes: #86bce6;
+  --map-commitments: #e5c45c;
+  --map-work: #93c290;
+  --map-hard: #ec98a8;
+  --map-future: #74cbc2;
 }
 
 [data-theme="dark"] {
@@ -137,8 +157,24 @@
   --shadow-sm: none;
   --shadow-md: 0 0 0 1px var(--line);
   --shadow-lg: 0 0 0 1px var(--line-strong);
+  --shadow-pop: 0 18px 48px rgb(0 0 0 / 0.5), 0 0 0 1px var(--line-strong);
   --scrim: rgb(0 0 0 / 0.55);
   --tint-amount: 20%;
+
+  --map-bg: #1c1916;
+  --map-bg-2: #24201b;
+  --map-ring: #3b352d;
+  --map-line: #5a5145;
+  --map-pill: #2b2722;
+  --map-core-1: #3d372f;
+  --map-core-2: #221e1a;
+  --map-ink: #f4eee2;
+  --map-goals: #ffc6a1;
+  --map-classes: #a8d3f4;
+  --map-commitments: #f4da86;
+  --map-work: #b3dcae;
+  --map-hard: #f6b4c1;
+  --map-future: #9ce1d9;
 }
 
 @media (min-width: 768px) {

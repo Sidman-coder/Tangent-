@@ -9,6 +9,7 @@
 import { useCallback, useRef, useState } from "react";
 import { useAppState } from "@/components/AppStateProvider";
 import { routeAsk } from "@/lib/ask-route";
+import { routeMessage } from "@/lib/pipeline/talk-route";
 import { generateQuestions, type QuestionSet } from "@/lib/questions-client";
 import { outcomeFromError, outcomeFromReply, type CaptureOutcome, type ChatReply } from "@/lib/capture-outcome";
 
@@ -26,6 +27,10 @@ async function chat(said: string, toProject: boolean, firstPass: boolean): Promi
       mode: "calendar",
       stream: false,
       source: "voice",
+      // Round 5A 2.5: the same talk-first router as Home
+      // (lib/pipeline/talk-route.ts). A goal or a question is answered.
+      home: true,
+      scope: "capture",
       // First pass: a plain to-do saves instantly, anything bigger may ask.
       // Second pass (after a clarify): save as-is, exactly like "Skip for now".
       capture: firstPass && !toProject,
@@ -53,11 +58,12 @@ export function useCapture() {
       const id = ++latest.current;
       setFreshSet(null);
       setQuestionsPending(false);
-      const route = routeAsk(words);
-      // A question goes to Tangent AI by choice (a chip), never by surprise.
-      if (route === "question") return { kind: "question", said: words };
-      // A long-range goal is a project now (Tangents visualises projects).
-      const toProject = route === "project" || route === "goal";
+      // Round 5A 2.5: talk first. A plan asked for in words goes to Home's
+      // planning view; a goal or a question is answered here, under the mic.
+      const talk = routeMessage(words, { scope: "capture" });
+      if (talk.kind === "plan") return { kind: "plan", said: words };
+      // Only "new project: …" makes a project from here; a goal is talk.
+      const toProject = talk.kind === "add" && routeAsk(words) === "project";
       try {
         let reply = await chat(words, toProject, true);
         if (reply.action === "clarify") reply = await chat(words, toProject, false);

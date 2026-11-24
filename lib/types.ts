@@ -37,6 +37,11 @@ export type Task = {
   /** When it was marked Done (ISO). Set by the store whenever `completed`
    *  changes; absent on tasks finished before the column existed. */
   completedAt?: string | null;
+  /** Round 5A 4.3: block length in minutes on each day it covers. Null = the
+   *  default 45-min block (lib/task-span.ts). */
+  durationMin?: number | null;
+  /** Round 5A 4.3: the last day a range task covers. Null = single date. */
+  endDate?: string | null;
   calendarId?: string | null;
   planId?: string | null;
   notes?: string;
@@ -77,9 +82,14 @@ export type Plan = {
   color: string;
   createdAt: string;
   taskCount: number;
-  /** When the student last opened it. Unset until then, or before migration 20261114000000. */
+  /** Round 5A Phase 3: School and Work are projects too. Null for a goal.
+   *  Absent until migration 20261114000000_plan_kind runs. */
+  kind?: PlanKind | null;
+  /** When the student last opened it. Unset until then, or before migration 20261114020000. */
   lastOpenedAt?: string;
 };
+
+export type PlanKind = "school" | "work";
 
 export type CalendarCategory = "ALL" | string;
 
@@ -206,6 +216,9 @@ export interface CanvasFeedStatus {
   connectedAt: string;
   lastSyncedAt: string | null;
   lastSyncCount: number;
+  /** Overnight 2, Phase 6: how many Canvas items sit in the student's
+   *  calendar now, for the Disconnect question. */
+  itemCount?: number;
 }
 
 // An Anthropic Message Batch submitted by the daily-brief cron job, awaiting a
@@ -242,6 +255,8 @@ export type ActionKind =
 
 /** Task fields an undo puts back. null clears the column. */
 export type RestoredTaskFields = {
+  durationMin?: number | null;
+  endDate?: string | null;
   title?: string;
   date?: string;
   time?: string;
@@ -292,7 +307,7 @@ export type ActionSnapshot = {
   /** Prior calendarId per task moved by move_tasks — restored on undo. */
   moves?: { taskId: string; fromCalendarId: string | null }[];
   /** Prior date/time for a task rescheduled by reschedule_task — restored on undo. */
-  rescheduled?: { taskId: string; fromDate: string; fromTime: string };
+  rescheduled?: { taskId: string; fromDate: string; fromTime: string; fromEndDate?: string | null };
   /** Prior date/time of every task moved together (Today's re-plan, Not today, Fresh start). */
   rescheduledMany?: { taskId: string; fromDate: string; fromTime: string }[];
   /** Everything an apply_changeset did, reversed step by step on undo. */
@@ -466,7 +481,7 @@ export type Path = {
   standing?: string;
   createdAt: string;
   updatedAt: string;
-  /** When the student last opened it. Unset until then, or before migration 20261114000000. */
+  /** When the student last opened it. Unset until then, or before migration 20261114020000. */
   lastOpenedAt?: string;
 };
 

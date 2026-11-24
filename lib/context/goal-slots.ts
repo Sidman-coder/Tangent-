@@ -199,6 +199,17 @@ export function inferExtraSlots(text: string, now: Date = new Date()): SlotMap<E
   return out;
 }
 
+// ─── Done asking ────────────────────────────────────────────────────────────
+
+/** Added to the request once the question flow has finished (answered, skipped
+ *  or stopped), so nothing downstream asks one more question (overnight C03). */
+export const GRILL_DONE_MARK = "(Tangent has finished asking. Plan now with what is known and the assumptions above. Do not ask the student anything else.)";
+
+/** True when the request already went through the question flow. */
+export function grillAlreadyAsked(text: string): boolean {
+  return text.includes(GRILL_DONE_MARK);
+}
+
 // ─── The turn ───────────────────────────────────────────────────────────────
 
 export type QuestionState = {

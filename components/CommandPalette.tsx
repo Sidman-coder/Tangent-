@@ -12,11 +12,13 @@ import AddFlow from "@/components/add/AddFlow";
 import { generateQuestions } from "@/lib/questions-client";
 import { askOnHome } from "@/lib/ask-handoff";
 import { putNewPathTitle } from "@/lib/path-handoff";
+import { routeMessage } from "@/lib/pipeline/talk-route";
+import { putTalkHandoff } from "@/lib/talk-handoff";
 import ActionReceipt from "@/components/ActionReceipt";
 import Toast, { ToastPortal } from "@/components/ui/Toast";
 import PreviewCard from "@/components/PreviewCard";
 import { usePipelineV2 } from "@/components/PipelineFlag";
-import { chatOnly, fetchOpenDrafts } from "@/components/console/pipeline-intake";
+import { chatOnly } from "@/components/console/pipeline-intake";
 import type { ChangeSet } from "@/lib/pipeline/changeset";
 import type { PreviewPayload } from "@/lib/pipeline/draft";
 import {
@@ -136,10 +138,9 @@ export default function CommandPalette() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, closePalette]);
 
-  // Pipeline V2: on open, bring back the newest draft still waiting for Confirm.
-  useEffect(() => {
-    if (open && v2) void fetchOpenDrafts().then((d) => d[0] && setDraft((cur) => cur ?? d[0]));
-  }, [open, v2]);
+  // Overnight 2 (R2-L6): opening the box used to bring back the newest waiting
+  // draft as a floating card over it, so a plan from an hour ago covered what
+  // the student came to type. Waiting drafts live in the Draft dock instead.
 
   // A toast with Undo stays as long as the app-level Undo toast (8 s).
   const showToast = useCallback((text: string, withUndo = false) => {
@@ -151,6 +152,17 @@ export default function CommandPalette() {
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed || busy) return;
+      // Round 5A 2.5: one router everywhere. A question or a goal is talk, and
+      // talk happens on Home; "plan it" opens Home's planning view directly.
+      const talk = routeMessage(trimmed, { scope: "palette" });
+      if (talk.kind === "answer" || talk.kind === "plan") {
+        closePalette();
+        if (talk.kind === "plan") {
+          putTalkHandoff({ lines: [], goal: trimmed });
+          router.push("/?plan=1");
+        } else askOnHome(trimmed, router.push);
+        return;
+      }
       setBusy(true);
       closePalette();
       // Never close silently: say it's working until the result replaces this.
@@ -161,7 +173,7 @@ export default function CommandPalette() {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: [{ role: "user", content: trimmed }], capture: true }),
+          body: JSON.stringify({ messages: [{ role: "user", content: trimmed }], capture: true, scope: "palette" }),
         });
         const data = (await res.json()) as {
           ok?: boolean;

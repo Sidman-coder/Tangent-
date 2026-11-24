@@ -18,6 +18,7 @@ import { parseSlotAnswer } from "./flow";
 import { computeSufficiency, isGlobalSlotKey, valueText, SLOT_KEYS, type AnySlot, type SlotMap, type SlotValue } from "./slots";
 import {
   ENOUGH_MESSAGE,
+  GRILL_DONE_MARK,
   SLOT_CATEGORY,
   SLOT_FACT_LABEL,
   defaultFor,
@@ -143,6 +144,7 @@ export async function grillTurn(input: { text: string; chat: string; projectId: 
     lines.length ? `What Tangent knows for this plan:\n${lines.join("\n")}` : "",
     assumptions.length ? `Assume (the student skipped or didn't say): ${assumptions.join("; ")}.` : "",
     openMust.length && !step.enough ? `Not known yet: ${openMust.map((s) => SLOT_FACT_LABEL[s]).join(", ")}. Plan a sensible first round without it.` : "",
+    GRILL_DONE_MARK,
   ]
     .filter(Boolean)
     .join("\n\n");

@@ -22,7 +22,7 @@ export async function projectContext(projectId: string, summary?: string | null)
 export async function taskContext(
   taskId: string,
   summary?: string | null
-): Promise<{ planId?: string; brief: string } | null> {
+): Promise<{ planId?: string; brief: string; title: string; when: string | null } | null> {
   const tasks = await getAllTasks();
   const task = tasks.find((t) => t.id === taskId);
   if (!task) return null;
@@ -32,6 +32,8 @@ export async function taskContext(
     : [];
   return {
     planId: task.planId ?? undefined,
+    title: task.title,
+    when,
     brief: formatChatContext({ scope: "task", title: task.title, when, notes: task.notes?.trim() || null, steps: siblings, summary }),
   };
 }

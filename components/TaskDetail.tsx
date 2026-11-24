@@ -13,7 +13,8 @@ import IconButton from "@/components/ui/IconButton";
 import Sheet from "@/components/ui/Sheet";
 import ActionReceipt from "@/components/ActionReceipt";
 import InlineAsk, { type InlineAskHandle } from "@/components/chat/InlineAsk";
-import { noteParts } from "@/lib/note-parts";
+import { noteParts, whenPart } from "@/lib/note-parts";
+import { ifThenFor } from "@/lib/if-then";
 import { useAppState, useUserTimezone } from "@/components/AppStateProvider";
 import { splitCourse } from "@/lib/course";
 import { generateQuestions } from "@/lib/questions-client";
@@ -21,6 +22,7 @@ import { categoryLabel, seriesColor, taskSeries } from "@/lib/task-colors";
 import { COMMITMENT_OPTIONS, commitmentOf } from "@/lib/task-kind";
 import { formatTaskDay, formatTaskWhen, taskEndTime } from "@/lib/task-when";
 import type { Task, TaskCommitment } from "@/lib/types";
+import StepFollowUp, { type FollowUp } from "@/components/today/StepFollowUp";
 import "./task-detail.css";
 
 export const OPEN_TASK_EVENT = "tangent:open-task";
@@ -86,12 +88,19 @@ export default function TaskDetail() {
     return (await res.json().catch(() => ({}))) as { ok?: boolean; saved?: boolean; actionId?: string };
   };
 
+  // Overnight 2 (Maya, Jordan sims): Mark done used to only relabel the
+  // button. Now the sheet closes and asks how that step went, by name.
+  const [followUp, setFollowUp] = useState<FollowUp | null>(null);
   const toggle = async () => {
     if (!task) return;
     setBusy(true);
-    await post({ action: "update_task", id: task.id, completed: !task.completed });
+    const data = await post({ action: "update_task", id: task.id, completed: !task.completed });
     await refresh();
     setBusy(false);
+    if (data.ok !== false && !task.completed) {
+      setFollowUp({ kind: "check_in", task });
+      close();
+    }
   };
 
   const changeType = async (commitment: TaskCommitment) => {
@@ -120,6 +129,7 @@ export default function TaskDetail() {
   const color = task ? seriesColor(taskSeries(task, state?.plans ?? [])) : "var(--accent)";
 
   return (
+    <>
     <Sheet
       open={open}
       onClose={close}
@@ -134,7 +144,7 @@ export default function TaskDetail() {
             onClick={() => void toggle()}
             disabled={busy}
           >
-            {task.completed ? "Done — undo" : "Mark done"}
+            {task.completed ? "Done — undo" : "Done"}
           </Button>
         ) : undefined
       }
@@ -148,7 +158,7 @@ export default function TaskDetail() {
             onClick={() => askRef.current?.focus()}
           />
           <IconButton
-            label="Remove task"
+            label="Delete task"
             icon={<Trash2 strokeWidth={1.75} aria-hidden="true" />}
             onClick={() => void remove()}
             disabled={busy}
@@ -157,10 +167,10 @@ export default function TaskDetail() {
       )}
       {removed && !task ? (
         <div className="td-body">
-          <h2 id="td-title" className="sr-only">Task removed</h2>
+          <h2 id="td-title" className="sr-only">Task deleted</h2>
           <ActionReceipt
             actionId={removed.actionId}
-            label={`Removed “${splitCourse({ title: removed.title, source: undefined }).title}”`}
+            label={`Deleted “${splitCourse({ title: removed.title, source: undefined }).title}”`}
             onUndone={() => {
               setRemoved(null);
               void refresh();
@@ -181,6 +191,10 @@ export default function TaskDetail() {
                     ? `Due ${formatTaskDay(task.date, new Date(), timezone)}`
                     : formatTaskWhen({ date: task.date, time: task.time, endTime: taskEndTime(task) }, new Date(), timezone)}
                 </p>
+                {/* Round 6: the step's if-then line; a moved step gets the plain time line for where it is now. */}
+                {whenPart(task.notes) && !task.completed && (
+                  <p className="td-ifthen">{ifThenFor(whenPart(task.notes), { title: task.title, date: task.date, time: task.time })}</p>
+                )}
               </div>
             </div>
 
@@ -285,5 +299,9 @@ export default function TaskDetail() {
         )
       )}
     </Sheet>
+    {followUp && (
+      <StepFollowUp key={`check-${followUp.task.id}`} followUp={followUp} onWhyNot={() => setFollowUp(null)} onClose={() => setFollowUp(null)} />
+    )}
+    </>
   );
 }

@@ -21,7 +21,7 @@ export const SIGNIN_PATH = "/signin";
 /** Where "Delete my account" ends. Public: the account and its session are gone. */
 export const GOODBYE_PATH = "/goodbye";
 
-export const WAITLIST_API_ERROR = "You're on the waitlist. We'll email you when your spot opens.";
+export const WAITLIST_API_ERROR = "You're on the waitlist. We'll email you when you're in.";
 export const UNDER_13_API_ERROR = "Tangent is for students 13 and up.";
 
 type GateUser = { email?: string | null; app_metadata?: unknown } | null | undefined;
@@ -51,15 +51,25 @@ export function accessOf(user: GateUser): Access {
   return "allowed";
 }
 
+/** The public landing page. Signed-out visitors to / see it with the address
+ *  still reading / (overnight 2 Phase 5, O2-D26). */
+export const LANDING_PATH = "/welcome";
+
+/** Public pages anyone can read, signed in or not (overnight 2, approved by
+ *  Sid): the landing page, Privacy, Terms and For parents. Exact paths only. */
+export const PUBLIC_PAGES: readonly string[] = [LANDING_PATH, "/privacy", "/terms", "/parents"];
+
 /** Paths that skip the session check entirely. */
 export function skipsSessionCheck(pathname: string): boolean {
-  return pathname.startsWith("/auth/") || pathname.startsWith("/api/cron/");
+  return pathname.startsWith("/auth/") || pathname.startsWith("/api/cron/") || PUBLIC_PAGES.includes(pathname);
 }
 
 export type GateDecision =
   | { kind: "next" }
   | { kind: "not_found" }
   | { kind: "redirect"; to: string }
+  /** Serve another page at this address (signed-out / shows the landing page). */
+  | { kind: "rewrite"; to: string }
   | { kind: "json"; status: 401 | 403; error: string };
 
 const HOLDING_PAGE: Partial<Record<Access, string>> = {
@@ -89,6 +99,8 @@ export function gate(opts: {
   if (access === "signed_out") {
     if (isApi) return { kind: "json", status: 401, error: "Not signed in" };
     if (pathname === SIGNIN_PATH) return { kind: "next" };
+    // The home address shows the public landing page; links with a query (?ask=1) still go to sign-in.
+    if (pathname === "/" && !opts.search) return { kind: "rewrite", to: LANDING_PATH };
     if (pathname === WAITLIST_PATH || pathname === UNDER_13_PATH) return { kind: "redirect", to: SIGNIN_PATH };
     const target = pathname === "/" ? SIGNIN_PATH : `${SIGNIN_PATH}?next=${encodeURIComponent(pathname + (opts.search ?? ""))}`;
     return { kind: "redirect", to: target };

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import { syncCanvasFeed } from "@/lib/canvas-ics";
+import { syncWithQuietRetry } from "@/lib/canvas-retry";
 import { getCanvasFeed, recordCanvasSync } from "@/lib/store";
 import { forEachCronUser } from "@/lib/cron-users";
 
@@ -23,7 +24,7 @@ export async function GET(request: Request) {
   const runs = await forEachCronUser("canvas", async () => {
     const feed = await getCanvasFeed();
     if (!feed) return { connected: false as const };
-    const result = await syncCanvasFeed(feed.icsUrl);
+    const result = await syncWithQuietRetry(() => syncCanvasFeed(feed.icsUrl), { waitMs: 3000 });
     await recordCanvasSync(result.total);
     return { connected: true as const, ...result };
   });

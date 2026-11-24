@@ -1,0 +1,1 @@
+- /waitlist signed out redirects to /signin, so no separate waitlist screenshot (signed-out). /dev/app/* samples are unavailable in the prod server (D4); onboarding sample /dev/app/setup not captured yet.

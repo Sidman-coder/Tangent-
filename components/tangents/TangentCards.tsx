@@ -16,6 +16,7 @@ import type { PathWithCounts } from "@/components/tangents/useTangents";
 import type { PathGoalKind } from "@/lib/types";
 import { formatDeadline } from "@/lib/path-format";
 import { prefetchPath } from "@/lib/path-prefetch";
+import { friendlyError } from "@/lib/friendly-error";
 
 export function TangentCards({ paths }: { paths: PathWithCounts[] }) {
   return (
@@ -126,7 +127,7 @@ export function useCreateTangent(onError: (message: string) => void) {
         router.push(`/tangents/${data.path.id}`);
         return true;
       } catch (e) {
-        onError(e instanceof Error ? e.message : "Couldn't create the Tangent.");
+        onError(friendlyError(e, "Couldn't create the Tangent."));
         return false;
       }
     },

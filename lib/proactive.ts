@@ -1,53 +1,55 @@
 // Shared by both ways proactive notifications get generated:
-//  - app/api/proactive/route.ts       — called on page load from NotificationBell.tsx
+//  - app/api/proactive/route.ts       — called from NotificationBell.tsx on Home and Calendar
 //  - app/api/cron/proactive/route.ts  — called on a schedule (vercel.json), so overdue
 //    and reschedule-offer notifications don't go stale for days if the student never
 //    opens the app.
-// Both stay on the synchronous Messages API (not Batch) — proactive suggestions are
-// time-sensitive (an overdue-task nudge is only useful soon after it goes overdue),
-// so they don't fit Batch's up-to-an-hour turnaround the way the daily brief does.
+//
+// Overnight 2, Phase 4: cheaper. The check runs at most once per 4 hours per
+// student (profiles.notification_prefs.proactiveAt, no schema change). What
+// qualifies is decided in plain code (lib/proactive-rules.ts): overdue, due
+// within 48 hours, a goal step that slipped. Overdue and due-soon come from
+// templates. Only the reschedule asks Haiku, which picks one of the slots code
+// found and says why in one line. Nothing qualifies: no model call.
+// Synchronous Messages API (not Batch): a reschedule offer is only useful soon.
 
-import { getAllTasks, addNotification, getUserTimezone } from "@/lib/store";
+import { getAllTasks, addNotification, getUserTimezone, getNotificationPrefs, markProactiveRun } from "@/lib/store";
 import { studentFactsText } from "@/lib/ai/student-context";
-import { isBusyBlock } from "@/lib/schedule-slots";
-import { isCanvasCleared } from "@/lib/canvas-clear";
+import { firstOpenTime, isBusyBlock } from "@/lib/schedule-slots";
 import { formatTime12 } from "@/lib/dates";
-import { addDaysYMD, currentInstant, getUserToday } from "@/lib/time";
-import type { Notification } from "@/lib/types";
+import { addDaysYMD, currentInstant, localNow } from "@/lib/time";
+import type { Notification, Task } from "@/lib/types";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import { callClaude } from "@/lib/ai/call";
+import {
+  dueSoonNotices,
+  hasFindings,
+  overdueNotice,
+  proactiveDue,
+  proactiveFindings,
+  rescheduleNotice,
+  rescheduleWindow,
+  type Notice,
+  type Slot,
+} from "@/lib/proactive-rules";
 
-const PROACTIVE_NOTIFICATIONS_SCHEMA = {
+const RESCHEDULE_SCHEMA = {
   type: "object",
   properties: {
-    notifications: {
+    offers: {
       type: "array",
       items: {
         type: "object",
         properties: {
-          type: {
-            type: "string",
-            enum: ["overdue_task", "upcoming_deadline", "proactive_suggestion", "reschedule_offer"],
-          },
-          title: { type: "string" },
-          body: { type: "string" },
-          actionLabel: { type: "string" },
-          actionData: {
-            type: "object",
-            properties: {
-              taskId: { type: "string" },
-              suggestedDate: { type: "string" },
-              suggestedTime: { type: "string" },
-            },
-            additionalProperties: false,
-          },
+          taskId: { type: "string" },
+          slot: { type: "string" },
+          why: { type: "string" },
         },
-        required: ["type", "title", "body"],
+        required: ["taskId", "slot", "why"],
         additionalProperties: false,
       },
     },
   },
-  required: ["notifications"],
+  required: ["offers"],
   additionalProperties: false,
 } as const;
 
@@ -55,6 +57,10 @@ export type ProactiveCheckResult = {
   ok: boolean;
   generated: number;
   notifications: Notification[];
+  /** Why nothing ran: inside the 4-hour gap, or nothing qualified. */
+  skipped?: "throttled" | "nothing";
+  /** Model calls this run made (0 or 1). */
+  aiCalls?: number;
   error?: string;
 };
 
@@ -73,120 +79,108 @@ export function relativeDayLabel(date: string, today: string): string {
   return plain;
 }
 
+/** "today", "tomorrow", "yesterday" or "Thu, Oct 8": for notification text. */
+function dayWord(date: string, today: string): string {
+  const label = relativeDayLabel(date, today);
+  return label.replace(/ \(.*\)$/, "");
+}
+
+/** Up to three open slots for a slipped step: later today, then the next two days. */
+function openSlots(tasks: Task[], now: { date: string; minutes: number }): Slot[] {
+  const slots: Slot[] = [];
+  for (const date of rescheduleWindow(now.date)) {
+    const time = firstOpenTime(tasks, date, date === now.date ? now.minutes + 30 : 0);
+    if (time) slots.push({ date, time });
+  }
+  return slots;
+}
+
+/** Haiku picks a slot per slipped step and says why in one line. Null on any failure. */
+async function smartReschedule(
+  steps: Task[],
+  slots: Slot[],
+  today: string
+): Promise<Map<string, { slot: Slot; why: string }> | null> {
+  const letters = slots.map((_, i) => String.fromCharCode(65 + i));
+  const facts = (await studentFactsText("brief").catch(() => "")).slice(0, 600);
+  const content = [
+    `Today: ${relativeDayLabel(today, today)}`,
+    `Open slots: ${slots.map((s, i) => `${letters[i]} = ${relativeDayLabel(s.date, today)} at ${formatTime12(s.time)}`).join("; ")}`,
+    `Steps that slipped:`,
+    ...steps.map((t) => `- id=${t.id}: "${t.title}", was for ${relativeDayLabel(t.date, today)}${t.time && t.time !== "23:59" ? ` at ${formatTime12(t.time)}` : ""}`),
+    facts ? `About the student:\n${facts}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const response = await callClaude(
+    "proactive",
+    {
+      system: `Pick one open slot (by letter) for each step that slipped. Prefer the slot that fits what you know about the student (energy, practice times, how long steps take); otherwise the earliest. Two steps may share a slot only if nothing better is open.
+"why" is one sentence under 20 words that names a concrete fact: the slot's day and time, and what makes it fit. Copy day labels exactly as given ("tomorrow", "Thu, Oct 8"). 12-hour times. No guilt, no "you missed", no exclamation marks.`,
+      messages: [{ role: "user", content }],
+    },
+    { format: { type: "json_schema", schema: RESCHEDULE_SCHEMA } }
+  );
+  if (!response.ok) return null;
+  try {
+    const { offers } = extractStructuredJson<{ offers: { taskId: string; slot: string; why: string }[] }>(response.message);
+    const picked = new Map<string, { slot: Slot; why: string }>();
+    for (const o of offers ?? []) {
+      const i = letters.indexOf(o.slot.trim().toUpperCase().slice(0, 1));
+      if (i < 0 || !steps.some((t) => t.id === o.taskId)) continue;
+      // A "why" that writes a raw date or a 24-hour time is dropped for the template's.
+      const why = /\d{4}-\d{2}-\d{2}|\b(?:1[3-9]|2[0-3]):\d{2}\b/.test(o.why) ? "" : o.why.trim().slice(0, 160);
+      picked.set(o.taskId, { slot: slots[i], why });
+    }
+    return picked;
+  } catch {
+    return null;
+  }
+}
+
 export async function runProactiveCheck(trigger: string): Promise<ProactiveCheckResult> {
   try {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) return { ok: false, generated: 0, notifications: [], error: "No API key" };
+    const at = currentInstant();
+    // At most once per 4 hours per student, from any trigger.
+    if (!proactiveDue((await getNotificationPrefs()).proactiveAt, at)) {
+      console.log(`[proactive] Trigger: ${trigger} | skipped: within 4h`);
+      return { ok: true, generated: 0, notifications: [], skipped: "throttled", aiCalls: 0 };
+    }
+    await markProactiveRun(at);
 
-    // The School block is the student's timetable, not work they can fall
-    // behind on: it produced "Overdue: School" nudges every day.
-    const tasks = (await getAllTasks()).filter((t) => !isBusyBlock(t));
-    const userContext = await studentFactsText("brief");
     const timeZone = await getUserTimezone();
-    const now = currentInstant();
-    const today = getUserToday(timeZone, now);
-    const inThreeDays = addDaysYMD(getUserToday(timeZone, now), 3);
-    const todayTasks = tasks.filter((t) => t.date === today);
-    // Canvas work past CANVAS_CLEAR_DAYS counts as handled (the feed has no submissions).
-    const overdueTasks = tasks.filter((t) => !t.completed && t.date < today && !isCanvasCleared(t, today));
-    const upcomingTasks = tasks.filter(
-      (t) =>
-        !t.completed &&
-        t.date > today &&
-        t.date <= inThreeDays
-    );
-
-    // Relative days are worked out here, in the student's timezone, and given
-    // to the model as labels. Left to itself it called Oct 8 "tomorrow" on Oct 6.
-    const when = (date: string, time?: string) => {
-      const label = relativeDayLabel(date, today);
-      const clock = time && time !== "23:59" ? ` at ${formatTime12(time)}` : time === "23:59" ? " (due end of day)" : "";
-      return `${label}${clock}`;
-    };
-
-    const agentContext = `
-Today: ${relativeDayLabel(today, today)}
-Current time: ${now.toLocaleTimeString("en-US", { timeZone })}
-
-Today's tasks:
-${todayTasks.map((t) => `- ${when(t.date, t.time)}: ${t.title} (${t.completed ? "done" : "pending"})`).join("\n") || "None"}
-
-Overdue tasks:
-${overdueTasks.map((t) => `- id=${t.id} was due ${when(t.date)}: ${t.title}`).join("\n") || "None"}
-
-Upcoming (next 3 days):
-${upcomingTasks.map((t) => `- ${when(t.date, t.time)}: ${t.title}`).join("\n") || "None"}
-
-User context:
-${userContext}
-  `.trim();
-
-    const response = await callClaude(
-      "proactive",
-      {
-        system: `You are a proactive productivity assistant. Analyze the user's schedule and context, then generate 0 to 3 actionable notifications only if something genuinely needs attention.
-
-Do not generate notifications for:
-- Tasks already completed
-- Things the user is already on track for
-- Generic motivational messages with no specific action
-
-Only generate notifications for:
-- Overdue tasks that need rescheduling
-- Upcoming deadlines with no prep scheduled
-- Schedule gaps where productive work could happen
-- Conflicts or time crunches
-- Specific suggestions based on user preferences
-
-Also check the overdue tasks list above. For each overdue task, if there is a free slot
-later today or tomorrow, generate a notification of type "reschedule_offer" with
-actionLabel "Move it" and actionData containing exactly:
-{ "taskId": "<the task's id>", "suggestedDate": "YYYY-MM-DD", "suggestedTime": "HH:MM" }
-Only offer one reschedule_offer per overdue task, and only when you can name a specific
-free slot — do not offer it if you cannot suggest a concrete date and time.
-
-When you mention when something is, copy the day label exactly as given above ("tomorrow (Wed, Oct 7)", "Thu, Oct 8"). Never work out "today", "tomorrow" or a weekday yourself, and never write raw dates like 2026-10-08 or 24-hour times. Use 12-hour times like 3:30 PM.
-
-Each notification's title should be short, under 8 words. Each body should be a specific actionable message under 30 words. actionLabel is an optional button label like 'Reschedule' or 'Add prep time'.
-
-If nothing needs attention return an empty notifications array.`,
-        messages: [{ role: "user", content: agentContext }],
-      },
-      { format: { type: "json_schema", schema: PROACTIVE_NOTIFICATIONS_SCHEMA } }
-    );
-
-    let suggestions: Array<{
-      type: Notification["type"];
-      title: string;
-      body: string;
-      actionLabel?: string;
-      actionData?: Record<string, unknown>;
-    }> = [];
-
-    try {
-      if (!response.ok) throw new Error(`Anthropic error ${response.status}`);
-      suggestions = extractStructuredJson<{ notifications: typeof suggestions }>(response.message).notifications;
-    } catch (e) {
-      console.error("[proactive] Notification parsing failed:", e instanceof Error ? e.message : e);
+    const now = localNow(timeZone, at);
+    const tasks = await getAllTasks();
+    // The School block is the student's timetable, not work they can fall behind on.
+    const found = proactiveFindings(tasks, now, isBusyBlock);
+    if (!hasFindings(found)) {
+      console.log(`[proactive] Trigger: ${trigger} | nothing qualifies, no AI`);
+      return { ok: true, generated: 0, notifications: [], skipped: "nothing", aiCalls: 0 };
     }
 
-    const added: Notification[] = [];
-    for (const s of suggestions) {
-      if (s.title && s.body) {
-        const notif = await addNotification({
-          type: s.type,
-          title: s.title,
-          body: s.body,
-          actionLabel: s.actionLabel,
-          actionData: s.actionData,
-        });
-        added.push(notif);
+    const day = (date: string) => dayWord(date, now.date);
+    const notices: Notice[] = [];
+    const overdue = overdueNotice(found.overdue, day);
+    if (overdue) notices.push(overdue);
+    notices.push(...dueSoonNotices(found.dueSoon, tasks, now, day, formatTime12));
+
+    let aiCalls = 0;
+    if (found.reschedule.length > 0) {
+      const slots = openSlots(tasks, now);
+      if (slots.length > 0) {
+        aiCalls = process.env.ANTHROPIC_API_KEY ? 1 : 0;
+        const picks = aiCalls ? await smartReschedule(found.reschedule, slots, now.date).catch(() => null) : null;
+        for (const t of found.reschedule) {
+          const pick = picks?.get(t.id);
+          notices.push(rescheduleNotice(t, pick?.slot ?? slots[0], day, formatTime12, pick?.why));
+        }
       }
     }
 
-    console.log(`[proactive] Trigger: ${trigger} | Generated: ${added.length} notifications`);
-
-    return { ok: true, generated: added.length, notifications: added };
+    const added: Notification[] = [];
+    for (const n of notices) added.push(await addNotification(n));
+    console.log(`[proactive] Trigger: ${trigger} | Generated: ${added.length} notifications | AI calls: ${aiCalls}`);
+    return { ok: true, generated: added.length, notifications: added, aiCalls };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     console.error("[proactive] Error:", message);

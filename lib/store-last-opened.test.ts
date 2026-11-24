@@ -1,6 +1,6 @@
 // Run with `npm test`. "Last opened" for projects and Tangents, so the
 // sidebar lists the ones a student actually uses. The column ships in
-// supabase/migrations/20261114000000_last_opened.sql; until Sid runs it, opening
+// supabase/migrations/20261114020000_last_opened.sql; until Sid runs it, opening
 // still works and the lists fall back to newest-created.
 import * as nodeModule from "node:module";
 import { test } from "node:test";

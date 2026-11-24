@@ -5,6 +5,7 @@
 // deciding what "today", "tomorrow" or "this week" means.
 
 import { DEFAULT_TIMEZONE, isValidTimezone } from "./dates";
+import { holidayLine } from "./holidays";
 
 export const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
 
@@ -100,7 +101,7 @@ export function localNow(tz: string, at: Date = currentInstant()): LocalNow {
 /** One line for AI system prompts: the student's local date, weekday and time. */
 export function promptDateContext(tz: string, at: Date = currentInstant()): string {
   const n = localNow(tz, at);
-  return `The student's local date is ${n.weekday}, ${n.date}, and the local time is ${n.time} (${n.timeZone}). Tomorrow is ${WEEKDAY_NAMES[weekdayOf(n.tomorrow)]}, ${n.tomorrow}. Current year is ${n.year}. Resolve "today", "tonight", "tomorrow" and weekday names against this local date, never UTC.`;
+  return `The student's local date is ${n.weekday}, ${n.date}, and the local time is ${n.time} (${n.timeZone}). Tomorrow is ${WEEKDAY_NAMES[weekdayOf(n.tomorrow)]}, ${n.tomorrow}. Current year is ${n.year}. Resolve "today", "tonight", "tomorrow" and weekday names against this local date, never UTC.${holidayLine(n.date)}`;
 }
 
 /** Monday–Sunday week containing `ymd`. */

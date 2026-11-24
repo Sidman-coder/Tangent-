@@ -52,6 +52,7 @@ Return the task's fields:
   GOAL: the concrete result when it's done, in one sentence ("A submitted 2-page titration report with the error analysis"), not a motivation ("Improve your chemistry skills").
   FOCUS: the 2-4 real parts of the work, in order, separated by "; ". Name the actual things: sections, problems, people, materials. Only what this task needs.
   TIME: a realistic total for a high schooler, e.g. "about 45 min" or "2 sessions of 40 min". Base it on what the work is, and on how long things take them if the context says.
+  If the current notes have a "DUE:" line, keep it unchanged as the last line, and never call the work due on any other day.
 - startAction: the first physical action, doable in under 2 minutes, starting with a verb ("Open the lab handout and copy the data table into the doc"). Not "Get started on…", not "Plan…".
 
 - date: YYYY-MM-DD only if the answers say WHEN to do it; otherwise "".

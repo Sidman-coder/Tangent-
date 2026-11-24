@@ -50,8 +50,9 @@ export function routeVoiceTranscript(text: string) {
   }
 }
 
+// mip_opt_out: opted out of Deepgram's model-improvement program on every request.
 const LIVE_URL =
-  "wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&interim_results=true";
+  "wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&interim_results=true&mip_opt_out=true";
 /** How long to wait for Deepgram's last words after the student stops. */
 const LIVE_FINISH_MS = 1500;
 /** Chunk size while streaming; small enough that words keep up with speech. */

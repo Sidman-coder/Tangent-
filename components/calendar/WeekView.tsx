@@ -6,20 +6,22 @@ import type { Task } from "@/lib/types";
 import { ChevronDown } from "lucide-react";
 import TaskTitle from "@/components/ui/TaskTitle";
 import { isCanvasCleared } from "@/lib/canvas-clear";
-import { canDragTask, dropTarget, minutesToTime, nudge, overlapAt } from "@/lib/calendar-drag";
+import { canDragTask, columnAt, dropTarget, minutesToTime, nudge, overlapAt } from "@/lib/calendar-drag";
+import { addDays, blockMinutes, dayDiff, formatDuration, isMultiDay, resizeTarget, spanDates, spanEnd } from "@/lib/task-span";
 
 // The week as a time grid: seven day columns, hours down the side, each task a
 // block at its time. This is the view people now expect from a calendar - you
 // see how the day is actually shaped, where the gaps are, and what collides.
 //
-// Tasks have a start time but no duration, so each block is drawn a fixed
-// 45 minutes tall. Two tasks within that window of each other share the column
-// side by side instead of stacking on top of one another.
+// A block is as tall as the task's duration (45 minutes when it has none).
+// Tasks whose blocks overlap share the column side by side instead of stacking
+// on top of one another. A range task (Round 5A 4.3) shows on every day it
+// covers. Dragging a block's bottom edge sets its length; dragging it into a
+// later day's column makes it run through that day.
 
 const START_HOUR = 0;
 const END_HOUR = 24;
 const HOUR_PX = 56;
-const BLOCK_MIN = 45;
 const LONG_PRESS_MS = 400;
 /** Mouse travel that starts a drag; finger travel that means "scrolling" instead. */
 const DRAG_THRESHOLD_PX = 5;
@@ -52,8 +54,11 @@ type Props = {
   colorFor: (task: Task) => string;
   onOpenDay: (ymd: string) => void;
   onAddAt: (ymd: string, time: string) => void;
-  /** Dropped on a new day or time. Without it, blocks don't drag. */
+  /** Dropped on a new day or time. Without it, blocks don't drag. For a range
+   *  task, `ymd` is its new first day. */
   onMoveTask?: (task: Task, ymd: string, time: string) => void;
+  /** The bottom edge was dragged. Without it, blocks don't resize. */
+  onResizeTask?: (task: Task, span: { durationMin: number; endDate: string | null }) => void;
   toYMD: (d: Date) => string;
   /** The hour the grid opens on (school start, or 7 AM). */
   startHour?: number;
@@ -98,23 +103,32 @@ function lanes(tasks: Task[]): { task: Task; lane: number; of: number }[] {
   for (const task of sorted) {
     const start = minutesOf(task.time);
     if (start >= clusterEnd && cluster.length) flush();
-    const used = new Set(cluster.filter((c) => minutesOf(c.task.time) + BLOCK_MIN > start).map((c) => c.lane));
+    const used = new Set(cluster.filter((c) => minutesOf(c.task.time) + blockMinutes(c.task) > start).map((c) => c.lane));
     let lane = 0;
     while (used.has(lane)) lane++;
     cluster.push({ task, lane, of: 1 });
-    clusterEnd = Math.max(clusterEnd, start + BLOCK_MIN);
+    clusterEnd = Math.max(clusterEnd, start + blockMinutes(task));
   }
   if (cluster.length) flush();
   return placed;
 }
 
-export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpenDay, onOpenTask, labelFor, onAddAt, onMoveTask, toYMD, startHour = 7 }: Props) {
+type Resize = { task: Task; pointerId: number; durationMin: number; endDate: string | null };
+
+/** "Wed" for a date string. */
+function weekday(ymd: string): string {
+  return new Date(`${ymd}T12:00:00`).toLocaleDateString(undefined, { weekday: "short" });
+}
+
+export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpenDay, onOpenTask, labelFor, onAddAt, onMoveTask, onResizeTask, toYMD, startHour = 7 }: Props) {
   const reduced = useReducedMotion() ?? false;
   const scrollRef = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(() => new Date());
   const gesture = useRef<Gesture | null>(null);
   const suppressClick = useRef(false);
-  const [ghost, setGhost] = useState<{ taskId: string; ymd: string; minutes: number; color: string } | null>(null);
+  const [ghost, setGhost] = useState<{ taskId: string; ymd: string; minutes: number; color: string; blockMin: number } | null>(null);
+  const resizeRef = useRef<Resize | null>(null);
+  const [resize, setResize] = useState<Resize | null>(null);
   const dayKeys = days.map(toYMD);
   // The Due row folds to a count per day; the choice is remembered.
   const [dueOpen, setDueOpen] = useState(true);
@@ -147,7 +161,7 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
 
   const showGhost = (g: Gesture) => {
     const at = place(g);
-    if (at) setGhost({ taskId: g.task.id, ...at, color: colorFor(g.task) });
+    if (at) setGhost({ taskId: g.task.id, ...at, color: colorFor(g.task), blockMin: blockMinutes(g.task) });
   };
 
   const endGesture = () => {
@@ -221,7 +235,8 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
         suppressClick.current = true;
         const at = place(g);
         const time = at ? minutesToTime(at.minutes) : null;
-        if (at && time && (at.ymd !== fromYmd || time !== task.time)) onMoveTask?.(task, at.ymd, time);
+        // A range task keeps its shape: the grabbed day lands on the drop column.
+        if (at && time && (at.ymd !== fromYmd || time !== task.time)) onMoveTask?.(task, addDays(task.date, dayDiff(fromYmd, at.ymd)), time);
       }
       endGesture();
     },
@@ -232,21 +247,87 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
     },
     onKeyDown: (e: React.KeyboardEvent) => {
       if (!e.altKey) return;
+      // Alt+Shift+Up/Down: 15 minutes shorter or longer.
+      if (e.shiftKey && onResizeTask && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+        e.preventDefault();
+        const start = minutesOf(task.time);
+        const length = blockMinutes(task) + (e.key === "ArrowDown" ? 15 : -15);
+        const next = resizeTarget({ date: task.date, startMin: start, currentDurationMin: blockMinutes(task), pointerYmd: task.date, pointerMin: start + length });
+        if (next.durationMin !== blockMinutes(task)) onResizeTask(task, { durationMin: next.durationMin, endDate: task.endDate ?? null });
+        return;
+      }
       const to = nudge(dayKeys.indexOf(fromYmd), minutesOf(task.time), e.key, dayKeys.length);
       if (!to) return;
       e.preventDefault();
-      onMoveTask?.(task, dayKeys[to.dayIndex], minutesToTime(to.minutes));
+      onMoveTask?.(task, addDays(task.date, dayDiff(fromYmd, dayKeys[to.dayIndex])), minutesToTime(to.minutes));
     },
   });
 
+  // The bottom-edge handle. Mouse and finger alike: a press there can only
+  // mean "resize", so there's no long press first.
+  const resizeAt = (r: Resize, x: number, y: number): Resize => {
+    const first = scrollRef.current?.querySelector<HTMLElement>(".wk-col");
+    if (!first) return r;
+    const box = first.getBoundingClientRect();
+    const pointerYmd = dayKeys[columnAt(x - box.left, box.width * days.length, days.length)];
+    const pointerMin = ((y - box.top) / HOUR_PX) * 60 + START_HOUR * 60;
+    const next = resizeTarget({
+      date: r.task.date,
+      startMin: minutesOf(r.task.time),
+      currentDurationMin: blockMinutes(r.task),
+      pointerYmd,
+      pointerMin,
+    });
+    return { ...r, ...next };
+  };
+
+  const endResize = () => {
+    resizeRef.current = null;
+    setResize(null);
+  };
+
+  const resizeProps = (task: Task) => ({
+    onPointerDown: (e: React.PointerEvent<HTMLSpanElement>) => {
+      if (e.button !== 0 || gesture.current || resizeRef.current) return;
+      // Not a move, and not a click on the block.
+      e.stopPropagation();
+      e.preventDefault();
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {}
+      const r: Resize = { task, pointerId: e.pointerId, durationMin: blockMinutes(task), endDate: isMultiDay(task) ? spanEnd(task) : null };
+      resizeRef.current = r;
+      setResize(r);
+    },
+    onPointerMove: (e: React.PointerEvent<HTMLSpanElement>) => {
+      const r = resizeRef.current;
+      if (!r || r.pointerId !== e.pointerId) return;
+      e.stopPropagation();
+      const next = resizeAt(r, e.clientX, e.clientY);
+      resizeRef.current = next;
+      setResize(next);
+    },
+    onPointerUp: (e: React.PointerEvent<HTMLSpanElement>) => {
+      const r = resizeRef.current;
+      if (!r || r.pointerId !== e.pointerId) return;
+      e.stopPropagation();
+      suppressClick.current = true;
+      endResize();
+      const changed = r.durationMin !== blockMinutes(task) || r.endDate !== (isMultiDay(task) ? spanEnd(task) : null);
+      if (changed) onResizeTask?.(task, { durationMin: r.durationMin, endDate: r.endDate });
+    },
+    onPointerCancel: endResize,
+  });
+
   // Escape drops the block back where it was.
-  const dragging = ghost !== null;
+  const dragging = ghost !== null || resize !== null;
   useEffect(() => {
     if (!dragging) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       suppressClick.current = true;
       endGesture();
+      endResize();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -258,7 +339,7 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
     const el = scrollRef.current;
     if (!el) return;
     const onTouchMove = (e: TouchEvent) => {
-      if (gesture.current?.active) e.preventDefault();
+      if (gesture.current?.active || resizeRef.current) e.preventDefault();
     };
     el.addEventListener("touchmove", onTouchMove, { passive: false });
     return () => el.removeEventListener("touchmove", onTouchMove);
@@ -284,7 +365,12 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
   const hours = useMemo(() => Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i), []);
   const nowMins = now.getHours() * 60 + now.getMinutes();
   const nowTop = ((nowMins - START_HOUR * 60) / 60) * HOUR_PX;
-  const overlap = ghost ? overlapAt(tasksForDay(ghost.ymd).filter((t) => !isDue(t)), ghost.taskId, ghost.minutes, BLOCK_MIN) : null;
+  const overlap = ghost ? overlapAt(tasksForDay(ghost.ymd).filter((t) => !isDue(t)), ghost.taskId, ghost.minutes, ghost.blockMin) : null;
+  // While resizing: every day the task would cover, drawn as a ghost.
+  const resizeDays = resize ? spanDates({ date: resize.task.date, endDate: resize.endDate }) : [];
+  const resizeLabel = resize
+    ? `${formatDuration(resize.durationMin)}${resize.endDate && resize.endDate > resize.task.date ? ` · until ${weekday(resize.endDate)}` : ""}`
+    : "";
 
   return (
     <div className={`wk${dragging ? " is-dragging" : ""}`} style={{ "--wk-days": days.length } as React.CSSProperties}>
@@ -308,7 +394,7 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
         <div className={`wk-due${dueOpen ? "" : " is-folded"}`}>
           <button type="button" className="wk-gutter wk-due-label" onClick={toggleDue} aria-expanded={dueOpen} aria-label={dueOpen ? "Fold due dates" : "Show due dates"}>
             Due
-            <ChevronDown size={12} strokeWidth={2} aria-hidden="true" className="wk-due-chevron" />
+            <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" className="wk-due-chevron" />
           </button>
           {days.map((d) => {
             const ymd = toYMD(d);
@@ -373,17 +459,23 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
                   const top = ((start - START_HOUR * 60) / 60) * HOUR_PX;
                   const color = colorFor(task);
                   const movable = !!onMoveTask && canDragTask(task);
-                  const held = ghost?.taskId === task.id;
+                  const resizable = movable && !!onResizeTask && !task.completed;
+                  const held = ghost?.taskId === task.id || resize?.task.id === task.id;
+                  const length = blockMinutes(task);
+                  const multi = isMultiDay(task);
+                  const endTime = minutesToTime(Math.min(minutesOf(task.time) + length, 24 * 60 - 1));
+                  const dayNo = multi ? dayDiff(task.date, ymd) + 1 : 0;
+                  const dayCount = multi ? dayDiff(task.date, spanEnd(task)) + 1 : 0;
                   return (
                     <m.button
                       key={task.id}
                       type="button"
-                      className={`wk-block${task.completed ? " is-done" : ""}${isCanvasCleared(task, todayYmd) ? " is-cleared" : ""}${movable ? " is-movable" : " is-fixed"}${held ? " is-held" : ""}`}
+                      className={`wk-block${task.completed ? " is-done" : ""}${isCanvasCleared(task, todayYmd) ? " is-cleared" : ""}${movable ? " is-movable" : " is-fixed"}${held ? " is-held" : ""}${multi ? " is-span" : ""}${(length / 60) * HOUR_PX - 3 < 44 ? " is-short" : ""}`}
                       {...(movable ? dragProps(task, ymd) : {})}
                       style={
                         {
                           top: top + 1,
-                          height: (BLOCK_MIN / 60) * HOUR_PX - 3,
+                          height: (length / 60) * HOUR_PX - 3,
                           left: `calc(${(lane / of) * 100}% + 3px)`,
                           width: `calc(${100 / of}% - 6px)`,
                           "--block": color,
@@ -402,11 +494,24 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
                       initial={reduced ? false : { opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ duration: 0.16, ease: "easeOut" }}
-                      aria-label={`${time12(task.time)} ${task.title}`}
+                      aria-label={`${time12(task.time)}${task.durationMin ? ` to ${time12(endTime)}` : ""} ${task.title}${multi ? `, day ${dayNo} of ${dayCount}` : ""}`}
                       data-task-tip={dragging ? undefined : task.id}
                     >
                       <span className="wk-block-title">{labelFor ? labelFor(task) : <TaskTitle task={task} chip={false} />}</span>
-                      <span className="wk-block-time">{time12(task.time)}</span>
+                      <span className="wk-block-time">
+                        {time12(task.time)}
+                        {task.durationMin ? ` – ${time12(endTime)}` : ""}
+                        {multi ? ` · ${dayNo}/${dayCount}` : ""}
+                      </span>
+                      {multi && <span className="wk-block-part" aria-hidden="true">{dayNo}/{dayCount}</span>}
+                      {resizable && (
+                        <span
+                          className="wk-resize"
+                          aria-hidden="true"
+                          title="Drag to change how long it takes, or into another day to make it run until then"
+                          {...resizeProps(task)}
+                        />
+                      )}
                     </m.button>
                   );
                 })}
@@ -415,10 +520,24 @@ export default function WeekView({ days, todayYmd, tasksForDay, colorFor, onOpen
                   <div
                     className="wk-ghost"
                     aria-hidden="true"
-                    style={{ top: (ghost.minutes / 60) * HOUR_PX + 1, height: (BLOCK_MIN / 60) * HOUR_PX - 3, "--block": ghost.color } as React.CSSProperties}
+                    style={{ top: (ghost.minutes / 60) * HOUR_PX + 1, height: (ghost.blockMin / 60) * HOUR_PX - 3, "--block": ghost.color } as React.CSSProperties}
                   >
                     <span className="wk-ghost-time">{time12(minutesToTime(ghost.minutes))}</span>
                     {overlap && <span className="wk-ghost-warn">Overlaps {overlap.title}</span>}
+                  </div>
+                )}
+
+                {resize && resizeDays.includes(ymd) && (
+                  <div
+                    className="wk-ghost wk-ghost--resize"
+                    aria-hidden="true"
+                    style={{
+                      top: ((minutesOf(resize.task.time) - START_HOUR * 60) / 60) * HOUR_PX + 1,
+                      height: (resize.durationMin / 60) * HOUR_PX - 3,
+                      "--block": colorFor(resize.task),
+                    } as React.CSSProperties}
+                  >
+                    {ymd === resizeDays[resizeDays.length - 1] && <span className="wk-ghost-time">{resizeLabel}</span>}
                   </div>
                 )}
 

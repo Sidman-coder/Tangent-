@@ -8,7 +8,7 @@
   padding: 12px 14px;
   border: 1px solid var(--line);
   border-left: 3px solid var(--amber);
-  border-radius: 12px;
+  border-radius: var(--r-md);
   background: var(--surface);
 }
 

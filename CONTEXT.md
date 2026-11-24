@@ -131,7 +131,7 @@ The test that Tangent knows enough to make a first plan, scored from the filled 
 _Avoid_: Confidence, completeness
 
 **Commitment**:
-A regular time the Student is already busy, such as school, practice, work or lessons, with a repeat and one or more time blocks. It sits on the calendar as recurring busy blocks, Tangent never plans inside it, and it is edited in Settings → Your Tangent (Your week).
+A regular time the Student is already busy, such as school, practice, work or lessons, with a repeat and one or more time blocks. It sits on the calendar as recurring busy blocks, Tangent never plans inside it, and it is edited in Settings → Schedule.
 _Avoid_: Class schedule, routine, availability
 
 **Daily follow-up**:

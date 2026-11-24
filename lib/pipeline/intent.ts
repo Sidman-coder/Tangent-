@@ -130,14 +130,23 @@ export type ClassifyContext = {
   planTitles: readonly string[];
   caller: RouterCaller;
   at?: Date;
+  /** Typed in a task's chat: that task. */
+  openTask?: OpenTask | null;
 };
 
 /** The router's user message: the date, their plans and the request. */
-export function routerUserMessage(text: string, today: string, planTitles: readonly string[]): string {
+export function routerUserMessage(text: string, today: string, planTitles: readonly string[], openTask?: OpenTask | null): string {
   const weekday = new Date(`${today}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
   const plans = planTitles.length ? planTitles.slice(0, 20).map((t) => `"${t.slice(0, 80)}"`).join(", ") : "none";
-  return `Today: ${weekday}, ${today}\nTheir plans and projects: ${plans}\nMessage: ${text.slice(0, 1000)}`;
+  // Overnight 2 (Maya sim): asked from a task's sheet, "the final is Dec 17,
+  // spread study sessions" was "What did you mean?" because the router never
+  // knew which task "the final" was.
+  const task = openTask ? `\nAsked from the chat of their task: "${openTask.title.slice(0, 80)}"${openTask.when ? ` (now set for ${openTask.when})` : ""}` : "";
+  return `Today: ${weekday}, ${today}\nTheir plans and projects: ${plans}${task}\nMessage: ${text.slice(0, 1000)}`;
 }
+
+/** The task whose chat the message was typed in. */
+export type OpenTask = { title: string; when: string | null };
 
 /** The route for a router answer. */
 export function routeFor(out: Pick<RouterOutput, "intent" | "confidence">): IntakeRoute {
@@ -186,7 +195,7 @@ export async function classifyIntent(text: string, ctx: ClassifyContext): Promis
 
   let raw: unknown = null;
   try {
-    raw = await ctx.caller(INTENT_SYSTEM, routerUserMessage(text, ctx.today, ctx.planTitles));
+    raw = await ctx.caller(INTENT_SYSTEM, routerUserMessage(text, ctx.today, ctx.planTitles, ctx.openTask));
   } catch {
     raw = null;
   }

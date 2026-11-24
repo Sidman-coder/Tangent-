@@ -2,9 +2,12 @@
 
 // The day in the order it happens: Past due (with Fresh start), then Morning,
 // Afternoon, Evening and Late night on a timeline rail (Round 4 §5.1), then
-// Anytime. Every part shows, an empty one as a faint row; each is grouped by
+// Anytime. Only parts with something in them show; if the whole day is empty
+// it is one calm line with an action (overnight C10). Past due is "Catch up", folded; each is grouped by
 // project, School or Personal, and the Now line sits in the part the clock is
-// in. Coming up stays folded away.
+// in. When nothing is left today, the next step is a Next up card (overnight 2,
+// N06) and Coming up starts folded, so the step isn't shown twice. The
+// question strip sits below the first day section (N16).
 
 import { Fragment, useState } from "react";
 import Link from "next/link";
@@ -14,9 +17,10 @@ import EmptyState from "@/components/ui/EmptyState";
 import GroupHeader from "@/components/ui/GroupHeader";
 import { seriesColor, taskSeries } from "@/lib/task-colors";
 import { formatTaskDay } from "@/lib/task-when";
-import { DAY_PARTS, nothingOnDay, nowLine, type DayPart, type TaskBlock, type TodayGroups } from "@/lib/today-sections";
+import { DAY_PARTS, nextAhead, nothingOnDay, nowLine, type DayPart, type TaskBlock, type TodayGroups } from "@/lib/today-sections";
 import type { Plan, Task } from "@/lib/types";
 import TodayRow, { type TodayRowActions } from "./TodayRow";
+import NextUpCard from "./NextUpCard";
 
 const PART_ICONS: Record<DayPart, typeof Sun> = {
   morning: Sunrise,
@@ -34,9 +38,21 @@ type Props = TodayRowActions & {
   timezone: string;
   busyTaskId: string | null;
   questionTaskIds: ReadonlySet<string>;
+  /** The row whose split preview should open (the "Too big" answer to "why not today?"). */
+  splitTaskId?: string | null;
+  onSplitAsked?: () => void;
   /** Fresh start, in the Past due header when it applies. */
   freshStart?: React.ReactNode;
+  /** The question strip: shown under the first day section, never above the day. */
+  afterFirst?: React.ReactNode;
 };
+
+/** Put the cursor in the main composer so "Tell me what's due" is one tap. */
+function focusComposer() {
+  const el = document.querySelector<HTMLElement>("[data-primary-composer] textarea, [data-primary-composer] input");
+  el?.focus();
+  el?.scrollIntoView({ block: "center", behavior: "smooth" });
+}
 
 function NowRule({ now, timezone }: { now: Date; timezone: string }) {
   const label = now.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", timeZone: timezone });
@@ -48,9 +64,9 @@ function NowRule({ now, timezone }: { now: Date; timezone: string }) {
   );
 }
 
-export default function TodaySections({ groups, plans, now, today, timezone, busyTaskId, questionTaskIds, freshStart, ...actions }: Props) {
-  const [comingOpen, setComingOpen] = useState(false);
-  const [pastOpen, setPastOpen] = useState(true);
+export default function TodaySections({ groups, plans, now, today, timezone, busyTaskId, questionTaskIds, splitTaskId, onSplitAsked, freshStart, afterFirst, ...actions }: Props) {
+  const [comingOpen, setComingOpen] = useState(() => !(nothingOnDay(groups) && groups.pastDue.length === 0 && nextAhead(groups)));
+  const [pastOpen, setPastOpen] = useState(false);
   const [toggled, setToggled] = useState<Partial<Record<DayPart, boolean>>>({});
   const comingCount = groups.comingUp.reduce((n, day) => n + day.tasks.length, 0);
   const line = nowLine(groups, now, timezone);
@@ -67,6 +83,8 @@ export default function TodaySections({ groups, plans, now, today, timezone, bus
         timezone={timezone}
         busy={busyTaskId === task.id}
         hasQuestions={questionTaskIds.has(task.id)}
+        askSplit={splitTaskId === task.id}
+        onSplitAsked={onSplitAsked}
         {...actions}
       />
     </Fragment>
@@ -94,8 +112,10 @@ export default function TodaySections({ groups, plans, now, today, timezone, bus
   };
 
   const nothingToday = nothingOnDay(groups) && groups.pastDue.length === 0;
+  const nextStep = nextAhead(groups);
   const timed = groups.parts.filter((g) => g.part !== "anytime");
   const anytime = groups.parts.find((g) => g.part === "anytime");
+  const firstPart = timed.find((g) => g.tasks.length > 0)?.part ?? null;
 
   return (
     <div className="today-sections">
@@ -105,7 +125,7 @@ export default function TodaySections({ groups, plans, now, today, timezone, bus
           <div className="today-section-bar">
             <h2 id="past-due-title" className="today-section-head">
               <button type="button" className="today-section-toggle" aria-expanded={pastOpen} onClick={() => setPastOpen((o) => !o)}>
-                Past due <span className="today-section-count">{groups.counts.pastDue}</span>
+                Catch up <span className="today-section-count">{groups.counts.pastDue}</span>
                 <ChevronRight size={15} aria-hidden="true" className={pastOpen ? "is-open" : undefined} />
               </button>
             </h2>
@@ -125,9 +145,34 @@ export default function TodaySections({ groups, plans, now, today, timezone, bus
       )}
 
       {nothingToday ? (
-        <EmptyState icon={<Sun size={20} strokeWidth={1.75} aria-hidden="true" />} title="You&apos;re all caught up.">Anything on your mind? Say it above.</EmptyState>
+        <>
+          {nextStep ? (
+            <NextUpCard
+              task={nextStep}
+              plans={plans}
+              now={now}
+              today={today}
+              timezone={timezone}
+              busy={busyTaskId === nextStep.id}
+              onDone={actions.onDone}
+              onNotToday={actions.onNotToday}
+            />
+          ) : (
+            <EmptyState icon={<Sun size={20} strokeWidth={1.75} aria-hidden="true" />} title="Nothing planned today.">Say what&apos;s coming up above and I&apos;ll plan it.</EmptyState>
+          )}
+          {afterFirst}
+        </>
       ) : (
         <>
+          {timed.every((g) => g.tasks.length === 0) && (!anytime || anytime.tasks.length === 0) && (
+            <p className="today-calm">
+              <span>Nothing planned for the rest of today.</span>
+              <button type="button" className="today-calm-action" onClick={focusComposer}>
+                Tell me what&apos;s due this week
+              </button>
+            </p>
+          )}
+          {firstPart === null && !(anytime && anytime.tasks.length > 0) && afterFirst}
           <div className="today-timeline">
             {timed.map((group) => {
               const meta = DAY_PARTS.find((p) => p.id === group.part)!;
@@ -135,44 +180,36 @@ export default function TodaySections({ groups, plans, now, today, timezone, bus
               const current = line.part === group.part;
               const nowHere = current && line.before === null;
               const empty = group.tasks.length === 0;
+              if (empty) return current && line.before === null ? <NowRule key={group.part} now={now} timezone={timezone} /> : null;
               const collapsed = toggled[group.part] ?? group.open === 0;
               return (
+                <Fragment key={group.part}>
                 <section
-                  key={group.part}
-                  className={`today-section today-part${empty ? " is-empty" : ""}${current ? " is-current" : ""}`}
-                  aria-label={empty ? `${meta.label}: ${meta.empty.toLowerCase()}` : meta.label}
+                  className={`today-section today-part${current ? " is-current" : ""}`}
+                  aria-label={meta.label}
                 >
                   <span className="today-rail-mark" aria-hidden="true">
                     <span className="today-rail-time">{meta.start}</span>
                   </span>
-                  {empty ? (
-                    <GroupHeader
-                      variant="time"
-                      as="h2"
-                      title={meta.label}
-                      icon={icon}
-                      range={meta.range}
-                      action={<span className="today-part-empty">{meta.empty}</span>}
-                    />
-                  ) : (
-                    <GroupHeader
-                      variant="time"
-                      as="h2"
-                      title={meta.label}
-                      icon={icon}
-                      range={meta.range}
-                      count={group.open}
-                      collapsed={collapsed}
-                      onToggle={() => setToggled((t) => ({ ...t, [group.part]: !collapsed }))}
-                    />
-                  )}
+                  <GroupHeader
+                    variant="time"
+                    as="h2"
+                    title={meta.label}
+                    icon={icon}
+                    range={meta.range}
+                    count={group.open}
+                    collapsed={collapsed}
+                    onToggle={() => setToggled((t) => ({ ...t, [group.part]: !collapsed }))}
+                  />
                   {!collapsed && group.blocks.map(blockView)}
                   {nowHere && <NowRule now={now} timezone={timezone} />}
                 </section>
+                {group.part === firstPart && afterFirst ? <div className="today-after-first">{afterFirst}</div> : null}
+                </Fragment>
               );
             })}
           </div>
-          {anytime && (
+          {anytime && anytime.tasks.length > 0 && (
             <section className="today-section today-part is-anytime" aria-label="Anytime today">
               <GroupHeader
                 variant="time"
@@ -186,6 +223,7 @@ export default function TodaySections({ groups, plans, now, today, timezone, bus
               {!(toggled.anytime ?? anytime.open === 0) && anytime.blocks.map(blockView)}
             </section>
           )}
+          {firstPart === null && anytime && anytime.tasks.length > 0 && afterFirst}
         </>
       )}
 
@@ -198,7 +236,7 @@ export default function TodaySections({ groups, plans, now, today, timezone, bus
         </h2>
         {comingOpen &&
           (comingCount === 0 ? (
-            <p className="today-section-empty">Nothing in the next 3 days.</p>
+            <p className="today-section-empty">Nothing in the next 7 days.</p>
           ) : (
             groups.comingUp.map((day) => (
               <div key={day.date} className="today-day">

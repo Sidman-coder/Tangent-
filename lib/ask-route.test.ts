@@ -28,6 +28,11 @@ void (import("./ask-route") as Promise<typeof import("./ask-route")>).then(({ ro
       assert.equal(routeAsk(s), "question", s);
     }
   });
+  test("a how-to question is talked through, not turned into a project", () => {
+    for (const s of ["How do I prepare for the AP Chem final?", "how should I study for my bio test on Friday", "what's the best way to write a lab report"]) {
+      assert.equal(routeAsk(s), "question", s);
+    }
+  });
   test("multi-week efforts become projects", () => {
     for (const s of ["prep for my chem final", "science fair project", "start a robotics club", "study for the SAT over the next 6 weeks"]) {
       assert.equal(routeAsk(s), "project", s);

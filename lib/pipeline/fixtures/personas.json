@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "note": "The Phase 2 (overnight) simulation personas, kept as fixtures. Each is a high-school student with a first ask and the things a plan or reply built for them must respect. Fictional people; no real data. Source profiles: user-simulation-tests/simulation/profiles/*.md. Dana (a parent, signed out) is not a planning fixture and is left out.",
+  "personas": [
+    {
+      "id": "maya",
+      "grade": 11,
+      "ask": "Capture this week's tests, then ask how to prepare for the AP Chem final and plan it around debate on Tuesday.",
+      "must_respect": ["debate on Tuesday", "every test named in the capture is kept (none dropped)", "no step on the day of a stated commitment unless it fits"]
+    },
+    {
+      "id": "jordan",
+      "grade": 10,
+      "ask": "Get the new club approved before the spring season without letting grades slip during soccer season.",
+      "must_respect": ["school Mon-Fri 08:00-15:00", "soccer practice Mon-Fri 15:30-17:30 and Sat 08:00-12:00", "never ask again what was already said (plays football or soccer)"]
+    },
+    {
+      "id": "leo",
+      "grade": 11,
+      "ask": "Hit a weekly upload schedule and 1,000 subscribers without grades dropping; plan chem and algebra work around the Sunday 6pm upload.",
+      "must_respect": ["Sunday 6pm upload", "chem and algebra work stays in the plan", "the goal can be edited later"]
+    },
+    {
+      "id": "priya",
+      "grade": 12,
+      "ask": "Finish the Common App essay draft before the Early Decision deadline while working part time.",
+      "must_respect": ["work Wed 16:00-21:00 and Sat+Sun 08:00-14:00", "school weekdays 08:00-15:00", "steps name the real thing (a paragraph, not 'work on essay')"]
+    },
+    {
+      "id": "sam",
+      "grade": 9,
+      "ask": "Stay on top of homework; a freshman who procrastinates and needs small first steps.",
+      "must_respect": ["small first step (15 minutes or less)", "no guilt or streak wording", "school weekdays 08:00-15:00"]
+    }
+  ]
+}

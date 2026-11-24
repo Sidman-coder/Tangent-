@@ -11,6 +11,7 @@ import { firstOpenTime, isSchoolBlock } from "./schedule-slots";
 import { commitmentOf } from "./task-kind";
 import { addDaysYMD, daysBetweenYMD, weekdayOf, WEEKDAY_NAMES } from "./time";
 import type { Task } from "./types";
+import type { AvoidWindow } from "./avoid-times";
 
 /** Minutes of work a student can take on in a day before it's too much. */
 export type Capacity = { weekday: number; weekend: number };
@@ -65,6 +66,15 @@ export function dayLoad(tasks: Task[], date: string): number {
   return sum;
 }
 
+/** Canvas work due the day after `date`. A student does that work the evening
+ *  before, so the eve of a deadline is busier than its own load shows. */
+export function canvasEveMinutes(tasks: Task[], date: string): number {
+  const next = addDaysYMD(date, 1);
+  let sum = 0;
+  for (const t of tasks) if (t.source === "canvas" && t.date === next) sum += estimateMinutes(t);
+  return sum;
+}
+
 export type DayLoad = { date: string; minutes: number; capacity: number };
 
 export function loadByDay(tasks: Task[], from: string, days: number, cap: Capacity): DayLoad[] {
@@ -106,6 +116,8 @@ export type PlacementRules = {
   maxPerProjectPerDay: number;
   bufferMinutes: number;
   preferredWindows?: { start: number; end: number }[];
+  /** Times the student said to keep free, by weekday (lib/avoid-times.ts). */
+  avoid?: readonly AvoidWindow[];
 };
 
 export const DEFAULT_PLACEMENT_RULES: PlacementRules = { maxPerProjectPerDay: 2, bufferMinutes: 15 };
@@ -152,8 +164,9 @@ export function placeTask(
       ...d,
       fits: after <= d.capacity,
       atLimit: Boolean(rules && projectId) && projectStepsOn(tasks, d.date, projectId as string) >= (rules as PlacementRules).maxPerProjectPerDay,
-      // Fullness after adding it, plus a small nudge toward sooner.
-      score: after / d.capacity + (0.25 * i) / Math.max(1, span),
+      // Fullness after adding it, a nudge away from the eve of a Canvas
+      // deadline (half its minutes count), and a small nudge toward sooner.
+      score: (after + 0.5 * canvasEveMinutes(tasks, d.date)) / d.capacity + (0.25 * i) / Math.max(1, span),
     };
   });
 
@@ -194,26 +207,37 @@ export function placeTask(
 export function spreadSessions(
   tasks: Task[],
   dates: string[],
-  opts: { now: Now; minutes?: number; cap: Capacity; slack?: number; rules?: PlacementRules; projectId?: string | null }
+  opts: {
+    now: Now;
+    minutes?: number;
+    cap: Capacity;
+    slack?: number;
+    rules?: PlacementRules;
+    projectId?: string | null;
+    /** Round 6: the last day a session may use (the day before a deadline). */
+    lastDate?: string;
+  }
 ): { date: string; time: string; note?: string }[] {
   const minutes = opts.minutes ?? DEFAULT_TASK_MIN;
   const slack = opts.slack ?? 1;
   const working = [...tasks];
   const out: { date: string; time: string; note?: string }[] = [];
   let floor = opts.now.date;
-  const lastDate = dates.length ? [...dates].sort().pop()! : floor;
+  const cap = (d: string) => (opts.lastDate && d > opts.lastDate ? opts.lastDate : d);
+  const lastDate = cap(dates.length ? [...dates].sort().pop()! : floor);
   // A new project has no id yet; its own sessions still count toward the limit.
   const projectId = opts.rules ? (opts.projectId ?? "new-project") : null;
   for (const target of dates) {
-    const earliest = [addDaysYMD(target, -slack), floor].sort().pop()!;
-    const latest = [addDaysYMD(target, slack), earliest].sort().pop()!;
+    // Past the last day, sessions share the last day rather than spill over it.
+    const earliest = cap([addDaysYMD(target, -slack), floor].sort().pop()!);
+    const latest = [cap(addDaysYMD(target, slack)), earliest].sort().pop()!;
     const base = { now: opts.now, minutes, cap: opts.cap, earliest, preferredDate: target, rules: opts.rules, projectId };
     let placed = placeTask(working, { ...base, latest });
     // Every nearby day is at the limit: look further before packing a day.
     if (placed?.note === PACKED_NOTE && lastDate > latest) {
       placed = placeTask(working, { ...base, latest: lastDate }) ?? placed;
     }
-    const date = placed?.date ?? (target < floor ? floor : target);
+    const date = placed?.date ?? cap(target < floor ? floor : target);
     const time = placed?.time ?? "16:00";
     out.push(placed?.note === PACKED_NOTE ? { date, time, note: PACKED_NOTE } : { date, time });
     working.push({

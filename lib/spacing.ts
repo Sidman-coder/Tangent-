@@ -22,6 +22,8 @@ import {
   suggestRelief,
 } from "@/lib/load";
 import { addDaysYMD, localNow } from "@/lib/time";
+import type { AvoidWindow } from "@/lib/avoid-times";
+import type { Task } from "@/lib/types";
 import { getContextSlots } from "@/lib/context/store";
 import { preferredWindows } from "@/lib/context/flow";
 import { completionByHour, preferredStepSize } from "@/lib/student/observations";
@@ -121,8 +123,18 @@ export async function reliefSuggestion(): Promise<ReliefSuggestion | null> {
  *  open times (lib/load.ts spreadSessions). Same length and order as `dates`. */
 export async function spreadPlanDates(
   dates: string[],
-  projectId?: string | null
+  projectId?: string | null,
+  /** Round 6: typed busy times, and the last day a session may use (before a deadline). */
+  limits: { avoid?: readonly AvoidWindow[]; lastDate?: string } = {}
 ): Promise<{ date: string; time: string; note?: string }[]> {
+  const [tasks, { cap }, now, base] = await Promise.all([getAllTasks(), studentCapacity(), studentNow(), studentRules()]);
+  const rules = limits.avoid?.length ? { ...base, avoid: limits.avoid } : base;
+  return spreadSessions(tasks, dates, { now, cap, rules, projectId, lastDate: limits.lastDate });
+}
+
+/** Round 6: what the placement check needs, read once: the student's tasks,
+ *  capacity, local now and placement rules. */
+export async function placementContext(): Promise<{ tasks: Task[]; cap: Capacity; now: { date: string; minutes: number }; rules: PlacementRules }> {
   const [tasks, { cap }, now, rules] = await Promise.all([getAllTasks(), studentCapacity(), studentNow(), studentRules()]);
-  return spreadSessions(tasks, dates, { now, cap, rules, projectId });
+  return { tasks, cap, now, rules };
 }

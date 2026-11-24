@@ -9,7 +9,7 @@ import { pageEnter } from "@/lib/motion";
 import { CalendarDays, ChevronRight, FolderKanban, Home, Mic, Plus, Route, Settings, type LucideIcon } from "lucide-react";
 import NotificationBell, { NotificationBellButton } from "./NotificationBell";
 import CommandPalette from "./CommandPalette";
-import GetToKnowYou, { GET_TO_KNOW_EVENT } from "./GetToKnowYou";
+import GetToKnowYou from "./GetToKnowYou";
 import FirstRun from "./FirstRun";
 import TangentLogo from "@/components/TangentLogo";
 import DesktopNotifPrompt from "./DesktopNotifPrompt";
@@ -19,6 +19,7 @@ import { isOnboardingSchoolTask } from "@/lib/school-block";
 import { readSetAside, SET_ASIDE_EVENT } from "@/lib/today-local";
 import { planSeriesColor } from "@/lib/task-colors";
 import { requestHomeIntent, type HomeIntent } from "@/lib/home-intent";
+import { setCanvasSyncFailed } from "@/components/settings/useCanvasStatus";
 import { recentProjectsAndTangents } from "@/lib/sidebar-recents";
 import { useOpenedNow } from "@/lib/opened";
 import { loadTangents, useTangents } from "@/components/tangents/useTangents";
@@ -87,7 +88,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     const zone = encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone);
     void fetch(`/api/canvas/connect?ifStale=6&tz=${zone}`)
       .then((res) => res.json())
-      .then((data: { added?: number; updated?: number }) => {
+      .then((data: { ok?: boolean; skipped?: boolean; added?: number; updated?: number }) => {
+        // The server already retried once. Still failing means one plain
+        // message on School and Settings; a good sync clears it.
+        if (data.skipped) return;
+        setCanvasSyncFailed(data.ok === false);
         // A re-sync that brought anything in should show it without a reload.
         if ((data.added ?? 0) + (data.updated ?? 0) > 0) void refresh();
       })
@@ -193,8 +198,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       onComplete={async () => {
         await refresh();
         setShowOnboarding(false);
-        // Setup as a conversation: right after the form, Tangent asks.
-        window.dispatchEvent(new Event(GET_TO_KNOW_EVENT));
+        // No second sheet right after setup (overnight C01): the first screen
+        // is the add box. Tangent's follow-up question waits until the student
+        // has added something of their own (see GetToKnowYou).
       }}
     />
   );

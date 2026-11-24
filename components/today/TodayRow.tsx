@@ -5,15 +5,15 @@
 // place, faded. Not today, Too big and Dismiss show on hover or focus on
 // desktop, and behind ⋯ on touch.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
-import { Check, MoreHorizontal, Redo2, Scissors, X } from "lucide-react";
+import { Check, Clock, MoreHorizontal, Redo2, Scissors, X } from "lucide-react";
 import { openTask } from "@/components/TaskDetail";
 import TaskTitle from "@/components/ui/TaskTitle";
 import { formatTime12, isDueOnly } from "@/lib/dates";
 import { rowPresence, spring } from "@/lib/motion";
-import { commitmentOf } from "@/lib/task-kind";
+import { commitmentOf, isBusyBlock } from "@/lib/task-kind";
 import { formatTaskDay } from "@/lib/task-when";
 import { overdueStyle } from "@/lib/today-sections";
 import type { SmallerStep } from "@/lib/today-steps";
@@ -35,6 +35,9 @@ type Props = TodayRowActions & {
   timezone: string;
   busy?: boolean;
   hasQuestions?: boolean;
+  /** Open the split preview now ("Too big" in the why-not prompt). */
+  askSplit?: boolean;
+  onSplitAsked?: () => void;
 };
 
 type Split =
@@ -43,11 +46,13 @@ type Split =
   | { state: "failed" }
   | { state: "ready"; pieces: SmallerStep[]; saving: boolean };
 
-export default function TodayRow({ task, plans, now, today, timezone, busy, hasQuestions, onDone, onUndone, onNotToday, onSplit, onDismiss }: Props) {
+export default function TodayRow({ task, plans, now, today, timezone, busy, hasQuestions, askSplit, onSplitAsked, onDone, onUndone, onNotToday, onSplit, onDismiss }: Props) {
   const [split, setSplit] = useState<Split>({ state: "closed" });
   const [moreOpen, setMoreOpen] = useState(false);
   const overdue = overdueStyle(task, now, timezone);
   const flexible = commitmentOf(task) === "flexible";
+  // Practice, games and shifts are something you attend: a busy block, no Done circle.
+  const busyBlock = isBusyBlock(task);
   const earlier = task.date < today;
   const done = task.completed;
   // Today's rows sit under their project header; elsewhere the project goes on a subline.
@@ -70,6 +75,13 @@ export default function TodayRow({ task, plans, now, today, timezone, busy, hasQ
       setSplit({ state: "failed" });
     }
   };
+
+  useEffect(() => {
+    if (!askSplit) return;
+    onSplitAsked?.();
+    if (split.state === "closed") void preview();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per ask
+  }, [askSplit]);
 
   const use = async (pieces: SmallerStep[]) => {
     setSplit({ state: "ready", pieces, saving: true });
@@ -97,16 +109,22 @@ export default function TodayRow({ task, plans, now, today, timezone, busy, hasQ
       data-emphasis={emphasis}
     >
       <div className="ui-task-row-main">
-        <button
-          type="button"
-          className="ui-task-check"
-          aria-pressed={done}
-          aria-label={done ? `Mark not done: ${task.title}` : `Done: ${task.title}`}
-          disabled={busy}
-          onClick={() => (done ? onUndone(task) : onDone(task))}
-        >
-          {done && <Check size={14} strokeWidth={2.5} className="ui-task-check-mark" aria-hidden="true" />}
-        </button>
+        {busyBlock && !done ? (
+          <span className="ui-task-check is-busy-block" aria-hidden="true">
+            <Clock size={14} strokeWidth={1.75} />
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="ui-task-check"
+            aria-pressed={done}
+            aria-label={done ? `Not done: ${task.title}` : `Done: ${task.title}`}
+            disabled={busy}
+            onClick={() => (done ? onUndone(task) : onDone(task))}
+          >
+            {done && <Check size={14} strokeWidth={2.5} className="ui-task-check-mark" aria-hidden="true" />}
+          </button>
+        )}
         <div className="ui-task-copy">
           <button type="button" className="ui-task-title-button today-row-title" onClick={() => openTask(task.id)}>
             <TaskTitle task={task} projectName={planTitle} />

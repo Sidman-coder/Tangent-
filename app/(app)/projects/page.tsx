@@ -21,6 +21,7 @@ import { takeAsk } from "@/lib/ask-handoff";
 import { withoutClearedCanvas } from "@/lib/canvas-clear";
 import { splitCourse } from "@/lib/course";
 import { formatTime12 } from "@/lib/dates";
+import { splitProjectNotes } from "@/lib/project-notes";
 import { courseGroups, dueThisWeek, nextDeadline, shortDate, workloadByWeek } from "@/lib/project-stats";
 import { initialPathKind, pathsEmptyCopy, prefsOf } from "@/lib/personalize";
 import { getUserToday } from "@/lib/time";
@@ -65,7 +66,9 @@ export default function ProjectsPage() {
 
   const projects = useMemo<ProjectSummary[]>(() => {
     const tasks = state?.tasks ?? [];
+    // School and Work have their own section, so they never sit in the grid.
     return (state?.plans ?? [])
+      .filter((plan) => !plan.kind)
       .map((plan) => {
         const steps = tasks.filter((t) => t.planId === plan.id);
         const open = steps.filter((t) => !t.completed).sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
@@ -86,14 +89,22 @@ export default function ProjectsPage() {
     () => withoutClearedCanvas((state?.tasks ?? []).filter((t) => t.source === "canvas"), today),
     [state, today]
   );
-  const showSchool = canvasConnected || schoolTasks.length > 0;
+  // Round 5A Phase 3: School and Work are projects (plans.kind). Before the
+  // migration runs there's no School plan, and Canvas alone still shows School.
+  const schoolPlan = state?.plans.find((p) => p.kind === "school") ?? null;
+  const workPlan = state?.plans.find((p) => p.kind === "work") ?? null;
+  const schoolPlanTasks = useMemo(
+    () => (schoolPlan ? (state?.tasks ?? []).filter((t) => t.planId === schoolPlan.id && t.source !== "canvas") : []),
+    [state, schoolPlan]
+  );
+  const showSchool = Boolean(schoolPlan) || canvasConnected || schoolTasks.length > 0;
 
   const { paths, error: tangentsError } = useTangents();
   const [tangentError, setTangentError] = useState<string | null>(null);
   const [creatingTangent, setCreatingTangent] = useState(false);
   const [tangentSeed, setTangentSeed] = useState<string | null>(null);
   const prefs = prefsOf(state?.user);
-  const tangentSuggestions = useTangentSuggestions((state?.plans ?? []).map((p) => p.title));
+  const tangentSuggestions = useTangentSuggestions((state?.plans ?? []).filter((p) => !p.kind).map((p) => p.title)); // School & Work area projects aren't Tangent ideas
   const createTangent = useCreateTangent(useCallback((message: string) => setTangentError(message), []));
   const startTangent = (title: string | null) => {
     setTangentSeed(title);
@@ -136,7 +147,7 @@ export default function ProjectsPage() {
             key={example ?? "blank"}
             variant="hero"
             defaultDest="project"
-            placeholder="Prep for my chem final on Dec 12, start a robotics club…"
+            placeholder="Prep for my chem final on Dec 12…"
             autoFocus={Boolean(example) || (composing && !handed)}
             initialText={example ?? handed ?? ""}
           />
@@ -165,10 +176,13 @@ export default function ProjectsPage() {
         </div>
       ) : (
         <>
-          {showSchool && (
-            <section className="school-section" aria-labelledby="school-heading">
-              <h2 id="school-heading">School</h2>
-              <SchoolCard tasks={schoolTasks} today={today} />
+          {(showSchool || workPlan) && (
+            <section className="school-section" aria-labelledby="areas-heading">
+              <h2 id="areas-heading">School &amp; Work</h2>
+              <div className="areas-grid">
+                {showSchool && <SchoolCard tasks={[...schoolTasks, ...schoolPlanTasks]} today={today} canvasConnected={canvasConnected} />}
+                {workPlan && <AreaCard plan={workPlan} tasks={(state?.tasks ?? []).filter((t) => t.planId === workPlan.id)} today={today} />}
+              </div>
             </section>
           )}
           {active.length > 0 && (
@@ -220,20 +234,44 @@ export default function ProjectsPage() {
   );
 }
 
-function SchoolCard({ tasks, today }: { tasks: Task[]; today: string }) {
-  const courses = courseGroups(tasks, today);
+function SchoolCard({ tasks, today, canvasConnected }: { tasks: Task[]; today: string; canvasConnected: boolean }) {
+  const courses = courseGroups(tasks.filter((t) => t.source === "canvas"), today);
   const deadline = nextDeadline(tasks, today);
   const due = dueThisWeek(tasks, today);
   return (
     <Link href="/projects/school" className="school-card">
       <div className="school-card-copy">
-        <strong>{deadline ? `Next: ${splitCourse(deadline).title}` : "Nothing due from Canvas"}</strong>
-        <span>
-          {deadline ? `${shortDate(deadline.date)} · ` : ""}
-          {due} due this week · {courses.length} course{courses.length === 1 ? "" : "s"}
-        </span>
+        <span className="area-card-name">School</span>
+        <strong>{deadline ? `Next: ${splitCourse(deadline).title}` : "Nothing due right now"}</strong>
+        {deadline || canvasConnected ? (
+          <span>
+            {deadline ? `${shortDate(deadline.date)} · ` : ""}
+            {due} due this week · {courses.length} course{courses.length === 1 ? "" : "s"}
+          </span>
+        ) : (
+          <span>Add a test or assignment and it shows up here. Open School to add one.</span>
+        )}
       </div>
       <MiniWorkload weeks={workloadByWeek(tasks, today)} />
+    </Link>
+  );
+}
+
+/** Work (and any later area): a project with no goal line or progress bar,
+ *  just what's next. */
+function AreaCard({ plan, tasks, today }: { plan: Plan; tasks: Task[]; today: string }) {
+  const open = tasks.filter((t) => !t.completed).sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999") || a.time.localeCompare(b.time));
+  const next = open.find((t) => !t.date || t.date >= today) ?? null;
+  return (
+    <Link href={`/projects/${plan.id}`} className="school-card" style={{ "--project-color": planSeriesColor(plan) } as React.CSSProperties}>
+      <div className="school-card-copy">
+        <span className="area-card-name">{plan.title}</span>
+        <strong>{next ? `Next: ${next.title}` : "Nothing coming up"}</strong>
+        <span>
+          {next?.date ? `${shortDay(next.date, today)}${next.time ? ` · ${formatTime12(next.time)}` : ""} · ` : ""}
+          {open.length} open
+        </span>
+      </div>
     </Link>
   );
 }
@@ -241,13 +279,18 @@ function SchoolCard({ tasks, today }: { tasks: Task[]; today: string }) {
 function ProjectCard({ project, today }: { project: ProjectSummary; today: string }) {
   const { plan, steps, done, next } = project;
   const pct = steps.length ? Math.round((done / steps.length) * 100) : 0;
+  const overdue = Boolean(next && next.date && next.date < today);
+  const goal = splitProjectNotes(plan.description).goal;
   return (
     <Link href={`/projects/${plan.id}`} className="project-card" style={{ "--project-color": planSeriesColor(plan) } as React.CSSProperties}>
       <div className="project-card-top">
         <span className="project-dot" aria-hidden="true" />
         <h3>{plan.title}</h3>
       </div>
-      {plan.description && <p className="project-card-goal">{plan.description}</p>}
+      {/* Overnight 2 (3.4 live): the description also holds the planner's brief
+          ("Brief — … Round — 2 · started …"); the card shows only the goal,
+          like the project page does. */}
+      {goal && <p className="project-card-goal">{goal}</p>}
       <div className="project-progress" aria-label={`${done} of ${steps.length} steps done`}>
         <span style={{ width: `${pct}%` }} />
       </div>
@@ -255,11 +298,14 @@ function ProjectCard({ project, today }: { project: ProjectSummary; today: strin
         {next ? (
           <>
             <span className="project-card-next">Next: {next.title}</span>
-            <span>
+            <span className={overdue ? "project-card-when is-overdue" : "project-card-when"}>
+              {overdue ? "Overdue · " : ""}
               {shortDay(next.date, today)}
               {next.time ? ` · ${formatTime12(next.time)}` : ""}
             </span>
           </>
+        ) : steps.length === 0 ? (
+          <span>No steps yet. Open it to plan the first ones.</span>
         ) : (
           <span>All {steps.length} steps done</span>
         )}

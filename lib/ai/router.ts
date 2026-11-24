@@ -17,6 +17,7 @@
 
 import { addDaysYMD, getUserToday, resolveRelativeDate, singleRelativeDay, weekRange, currentInstant } from "@/lib/time";
 import { isPlanningRequest } from "@/lib/pipeline/planning-intent";
+import { isDatedExam } from "@/lib/exam-title";
 
 export type FastRoute =
   | { op: "complete"; title: string }
@@ -162,7 +163,12 @@ export function routeCommand(text: string, tz: string, at: Date = currentInstant
       const d = addDaysYMD(today, 1);
       return { op: "due", range: "tomorrow", start: d, end: d };
     }
-    if (word === "this week") return { op: "due", range: "week", start: today, end: weekRange(today).end };
+    if (word === "this week") {
+      // Overnight 2: weeks run Mon–Sun, so on a Sunday "this week" was just
+      // today. Asked on a weekend, it means the week ahead.
+      const end = weekRange(today).end;
+      return { op: "due", range: "week", start: today, end: end < addDaysYMD(today, 2) ? addDaysYMD(today, 6) : end };
+    }
     return { op: "due", range: "today", start: today, end: today };
   }
   if (s.includes("?")) return null;
@@ -193,7 +199,9 @@ export function routeCommand(text: string, tz: string, at: Date = currentInstant
 
   const move = s.match(RESCHEDULE_RE);
   if (move) {
-    const when = parseWhen(move[2], tz, at);
+    // "to thursday at 5": a bare 1–6 is after school, as in plan-text's
+    // parseTimeLabel; 7–12 could be morning, so those go to the model.
+    const when = parseWhen(move[2].replace(/\bat ([1-6])$/i, "at $1pm"), tz, at);
     if (!when) return null;
     // "move dentist from friday to monday"
     const from = move[1].match(/^(.+?)\s+from\s+(.+)$/i);
@@ -273,8 +281,42 @@ const CAPTURE_LEAD =
   /^(?:please\s+)?(?:add|schedule|put|create|book|remind me to|remember to|i need to|i have to|i gotta|i should|need to|have to|gotta|don'?t forget to|todo:?|to do:?)\s+/i;
 const DUE_CLAUSE = /\s+(?:due|by|before)\s+(.+)$/i;
 
+/** Overnight 2 (L4, L5): "due Thu", "Fri 3pm" are days. "Sat" and "Sun" are
+ *  left alone: "SAT practice" is the exam far more often than Saturday. */
+const WEEKDAY_ABBR: Record<string, string> = { mon: "monday", tue: "tuesday", tues: "tuesday", wed: "wednesday", weds: "wednesday", thu: "thursday", thur: "thursday", thurs: "thursday", fri: "friday" };
+/** Overnight 2 (live L4c): "guitar Sat 10am" kept "Sat" in the title with no
+ *  day. "Sat"/"Sun" count as days only when not all caps ("SAT" is the exam)
+ *  and either a time follows or "due/on/by/this/next" comes before. */
+const WEEKEND_ABBR =
+  /\b(?:((?:due|on|by|this|next)\s+)(sat|sun)\b\.?|(sat|sun)\b\.?(?=\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)?\b))/gi;
+const WEEKEND_FULL: Record<string, string> = { sat: "saturday", sun: "sunday" };
+
+export function expandWeekdays(text: string): string {
+  return text
+    .replace(/\b(mon|tues?|weds?|thu|thurs?|fri)\b\.?/gi, (m, w: string) => WEEKDAY_ABBR[w.toLowerCase()] ?? m)
+    .replace(WEEKEND_ABBR, (m, lead: string | undefined, w1: string | undefined, w2: string | undefined) => {
+      const word = w1 ?? w2 ?? "";
+      if (word === word.toUpperCase()) return m; // "SAT", "SUN"
+      return `${lead ?? ""}${WEEKEND_FULL[word.toLowerCase()]}`;
+    });
+}
+
+/** "Thursday Dec 17" when Dec 17 is a Thursday: the weekday only confirms
+ *  the date, so it goes (L5 kept "Thu" in the title). */
+function dropMatchingWeekday(s: string, tz: string, at: Date): string {
+  const wd = s.match(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b,?\s*/i);
+  if (!wd) return s;
+  const rest = s.replace(wd[0], "").trim();
+  const date = [ISO_RE, SLASH_RE, MONTH_DAY_RE].some((re) => re.test(rest)) ? parseDay(rest, tz, at) : null;
+  if (!date) return s;
+  const name = new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" }).toLowerCase();
+  return name === wd[1].toLowerCase() ? rest : s;
+}
+
+export { isDatedExam };
+
 export function quickCapture(text: string, tz: string, at: Date = currentInstant()): QuickCapture | null {
-  const s = text.trim().replace(/\s+/g, " ").replace(/[.!]+$/, "");
+  const s = dropMatchingWeekday(expandWeekdays(text.trim().replace(/\s+/g, " ").replace(/[.!]+$/, "")), tz, at);
   if (!s || s.length > 120 || s.includes("?")) return null;
   if (NOT_A_TODO.test(s) || MULTI_OR_PLAN.test(s)) return null;
   if (isPlanningRequest(s)) return null;
@@ -305,4 +347,47 @@ export function quickCapture(text: string, tz: string, at: Date = currentInstant
   const title = cleanTitle(stripWhen(body));
   if (!title || title.split(" ").length > 12) return null;
   return { title: title.charAt(0).toUpperCase() + title.slice(1), date, time, deadline };
+}
+
+// ─── Several dated things in one line (overnight C09) ───────────────────────
+// "AP Chem unit exam Friday, Precalc quiz Tuesday" is two to-dos. Split on
+// commas, semicolons, new lines and "and", and only accept the split when
+// every piece is a plain dated to-do on its own. Anything else (a plan, a
+// question, a piece with no day) returns null and goes through the full
+// pipeline, so nothing typed is guessed at or dropped.
+
+export const MAX_CAPTURE_ITEMS = 6;
+
+// Overnight 2 (L4, eval calc-and-essay): "due Monday" counts as a day, and a
+// comma list may hold an undated to-do ("math hw due Thu, dentist Fri 3pm,
+// start reading Gatsby") as long as one piece has a day. "and" still splits
+// only when every side has its own day, so "study chem and bio friday" stays
+// one thing.
+const dated = (q: QuickCapture) => !!(q.date || q.deadline);
+
+export function splitCaptureItems(text: string, tz: string, at: Date = currentInstant()): QuickCapture[] | null {
+  const s = text.trim().replace(/[ \t]+/g, " ").replace(/[.!]+$/, "");
+  if (!s || s.length > 300 || s.includes("?")) return null;
+  const body = s.replace(CAPTURE_LEAD, "");
+  const clauses = body
+    .split(/\s*[,;\n]\s*/)
+    .map((p) => p.trim().replace(/^and\s+/i, ""))
+    .filter(Boolean);
+  const items: QuickCapture[] = [];
+  for (const clause of clauses) {
+    const halves = clause.split(/\s+and\s+/i).map((p) => p.trim()).filter(Boolean);
+    const split = halves.length > 1 ? halves.map((h) => quickCapture(h, tz, at)) : null;
+    if (split && split.every((q) => q && dated(q))) {
+      items.push(...(split as QuickCapture[]));
+      continue;
+    }
+    const one = quickCapture(clause, tz, at);
+    if (!one) return null;
+    items.push(one);
+  }
+  if (items.length < 2 || items.length > MAX_CAPTURE_ITEMS) return null;
+  // Most pieces carry a day, so it reads as a list of to-dos, not one
+  // thought with commas ("AP Chem exam Friday, Precalc quiz" stays with the model).
+  if (items.filter(dated).length * 2 <= items.length) return null;
+  return items;
 }

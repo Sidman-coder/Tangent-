@@ -67,7 +67,7 @@ export function legacyCategoryOf(c: FactCategory): LegacyCategory {
 const HINTS: [RegExp, FactCategory][] = [
   [/\b(push|nudge|remind(er)?s?|strict|gentle|tough love|hold me accountable|check on me)\b/i, "push_style"],
   [/\b(hard(est)?|struggl\w*|let\w* slip|procrastinat\w*|stuck|distract\w*|weak(est)?)\b/i, "whats_hard"],
-  [/\b(college|university|major|career|after (high )?school|someday|future|dream)\b/i, "future"],
+  [/\b(college|university|major|career|after high school|someday|future|dream)\b/i, "future"],
   [/\b(focus|best work|like to work|work best|study best|mornings?|evenings?|late at night|at a time|playlist|music while|school nights?|can handle about)\b/i, "how_you_work"],
   [/\b(every (mon|tues|wednes|thurs|fri|satur|sun)day|weekends?|school (starts|ends)|practice (is|at)|due|deadline|needs to be done|schedule)\b/i, "schedule"],
   [/\b(class(es)?|club|team|varsity|band|orchestra|choir|robotics|debate|job|works? at|ap |honors|course)\b/i, "classes_activities"],

@@ -167,6 +167,7 @@ Rules: one display weight (600). Sentence case everywhere; only the small group 
 | `--r-sm` | 10 → 8px | Inputs, rows (hover fill), menu items |
 | `--r-md` | 15 → 12px | Cards, toasts, popovers, preview cards |
 | `--r-lg` | 18 → 16px | Composer, sheets (top corners), chat bubble |
+| `--r-xl` | — → 22px | The notifications popover only (Round 5A Phase 6 exception; other popovers stay `--r-md`) |
 | `--r-pill` | — → 999px | Buttons, chips, segmented tabs, bottom nav, FAB |
 
 ### Shadows (minimal)
@@ -246,6 +247,7 @@ Every component below lives in `components/ui/` (Phase 2), uses only tokens, and
 |---|---|---|---|---|
 | `primary` | `--accent` fill, `--accent-ink` label | `--accent-hover` | scale .98 | 40% opacity, no pointer |
 | `secondary` | `--surface`, 1px `--field-line`, `--text` | `--elev-2` fill | `--layer-3` | 40% |
+| `soft` | `--accent-soft` fill, `--accent-text` label | 18% `--accent` mixed in | scale .98 | 40% |
 | `ghost` | transparent, `--text-2` | `--elev-2` fill, `--text` | `--layer-3` | 40% |
 | `danger` | `--red` fill, `--red-ink` | darken 8% | scale .98 | 40% |
 | `danger-quiet` | transparent, `--red` text | `--red-soft` fill | — | 40% |
@@ -406,6 +408,10 @@ Library: `motion` (v13, already installed), wrapped by the existing `MotionProvi
 | react-floating-action-button | The phone mic FAB on Today and Calendar |
 
 Rules: nothing over 250ms; nothing moves on its own except the mic pulse while listening and the typing dots. Under `prefers-reduced-motion: reduce`, everything becomes an opacity fade of 0–100ms or none.
+
+**Exception (Round 5A Phase 6):** the notifications popover springs out of the bell with a slight overshoot (`spring.pop`: `visualDuration` 0.25, `bounce` 0.3, scaling from the bell's position). It is the only spring with bounce; everything else keeps `bounce: 0`. Reduced motion: a plain fade.
+
+**Exception (Round 5B, "You, mapped"):** in Settings › What Tangent knows, the map drifts slowly when idle. It pauses on hover, drag or drill-in. A newly told fact glows on the map for a moment. The map uses its own ivory and pastel `--map-*` tokens, with no purple accent. Drill-in moves ease toward their target and take a little over 250ms. Reduced motion: no drift, no glow animation, and instant level changes on a still layout.
 
 ---
 

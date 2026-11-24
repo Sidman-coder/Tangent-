@@ -16,7 +16,7 @@ type Resolve = (specifier: string, context: unknown, next: (s: string, c: unknow
 type GoalSlots = typeof import("./goal-slots");
 
 void (import("./goal-slots") as Promise<GoalSlots>).then((g) => {
-  const { goalTypeOf, inferExtraSlots, nextQuestions, questionCard, GOAL_SLOTS, MAX_TOTAL, MAX_PER_TURN, isStudentSlot, isQuestionSlot, SLOT_FACT_LABEL } = g;
+  const { goalTypeOf, inferExtraSlots, nextQuestions, questionCard, GOAL_SLOTS, MAX_TOTAL, MAX_PER_TURN, GRILL_DONE_MARK, grillAlreadyAsked, isStudentSlot, isQuestionSlot, SLOT_FACT_LABEL } = g;
   const state = (type: ReturnType<typeof goalTypeOf>, filled: string[] = [], over: Partial<Parameters<typeof nextQuestions>[0]> = {}) => ({
     type,
     filled: new Set(filled),
@@ -79,6 +79,24 @@ void (import("./goal-slots") as Promise<GoalSlots>).then((g) => {
     const turn = nextQuestions(state("exam", [], { stopped: true }));
     assert.equal(turn.type, "draft");
     assert.equal(turn.type === "draft" && turn.enough, false);
+  });
+
+  test("after Stop, skip or answers the request is marked so the plan step asks nothing more (C03)", () => {
+    assert.equal(grillAlreadyAsked("Plan my AP Chem final"), false);
+    assert.equal(grillAlreadyAsked(`Plan my AP Chem final
+
+What Tangent knows for this plan:
+- Deadline: May 12
+
+${GRILL_DONE_MARK}`), true);
+  });
+
+  test("a typed date counts as a stated deadline (C04)", async () => {
+    const { inferSlotsFromText } = await import("./infer");
+    for (const said of ["AP Chem final Thu Dec 17", "history essay due Friday", "paper on December 3rd", "test next Tuesday", "quiz due on the 12th"]) {
+      assert.ok(inferSlotsFromText(said, "2026-11-18").deadline, said);
+    }
+    assert.equal(inferSlotsFromText("read mark 12 and may be tired", "2026-11-18").deadline, undefined);
   });
 
   test("the first turn is padded to two questions", () => {

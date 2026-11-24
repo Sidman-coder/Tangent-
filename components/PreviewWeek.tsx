@@ -2,6 +2,7 @@
 
 // The mini week inside a plan preview (lib/preview-week.ts lays it out). New
 // tasks are in color, what's already there is grey, School Blocks fainter.
+// A round being replaced shows in its colour with an X (Round 5A Phase 5).
 // Hover, tap or focus a block for its title, time and why.
 
 import { useMemo, useState } from "react";
@@ -68,7 +69,7 @@ export default function PreviewWeek({ weeks, selectedDate }: { weeks: Week[]; se
             {week.days.map((d, i) => (
               <div key={d.ymd}>
                 {strip.filter((b) => b.dayIndex === i).map((b) => (
-                  <button key={b.key} {...blockProps(b)} className="preview-week-untimed" style={{ background: b.color ?? undefined }} />
+                  <button key={b.key} {...blockProps(b)} className={`preview-week-untimed${b.kind === "removed" ? " is-removed" : ""}`} style={{ background: b.color ?? undefined }} />
                 ))}
               </div>
             ))}
@@ -95,7 +96,7 @@ export default function PreviewWeek({ weeks, selectedDate }: { weeks: Week[]; se
                 ...(b.color ? ({ "--block": b.color } as React.CSSProperties) : {}),
               }}
             >
-              {b.kind === "new" && <span>{b.title}</span>}
+              {(b.kind === "new" || b.kind === "removed") && <span>{b.title}</span>}
             </button>
           ))}
           {active && (

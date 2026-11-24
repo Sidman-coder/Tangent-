@@ -24,9 +24,9 @@
   gap: 10px;
   min-height: 40px;
   padding: 0 12px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   color: var(--text-2);
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 500;
   text-decoration: none;
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
@@ -40,48 +40,57 @@
   color: var(--text);
   font-weight: 600;
 }
-/* Your Tangent, the main page: bold violet in an outline even when you're
-   elsewhere; filled only while it's the page you're on, like the others. */
+/* Round 5B Phase 1: the featured link ("What Tangent knows") sits first,
+   a little larger, with a hairline gap under it. */
 .settings-sidenav-link.is-featured {
   min-height: 44px;
-  margin-bottom: 2px;
-  border: 1px solid var(--accent-line);
-  color: var(--accent-text);
-  font-size: 14.5px;
-  font-weight: 700;
+  margin-bottom: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
 }
-.settings-sidenav-link.is-featured:hover {
-  background: var(--accent-soft);
-  color: var(--accent-text);
+
+/* Round 5B Phase 1: on What Tangent knows, scrolling down slides the
+   sub-nav off to the left and the map takes the content area. Back at the
+   top it returns. Reduced motion: no slide, a "Settings" chip instead. */
+.settings-page.is-knows .settings-layout {
+  transition: grid-template-columns var(--dur) var(--ease), gap var(--dur) var(--ease);
 }
-.settings-sidenav-link.is-featured.is-active {
-  background: var(--accent-soft);
-  color: var(--accent-text);
-  box-shadow: var(--shadow-sm);
+.settings-page.is-knows .settings-sidenav {
+  transition: transform var(--dur) var(--ease), opacity var(--dur) var(--ease);
 }
-.settings-sidenav-break {
-  height: 1px;
-  margin: 6px 12px;
-  background: var(--line);
+/* Desktop only: on phones the sub-nav is display:none, so a 0 first column
+   would swallow .settings-main (it collapsed to 0px wide at 390). */
+@media (min-width: 861px) {
+  .settings-page.is-knows.is-takeover .settings-layout {
+    grid-template-columns: 0 minmax(0, 1fr);
+    gap: 0;
+  }
 }
-.settings-list li.is-featured {
-  background: var(--accent-soft);
+.settings-page.is-knows.is-takeover .settings-sidenav {
+  transform: translateX(-24px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
-.settings-list-link.is-featured {
-  min-height: 72px;
-  color: var(--accent-text);
+.settings-back {
+  display: none;
+  align-self: flex-start;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  padding: 0 12px 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--text-2);
+  font: 500 13.5px/1 var(--font-body);
+  text-decoration: none;
+  cursor: pointer;
 }
-.settings-list-link.is-featured .settings-list-copy strong {
-  color: var(--accent-text);
-  font-size: 16px;
-  font-weight: 700;
-}
-.settings-list-link.is-featured .settings-list-copy span { color: var(--text-2); }
-.settings-list-link.is-featured .settings-list-chevron { color: var(--accent-text); }
-.settings-tabs .ui-tab.is-featured {
-  color: var(--accent-text);
-  font-weight: 700;
-}
+.settings-back:hover { color: var(--text); background: var(--elev-2); }
+.settings-back:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
 .settings-sidenav-link:focus-visible,
 .settings-list-link:focus-visible {
   outline: 2px solid var(--accent);
@@ -143,6 +152,15 @@
   flex: none;
   text-decoration: none;
 }
+/* Overnight Phase 5 (N10): a label never ends in a hard cut. The strip scrolls
+   sideways, so it has side room and a soft fade at both edges, and the
+   current tab centres itself (SettingsNav). */
+.settings-tabs.ui-tabs--underline {
+  padding-inline: 16px;
+  scroll-padding-inline: 24px;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%);
+}
 .settings-tabs .ui-tab[aria-current="page"] {
   color: var(--text);
   font-weight: 600;
@@ -152,7 +170,7 @@
   margin-top: 8px;
   padding: 0 4px;
   color: var(--text-3);
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 .settings-days {
@@ -165,7 +183,7 @@
   height: 44px;
   padding: 0 10px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: transparent;
   color: var(--text-2);
   font-size: 13px;
@@ -191,7 +209,7 @@
 
 .form-message {
   margin: 8px 4px 0;
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.45;
 }
 .form-message.is-info { color: var(--text-3); }
@@ -205,13 +223,13 @@
   width: 100%;
   padding: 14px 16px;
   border: 1px solid rgb(from var(--red) r g b / 0.35);
-  border-radius: 16px;
+  border-radius: var(--r-lg);
   background: rgb(from var(--red) r g b / 0.05);
 }
 .confirm-panel-title {
   margin: 0;
   color: var(--text);
-  font-size: 14.5px;
+  font-size: 15px;
   font-weight: 600;
 }
 .confirm-panel-body {
@@ -232,7 +250,7 @@
   height: 40px;
   padding: 0 14px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--surface);
   font-size: 14px;
   letter-spacing: 0.04em;
@@ -253,6 +271,18 @@
   }
   .settings-tabs {
     display: flex;
+  }
+  /* Phone: the map is full width with a "Settings" back link, no tabs. */
+  .settings-page.is-knows .settings-tabs { display: none; }
+  .settings-page.is-knows .settings-back--phone {
+    display: inline-flex;
+    min-height: var(--tap);
+    position: sticky;
+    top: calc(var(--shell-top, 0px) + 8px);
+    z-index: 5;
+    /* Solid and lifted, so text scrolling under it doesn't show through. */
+    background: var(--surface);
+    box-shadow: 0 2px 10px rgb(0 0 0 / 0.12);
   }
   .settings-page .ui-button--sm {
     min-height: 44px;
@@ -277,6 +307,17 @@
 
 @media (prefers-reduced-motion: reduce) {
   .settings-sidenav-link { transition: none; }
+  .settings-page.is-knows .settings-layout,
+  .settings-page.is-knows .settings-sidenav { transition: none; }
+  .settings-page.is-knows.is-takeover .settings-sidenav { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) and (min-width: 861px) {
+  .settings-page.is-knows.is-takeover .settings-back--desk {
+    display: inline-flex;
+    position: sticky;
+    top: calc(var(--shell-top, 0px) + 12px);
+    z-index: 5;
+  }
 }
 
 .settings-edit-form {
@@ -321,5 +362,5 @@
   padding: 0;
   list-style: none;
   color: var(--text-2);
-  font-size: 13.5px;
+  font-size: 14px;
 }

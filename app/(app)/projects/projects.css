@@ -49,7 +49,7 @@
 
 .projects-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
   gap: 14px;
 }
 
@@ -64,9 +64,9 @@
   color: inherit;
   text-decoration: none;
   transition:
-    border-color 160ms ease,
-    box-shadow 200ms ease,
-    transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
+    border-color var(--dur-fast) ease,
+    box-shadow var(--dur) ease,
+    transform var(--dur-fast) cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -112,7 +112,7 @@
   width: 9px;
   height: 9px;
   flex-shrink: 0;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--project-color, var(--accent));
 }
 
@@ -129,7 +129,7 @@
 .project-progress {
   height: 4px;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--elev-2);
 }
 
@@ -156,13 +156,13 @@
   font: 500 12.5px/1.4 var(--font-body);
 }
 
+/* The whole next step, wrapped: a cut-off "Define your Instagram nic..." hid what to do (overnight C18). */
 .project-card-next {
   min-width: 0;
-  overflow: hidden;
   color: var(--text-2);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
+.project-card-when.is-overdue { color: var(--danger-text); font-weight: 600; }
 
 .projects-finished h2 {
   margin: 0 0 10px;
@@ -204,7 +204,7 @@
   padding: 2px 6px;
   margin-left: -6px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--text);
   transition: border-color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
@@ -369,7 +369,7 @@
   place-items: center;
   width: 44px;
   height: 44px;
-  border-radius: 12px;
+  border-radius: var(--r-md);
   cursor: pointer;
 }
 .project-color-swatch input {
@@ -461,7 +461,7 @@
   border-right: 1.5px solid currentColor;
   border-bottom: 1.5px solid currentColor;
   transform: rotate(-45deg);
-  transition: transform var(--dur-fast, 150ms) var(--ease, ease);
+  transition: transform var(--dur-fast, var(--dur-fast)) var(--ease, ease);
 }
 .project-planned[open] summary::before {
   transform: rotate(45deg);
@@ -472,7 +472,7 @@
   }
 }
 .project-planned summary:focus-visible {
-  border-radius: 6px;
+  border-radius: var(--r-xs);
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
@@ -610,7 +610,7 @@
   padding: 16px 18px;
   border: 1px solid var(--line);
   border-left: 3px solid var(--project-color, var(--accent));
-  border-radius: 14px;
+  border-radius: var(--r-md);
   background: var(--surface);
 }
 .round-review h2 { margin: 0; font-size: 17px; font-weight: 600; }
@@ -641,3 +641,43 @@
     padding-block: 9px;
   }
 }
+
+/* Round 5A Phase 5: the round review sheet (components/projects/RoundReviewSheet.tsx). */
+.round-sheet .ui-sheet-body { padding: var(--s-4) var(--s-5) var(--s-5); }
+.round-sheet .round-sheet-question { display: grid; gap: 12px; }
+.round-sheet h3 { margin: 0; font-size: 18px; font-weight: 600; line-height: 1.35; text-wrap: pretty; }
+.round-sheet-count { margin: 0; color: var(--text-2); font-size: 12px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
+.round-sheet-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.round-sheet-text { display: grid; gap: 6px; color: var(--text-2); font-size: 13px; }
+.round-sheet-text input {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+}
+.round-sheet-text input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.round-sheet-date { max-width: 220px; }
+.round-sheet-summary { margin: 0; color: var(--text-2); font-size: 14px; }
+.round-sheet-status { display: grid; justify-items: start; gap: 12px; margin: 0; color: var(--text-2); }
+.round-sheet-status p { margin: 0; }
+.round-sheet-actions { display: flex; align-items: center; gap: 8px; width: 100%; }
+.round-sheet-spacer { flex: 1; }
+.round-sheet-legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 0; padding: 0; list-style: none; color: var(--text-2); font-size: 12px; }
+.round-sheet-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.round-sheet-legend i { width: 14px; height: 8px; border-radius: 3px; background: var(--text-3); }
+.round-sheet-legend i.is-new { background: var(--project-color, var(--accent)); }
+.round-sheet-legend i.is-removed { background: color-mix(in srgb, var(--project-color, var(--accent)) 30%, var(--surface)); box-shadow: inset 0 0 0 1px var(--project-color, var(--accent)); }
+.round-sheet-legend i.is-existing { opacity: 0.4; }
+.project-finish-round { justify-self: start; }
+@media (max-width: 767px) {
+  .round-sheet-text input { min-height: 44px; }
+}
+
+.school-empty { display: grid; gap: var(--s-3); justify-items: start; }
+.school-empty p { margin: 0; }
+.school-sync-note { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); padding: var(--s-3) var(--s-4); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+.school-sync-note p { margin: 0; color: var(--text-2); font: 450 14px/1.45 var(--font-body); }

@@ -92,4 +92,19 @@ void (import("./preview-week") as Promise<typeof import("./preview-week")>).then
     assert.equal(whyLine(null), null);
     assert.ok((whyLine("x".repeat(200)) ?? "").length <= 90);
   });
+  test("a round being replaced: its steps show as removed, in colour, and the weeks start at its first", () => {
+    const old = [
+      task({ id: "r1", title: "Old step", date: "2026-11-03", time: "17:00", completed: true, planId: "p1" }),
+      task({ id: "r2", title: "Old untimed", date: "2026-11-05", time: "", planId: "p1" }),
+      task({ id: "x", title: "Soccer", date: "2026-11-11", time: "16:00" }),
+    ];
+    const weeks = previewWeeks([add("New step", "2026-11-12", "18:00", { plan_id: "p1" })], old, [{ id: "p1", color: "blue" }], undefined, new Set(["r1", "r2"]));
+    assert.equal(weeks.length, 2, "the old round's week and the new round's week");
+    assert.equal(weeks[0].start, "2026-11-02");
+    const gone = weeks[0].blocks.filter((b) => b.kind === "removed");
+    assert.deepEqual(gone.map((b) => b.title).sort(), ["Old step", "Old untimed"]);
+    assert.ok(gone.every((b) => b.color), "in the project's colour");
+    assert.equal(gone.find((b) => b.title === "Old untimed")?.topPct, null);
+    assert.deepEqual(weeks[1].blocks.map((b) => b.kind).sort(), ["existing", "new"]);
+  });
 });

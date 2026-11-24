@@ -1,9 +1,8 @@
 "use client";
 
-// Settings → Your Tangent → Getting to know you: everything Tangent needs to
-// fit you, each with whether it's done. Tangent's first questions, Grill me,
-// Canvas (on Connectors), and the setup answers. The tour sits higher up the
-// page, right under You, mapped (TourCard).
+// Settings → Onboarding: everything Tangent needs to fit you, in one place,
+// each with whether it's done. The tour, Tangent's first questions, Grill me,
+// context from another AI, Canvas, and the setup answers.
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -11,10 +10,11 @@ import { Check } from "lucide-react";
 import Button from "@/components/ui/Button";
 import GrillQueue from "@/components/settings/GrillQueue";
 import { GET_TO_KNOW_DONE_EVENT, GET_TO_KNOW_EVENT } from "@/components/GetToKnowYou";
+import { TOUR_DONE_KEY, TOUR_EVENT } from "@/components/FeatureTour";
 
 const ENOUGH_FACTS = 4;
 
-export function Status({ done, children }: { done: boolean; children: React.ReactNode }) {
+function Status({ done, children }: { done: boolean; children: React.ReactNode }) {
   return (
     <span className={`settings-status-line${done ? " is-done" : ""}`}>
       {done && <Check size={13} strokeWidth={2.6} aria-hidden="true" />}
@@ -34,6 +34,7 @@ export default function OnboardingSection({
   onRedoSetup: () => void;
   redoing: boolean;
 }) {
+  const [toured, setToured] = useState(false);
   const [facts, setFacts] = useState<number | null>(null);
 
   const loadFacts = useCallback(() => {
@@ -44,6 +45,9 @@ export default function OnboardingSection({
   }, []);
 
   useEffect(() => {
+    try {
+      setToured(window.localStorage.getItem(TOUR_DONE_KEY) === "1");
+    } catch {}
     loadFacts();
     window.addEventListener(GET_TO_KNOW_DONE_EVENT, loadFacts);
     return () => window.removeEventListener(GET_TO_KNOW_DONE_EVENT, loadFacts);
@@ -56,6 +60,17 @@ export default function OnboardingSection({
       <h2 id="onboarding-title" className="settings-group-title">Getting to know you</h2>
       <p className="settings-group-note">Everything Tangent needs to fit you. Come back to any of it whenever you like.</p>
       <div className="settings-card">
+        <div className="settings-row">
+          <div className="settings-row-copy">
+            <strong>Take the tour</strong>
+            <span>A two-minute walk through adding, the calendar, projects and Ask Tangent.</span>
+            <Status done={toured}>{toured ? "Done" : "Not yet"}</Status>
+          </div>
+          <Button size="sm" variant={toured ? "secondary" : "primary"} onClick={() => window.dispatchEvent(new Event(TOUR_EVENT))}>
+            {toured ? "Take it again" : "Start tour"}
+          </Button>
+        </div>
+
         <div className="settings-row">
           <div className="settings-row-copy">
             <strong>Let Tangent get to know you</strong>
@@ -75,7 +90,7 @@ export default function OnboardingSection({
             <span>Canvas and your calendars, so Tangent starts out knowing your week.</span>
             {canvasLoaded && <Status done={canvasConnected}>{canvasConnected ? "Canvas connected" : "Nothing connected yet"}</Status>}
           </div>
-          <Link href="/settings/connectors" className={`ui-button ui-button--sm ${canvasConnected ? "ui-button--secondary" : "ui-button--primary"}`}>
+          <Link href="/settings/schedule" className={`ui-button ui-button--sm ${canvasConnected ? "ui-button--secondary" : "ui-button--primary"}`}>
             Open
           </Link>
         </div>

@@ -108,8 +108,12 @@ export const AI_TASKS = {
   chatSummary: { feature: "context", tier: "FAST", maxTokens: 250, temperature: 0, effort: "low" },
   /** Applies the student's answers to a saved task (lib/ai/refine.ts). */
   /** The detail every captured task carries (notes, first step, category). It runs
-   *  in the background after the save, so it buys quality, not speed: SMART. */
-  refineTask: { feature: "chat", tier: "SMART", maxTokens: 1200, thinking: "disabled" },
+   *  in the background after the save. Overnight 2 (L5): FAST. Two Sonnet calls
+   *  after a one-line to-do went against Haiku-first, and this is a short tidy. */
+  refineTask: { feature: "chat", tier: "FAST", maxTokens: 1200 },
+  /** The optional questions about a task just captured (lib/ai/clarify.ts
+   *  captureQuestions). FAST for the same reason; a plan's questions stay SMART. */
+  captureQuestions: { feature: "chat", tier: "FAST", maxTokens: 700 },
   /** Too big on Today: one step into 2-3 smaller ones (lib/ai/split.ts). */
   splitStep: { feature: "chat", tier: "FAST", maxTokens: 500 },
   /** Durable-fact extraction from a chat turn. */
@@ -127,6 +131,17 @@ export const AI_TASKS = {
   classifyCommitment: { feature: "classify", tier: "FAST", maxTokens: 60, temperature: 0, effort: "low" },
   /** Pipeline V2: only the new tasks for an existing plan (lib/pipeline/extend-plan.ts). */
   extendPlan: { feature: "extendPlan", tier: "SMART", maxTokens: 1500, thinking: "disabled" },
+  /** Round 5A 2.1: talk mode. A real, topic-specific answer in markdown,
+   *  streamed; chatTier() moves it to SMART for goal talk. */
+  talk: { feature: "chat", tier: "FAST", maxTokens: 1200 },
+  /** Round 5A 2.2 (Q1): the reasoning step before a plan. Reads the week and
+   *  the facts, returns the brief (goal line, assumptions, at most one
+   *  question, and what/when/why for each step) as JSON. */
+  planBrief: { feature: "plan", tier: "SMART", maxTokens: 1600, thinking: "disabled" },
+  // Round 5A Phase 5: 2 to 4 end-of-round questions from what happened.
+  roundReview: { feature: "plan", tier: "FAST", maxTokens: 700, thinking: "disabled" },
+  /** Round 5A 2.4: rewrites the steps the quality guard rejected, once. */
+  planFix: { feature: "plan", tier: "SMART", maxTokens: 800, thinking: "disabled" },
 } as const satisfies Record<string, TaskConfig>;
 
 export type AiTask = keyof typeof AI_TASKS;

@@ -71,7 +71,7 @@ export default function TaskRow({
             type="button"
             className="ui-task-check"
             onClick={onComplete}
-            aria-label={`${task.completed ? "Mark incomplete" : "Complete"} ${task.title}`}
+            aria-label={task.completed ? `Not done: ${task.title}` : `Done: ${task.title}`}
             aria-pressed={task.completed}
             {...press}
           >

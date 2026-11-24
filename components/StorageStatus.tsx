@@ -39,7 +39,7 @@ export default function StorageStatus() {
   return (
     <div className="storage-status" ref={ref}>
       <button type="button" className="storage-status-pill" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        <AlertTriangle size={14} strokeWidth={2} aria-hidden="true" />
+        <AlertTriangle size={14} strokeWidth={1.75} aria-hidden="true" />
         <span>Not saving</span>
       </button>
       {open && (

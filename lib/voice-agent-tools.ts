@@ -23,42 +23,12 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { cleanTitle } from "@/lib/quick-add";
 import { taskOp } from "@/lib/pipeline/draft";
 import type { ChangeOp } from "@/lib/pipeline/changeset";
+import { toolReadSucceeded } from "@/lib/source-read";
+import { AGENT_CUTOFF_REPLY, AGENT_RETRY_MAX_TOKENS, afterAgentTurn, fitToolResult } from "@/lib/ai/agent-cutoff";
 
 const MAX_TOOL_TURNS = 8;
 
-const GMAIL_KEYWORDS = /\b(email|emails|gmail|inbox|unread|message|messages)\b/i;
-const CANVAS_KEYWORDS = /\b(canvas|assignment|assignments|course|due|homework|class|syllabus|professor)\b/i;
-const CALENDAR_KEYWORDS = /\b(calendar|event|events|schedule|meeting|appointment|what do i have|what's on my)\b/i;
-
-/** Master fix B1: the student's own words, without what the server appends
- *  (answers to Tangent's questions, a project's brief). Those are full of
- *  "due", "schedule" and "class", which sent ISEF's answered questions into
- *  the tool loop, and its create_plan saved without a preview. */
-export function ownWords(text: string): string {
-  const cut = ["\n\nMy answers to your questions:", "\n\n(This request is inside the student's project"]
-    .map((marker) => text.indexOf(marker))
-    .filter((i) => i >= 0);
-  return cut.length ? text.slice(0, Math.min(...cut)) : text;
-}
-
-/** Commands that plausibly need real Gmail/Canvas/Calendar data get routed through the tool loop. */
-export function needsAgentTools(fullText: string): boolean {
-  const text = ownWords(fullText);
-  const gmailMatch = GMAIL_KEYWORDS.exec(text)?.[0];
-  const canvasMatch = CANVAS_KEYWORDS.exec(text)?.[0];
-  const calendarMatch = CALENDAR_KEYWORDS.exec(text)?.[0];
-
-  const group = gmailMatch ? "gmail" : canvasMatch ? "canvas" : calendarMatch ? "calendar" : null;
-  const keyword = gmailMatch ?? canvasMatch ?? calendarMatch;
-
-  if (group) {
-    console.log(
-      `[voice-agent-tools] needsAgentTools matched "${keyword}" (${group} keyword) — routing to agent tool loop`
-    );
-  }
-
-  return group !== null;
-}
+export { needsAgentTools, needsDataTools, ownWords } from "@/lib/agent-route";
 
 const TOOLS = [
   {
@@ -308,6 +278,17 @@ type ToolExecResult = {
 /** The told-the-model reply for a drafted write (master fix B1). */
 const DRAFTED = "Drafted for the student's preview card. Nothing is saved until they confirm, so don't say it was added.";
 
+/** The same title on the same day is already in this request's draft. */
+function isDuplicateDraft(draft: ChangeOp[], title: string, date: string): boolean {
+  const key = title.trim().toLowerCase();
+  return draft.some((op) => op.op === "add_task" && op.title.trim().toLowerCase() === key && op.date === date);
+}
+
+/** Titles drafted so far in this request, for get_my_tasks. */
+function draftedTitles(draft?: ChangeOp[]): { title: string; date: string | null }[] {
+  return (draft ?? []).flatMap((op) => (op.op === "add_task" ? [{ title: op.title, date: op.date ?? null }] : []));
+}
+
 /** `draft`: Pipeline V2 with a preview. add_task, create_plan and move_tasks
  *  push ChangeSet ops here instead of writing; the caller shows them. */
 async function executeTool(name: string, input: Record<string, unknown>, requestText: string, draft?: ChangeOp[]): Promise<ToolExecResult> {
@@ -395,7 +376,10 @@ async function executeTool(name: string, input: Record<string, unknown>, request
     case "get_my_tasks": {
       const date = typeof input.date === "string" ? input.date : undefined;
       const tasks = date ? await getTasksByDate(date) : await getAllTasks();
-      return { data: { tasks } };
+      // Drafts from this request aren't saved yet; say so, or the agent reads
+      // an empty list as "the add failed" and adds again.
+      const drafted = draftedTitles(draft);
+      return { data: drafted.length ? { tasks, draftedThisRequest: drafted, note: "draftedThisRequest are waiting on the student's preview card; they are not missing." } : { tasks } };
     }
 
     case "get_upcoming_events": {
@@ -441,6 +425,12 @@ async function executeTool(name: string, input: Record<string, unknown>, request
       const resources = rawResources && rawResources.length > 0 ? rawResources : undefined;
       const calendarId = await resolveCalendarId(typeof input.calendarId === "string" ? input.calendarId : undefined, title);
       if (draft) {
+        // Overnight 2 (eval voice-email-teacher): drafts aren't saved, so a
+        // get_my_tasks check came back empty and the agent added the same
+        // reminder 7 to 12 times. The same task twice in one request is one task.
+        if (isDuplicateDraft(draft, title, date)) {
+          return { data: { ok: true, drafted: true, alreadyDrafted: true, title, date, time, note: `${DRAFTED} It was already drafted in this request; don't add it again.` } };
+        }
         draft.push(taskOp({ title, date, time, calendarId, notes, startAction, resources }));
         return { data: { ok: true, drafted: true, title, date, time, note: DRAFTED } };
       }
@@ -657,17 +647,38 @@ export async function runVoiceAgentToolLoop(userText: string, requestText = user
   // Built once: every turn re-sends the same prefix, and turn N+1 reads turn N's
   // cached prompt (breakpoint on the newest message) instead of paying for it again.
   const system = await systemPrompt(tz, userContext);
+  const startedAt = Date.now();
+  let retriedCutoff = false;
   for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
     perfCount("tool-loop turns");
-    const res = await callClaude("agent", {
-      system,
-      tools: TOOLS as unknown as Anthropic.Tool[],
-      messages: cacheLastMessage(messages as unknown as Anthropic.MessageParam[]),
-    });
-
+    const ask = (max_tokens?: number) =>
+      callClaude("agent", {
+        system,
+        tools: TOOLS as unknown as Anthropic.Tool[],
+        messages: cacheLastMessage(messages as unknown as Anthropic.MessageParam[]),
+        ...(max_tokens ? { max_tokens } : {}),
+      });
+    let res = await ask();
     if (!res.ok) throw new Error(`Anthropic error ${res.status}: ${res.error}`);
 
-    const data = res.message as unknown as { content: AnthropicContentBlock[]; stop_reason: string };
+    let data = res.message as unknown as { content: AnthropicContentBlock[]; stop_reason: string };
+    // A turn cut off at the token cap (often mid tool call): retry once with
+    // more room, or say plainly that nothing was added (lib/ai/agent-cutoff.ts).
+    let cut = afterAgentTurn(data.stop_reason, retriedCutoff, Date.now() - startedAt);
+    if (cut === "retry") {
+      retriedCutoff = true;
+      perfCount("agent max_tokens retry");
+      console.warn("[voice-agent-tools] Turn hit max_tokens; retrying with", AGENT_RETRY_MAX_TOKENS);
+      res = await ask(AGENT_RETRY_MAX_TOKENS);
+      if (!res.ok) throw new Error(`Anthropic error ${res.status}: ${res.error}`);
+      data = res.message as unknown as { content: AnthropicContentBlock[]; stop_reason: string };
+      cut = afterAgentTurn(data.stop_reason, retriedCutoff, Date.now() - startedAt);
+    }
+    if (cut === "give_up") {
+      console.warn("[voice-agent-tools] Turn hit max_tokens again; nothing drafted from it");
+      finalText = AGENT_CUTOFF_REPLY;
+      break;
+    }
     messages.push({ role: "assistant", content: data.content });
 
     const toolUseBlocks = data.content.filter((b): b is Extract<AnthropicContentBlock, { type: "tool_use" }> => b.type === "tool_use");
@@ -682,11 +693,12 @@ export async function runVoiceAgentToolLoop(userText: string, requestText = user
     for (const block of toolUseBlocks) {
       console.log(`[voice-agent-tools] Calling tool: ${block.name}`);
       const sourceLabel = sourceLabelForTool(block.name);
-      if (sourceLabel) sourcesChecked.add(sourceLabel);
       let resultPayload: unknown;
       try {
         const exec = await perfSpan(`tool ${block.name}`, () => executeTool(block.name, block.input, requestText, draft));
         resultPayload = exec.data;
+        // Only a source that really returned data counts (overnight C02).
+        if (sourceLabel && toolReadSucceeded(exec.data)) sourcesChecked.add(sourceLabel);
         if (exec.action) lastAction = exec.action;
         if (exec.task) lastTask = exec.task;
         if (exec.plan) lastPlan = exec.plan;
@@ -708,7 +720,7 @@ export async function runVoiceAgentToolLoop(userText: string, requestText = user
       toolResults.push({
         type: "tool_result",
         tool_use_id: block.id,
-        content: JSON.stringify(resultPayload).slice(0, 8000),
+        content: fitToolResult(JSON.stringify(resultPayload) ?? "null"),
       });
     }
     messages.push({ role: "user", content: toolResults });

@@ -13,6 +13,7 @@ import DeletePathDialog from "@/components/tangents/DeletePathDialog";
 import type { Path, PathNode, PathNodeSchedule } from "@/lib/types";
 import { pathMeta } from "@/lib/path-format";
 import { takePrefetchedPath } from "@/lib/path-prefetch";
+import { friendlyError } from "@/lib/friendly-error";
 import { useNoteOpened } from "@/lib/opened";
 import "../tangents.css";
 
@@ -72,7 +73,7 @@ export default function PathDeepView() {
       setScheduled(data.scheduled ?? {});
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't load this Tangent.");
+      setError(friendlyError(e, "Couldn't load this Tangent."));
     } finally {
       setLoading(false);
     }
@@ -93,7 +94,7 @@ export default function PathDeepView() {
         await load();
         return data;
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Something went wrong.");
+        setError(friendlyError(e, "Something went wrong."));
         return null;
       } finally {
         setBusyId(null);
@@ -121,7 +122,7 @@ export default function PathDeepView() {
       await post({ action: "deletePath", id: path.id });
       router.replace("/tangents");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't delete this Tangent.");
+      setError(friendlyError(e, "Couldn't delete this Tangent."));
       setConfirmingDelete(false);
       setDeleting(false);
     }

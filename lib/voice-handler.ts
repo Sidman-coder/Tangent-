@@ -18,17 +18,27 @@ import { answeredEndDate, withoutFrequencies } from "@/lib/timeframe";
 import { NextResponse } from "next/server";
 import { inferCalendarGroup, parseCalendarGroup } from "@/lib/calendars";
 import { addTasksToPlan } from "@/lib/store";
-import { addTask, addPlanWithTasks, addRecurringTask, completeTask, deleteTask, updateTask, addVoiceLog, getAppState, getAllTasks, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, addPendingConfirmation, getUserTimezone, getAllPlans } from "@/lib/store";
+import { addTask, addPlanWithTasks, addRecurringTask, completeTask, deleteTask, updateTask, addVoiceLog, getAppState, getAllTasks, getCalendars, moveTasksToCalendar, getTasksMatchingFilter, getContextAsString, recordAction, addPendingConfirmation, getUserTimezone, getAllPlans, getPlanById } from "@/lib/store";
 import { addDaysYMD, localNow, promptDateContext, singleRelativeDay, ymdFromParts } from "@/lib/time";
 import type { Plan, Task, TaskKind } from "@/lib/types";
-import { needsAgentTools, runVoiceAgentToolLoop } from "@/lib/voice-agent-tools";
+import { findMonthDates, upcomingRange, upcomingYmd } from "@/lib/upcoming-date";
+import { needsAgentTools, needsDataTools, runVoiceAgentToolLoop } from "@/lib/voice-agent-tools";
 import { extractStructuredJson } from "@/lib/anthropic-json";
 import { generatePlan, isClearPlanRequest } from "@/lib/ai/plan";
-import { placeNewTask, spreadPlanDates, studentStepMinutes } from "@/lib/spacing";
+import { placeNewTask, placementContext, spreadPlanDates, studentStepMinutes } from "@/lib/spacing";
+import { deadlineFromNotes, deadlineNote, planConstraints, type Deadline } from "@/lib/plan-constraints";
+import { checkPlacement, dayItems, shortDate } from "@/lib/placement-check";
+import { ifThenLine, shortTitle } from "@/lib/if-then";
+import { planDeadlineCap } from "@/lib/today-steps";
 import { ROUND_ONE_COPY, roundDates, roundLine } from "@/lib/rounds";
-import { PACKED_NOTE } from "@/lib/load";
+import { minutesFromNotes, PACKED_NOTE } from "@/lib/load";
 import { buildStudentContext } from "@/lib/ai/student-context";
 import { briefAssumptions, briefNotes, readBrief } from "@/lib/ai/plan-brief";
+import { briefGuidance, buildPlanBrief, type PlanBrief } from "@/lib/ai/plan-brief-call";
+import { PLAN_GUARD } from "@/lib/ai/plan-guard-config";
+import { claimCheck, finalReason, isGenericTitle, type ClaimFacts } from "@/lib/ai/plan-guard";
+import { datesBetween, weekSummary } from "@/lib/ai/week-summary";
+import { becauseLine } from "@/lib/because";
 import { resolvePlanTitle } from "@/lib/plan-title";
 import { perfCount, perfSpan, withPerfTrace } from "@/lib/perf";
 import type Anthropic from "@anthropic-ai/sdk";
@@ -41,12 +51,15 @@ import { TANGENT_PIPELINE_V2 } from "@/lib/pipeline/flags";
 import { logEvent } from "@/lib/pipeline/events";
 import { respondWithDraft } from "@/lib/pipeline/drafting";
 import { planOps, taskOp } from "@/lib/pipeline/draft";
+import type { ChangeSet } from "@/lib/pipeline/changeset";
 import { classifyWithFallback } from "@/lib/task-kind-ai";
 import { closestQuestion } from "@/lib/closest-match";
 import { pickCandidates } from "@/lib/ai/pick-candidate";
 import { ASK_WHICH, bulkDeleteMessage, emptiedPlans, isFullClearRequest, parseDeleteScope, planBulkDelete, planRemovalNote, titleList } from "@/lib/delete-scope";
 import { asksForCalendars, makePendingQuestion, pendingQuestionCard, resolvePendingAnswer, taskCandidates, type PendingQuestion } from "@/lib/pending-question";
 import { cleanTitle, hasTimeWords } from "@/lib/quick-add";
+import { joinSources } from "@/lib/source-read";
+import { grillAlreadyAsked } from "@/lib/context/goal-slots";
 
 const RESOURCE_ITEM_SCHEMA = {
   type: "object",
@@ -549,9 +562,11 @@ function mentionsDay(text: string): boolean {
   return /\b(today|tonight|tomorrow|tmrw|mon(day)?|tue(s(day)?)?|wed(nesday)?|thu(rs(day)?)?|fri(day)?|sat(urday)?|sun(day)?|weekend|next week|jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|june?|july?|aug(ust)?|sep(t(ember)?)?|oct(ober)?|nov(ember)?|dec(ember)?|\d{1,2}\/\d{1,2})\b/i.test(text);
 }
 
-/** Did the student give a time of day? ("at 4", "7pm", "noon", "after practice" doesn't count) */
+/** Did the student give a time of day? ("at 4", "7pm", "noon", "tomorrow
+ *  morning"; "after practice" doesn't count). Overnight 2: "tomorrow morning"
+ *  only counted as "in the morning", so it landed at 3:30 PM. */
 function mentionsTime(text: string): boolean {
-  return /\b(\d{1,2}(:\d{2})?\s*(am|pm|a\.m\.|p\.m\.)|at \d{1,2}(:\d{2})?|noon|midnight|\d{1,2}:\d{2}|in the (morning|afternoon|evening)|tonight)\b/i.test(text);
+  return /\b(\d{1,2}(:\d{2})?\s*(am|pm|a\.m\.|p\.m\.)|at \d{1,2}(:\d{2})?|noon|midnight|\d{1,2}:\d{2}|morning|afternoon|evening|tonight)\b/i.test(text);
 }
 
 /** "due friday", "before the test on thursday", "by monday". */
@@ -663,7 +678,37 @@ export type PlanProgress =
   | { type: "plan_outline"; title: string; taskCount: number }
   | { type: "plan_task"; index: number; task: { title: string; date: string; time: string } }
   /** Master fix Phase 4: a talked reply as it's written (the text so far). */
-  | { type: "reply_text"; text: string };
+  | { type: "reply_text"; text: string }
+  /** Round 5A 2.2: the real planning steps as they start ("Reading your week" …). */
+  | { type: "stage"; id: PlanStage }
+  /** Round 5A 2.3: the brief (goal line and each step's why) once it's decided. */
+  | { type: "plan_brief"; brief: BriefView };
+
+export type PlanStage = "week" | "facts" | "steps" | "place";
+
+/** What the client shows of the brief (lib/ai/plan-brief-call.ts PlanBrief). */
+export type BriefView = {
+  goalLine: string;
+  /** `because`: the fact the why used, in the student's terms (Overnight 2 Phase 3, lib/because.ts). */
+  steps: { what: string; when: string; why: string; youllHave: string; because: string; ifThen?: string }[];
+  dropNote: string;
+  /** "What I used about you": the facts the steps lean on, in the student's words. */
+  used: string[];
+};
+
+export function briefView(
+  brief: PlanBrief,
+  facts: readonly { id: string; text: string }[],
+  weekTasks: Parameters<typeof becauseLine>[2] = []
+): BriefView {
+  const byId = new Map(facts.map((f) => [f.id, f.text]));
+  return {
+    goalLine: brief.goal_line,
+    steps: brief.steps.map((s) => ({ what: s.what, when: s.when_hint, why: s.why, youllHave: s.youll_have, because: becauseLine(s.why_ref, facts, weekTasks) })),
+    dropNote: brief.dropNote,
+    used: brief.factIds.map((id) => byId.get(id)).filter((t): t is string => !!t),
+  };
+}
 
 export type VoiceOptions = {
   forcePlan?: boolean;
@@ -685,6 +730,11 @@ export type VoiceOptions = {
   projectId?: string;
   /** Goal for a newly created project (the plan's description). */
   projectGoal?: string;
+  /** Round 5A Phase 5: ops added to a project plan's draft (the next round's
+   *  line), so confirming and undoing the draft carries them too. */
+  extraOps?: ChangeSet["ops"];
+  /** Overnight 2 (L12): the next round's "changed because you said…" line, shown first in the draft's notes. */
+  reviewNote?: string;
 };
 
 /**
@@ -711,6 +761,8 @@ async function handleVoiceTextInner(
       : t;
   // Pipeline V2 (lib/pipeline). Neither does anything when the flag is off.
   const drafting = TANGENT_PIPELINE_V2 && opts.preview === true;
+  // Round 5A (Sid, Q3): a plan is always a draft when the caller can preview it.
+  const planDrafting = opts.preview === true;
   const received = (route: string) => {
     if (TANGENT_PIPELINE_V2) logEvent("request_received", { route, fast: false, source: opts.source ?? (opts.preview ? "typed" : "voice"), reentry: !!opts.forcePlan });
   };
@@ -820,7 +872,7 @@ async function handleVoiceTextInner(
 
     // Gmail / Canvas commands — routed through a genuine multi-turn Claude tool-use loop
     // so Claude can read real inbox/assignment data, then act using add_task / create_plan.
-    if (needsAgentTools(text)) {
+    if (opts.forceTask ? needsDataTools(text) : needsAgentTools(text)) {
       received("agent");
       routeAs(ROUTES.smart);
       console.log("[api/voice] Detected Gmail/Canvas/Calendar command — running agent tool loop");
@@ -839,7 +891,7 @@ async function handleVoiceTextInner(
                 : `Add ${ops.length} task${ops.length === 1 ? "" : "s"}`,
               intent: ops.some((o) => o.op === "create_plan") ? "new_plan" : ops.every((o) => o.op === "update_task") ? "change_task" : "add_task",
               ops,
-              assumptions: sources.length ? [`Based on what Tangent read in ${sources.join(" and ")}`] : [],
+              assumptions: sources.length ? [`Based on what Tangent read in ${joinSources(sources)}`] : [],
             },
             { text, today: local.date, route: "agent" }
           );
@@ -894,79 +946,16 @@ async function handleVoiceTextInner(
       let startDate = today;
       let endDate = addDaysYMD(today, 7);
 
-      const monthMap: Record<string, number> = {
-        january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
-        july: 6, august: 7, september: 8, october: 9, november: 10, december: 11,
-      };
-      const ordinalMap: Record<string, number> = {
-        first: 1, second: 2, third: 3, fourth: 4, fifth: 5,
-        sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10,
-        eleventh: 11, twelfth: 12, thirteenth: 13, fourteenth: 14, fifteenth: 15,
-        sixteenth: 16, seventeenth: 17, eighteenth: 18, nineteenth: 19, twentieth: 20,
-        "twenty first": 21, "twenty second": 22, "twenty third": 23, "twenty fourth": 24,
-        "twenty fifth": 25, "twenty sixth": 26, "twenty seventh": 27, "twenty eighth": 28,
-        "twenty ninth": 29, thirtieth: 30, "thirty first": 31,
-      };
-      const numberWordMap: Record<string, number> = {
-        one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7,
-        eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13,
-        fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18,
-        nineteen: 19, twenty: 20, thirty: 30,
-      };
+      // Month names, full or short ("Dec 17"), in the order said (overnight 2, lib/upcoming-date.ts).
+      const foundDates = findMonthDates(text);
 
-      const lowerForDate = text.toLowerCase();
-      const foundDates: { month: number; day: number; position: number }[] = [];
-
-      // BUGFIX: the previous version used lowerForDate.indexOf(monthName) which only
-      // finds the FIRST occurrence of each month name. For "from july 20 to july 27"
-      // both dates share the month "july", so only one mention was ever captured and
-      // the code fell into the single-date branch (startDate defaulted to today instead
-      // of july 20). Search ALL occurrences of each month name instead.
-      for (const [monthName, monthIdx] of Object.entries(monthMap)) {
-        let searchStart = 0;
-        while (true) {
-          const monthPos = lowerForDate.indexOf(monthName, searchStart);
-          if (monthPos === -1) break;
-          searchStart = monthPos + 1;
-
-          let foundDay = 1;
-          const surroundingText = lowerForDate.slice(Math.max(0, monthPos - 20), monthPos + monthName.length + 20);
-
-          const numericAfter = surroundingText.match(new RegExp(monthName + "\\s+(\\d{1,2})"));
-          const numericBefore = surroundingText.match(new RegExp("(\\d{1,2})\\s+" + monthName));
-
-          if (numericAfter) {
-            foundDay = parseInt(numericAfter[1]);
-          } else if (numericBefore) {
-            foundDay = parseInt(numericBefore[1]);
-          } else {
-            for (const [ordinal, day] of Object.entries(ordinalMap)) {
-              if (surroundingText.includes(ordinal)) {
-                foundDay = day;
-                break;
-              }
-            }
-            for (const [numWord, day] of Object.entries(numberWordMap)) {
-              if (surroundingText.includes(numWord)) {
-                foundDay = day;
-                break;
-              }
-            }
-          }
-
-          foundDates.push({ month: monthIdx, day: foundDay, position: monthPos });
-        }
-      }
-
-      foundDates.sort((a, b) => a.position - b.position);
-
+      // A month with no year is the next one (overnight 2: "in May", said in November).
       if (foundDates.length >= 2) {
-        startDate = ymdFromParts(local.year, foundDates[0].month, foundDates[0].day);
-        endDate = ymdFromParts(local.year, foundDates[1].month, foundDates[1].day);
+        ({ start: startDate, end: endDate } = upcomingRange(today, foundDates[0], foundDates[1]));
         console.log("[api/voice] Extracted date range from text:", startDate, "to", endDate);
       } else if (foundDates.length === 1) {
         startDate = today;
-        endDate = ymdFromParts(local.year, foundDates[0].month, foundDates[0].day);
+        endDate = upcomingYmd(today, foundDates[0].month, foundDates[0].day);
         console.log("[api/voice] Extracted end date only:", endDate);
       }
 
@@ -999,15 +988,28 @@ async function handleVoiceTextInner(
         startDate = today;
         endDate = answeredEnd;
       }
-      console.log("[api/voice] Final date range:", startDate, "to", endDate);
+      // Round 6 (item 2): typed busy times and the deadline are hard rules.
+      // "test Friday" ends the round on Thursday; Round 2 and re-plans keep the
+      // deadline from the project's notes or its own fixed item.
+      const cons = planConstraints(`${text}\n${opts.context ?? ""}`, today);
+      let deadline: Deadline | null = cons.deadline;
+      if (!deadline && opts.projectId) {
+        const project = await getPlanById(opts.projectId).catch(() => null);
+        deadline = deadlineFromNotes(project?.description ?? "");
+        const cap = deadline ? null : planDeadlineCap(await getAllTasks().catch(() => []), opts.projectId, today);
+        if (cap) deadline = { date: addDaysYMD(cap, 1), label: "the deadline" };
+      }
+      const lastDay = deadline && addDaysYMD(deadline.date, -1) >= today ? addDaysYMD(deadline.date, -1) : undefined;
+      if (lastDay && endDate > lastDay) endDate = lastDay;
+      if (lastDay && startDate > lastDay) startDate = today;
+      console.log("[api/voice] Final date range:", startDate, "to", endDate, deadline ? `| deadline ${deadline.date}` : "", cons.busy.length ? `| ${cons.busy.length} busy windows` : "");
 
-      // Session dates are fixed here (lib/ai/plan.ts sessionInterval), not by the model.
-      const picture = await buildStudentContext({ purpose: "plan", query: text }).catch(() => null);
-      const studentPicture = picture?.text ?? "";
-      // Master fix Phase 3: the plan brief (answers, chat and context filled in;
-      // defaults for the rest) steers the planner and is kept as project notes.
-      const brief = readBrief(text, { studentContext: studentPicture, capacityKnown: picture?.capacityKnown });
-      const briefText = brief && brief.type !== "single" ? briefNotes(brief) : "";
+      // Round 5A 2.2: each stage is sent as its real step starts, so the
+      // "Reading your week → … → Placing them" row is honest, not a timer.
+      const stage = (id: PlanStage) => opts.onProgress?.({ type: "stage", id });
+
+      // Stage 1, "Reading your week": round size, busy days, open times.
+      stage("week");
       // Round 4 §3.4: plans come in rounds. This round is about a week of 3 to
       // 7 steps, sized to the step size the student actually finishes; the
       // next round is planned from how these went.
@@ -1015,18 +1017,69 @@ async function handleVoiceTextInner(
       const goalEnd = endDate;
       const evenDates = roundDates(startDate, endDate, stepMinutes);
       endDate = evenDates[evenDates.length - 1] ?? startDate;
-      const projectNotes =
-        [opts.projectGoal, briefText, opts.projectId ? "" : roundLine({ n: 1, startedOn: startDate })].filter(Boolean).join("\n") || undefined;
       // The spacing brain moves sessions off days that are already full and
       // gives each one a real open time (lib/spacing.ts).
-      const spaced = await spreadPlanDates(evenDates).catch((e) => {
+      // Overnight 2 (Maya): "not tue 3:30-5 (debate)" in the request keeps that time free;
+      // Round 6: so do stated busy times ("I work at the bakery Wed 4-9pm").
+      const spaced = await spreadPlanDates(evenDates, null, { avoid: cons.avoid, lastDate: lastDay }).catch((e) => {
         console.warn("[api/voice] spacing failed, using even dates:", e instanceof Error ? e.message : e);
         return null;
       });
-      const dates = spaced ? spaced.map((s) => s.date) : evenDates;
+      let dates = spaced ? spaced.map((s) => s.date) : evenDates;
       const timeByDate = new Map(spaced?.map((s) => [s.date, s.time]) ?? []);
       const shifted = spaced ? spaced.filter((s, i) => s.date !== evenDates[i]).length : 0;
+      const weekTasks = await getAllTasks().catch(() => []);
+      const week = weekSummary(weekTasks, datesBetween(startDate, endDate));
       console.log("[api/voice] Plan sessions:", dates.length, "from", startDate, "to", endDate, "| moved off busy days:", shifted);
+
+      // Stage 2, "Checking what you've told me": the context pack.
+      stage("facts");
+      // Session dates are fixed above (lib/ai/plan.ts sessionInterval), not by the model.
+      const picture = await buildStudentContext({ purpose: "plan", query: text }).catch(() => null);
+      const studentPicture = picture?.text ?? "";
+      // Master fix Phase 3: the plan brief (answers, chat and context filled in;
+      // defaults for the rest) steers the planner and is kept as project notes.
+      const brief = readBrief(text, { studentContext: studentPicture, capacityKnown: picture?.capacityKnown });
+      const briefText = brief && brief.type !== "single" ? briefNotes(brief) : "";
+      const projectNotes =
+        [opts.projectGoal, briefText, opts.projectId ? "" : roundLine({ n: 1, startedOn: startDate }), deadline ? deadlineNote(deadline) : ""]
+          .filter(Boolean)
+          .join("\n") || undefined;
+
+      // Stage 3, "Choosing steps": the reasoning call (Q1), then the writer.
+      stage("steps");
+      const facts = (picture?.factsUsed ?? []).slice(0, 16);
+      const stepBrief = await perfSpan("plan: brief", () =>
+        buildPlanBrief({
+          request: withContext(text),
+          dateContext: promptDateContext(tz),
+          weekSummary: week,
+          facts,
+          dates,
+          // Overnight 2 (L2): the times are fixed already; the reasons must match them.
+          times: dates.map((d) => timeByDate.get(d)),
+          // Overnight 2 (L2, eval): never block a plan the student asked for.
+          // Asking happens before this (talk-first, the clarify card); what
+          // the brief doesn't know goes in its assumptions, which the student
+          // sees and can correct. A question here threw away a finished plan.
+          noQuestion: true,
+          guard: PLAN_GUARD,
+        })
+      ).catch((e) => {
+        console.warn("[api/voice] plan brief failed, planning without it:", e instanceof Error ? e.message : e);
+        return null;
+      });
+      if (stepBrief?.question) {
+        // Ask it in the thread; the reply comes back with "My answers to your questions:".
+        await addVoiceLog({ text, response: stepBrief.question, action: "chat_reply", ok: true });
+        return NextResponse.json({ ok: true, action: "chat_reply", response: stepBrief.question, message: stepBrief.question, planQuestion: true });
+      }
+      // Dropped steps take their dates with them, so the rest stay on their days.
+      if (stepBrief && stepBrief.steps.length > 0 && stepBrief.steps.length < dates.length) {
+        dates = stepBrief.kept.map((i) => dates[i]).filter(Boolean);
+      }
+      const view = stepBrief && stepBrief.steps.length > 0 ? briefView(stepBrief, facts, weekTasks) : null;
+      if (view) opts.onProgress?.({ type: "plan_brief", brief: view });
 
       const generated = await perfSpan("plan: generate", () =>
         generatePlan({
@@ -1035,6 +1088,7 @@ async function handleVoiceTextInner(
             briefText ? `PLAN BRIEF (follow it; "Assumed" lines are defaults the student can change):\n${briefText}` : "",
             studentPicture ? `STUDENT CONTEXT (fit the plan to this student):\n${studentPicture}` : "",
           ].filter(Boolean).join("\n\n"),
+          brief: stepBrief ? briefGuidance(stepBrief) : undefined,
           dateContext: promptDateContext(tz),
           dates,
           onOutline: (o) => opts.onProgress?.({ type: "plan_outline", title: resolvePlanTitle(o.title, text), taskCount: o.taskCount }),
@@ -1045,34 +1099,99 @@ async function handleVoiceTextInner(
       if (!generated.ok) console.error("[api/voice] Plan generation failed:", generated.error);
 
       if (generated.ok && generated.tasks.length > 0) {
+        // Stage 4, "Placing them": open times, calendars, the why on each step.
+        stage("place");
         const planKind = inferPlanKind(text);
+        // Round 5A 2.3: each step keeps its why as a WHY: note line (lib/note-parts.ts).
+        const whyFor = (i: number) => stepBrief?.steps[i]?.why ?? "";
+        // Overnight 2 Phase 3: and the fact it used, as a BECAUSE: line.
+        const becauseFor = (i: number) => view?.steps[i]?.because ?? "";
+        // 2.4: a written title that's only generic words ("Practice problems")
+        // falls back to the brief's step title, which already passed the guard.
+        const titleFor = (title: string, i: number) => {
+          const fromBrief = stepBrief?.steps[i]?.what;
+          return fromBrief && isGenericTitle(title, PLAN_GUARD) ? fromBrief : title;
+        };
         const calendarIds = new Map<string, string>();
         for (const id of Array.from(new Set(generated.tasks.map((t) => t.calendarId)))) calendarIds.set(id, await resolveCalendarId(id, generated.title));
+        const placedTasks = generated.tasks.map((t, i) => ({
+          title: shortTitle(cleanTitle(titleFor(t.title, i))),
+          date: t.date,
+          time: timeByDate.get(t.date) ?? t.time,
+          kind: planKind,
+          completed: false,
+          calendarId: calendarIds.get(t.calendarId) ?? inferCalendarGroup(t.title),
+          notes: t.notes,
+          startAction: t.startAction || undefined,
+          resources: t.resources.length > 0 ? t.resources : undefined,
+        }));
+        // Round 6 (item 2): the placement check. A step in a block or on/after
+        // the deadline moves to the nearest free slot with room, or is dropped
+        // with a question. Then each reason is checked against the final slot.
+        const pctx = await placementContext().catch(() => null);
+        const checked = pctx
+          ? checkPlacement(
+              placedTasks.map((t) => ({ ...t, minutes: minutesFromNotes(t.notes) ?? undefined })),
+              { ...pctx, rules: { ...pctx.rules, avoid: cons.avoid }, deadline }
+            )
+          : null;
+        const kept = checked?.steps ?? placedTasks.map((t, i) => ({ ...t, minutes: undefined as number | undefined, index: i }));
+        if (checked && (checked.moved || checked.dropped.length)) console.log("[api/voice] placement check:", checked.moved, "moved,", checked.dropped.length, "dropped");
+        const reasons = kept.map((t) => {
+          const i = t.index;
+          const facts: ClaimFacts = { date: t.date, time: t.time, minutes: t.minutes, blocks: dayItems(pctx?.tasks ?? weekTasks, t.date, cons.busy), deadline };
+          const moved = t.date !== placedTasks[i].date || t.time !== placedTasks[i].time;
+          const why = whyFor(i) ? finalReason(whyFor(i), facts, moved) : "";
+          // Round 6 (item 4): the if-then line, cued by what really ends just before the slot.
+          const when = ifThenLine({ title: t.title, date: t.date, time: t.time, minutes: t.minutes }, facts.blocks);
+          // A calendar reason was about the old day; any reason that's now false goes.
+          let because = becauseFor(i);
+          if (because && ((moved && stepBrief?.steps[i]?.why_ref?.kind === "calendar") || claimCheck(because, facts))) because = "";
+          return { why, because, when };
+        });
         // One insert for every task, with plan_id already set (store.addPlanWithTasks).
-        const planTasks = generated.tasks.map((t) => ({
-              title: cleanTitle(t.title),
-              date: t.date,
-              time: timeByDate.get(t.date) ?? t.time,
-              kind: planKind,
-              completed: false,
-              calendarId: calendarIds.get(t.calendarId) ?? inferCalendarGroup(t.title),
-              notes: t.notes || undefined,
-              startAction: t.startAction || undefined,
-              resources: t.resources.length > 0 ? t.resources : undefined,
-            }));
+        const planTasks = kept.map((t, k) => {
+          const { index: _index, minutes: _minutes, ...task } = t;
+          const { why, because, when } = reasons[k];
+          const notes =
+            [task.notes, when ? `WHEN: ${when}` : "", why ? `WHY: ${why}` : "", why && because ? `BECAUSE: ${because}` : ""].filter(Boolean).join("\n") ||
+            undefined;
+          return { ...task, notes };
+        });
+        const placeNotes = checked?.notes ?? [];
+        if (planTasks.length === 0) {
+          const response = placeNotes[0] ?? "I couldn't fit any of these steps before the deadline.";
+          await addVoiceLog({ text, response, action: "chat_reply", ok: true });
+          return NextResponse.json({ ok: true, action: "chat_reply", response, message: response });
+        }
+        const finalView = view
+          ? {
+              ...view,
+              steps: kept.flatMap((t, k) =>
+                view.steps[t.index]
+                  ? [{ ...view.steps[t.index], why: reasons[k].why || view.steps[t.index].why, because: reasons[k].because, ifThen: reasons[k].when }]
+                  : []
+              ),
+            }
+          : null;
 
-        if (drafting) {
-          // Pipeline V2: the same tasks, saved as a draft for the student to confirm.
+        if (planDrafting) {
+          // The same tasks, saved as a draft for the student to confirm
+          // (always, when previewing: Round 5A Q3).
           const planTitle = resolvePlanTitle(generated.title, text);
-          const assumptions = opts.projectId ? [] : [ROUND_ONE_COPY];
+          const assumptions = opts.projectId ? (opts.reviewNote ? [opts.reviewNote] : []) : [ROUND_ONE_COPY];
           assumptions.push(`Spread from ${friendlyWhen(startDate, undefined, today)} to ${friendlyWhen(endDate, undefined, today)}`);
           if (goalEnd > endDate) assumptions.push(`Your goal runs to ${friendlyWhen(goalEnd, undefined, today)}; later rounds cover the rest`);
           if (shifted > 0) assumptions.push(`${shifted} session${shifted > 1 ? "s" : ""} moved off days that were already full`);
           // Master fix B4: say the spacing happened even when nothing had to move.
           else if (spaced) assumptions.push("Spaced around your busy days");
           if (spaced?.some((s) => s.note)) assumptions.push(PACKED_NOTE);
+          if (deadline) assumptions.push(`Everything lands before ${deadline.label} (${shortDate(deadline.date)})`);
+          if (checked?.moved) assumptions.push(`${checked.moved} step${checked.moved > 1 ? "s" : ""} moved to a free time${cons.busy.length ? " outside your busy times" : ""}`);
+          assumptions.push(...placeNotes);
           if (text.includes("\n\nMy answers to your questions:")) assumptions.push("Built from your answers above");
           if (brief) assumptions.push(...briefAssumptions(brief));
+          for (const a of stepBrief?.assumptions ?? []) if (!assumptions.includes(a)) assumptions.push(a);
           const draftTasks = planTasks.map((t) => ({ ...t, resources: t.resources ?? [] }));
           return await respondWithDraft(
             {
@@ -1081,11 +1200,11 @@ async function handleVoiceTextInner(
               summary: opts.projectId ? "Add to project" : "New plan",
               intent: "new_plan",
               ops: opts.projectId
-                ? draftTasks.map((t) => taskOp(t, { plan_id: opts.projectId }))
+                ? [...draftTasks.map((t) => taskOp(t, { plan_id: opts.projectId })), ...(opts.extraOps ?? [])]
                 : planOps(planTitle, draftTasks, projectNotes),
               assumptions,
             },
-            { text, today, route: "plan" }
+            { text, today, route: "plan", extra: finalView ? { brief: finalView } : undefined }
           );
         }
 
@@ -1100,13 +1219,13 @@ async function handleVoiceTextInner(
             ok: true,
             action: "create_plan",
             count: ids.length,
-            response: `Added ${ids.length} steps${shifted > 0 ? `, spaced around your busy days` : ""}.${skipped > 0 ? ` Skipped ${skipped} duplicate${skipped > 1 ? "s" : ""}.` : ""}`,
+            response: `Added ${ids.length} steps${shifted > 0 ? `, spaced around your busy days` : ""}.${skipped > 0 ? ` Skipped ${skipped} duplicate${skipped > 1 ? "s" : ""}.` : ""}${placeNotes.length ? ` ${placeNotes.join(" ")}` : ""}`,
             actionId: rec.id,
             state: await getAppState(),
           });
         }
 
-        const { plan, tasks: created, skippedDuplicates } = await perfSpan(`plan: insert ${generated.tasks.length} tasks`, () =>
+        const { plan, tasks: created, skippedDuplicates } = await perfSpan(`plan: insert ${planTasks.length} tasks`, () =>
           addPlanWithTasks({ title: resolvePlanTitle(generated.title, text), description: projectNotes ?? "" }, planTasks)
         );
         const taskIds = created.map((t) => t.id);
@@ -1115,7 +1234,7 @@ async function handleVoiceTextInner(
           addedPlanId: plan.id,
         }));
 
-        const dupSuffix = skippedDuplicates > 0 ? ` Skipped ${skippedDuplicates} duplicate${skippedDuplicates > 1 ? "s" : ""}.` : "";
+        const dupSuffix = `${skippedDuplicates > 0 ? ` Skipped ${skippedDuplicates} duplicate${skippedDuplicates > 1 ? "s" : ""}.` : ""}${placeNotes.length ? ` ${placeNotes.join(" ")}` : ""}`;
         await perfSpan("plan: voice log", () => addVoiceLog({ text, response: `Plan created with ${taskIds.length} tasks`, action: "create_plan", ok: true }));
         return NextResponse.json({
           ok: true,

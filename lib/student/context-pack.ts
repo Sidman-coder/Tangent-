@@ -56,7 +56,8 @@ export function words(text: string): Set<string> {
 
 /** 0–1: how much this fact matters for this call. */
 export function relevance(fact: RankableFact, purpose: ContextPurpose, query: Set<string>, projectId: string | null): number {
-  // Facts about another project rarely help; facts about this one always do.
+  // Facts about this project always matter (another project's are filtered
+  // out in rankFacts, Round 6).
   if (fact.projectId && projectId && fact.projectId === projectId) return 1;
   const category = fact.factCategory ? CATEGORY_WEIGHT[purpose][fact.factCategory] ?? 0.5 : 0.5;
   let overlap = 0;
@@ -99,15 +100,13 @@ export function rankFacts(
   const query = words(opts.query ?? "");
   const projectId = opts.projectId ?? null;
   const limit = Math.max(1, Math.min(MAX_FACTS, opts.limit ?? MAX_FACTS));
-  const seen = new Set<string>();
-  const scored = facts
-    .filter((f) => f.text.trim())
-    .filter((f) => {
-      const key = f.text.trim().toLowerCase();
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
+  const scored = dedupeNear(
+    facts
+      .filter((f) => f.text.trim())
+      // Round 6: a fact tied to a project is for that project only. The chess
+      // plan never hears the Python round's "More practice".
+      .filter((f) => !f.projectId || f.projectId === projectId),
+  )
     .map((f) => ({ ...f, score: 0.5 * relevance(f, opts.purpose, query, projectId) + 0.3 * confidenceOf(f) + 0.2 * recency(f, now) }))
     .sort((a, b) => b.score - a.score || b.timestamp.localeCompare(a.timestamp));
   const out: RankedFact[] = [];
@@ -119,10 +118,78 @@ export function rankFacts(
   return out;
 }
 
+/** Words that don't change what a fact says ("You can focus for about…"). */
+const FILLER = new Set(Array.from(STOP).concat(["about", "around", "usually", "really", "just", "only", "pretty"]));
+
+function factTokens(text: string): { words: Set<string>; numbers: string } {
+  const all = text.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+  const nums = all.filter((w) => /^\d+$/.test(w)).sort().join(",");
+  const out = new Set<string>();
+  for (const w of all) {
+    if (FILLER.has(w)) continue;
+    out.add(w.length > 4 && w.endsWith("s") ? w.slice(0, -1) : w);
+  }
+  return { words: out, numbers: nums };
+}
+
+/** Round 6: two facts that say the same thing in different words ("You can
+ *  focus for about 45 minutes" / "You focus for about 45 minutes at a time").
+ *  Most of the shorter one's words are in the other, and the numbers match. */
+export function nearDuplicate(a: string, b: string): boolean {
+  if (a.trim().toLowerCase() === b.trim().toLowerCase()) return true;
+  const x = factTokens(a);
+  const y = factTokens(b);
+  if (x.numbers !== y.numbers) return false;
+  const [small, big] = x.words.size <= y.words.size ? [x.words, y.words] : [y.words, x.words];
+  if (small.size < 3) return false;
+  let shared = 0;
+  small.forEach((w) => {
+    if (big.has(w)) shared++;
+  });
+  return shared / small.size >= 0.75;
+}
+
+function newest(f: RankableFact): number {
+  return Math.max(Date.parse(f.timestamp) || 0, f.lastConfirmedAt ? Date.parse(f.lastConfirmedAt) || 0 : 0);
+}
+
+/** One of each near-duplicate group, the newer one kept. Only the pack is
+ *  deduped; the stored rows are untouched. */
+export function dedupeNear<T extends RankableFact>(facts: T[]): T[] {
+  const kept: T[] = [];
+  for (const f of facts) {
+    const i = kept.findIndex((k) => nearDuplicate(k.text, f.text));
+    if (i < 0) kept.push(f);
+    else if (newest(f) > newest(kept[i])) kept[i] = f;
+  }
+  return kept;
+}
+
 /** One prompt line per fact; guesses are never stated as true. */
 export function factLine(f: RankableFact): string {
   const guess = f.unconfirmed || f.factSource === "guessed";
   return `- ${f.text.trim()}${guess ? " (Tangent's guess, not confirmed: don't rely on it)" : ""}`;
+}
+
+/** Longest task title the pack carries. A title can be a whole pasted
+ *  paragraph; the model needs the gist, not the paragraph (data minimization). */
+export const MAX_TITLE_CHARS = 90;
+
+/** One line, cut at a word break with an ellipsis when it is too long. */
+export function clipTitle(title: string, max: number = MAX_TITLE_CHARS): string {
+  const t = title.replace(/\s+/g, " ").trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max - 1);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).trimEnd()}…`;
+}
+
+/** The school deadlines worth listing on their own: everything in `due` that the
+ *  "open this week" list does not already show, so one assignment is never
+ *  stated twice in the same prompt. */
+export function dueNotInWeek<T extends { id: string }>(due: readonly T[], week: readonly { id: string }[]): T[] {
+  const shown = new Set(week.map((t) => t.id));
+  return due.filter((t) => !shown.has(t.id));
 }
 
 /** Rough tokens: about four characters each. */
@@ -141,6 +208,13 @@ export const KEEP = 100;
 
 /** Default budget for the student picture, in tokens. */
 export const DEFAULT_BUDGET = 2500;
+
+/** Round 6: "[perf] pack plan: 1840 tok, kept [today, facts, …], dropped [summary]".
+ *  Section keys only, so no student text reaches the log. */
+export function packLogLine(purpose: ContextPurpose, tokens: number, keys: readonly string[], dropped: readonly string[]): string {
+  const kept = keys.filter((k) => !dropped.includes(k));
+  return `[perf] pack ${purpose}: ${tokens} tok, kept [${kept.join(", ")}], dropped [${dropped.join(", ")}]`;
+}
 
 /**
  * Keeps sections in their order and drops the lowest-priority ones until the

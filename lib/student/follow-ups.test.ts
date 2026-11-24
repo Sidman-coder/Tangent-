@@ -102,6 +102,22 @@ void (import("./follow-ups") as Promise<FU>).then((fu) => {
     assert.deepEqual(replyFor(q, "idk"), { kind: "empty" });
     assert.deepEqual(replyFor(q, "   "), { kind: "empty" });
     assert.equal(replyFor(q, "I want to kill myself").kind, "distress");
+    // Overnight 2 L13: this was saved as a fact live.
+    assert.equal(
+      replyFor(q, "honestly chem, I've been so stressed I feel like I can't keep going and don't want to be here anymore").kind,
+      "distress"
+    );
+  });
+
+  test("replyFor: a sensitive answer is never kept as a fact (teen privacy)", () => {
+    const q = pickFollowUp([], [])!;
+    assert.deepEqual(replyFor(q, "chem, my anxiety gets really bad before tests"), { kind: "sensitive" });
+    assert.deepEqual(replyFor(q, "my parents are getting divorced so home is loud"), { kind: "sensitive" });
+    assert.deepEqual(replyFor(q, "I have a concussion from soccer"), { kind: "sensitive" });
+    // A guess check answered with a sensitive correction is not kept either.
+    assert.deepEqual(replyFor({ lead: "", checkId: "abc" }, "no, it's my ADHD meds wearing off"), { kind: "sensitive" });
+    // Plain stress about school is ordinary and kept.
+    assert.equal(replyFor(q, "AP Chem, the labs take forever").kind, "fact");
   });
 
   test("replyFor: a guess check reads yes, no, or a correction", () => {

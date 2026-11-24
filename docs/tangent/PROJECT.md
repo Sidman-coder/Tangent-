@@ -17,7 +17,7 @@ Last reconciled: 2026-11-05
 TANGENT is three screens:
 
 1. **Capture:** mic and typed input on Today, with a separate capture mode at `/capture`.
-2. **Plan:** 2–3 questions, then small 10–30 minute steps with a short "why", placed around School Blocks, Canvas deadlines, and busy days. Every plan goes through preview, confirm, and undo.
+2. **Plan:** talk first: Tangent answers goals in chat and plans only when asked ("Plan this into my calendar"), with at most one question, then small 10–30 minute steps with a short "why", placed around School Blocks, Canvas deadlines, and busy days. Every plan goes through preview, confirm, and undo.
 3. **Today:** the home screen at `/`, with Must do, Today's plan, and Coming up. Goal steps support Done, Not today, and Too big; missed work can be re-planned or given a Fresh start.
 
 **AI surfaces after the v3 build:** AddFlow for adding or planning, and one Ask Tangent chat for questions.
@@ -48,16 +48,17 @@ The product is not an AI counselor, therapy product, family surveillance system,
 - **Task commitment.** Each task is fixed, a reminder, or a Goal step (`task.commitment: "flexible"`); only Goal steps move. It is inferred on capture and changeable on the task.
 - **Colors.** Project tasks use their project's color; personal tasks and unmatched Canvas tasks have their own consistent colors (`lib/task-colors.ts`), and a project's color is picked from the palette.
 - **Plan preview.** A confirmed-before-saving preview defaults to the month view, starting on the student's chosen week start.
-- **Grill me (sufficiency).** Tangent keeps asking one question at a time until it knows enough to plan (context slots and a sufficiency score), never asks what it already knows, and every question has Skip and Stop. The older template queue in `grill_questions` still feeds Today and Settings.
+- **Talk first (Round 5A, confirmed by Sid 2026-11-13).** Goals get a real answer in chat; a plan starts only on an explicit ask or the "Plan this" button, asks at most one question, and opens a Brief | Calendar split before Confirm. Supersedes the 2–3 question grill for Home goals ([decision](decisions/2026-11-talk-first.md)).
+- **Grill me (sufficiency).** Still used outside Home goals: Tangent keeps asking one question at a time until it knows enough to plan (context slots and a sufficiency score), never asks what it already knows, and every question has Skip and Stop. The older template queue in `grill_questions` still feeds Today and Settings.
 - **Chats.** Every chat starts on Home; a task or project gets its own chat with its context attached, and the Chats library at `/ai` lists them all with running summaries. The two-chat model and "Ask Tangent" are replaced; see [the chat-model decision](decisions/2026-11-chat-model.md).
-- **Settings.** Your Tangent comes first and is the main page: You, mapped (every fact, with an Add in each area), the tour, Your week (commitments, capacity, week start) and Getting to know you. Connectors holds Canvas, calendar files, and notes or other AIs. Then Account, Security, Notifications (with quiet hours), AI activity and Your data (export and delete). The old Schedule and What Tangent knows URLs forward to Your Tangent.
+- **Settings.** What Tangent knows is featured first in the nav (You, mapped, with an Add in each area, Getting to know you and the tour). Then separate pages for Account, Security, Schedule (commitments, Canvas and calendars, capacity, week start), Notifications (with quiet hours), AI activity, Your data (export and delete) and Help and privacy. `/settings/your-tangent` and `/settings/connectors` (from main's redesign, not adopted in the push-v1 merge) forward to What Tangent knows and Schedule.
 - **Projects.** A School card built from Canvas, plus project stats. "Done in the last 7 days" uses each task's completion time once migration `20261105060000` is run, and is marked "About" until then.
 - **AI routing.** Classification, titles, summaries and plain chat use the fast model; drafting plans and planning conversations use the smart model (`MODEL_ROUTES` in `lib/ai/models.ts`). Round 2 evals: `npm run eval:pipeline -- --round2` (costs a little; asks first).
 - **Pilot analytics.** Server-side events in the `events` table (`lib/analytics.ts`): signup, captures, confirmed plans, tasks done, Not today, Too big, Fresh start, re-plans, Grill answers/skips/stops, chats started and week-two return. Names, ids and counts only. Queries: [pilot-metrics.sql](pilot-metrics.sql).
 - **Sign-in:** email codes, optional password, and password reset by code. The codes only work once the email templates in MANUAL-STEPS are pasted in.
 - **Calendar:** dragging a task saves its new date and time, with Undo.
 - **Not built: anything from the December roadmap.** That covers billing, study buddy and the share card.
-- **Sidebar and Tangents:** the sidebar's Projects row opens and closes a list of the 7 most recently opened projects and Tangents (`plans`/`paths.last_opened_at`, migration `20261114000000`; newest-created until it runs). Only All projects goes to the Projects page, which shows School, Projects, Tangents and Finished. `/tangents` still works for old links.
+- **Sidebar and Tangents:** the sidebar's Projects row opens and closes a list of the 7 most recently opened projects and Tangents (`plans`/`paths.last_opened_at`, migration `20261114020000`; newest-created until it runs). Only All projects goes to the Projects page, which shows School, Projects, Tangents and Finished. `/tangents` still works for old links.
 
 The repository is a Next.js 14 and TypeScript application. Current code and user-provided context establish the following:
 
@@ -134,7 +135,7 @@ Dev and Preview share the production Supabase project, so Supabase values and `C
 | `OWNER_EMAIL` | Config | No | Production, Preview | The one account allowed to use the env-based Google integrations |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN` | Secret | No | Production, Preview | Owner-only Gmail and Google Calendar access; currently unset |
 
-`TANGENT_PIPELINE_V2` (Config, optional, server only) turns on draft ChangeSets for typed AI changes. It's off unless set to `true` or `1`, and it's read once at startup.
+`TANGENT_PIPELINE_V2` (Config, optional, server only) turns on the other V2 features. Since Round 5A, planning always uses draft ChangeSets (preview → confirm), whatever the flag says. It's off unless set to `true` or `1`, and it's read once at startup.
 
 Set automatically or used only in tests (don't add these to Vercel):
 

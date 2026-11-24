@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from "react";
 import type { Path } from "@/lib/types";
+import { friendlyError } from "@/lib/friendly-error";
 
 export type PathWithCounts = Path & {
   counts: { work: number; ideas: number; kept: number; done: number };
@@ -32,7 +33,7 @@ export function loadTangents(): Promise<void> {
       const data = (await res.json()) as { paths?: PathWithCounts[] };
       publish({ paths: data.paths ?? [], error: null });
     } catch (e) {
-      publish({ paths: snapshot.paths ?? [], error: e instanceof Error ? e.message : "Couldn't load your Tangents." });
+      publish({ paths: snapshot.paths ?? [], error: friendlyError(e, "Couldn't load your Tangents.") });
     } finally {
       inflight = null;
     }

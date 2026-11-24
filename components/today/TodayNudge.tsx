@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Sparkles, X } from "lucide-react";
+import { MessageCircleQuestion, X } from "lucide-react";
 
 const HIDDEN_KEY = "tangent-home-nudge-hidden";
 
@@ -35,13 +35,15 @@ export default function TodayNudge({ today, questionCount, setupLeft, onAnswer }
   };
 
   const parts: string[] = [];
-  if (questionCount > 0) parts.push(`${questionCount} question${questionCount === 1 ? "" : "s"} to sharpen your plans`);
+  // Overnight 2 (AI-JUDGMENT-1 #3): a growing count ("18 questions") reads as a
+  // pile of homework. Past three it just says "a few".
+  if (questionCount > 0) parts.push(questionCount === 1 ? "1 question to sharpen your plans" : questionCount <= 3 ? `${questionCount} questions to sharpen your plans` : "a few questions to sharpen your plans");
   if (setupLeft > 0) parts.push(`setup: ${setupLeft} step${setupLeft === 1 ? "" : "s"} left`);
   const text = parts.join(" · ");
 
   return (
     <div className="today-nudge" role="region" aria-label="From Tangent">
-      <Sparkles size={16} strokeWidth={1.75} className="today-nudge-icon" aria-hidden="true" />
+      <MessageCircleQuestion size={16} strokeWidth={1.75} className="today-nudge-icon" aria-hidden="true" />
       <p className="today-nudge-text">{text.charAt(0).toUpperCase() + text.slice(1)}</p>
       <div className="today-nudge-actions">
         {questionCount > 0 && (
@@ -50,12 +52,15 @@ export default function TodayNudge({ today, questionCount, setupLeft, onAnswer }
           </button>
         )}
         {setupLeft > 0 && (
-          <Link className="today-nudge-go" href="/settings/your-tangent">
+          <Link className="today-nudge-go" href="/settings/context">
             Finish setup
           </Link>
         )}
-        <button type="button" className="today-nudge-hide" aria-label="Hide until tomorrow" title="Hide until tomorrow" onClick={hide}>
-          <X size={16} strokeWidth={1.75} aria-hidden="true" />
+        {/* A visible name, not only an icon (overnight 2, N14). */}
+        <button type="button" className="today-nudge-hide" title="Hide until tomorrow" onClick={hide}>
+          <X size={14} strokeWidth={1.75} aria-hidden="true" />
+          <span>Hide</span>
+          <span className="ui-visually-hidden"> until tomorrow</span>
         </button>
       </div>
     </div>

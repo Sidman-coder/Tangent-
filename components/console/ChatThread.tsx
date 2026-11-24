@@ -45,7 +45,7 @@ function CopyButton({ text }: { text: string }) {
   };
   return (
     <button type="button" className="tg-msg-action" aria-label={copied ? "Copied" : "Copy reply"} title={copied ? "Copied" : "Copy"} onClick={() => void copy()}>
-      {copied ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.8} aria-hidden="true" />}
+      {copied ? <Check size={14} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
     </button>
   );
 }
@@ -220,7 +220,7 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
                     {t.planDraft && !v2 && (
                       <div className="tg-plan-cta">
                         <button type="button" className="tg-btn tg-btn-accent" onClick={() => onAddPlan(t.id)} disabled={busy}>
-                          <CalendarPlus size={14} strokeWidth={2} aria-hidden="true" />
+                          <CalendarPlus size={14} strokeWidth={1.75} aria-hidden="true" />
                           Add to calendar
                         </button>
                         <span>Switches to Calendar mode and adds this plan.</span>
@@ -275,12 +275,12 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
                         <CopyButton text={t.response} />
                         {canRedo && onRetry && (
                           <button type="button" className="tg-msg-action" aria-label="Retry" title="Retry" onClick={() => onRetry(t.id)}>
-                            <RotateCcw size={14} strokeWidth={1.8} aria-hidden="true" />
+                            <RotateCcw size={14} strokeWidth={1.75} aria-hidden="true" />
                           </button>
                         )}
                         {canRedo && onEdit && (
                           <button type="button" className="tg-msg-action" aria-label="Edit your message" title="Edit your message" onClick={() => onEdit(t.id)}>
-                            <Pencil size={14} strokeWidth={1.8} aria-hidden="true" />
+                            <Pencil size={14} strokeWidth={1.75} aria-hidden="true" />
                           </button>
                         )}
                         {onFeedback && (
@@ -293,7 +293,7 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
                               aria-pressed={t.feedback === "up"}
                               onClick={() => onFeedback(t.id, "up")}
                             >
-                              <ThumbsUp size={14} strokeWidth={1.8} aria-hidden="true" />
+                              <ThumbsUp size={14} strokeWidth={1.75} aria-hidden="true" />
                             </button>
                             <button
                               type="button"
@@ -303,7 +303,7 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
                               aria-pressed={t.feedback === "down"}
                               onClick={() => onFeedback(t.id, "down")}
                             >
-                              <ThumbsDown size={14} strokeWidth={1.8} aria-hidden="true" />
+                              <ThumbsDown size={14} strokeWidth={1.75} aria-hidden="true" />
                             </button>
                           </>
                         )}
@@ -373,7 +373,7 @@ export default function ChatThread({ turns, busy, pendingRequest, onConfirm, onU
       {below && (
         below === "reply" ? (
           <button type="button" className="tg-below" onClick={scrollDown}>
-            <ArrowDown size={14} strokeWidth={2} aria-hidden="true" />
+            <ArrowDown size={14} strokeWidth={1.75} aria-hidden="true" />
             This reply continues below
           </button>
         ) : (

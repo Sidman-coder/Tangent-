@@ -148,7 +148,9 @@ export type DraftEdit =
   /** The "Also remove the plan" box: adds or drops the delete_plan op. */
   | { type: "plan_removal"; plan_id: string; remove: boolean }
   | { type: "date"; index: number; date: string }
-  | { type: "time"; index: number; time: string };
+  | { type: "time"; index: number; time: string }
+  /** Rename a new plan or a new step before confirming (overnight C12). */
+  | { type: "title"; index: number; title: string };
 
 /**
  * Applies one preview edit to a draft's ops. Removing a new plan removes its
@@ -176,6 +178,12 @@ export function editOps(ops: ReadonlyArray<ChangeOp>, edit: DraftEdit): { ok: tr
     return { ok: true, ops: next };
   }
 
+  if (edit.type === "title") {
+    const title = edit.title.replace(/\s+/g, " ").trim().slice(0, 200);
+    if (!title) return { ok: false, error: "A title can't be empty." };
+    if (op.op !== "create_plan" && op.op !== "add_task") return { ok: false, error: "Only a new plan or step can be renamed here." };
+    return { ok: true, ops: ops.map((o, i) => (i === edit.index ? { ...op, title } : o)) };
+  }
   if (op.op !== "add_task" && op.op !== "move_task") return { ok: false, error: "Only a task's date or time can be changed." };
   const changed: ChangeOp =
     edit.type === "date" ? { ...op, date: edit.date } : { ...op, time: edit.time };
@@ -197,5 +205,6 @@ export function parseDraftEdit(body: unknown): DraftEdit | null {
   if (b.type === "remove") return { type: "remove", index };
   if (b.type === "date" && typeof b.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b.date)) return { type: "date", index, date: b.date };
   if (b.type === "time" && typeof b.time === "string" && /^(?:(?:[01]\d|2[0-3]):[0-5]\d)?$/.test(b.time)) return { type: "time", index, time: b.time };
+  if (b.type === "title" && typeof b.title === "string" && b.title.trim().length > 0 && b.title.length <= 400) return { type: "title", index, title: b.title };
   return null;
 }

@@ -7,6 +7,7 @@
 import type { SuggestedSlot, Task } from "./types";
 import { commitmentOf } from "./task-kind";
 import { addDaysYMD, weekdayOf } from "./time";
+import { avoidOn, type AvoidWindow } from "./avoid-times";
 
 /** Tasks have no duration; like the week view, a step is drawn as 45 minutes. */
 export const STEP_BLOCK_MIN = 45;
@@ -162,9 +163,13 @@ export function firstOpenTime(
   date: string,
   earliest = 0,
   length = STEP_BLOCK_MIN,
-  rules: { bufferMinutes?: number; preferredWindows?: { start: number; end: number }[] } = {}
+  rules: { bufferMinutes?: number; preferredWindows?: { start: number; end: number }[]; avoid?: readonly AvoidWindow[] } = {}
 ): string | null {
-  const { busy, schoolEnd } = dayBusy(tasks, date, rules.bufferMinutes ?? 0);
+  const buffer = rules.bufferMinutes ?? 0;
+  const { busy, schoolEnd } = dayBusy(tasks, date, buffer);
+  // Times the student said to keep free ("not tue 3:30-5, debate"), with the
+  // same travel buffer as a commitment (Round 6: Priya's 2 PM shift end).
+  busy.push(...avoidOn(rules.avoid, weekdayOf(date)).map(([s, e]): Block => [s - buffer, e + buffer]));
   const size = Math.min(length, 120);
   const windows = dayWindows(date, schoolEnd);
   // The student's preferred hours first, inside the hours the day has open.
@@ -175,6 +180,40 @@ export function firstOpenTime(
   );
   const start = firstFree(preferred, busy, earliest, size) ?? firstFree(windows, busy, earliest, size);
   return start === null ? null : hhmm(start);
+}
+
+/** Round 6 (item 2): every block on `date` a step must not touch: School,
+ *  commitments (`cmt_`), other timed tasks and the typed busy windows, each
+ *  with the buffer the placer uses. The placement check (lib/placement-check.ts)
+ *  reads the same blocks the placer avoids, so the two never disagree. */
+export function busyBlocksOn(
+  tasks: Task[],
+  date: string,
+  rules: { bufferMinutes?: number; avoid?: readonly AvoidWindow[] } = {}
+): Block[] {
+  const buffer = rules.bufferMinutes ?? 0;
+  const { busy } = dayBusy(tasks, date, buffer);
+  return [...busy, ...avoidOn(rules.avoid, weekdayOf(date)).map(([s, e]): Block => [s - buffer, e + buffer])];
+}
+
+/** The labelled fixed blocks on `date` (School, commitments, fixed tasks) and
+ *  where they end, for a reason or an if-then cue that names a real item. */
+export function fixedItemsOn(tasks: Task[], date: string): { label: string; start: number; end: number }[] {
+  const out: { label: string; start: number; end: number }[] = [];
+  for (const t of tasks) {
+    if (t.date !== date || t.source === "canvas" || t.completed) continue;
+    const start = toMinutes(t.time);
+    if (start === null) continue;
+    if (isSchoolBlock(t)) {
+      const parsed = schoolEndFromNotes(t.notes);
+      out.push({ label: "school", start, end: parsed !== null && parsed > start ? parsed : start + SCHOOL_FALLBACK_MIN });
+    } else if (isBusyBlock(t)) {
+      out.push({ label: t.title.trim(), start, end: schoolEndFromNotes(t.notes)! });
+    } else if (commitmentOf(t) === "fixed" && !t.planId) {
+      out.push({ label: t.title.trim(), start, end: start + STEP_BLOCK_MIN });
+    }
+  }
+  return out.sort((a, b) => a.end - b.end);
 }
 
 /** True when date/time is before `now` (student's local wall clock). */

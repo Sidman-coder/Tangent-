@@ -1,7 +1,14 @@
 // When Tangent may nudge: chosen nudge times and quiet hours, saved on the
 // profile (profiles.notification_prefs, migration 20261105050000).
 
-export type NotificationPrefs = { nudgeTimes?: string[]; quietHours?: { start: string; end: string } };
+export type NotificationPrefs = {
+  nudgeTimes?: string[];
+  quietHours?: { start: string; end: string };
+  /** Overnight 2, Phase 4: when the proactive check last ran (ISO), so a
+   *  student gets it at most once per 4 hours. Kept in this JSON column, so
+   *  no schema change. Set by the server only. */
+  proactiveAt?: string;
+};
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -23,6 +30,7 @@ export function parseNotificationPrefs(raw: unknown): NotificationPrefs {
   if (q && typeof q === "object" && typeof q.start === "string" && typeof q.end === "string" && HHMM.test(q.start) && HHMM.test(q.end) && q.start !== q.end) {
     prefs.quietHours = { start: q.start, end: q.end };
   }
+  if (typeof src.proactiveAt === "string" && !Number.isNaN(Date.parse(src.proactiveAt))) prefs.proactiveAt = src.proactiveAt;
   return prefs;
 }
 

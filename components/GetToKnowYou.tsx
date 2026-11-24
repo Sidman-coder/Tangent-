@@ -19,6 +19,7 @@ import PenMark from "@/components/console/PenMark";
 import { useAppState } from "@/components/AppStateProvider";
 import { useVoiceCapture } from "@/hooks/useVoiceCapture";
 import { IN_A_ROW, SESSION_BUDGET } from "@/lib/grill-queue";
+import { claimOverlay, hasFirstRealItem, overlayHolder, releaseOverlay } from "@/lib/first-run-gates";
 import {
   closeFollowUp,
   followUpStorageKey,
@@ -104,8 +105,13 @@ export default function GetToKnowYou() {
   }, []);
 
   // Today's follow-up, on Home only: the open one, or a new one once a day.
+  // Not before the student has added something of their own, and never while
+  // another optional overlay is open (overnight C01).
+  const tasksForGate = state?.tasks;
   useEffect(() => {
     if (!onboarded || pathname !== "/" || open) return;
+    if (!hasFirstRealItem(tasksForGate)) return;
+    if (overlayHolder() !== null) return;
     const today = localDay();
     if (checkedToday.current === `${storageKey}:${today}`) return;
     checkedToday.current = `${storageKey}:${today}`;
@@ -121,7 +127,14 @@ export default function GetToKnowYou() {
       writeState(storageKey, withQuestion(saved, today, q));
       if (q) showQuestion(q);
     });
-  }, [onboarded, pathname, open, storageKey, showQuestion]);
+  }, [onboarded, pathname, open, storageKey, showQuestion, tasksForGate]);
+
+  // Hold the shared overlay slot while the sheet is open.
+  useEffect(() => {
+    if (!open) return;
+    claimOverlay("get-to-know");
+    return () => releaseOverlay("get-to-know");
+  }, [open]);
 
   // One more grill question from Tangent, aimed at what it knows least.
   const askMore = useCallback(async (asked: string[]) => {
@@ -189,12 +202,9 @@ export default function GetToKnowYou() {
     setThinking(false);
     void refresh();
     window.dispatchEvent(new Event(GET_TO_KNOW_DONE_EVENT));
-    // First time through: the tour follows, so they see where it all lives.
-    let toured = true;
-    try {
-      toured = window.localStorage.getItem("tangent-tour-done") === "1";
-    } catch {}
-    if (!toured) window.setTimeout(() => window.dispatchEvent(new Event("tangent:tour")), 400);
+    // The tour no longer starts by itself (overnight C01): it is offered from
+    // Today ("Take the tour") and Settings, so a new student is never walked
+    // through twelve steps before they have used the app.
   }, [mode, reply, settle, refresh]);
 
   useEffect(() => {
@@ -218,8 +228,11 @@ export default function GetToKnowYou() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id: question.id, answer }),
         });
-        const data = (await res.json()) as { ok?: boolean; saved?: boolean; distress?: string };
+        const data = (await res.json()) as { ok?: boolean; saved?: boolean; distress?: string; sensitive?: boolean; reply?: string };
         if (data.distress) said = data.distress;
+        // A step check-in (overnight 2 Phase 3) says what it logged.
+        else if (data.ok && data.reply) said = data.reply;
+        else if (data.sensitive) said = "Thanks for telling me. That's yours, so Tangent won't save it.";
         else if (!data.ok) said = "That didn't save. Tangent will ask again another day.";
         else if (!data.saved) said = "No problem. Tangent will leave that one.";
         // A failed save stays open for another day; anything else is settled.
@@ -345,7 +358,7 @@ export default function GetToKnowYou() {
                   <PenMark className="gtk-mark" />
                   <p className="gtk-ask" role="status">
                     {mode === "grill"
-                      ? "Thanks. That's saved, and you can change any of it in Settings › Your Tangent."
+                      ? "Thanks. That's saved, and you can change any of it in Settings › What Tangent knows."
                       : reply}
                   </p>
                 </div>
@@ -396,7 +409,7 @@ export default function GetToKnowYou() {
                   {voice.status === "recording" ? <Square size={12} strokeWidth={0} fill="currentColor" aria-hidden="true" /> : <Mic size={16} aria-hidden="true" />}
                 </button>
                 <button type="submit" className="gtk-send" aria-label="Answer" disabled={!text.trim() || sending}>
-                  <ArrowUp size={16} strokeWidth={2.2} aria-hidden="true" />
+                  <ArrowUp size={16} strokeWidth={1.75} aria-hidden="true" />
                 </button>
               </form>
               {mode === "grill" ? (

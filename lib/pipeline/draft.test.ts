@@ -182,6 +182,20 @@ void (import("./draft") as Promise<Mod>).then(({ taskOp, planOps, buildDraft, su
     assert.equal(editOps(plan(), { type: "remove", index: 9 }).ok, false);
   });
 
+  test("a new plan or step can be renamed before Confirm; nothing else can (C12)", () => {
+    const ops = [
+      { op: "create_plan" as const, ref: "p1", title: "Old goal" },
+      { op: "add_task" as const, title: "Old step", date: "2026-11-10", plan_ref: "p1" },
+    ] as unknown as ChangeOp[];
+    const plan = editOps(ops, { type: "title", index: 0, title: "  AP Chem final  " });
+    assert.equal(plan.ok && (plan.ops[0] as { title: string }).title, "AP Chem final");
+    const step = editOps(ops, { type: "title", index: 1, title: "Practice set" });
+    assert.equal(step.ok && (step.ops[1] as { title: string }).title, "Practice set");
+    assert.equal(editOps(ops, { type: "title", index: 1, title: "   " }).ok, false);
+    assert.deepEqual(parseDraftEdit({ type: "title", index: 0, title: "X" }), { type: "title", index: 0, title: "X" });
+    assert.equal(parseDraftEdit({ type: "title", index: 0, title: "   " }), null);
+  });
+
   test("parseDraftEdit accepts only well-formed edits", () => {
     assert.deepEqual(parseDraftEdit({ type: "remove", index: 2 }), { type: "remove", index: 2 });
     assert.deepEqual(parseDraftEdit({ type: "date", index: 0, date: "2026-10-10" }), { type: "date", index: 0, date: "2026-10-10" });

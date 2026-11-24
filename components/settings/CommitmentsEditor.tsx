@@ -1,6 +1,6 @@
 "use client";
 
-// Settings → Your Tangent → Your week: "When are you already busy?" (Round 4 Phase 6). The
+// Settings → Schedule: "When are you already busy?" (Round 4 Phase 6). The
 // same editor as the onboarding question; saving replaces the busy blocks on
 // the calendar.
 
