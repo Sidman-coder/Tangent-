@@ -31,6 +31,8 @@ import type { Task } from "@/lib/types";
 import { FOCUS_KEY, parseFocus, startFocus, type FocusSession } from "@/lib/focus-timer";
 import { revealCircle, type Point } from "@/lib/reveal-circle";
 import CaptureIsland from "./CaptureIsland";
+import TaskTitle from "@/components/ui/TaskTitle";
+import TangentLogo from "@/components/TangentLogo";
 import FocusView, { saveFocus } from "./FocusView";
 import SortedCard from "./SortedCard";
 import { useCapture } from "./useCapture";
@@ -390,7 +392,8 @@ export default function CaptureHome() {
                 <Check size={12} strokeWidth={3} aria-hidden="true" />
               </button>
               <button type="button" className="capture-row-body" onClick={() => openTask(task.id)}>
-                <span className="capture-row-title">{task.title}</span>
+                {/* Under a project's header the project's name isn't repeated in front ("Robotics: …"). */}
+                <span className="capture-row-title"><TaskTitle task={task} chip={false} projectName={task.planId ? state?.plans?.find((p) => p.id === task.planId)?.title ?? null : null} /></span>
                 {line && <span className="capture-row-sub">{line}</span>}
               </button>
               {task.id === firstId && (
@@ -412,7 +415,12 @@ export default function CaptureHome() {
           doesn't move the island under your thumb. */}
       <m.div className="capture-head" animate={{ opacity: leaving ? 0 : 1 }} transition={{ duration: 0.17, ease: EASE_IN }}>
         <header className="capture-top">
-          <span className="capture-wordmark">tangent</span>
+          {/* The same mark and wordmark as the app's sidebar and top bar, not a
+              lowercase "tangent" set in another weight. */}
+          <span className="capture-wordmark">
+            <TangentLogo size={26} />
+            <span>Tangent</span>
+          </span>
           <Link href="/" className="capture-open-app" onClick={openApp}>Open app →</Link>
         </header>
         <CaptureIsland
