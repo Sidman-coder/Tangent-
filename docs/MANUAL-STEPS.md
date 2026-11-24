@@ -202,6 +202,15 @@ No new env vars. The waitlist owner page uses the existing `OWNER_EMAIL`.
 
 Run each in the Supabase SQL Editor. Each is safe to run twice, and the app works before they run (a missing table or column is skipped with one server warning).
 
+**Run status (checked 2026-11-24 against the test account on a production build, merge of origin/main):** nobody has recorded which of these ran, so this is what the app shows. Confirm each with its check query.
+
+| # | Migration | Status |
+|---|---|---|
+| 1 | `20261113000000_waitlist.sql` | **Not known.** The app shows no sign either way; run its check. |
+| 2 | `20261114000000_plan_kind.sql` | **Looks run.** The School and Work area projects exist, and the app only creates them when `plans.kind` exists. |
+| 3 | `20261114010000_task_span.sql` | **Not known.** Run its check. |
+| 4 | `20261114020000_last_opened.sql` (below) | **Not run.** Opening a project answered `POST /api/opened` → `{"ok":false}`, the no-op it gives before this migration. |
+
 1. **`supabase/migrations/20261113000000_waitlist.sql`** creates the `waitlist` table: RLS on, no policies, browser roles revoked. Check it (expect `true`, then 0 policies, then no rows):
    ```sql
    select relrowsecurity from pg_class where oid = 'public.waitlist'::regclass;
@@ -240,3 +249,14 @@ Approving someone on `/settings/waitlist` (owner only; everyone else gets a 404)
 - **Round review:** finish a project's round (or press "I've finished this round"). Answer the questions, try Push 1 week on the last one, confirm, then Undo: the round number goes back.
 - **Notifications:** the bell opens the popover with a tail toward the bell. Several overdue tasks show as one item, and Clear all empties it ("You're all caught up").
 - **School/Work:** after the migration, add a work commitment in Settings → Schedule. A Work project appears under "School & Work" on Projects.
+
+## Sidebar recents: last opened (1 migration, run after Round 5A's three)
+
+4. **`supabase/migrations/20261114020000_last_opened.sql`** (renamed from main's `20261114000000_last_opened.sql`, which shared a version with `plan_kind`) adds `last_opened_at` to `plans` and `paths`, so the sidebar's Projects list shows the projects and Tangents a student actually opens, not just the newest. It also re-creates `paths_set_updated_at` so opening a Tangent doesn't count as changing it. Check it (both rows come back):
+```sql
+select table_name from information_schema.columns
+where column_name = 'last_opened_at' and table_name in ('plans', 'paths');
+```
+Before it runs, opening a project is a quiet no-op (`POST /api/opened` answers `{ ok: false }`) and the sidebar sorts by newest-created.
+
+**Check it in the app** (signed in, after the migration): open an older project, reload the page on another device; it's at the top of the sidebar's Projects list. Then run `select title, last_opened_at from plans order by last_opened_at desc nulls last limit 3;`.

@@ -14,6 +14,7 @@ import type { Path, PathNode, PathNodeSchedule } from "@/lib/types";
 import { pathMeta } from "@/lib/path-format";
 import { takePrefetchedPath } from "@/lib/path-prefetch";
 import { friendlyError } from "@/lib/friendly-error";
+import { useNoteOpened } from "@/lib/opened";
 import "../tangents.css";
 
 async function post(body: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -31,6 +32,8 @@ export default function PathDeepView() {
   const params = useParams<{ pathId: string }>();
   const router = useRouter();
   const pathId = params?.pathId;
+  // So the sidebar lists the Tangents this student actually uses.
+  useNoteOpened("tangent", pathId);
 
   // Opened from the gallery, the data is usually already here: draw at once.
   const [prefetched] = useState(() => (pathId ? takePrefetchedPath(pathId) : null));

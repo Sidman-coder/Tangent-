@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import * as m from "motion/react-m";
 import { pageEnter } from "@/lib/motion";
-import { CalendarDays, FolderKanban, Home, Mic, Plus, Route, Settings, type LucideIcon } from "lucide-react";
+import { CalendarDays, ChevronRight, FolderKanban, Home, Mic, Plus, Route, Settings, type LucideIcon } from "lucide-react";
 import NotificationBell, { NotificationBellButton } from "./NotificationBell";
 import CommandPalette from "./CommandPalette";
 import GetToKnowYou from "./GetToKnowYou";
@@ -20,24 +20,31 @@ import { readSetAside, SET_ASIDE_EVENT } from "@/lib/today-local";
 import { planSeriesColor } from "@/lib/task-colors";
 import { requestHomeIntent, type HomeIntent } from "@/lib/home-intent";
 import { setCanvasSyncFailed } from "@/components/settings/useCanvasStatus";
+import { recentProjectsAndTangents } from "@/lib/sidebar-recents";
+import { useOpenedNow } from "@/lib/opened";
+import { loadTangents, useTangents } from "@/components/tangents/useTangents";
 
 // docs/design/TANGENT-STYLE.md §8 Nav. Four places you work, plus Settings.
-// Tangents (/tangents) sits under Projects in the sidebar, and on the Projects page on a phone.
+// In the laptop sidebar, Projects opens and closes a list of the newest
+// projects and Tangents (like a chat app's recents); only "All projects" goes
+// to the Projects page, which holds both. Phones and the tablet icon rail keep
+// a plain Projects link.
 type NavLink = { href: string; label: string; icon: LucideIcon };
 const PLACES: NavLink[] = [
   { href: "/", label: "Home", icon: Home },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
-  { href: "/projects", label: "Projects", icon: FolderKanban },
 ];
+const PROJECTS: NavLink = { href: "/projects", label: "Projects", icon: FolderKanban };
 const SETTINGS: NavLink = { href: "/settings", label: "Settings", icon: Settings };
-const TABS: NavLink[] = [...PLACES, SETTINGS];
+const TABS: NavLink[] = [...PLACES, PROJECTS, SETTINGS];
 
-const SIDEBAR_PROJECTS = 8;
+const RECENTS_OPEN_KEY = "tangent-sidebar-projects-open";
 // The phone mic button sits only where there's no composer of its own.
 const FAB_PATHS = new Set(["/calendar", "/projects"]);
 
 const isActive = (pathname: string, href: string) =>
   href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
+const inProjects = (pathname: string) => isActive(pathname, "/projects") || isActive(pathname, "/tangents");
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -117,23 +124,61 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   }, [tasks, today, asideTick]);
 
-  // The newest projects, each with how much of it is done.
+  // The sidebar's recents: the newest projects and Tangents together. Each
+  // project shows how much of it is done.
   const plans = state?.plans;
-  const projects = useMemo(() => {
-    const list = (plans ?? []).slice(-SIDEBAR_PROJECTS).reverse();
-    return list.map((plan) => {
-      const steps = (tasks ?? []).filter((t) => t.planId === plan.id);
-      const done = steps.filter((t) => t.completed).length;
-      return {
-        id: plan.id,
-        title: plan.title,
-        color: planSeriesColor(plan),
-        done,
-        total: steps.length,
-        pct: steps.length ? Math.round((done / steps.length) * 100) : 0,
-      };
+  const { paths } = useTangents();
+  // Opens in this tab count at once; the server's last_opened_at covers the rest.
+  const openedNow = useOpenedNow();
+  const recents = useMemo(
+    () =>
+      recentProjectsAndTangents(plans, paths, openedNow).map((r) => {
+        if (r.kind === "tangent") return { kind: r.kind, id: r.id, title: r.title, href: `/tangents/${r.id}` };
+        const steps = (tasks ?? []).filter((t) => t.planId === r.id);
+        const done = steps.filter((t) => t.completed).length;
+        return {
+          kind: r.kind,
+          id: r.id,
+          title: r.title,
+          href: `/projects/${r.id}`,
+          color: planSeriesColor(r.item),
+          done,
+          total: steps.length,
+          pct: steps.length ? Math.round((done / steps.length) * 100) : 0,
+        };
+      }),
+    [plans, paths, openedNow, tasks]
+  );
+  // A Tangent just made (or opened) should show in the list without a reload.
+  useEffect(() => {
+    if (pathname.startsWith("/tangents/")) void loadTangents();
+  }, [pathname]);
+
+  // Open or closed, remembered. Open until the student closes it. The slide
+  // only runs once the saved state is read, so a closed list doesn't animate
+  // shut on every page load.
+  const [recentsOpen, setRecentsOpen] = useState(true);
+  const [recentsReady, setRecentsReady] = useState(false);
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(RECENTS_OPEN_KEY) === "0") setRecentsOpen(false);
+    } catch {}
+    const raf = window.requestAnimationFrame(() => setRecentsReady(true));
+    return () => window.cancelAnimationFrame(raf);
+  }, []);
+  const toggleRecents = useCallback(() => {
+    setRecentsOpen((open) => {
+      try {
+        window.localStorage.setItem(RECENTS_OPEN_KEY, open ? "0" : "1");
+      } catch {}
+      return !open;
     });
-  }, [plans, tasks]);
+  }, []);
+  // Closed, the list is out of the tab order and hidden from screen readers.
+  const recentsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (recentsRef.current) recentsRef.current.inert = !recentsOpen;
+  }, [recentsOpen]);
 
   // Name comes from the student's profile (profiles.display_name).
   const profileName = state?.user.displayName?.trim() ?? "";
@@ -223,45 +268,82 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </Link>
             );
           })}
-        </nav>
 
-        <section className="app-sidebar-projects" aria-labelledby="app-sidebar-projects-heading">
-          <h2 id="app-sidebar-projects-heading" className="app-sidebar-heading">Projects</h2>
-          {/* Tangents: the long goals (a year or more) that projects branch from. */}
+          {/* Tablet icon rail: no room for the list, so Projects is a link. */}
           <Link
-            href="/tangents"
-            className="app-project-item app-paths-link"
-            aria-current={isActive(pathname, "/tangents") ? "page" : undefined}
+            href={PROJECTS.href}
+            className="app-nav-item app-nav-projects-link"
+            aria-current={inProjects(pathname) ? "page" : undefined}
+            data-tooltip={PROJECTS.label}
+            data-tooltip-side="right"
           >
-            <span className="app-paths-icon" aria-hidden="true">
-              <Route size={14} strokeWidth={1.75} />
+            <span className="app-nav-icon">
+              <FolderKanban size={20} strokeWidth={1.75} aria-hidden="true" />
             </span>
-            <span className="app-project-name">Tangents</span>
+            <span className="app-nav-label">{PROJECTS.label}</span>
           </Link>
-          {projects.length > 0 && (
-            <ul>
-              {projects.map((p) => (
-                <li key={p.id}>
-                  <Link
-                    href={`/projects/${p.id}`}
-                    className="app-project-item"
-                    aria-current={pathname === `/projects/${p.id}` ? "page" : undefined}
-                  >
-                    <span className="app-project-dot" style={{ "--dot": p.color } as CSSProperties} aria-hidden="true" />
-                    <span className="app-project-name">{p.title}</span>
-                    <span
-                      className="app-project-pie"
-                      style={{ "--pct": p.pct } as CSSProperties}
-                      role="img"
-                      aria-label={p.total ? `${p.done} of ${p.total} done` : "No steps yet"}
-                    />
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-          {projects.length > 0 && <Link href="/projects" className="app-project-all">All projects</Link>}
-        </section>
+
+          <button
+            type="button"
+            className={`app-nav-item app-nav-toggle${
+              pathname === "/projects" || pathname === "/tangents" || (!recentsOpen && inProjects(pathname)) ? " is-current" : ""
+            }`}
+            aria-expanded={recentsOpen}
+            aria-controls="app-sidebar-recents"
+            onClick={toggleRecents}
+          >
+            <span className="app-nav-icon">
+              <FolderKanban size={20} strokeWidth={1.75} aria-hidden="true" />
+            </span>
+            <span className="app-nav-label">{PROJECTS.label}</span>
+            <ChevronRight size={16} strokeWidth={1.75} className="app-nav-chevron" aria-hidden="true" />
+          </button>
+
+          <div
+            ref={recentsRef}
+            id="app-sidebar-recents"
+            className={`app-recents${recentsOpen ? " is-open" : ""}${recentsReady ? " is-ready" : ""}`}
+          >
+            <div className="app-recents-inner">
+              {recents.length > 0 && (
+                <ul aria-label="Recent projects and Tangents">
+                  {recents.map((r) => (
+                    <li key={`${r.kind}-${r.id}`}>
+                      <Link
+                        href={r.href}
+                        className="app-project-item"
+                        aria-current={pathname === r.href ? "page" : undefined}
+                      >
+                        {r.kind === "tangent" ? (
+                          <span className="app-paths-icon" aria-hidden="true">
+                            <Route size={14} strokeWidth={1.75} />
+                          </span>
+                        ) : (
+                          <span className="app-project-dot" style={{ "--dot": r.color } as CSSProperties} aria-hidden="true" />
+                        )}
+                        <span className="app-project-name">{r.title}</span>
+                        {r.kind === "tangent" ? (
+                          <span className="ui-visually-hidden"> (Tangent)</span>
+                        ) : (
+                          <span
+                            className="app-project-pie"
+                            style={{ "--pct": r.pct } as CSSProperties}
+                            role="img"
+                            aria-label={r.total ? `${r.done} of ${r.total} done` : "No steps yet"}
+                          />
+                        )}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <Link href={PROJECTS.href} className="app-project-all" aria-current={pathname === PROJECTS.href ? "page" : undefined}>
+                All projects
+                <ChevronRight size={14} strokeWidth={1.75} aria-hidden="true" />
+              </Link>
+            </div>
+          </div>
+        </nav>
 
         <div className="app-sidebar-bottom">
           <NotificationBellButton variant="sidebar" unread={unread} expanded={notifOpen} onClick={toggleNotifs} />

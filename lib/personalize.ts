@@ -174,30 +174,30 @@ export type PathsEmptyCopy = { title: string; body: string; cta: string };
 
 export const DEFAULT_PATHS_EMPTY: PathsEmptyCopy = {
   title: "Nothing in orbit yet",
-  body: "A path is one thing you are trying to reach: a university place, a job, a rating, a body of work. Tangent branches off what you already have to get you there.",
-  cta: "Start your first path",
+  body: "A Tangent is one thing you are trying to reach: a university place, a job, a rating, a body of work. It branches off what you already have to get you there.",
+  cta: "Start your first Tangent",
 };
 
 const TOWARD_PATHS: Partial<Record<WorkingToward, PathsEmptyCopy>> = {
   build: {
     title: "What are you building?",
-    body: "A project, a portfolio, an app. Make it a path and Tangent branches off what you already have toward a first version.",
-    cta: "Start a build path",
+    body: "A project, a portfolio, an app. Make it a Tangent: it branches off what you already have toward a first version.",
+    cta: "Start a build Tangent",
   },
   skill: {
     title: "What are you getting better at?",
-    body: "A rating, a grade, an instrument, a language. Make it a path and Tangent turns practice into steps you can see.",
-    cta: "Start a skill path",
+    body: "A rating, a grade, an instrument, a language. Make it a Tangent: it turns practice into steps you can see.",
+    cta: "Start a skill Tangent",
   },
   prepare: {
     title: "What are you getting ready for?",
-    body: "A competition, an audition, an exam. Make it a path and Tangent works backward from the date to what you can do this week.",
+    body: "A competition, an audition, an exam. Make it a Tangent: it works backward from the date to what you can do this week.",
     cta: "Start preparing",
   },
   school: {
     title: "Where is school taking you?",
-    body: "A class to pull up, a program to get into. Make it a path and Tangent branches off what you already have to get you there.",
-    cta: "Start your first path",
+    body: "A class to pull up, a program to get into. Make it a Tangent: it branches off what you already have to get you there.",
+    cta: "Start your first Tangent",
   },
 };
 
@@ -211,11 +211,11 @@ export function pathsStarterCopy(prefs: Prefs): { title: string; body: string; c
   if (empty === DEFAULT_PATHS_EMPTY) {
     return {
       title: "Keep a bigger goal in view",
-      body: "A path turns one long-term goal into steps you can start this week.",
-      cta: "Start a path",
+      body: "A Tangent turns one long-term goal into steps you can start this week.",
+      cta: "Start a Tangent",
     };
   }
-  return { title: empty.title, body: "Make it a path and see the first steps.", cta: empty.cta };
+  return { title: empty.title, body: "Make it a Tangent and see the first steps.", cta: empty.cta };
 }
 
 // ─── Help focus ──────────────────────────────────────────────────────────────

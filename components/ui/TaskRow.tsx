@@ -115,7 +115,7 @@ export default function TaskRow({
             )}
             {task.pathOrigin && (
               <Link href={`/tangents/${task.pathOrigin.pathId}`} className="path-origin-link" title={task.pathOrigin.nodeTitle}>
-                From your {task.pathOrigin.pathTitle} path
+                From your {task.pathOrigin.pathTitle} Tangent
               </Link>
             )}
           </div>

@@ -24,7 +24,7 @@ export const TYPE_LABELS = {
   question: "Question",
   quick_capture: "Quick capture (no AI)",
   asked: "Asked you to choose",
-  tangent: "Sent to Paths",
+  tangent: "Sent to Tangents",
 } as const;
 export type ActivityType = keyof typeof TYPE_LABELS;
 export const ACTIVITY_TYPES = Object.keys(TYPE_LABELS) as ActivityType[];

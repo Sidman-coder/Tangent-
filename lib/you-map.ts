@@ -3,7 +3,7 @@
 // came from. Pure and client-safe: no fact rules or prompts in here.
 
 import type { ContextEntry } from "./types";
-import { dedupeFacts } from "./student/facts";
+import { dedupeFacts, type FactCategory } from "./student/facts";
 
 export type MapGroupKey = "goals" | "classes" | "commitments" | "work" | "hard" | "future";
 
@@ -25,6 +25,17 @@ export const MAP_GROUPS: MapGroup[] = [
   { key: "hard", label: "What's hard", color: "hard", empty: "What tends to get in the way." },
   { key: "future", label: "Future", color: "future", empty: "Where you want to end up." },
 ];
+
+/** What a fact added inside an area's card is saved as, so it lands back in
+ *  that card (groupOf). */
+export const GROUP_FACT_CATEGORY: Record<MapGroupKey, FactCategory> = {
+  goals: "goals",
+  classes: "classes_activities",
+  commitments: "schedule",
+  work: "how_you_work",
+  hard: "whats_hard",
+  future: "future",
+};
 
 /** Which area a fact sits in. Identity and push style read as how you work. */
 export function groupOf(entry: Pick<ContextEntry, "factCategory" | "category">): MapGroupKey {

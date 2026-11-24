@@ -2451,11 +2451,17 @@ body :is(button).pplan-icon:hover {
 .tangents-layer .path-inspector-close {
   color: var(--text-2);
 }
+/* A pill at the bottom of the screen, sized to its text. top: auto undoes
+   the base rule's top, which otherwise stretches it the full height. */
 .tangents-layer .path-error.is-floating {
   position: fixed;
   z-index: 420;
+  top: auto;
   left: 50%;
   bottom: 28px;
+  width: max-content;
+  max-width: min(400px, calc(100vw - 32px));
+  height: auto;
   transform: translateX(-50%);
   padding: 10px 16px;
   border: 1px solid rgb(from var(--red) r g b / 0.3);
@@ -2463,6 +2469,10 @@ body :is(button).pplan-icon:hover {
   background: var(--surface);
   color: var(--red);
   box-shadow: 0 12px 30px -14px rgb(26 23 32 / 0.3);
+}
+/* Phones: above the bottom nav, not on it. */
+@media (max-width: 767px) {
+  .tangents-layer .path-error.is-floating { bottom: calc(var(--bottom-nav-h) + 16px); }
 }
 
 @media (max-width: 720px) {

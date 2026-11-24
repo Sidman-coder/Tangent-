@@ -46,7 +46,7 @@ export default function StorageStatus() {
         <div className="storage-status-pop" role="dialog" aria-label="Storage is not set up">
           <strong>Changes won&rsquo;t stick yet</strong>
           <p>
-            This site has no database connected, so paths, tasks and Canvas imports are kept on a temporary
+            This site has no database connected, so Tangents, tasks and Canvas imports are kept on a temporary
             server and can disappear when you leave.
           </p>
           <p className="storage-status-fix">

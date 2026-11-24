@@ -218,32 +218,58 @@
   box-sizing: content-box;
 }
 
-/* Projects */
-.app-sidebar-projects {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  min-height: 0;
-  margin-top: var(--s-6);
+/* Projects: a row that opens and closes the recents below it. Closed, the
+   list folds to zero height (grid rows 0fr → 1fr) and fades; the chevron
+   turns a quarter. Under reduced motion the durations are 0 (tokens.css). */
+.app-nav-toggle.is-current {
+  background: var(--accent-soft);
+  color: var(--accent-text);
 }
-.app-sidebar-heading {
-  margin: 0 0 var(--s-1);
-  padding: 0 var(--s-3);
+.app-nav-chevron {
+  flex: 0 0 auto;
   color: var(--text-3);
-  font: 600 11px/1.6 var(--font-body);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  transition: transform var(--dur) var(--ease);
 }
-.app-sidebar-projects ul {
+.app-nav-toggle[aria-expanded="true"] .app-nav-chevron { transform: rotate(90deg); }
+.app-nav-toggle.is-current .app-nav-chevron { color: var(--accent-text); }
+/* The tablet rail's plain link; the laptop sidebar uses the toggle. */
+.app-nav-projects-link { display: none; }
+
+.app-recents {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+.app-recents.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.app-recents.is-ready {
+  transition: grid-template-rows var(--dur) var(--ease), opacity var(--dur) var(--ease);
+}
+.app-recents.is-ready:not(.is-open) {
+  transition-timing-function: var(--ease-in);
+}
+/* Indented under Projects, on a hairline that lines up with its icon. */
+.app-recents-inner {
+  min-height: 0;
+  margin-left: 21px;
+  padding-left: var(--s-2);
+  border-left: 1px solid var(--line);
+  overflow: hidden;
+}
+.app-recents-inner > * { transform: translateY(-4px); }
+/* The fold clips anything outside the list, so focus rings sit inside. */
+.app-recents :focus-visible { outline-offset: -2px; }
+.app-recents.is-ready .app-recents-inner > * { transition: transform var(--dur) var(--ease); }
+.app-recents.is-open .app-recents-inner > * { transform: none; }
+.app-recents ul {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  min-height: 0;
   margin: 0;
-  padding: 0;
-  overflow-y: auto;
+  padding: 2px 0 0;
   list-style: none;
-  scrollbar-width: thin;
 }
 .app-project-item {
   display: flex;
@@ -277,7 +303,6 @@
   border-radius: var(--r-xs, 6px);
   color: var(--series-teal, var(--accent));
 }
-.app-paths-link { margin-bottom: 2px; }
 .app-project-name {
   flex: 1;
   min-width: 0;
@@ -297,8 +322,8 @@
 .app-project-all {
   display: flex;
   align-items: center;
+  gap: 4px;
   min-height: 36px;
-  margin-top: 2px;
   padding: 0 var(--s-3);
   border-radius: var(--r-sm);
   color: var(--text-3);
@@ -306,6 +331,7 @@
   text-decoration: none;
 }
 .app-project-all:hover { background: var(--elev-2); color: var(--text); }
+.app-project-all[aria-current="page"] { color: var(--accent-text); }
 
 /* Bottom: Notifications, Settings, the account. */
 .app-sidebar-bottom {
@@ -315,7 +341,6 @@
   margin-top: auto;
   padding-top: var(--s-4);
 }
-.app-sidebar-projects + .app-sidebar-bottom { margin-top: 0; }
 
 .app-user {
   position: relative;
@@ -363,7 +388,9 @@
   .app-brand-word,
   .app-sidebar .app-nav-label,
   .app-user-name,
-  .app-sidebar-projects { display: none; }
+  .app-nav-toggle,
+  .app-recents { display: none; }
+  .app-nav-projects-link { display: flex; }
 
   .app-new,
   .app-nav-item {

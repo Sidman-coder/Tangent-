@@ -54,9 +54,9 @@ const STEPS: Step[] = [
   },
   {
     route: "/",
-    target: [".float-mic"],
-    title: "Say it from anywhere",
-    body: "The mic in the bottom corner is on every page: tap it and talk, and it goes through the same Add flow. Press ⌘K to type instead. Questions go to Ask Tangent, from the same box.",
+    target: [".add-flow.is-hero .add-mic"],
+    title: "Say it instead of typing",
+    body: "Tap the mic and talk: your words appear as you speak, and it goes through the same Add flow. From any page, ⌘K (Ctrl K on Windows) opens the same box. On a phone, Calendar and Projects have a mic button in the corner.",
   },
   {
     route: "/",
@@ -76,6 +76,12 @@ const STEPS: Step[] = [
     body: "Tangent knows how much you can handle in a day. New work lands on lighter days, and if one gets overloaded it suggests a move. Nothing moves without your tap.",
   },
   {
+    route: "/",
+    target: [".app-nav-toggle"],
+    title: "Your projects, one click away",
+    body: "Projects in the sidebar opens your 7 most recent projects and Tangents; click it again to close it. The ones you open most stay at the top. All projects shows everything. On a phone, it's the Projects tab.",
+  },
+  {
     route: "/calendar",
     target: [".cal-bar"],
     title: "One bar to steer the calendar",
@@ -92,6 +98,12 @@ const STEPS: Step[] = [
     target: [".project-card", ".projects-new", ".page-header-actions"],
     title: "Projects, and how they're going",
     body: "A final, a science fair, starting a club. Tangent asks a few questions, then lays the steps across your calendar. Open a project to see your pace and next steps, or ask about it right on the project page.",
+  },
+  {
+    route: "/projects",
+    target: ["#projects-tangents", ".projects-new-tangent"],
+    title: "Tangents, next to your projects",
+    body: "A Tangent is a goal a year or more away, like a college or a career. Tangent maps the moves from what you already do, and your projects branch off it. New Tangent starts one.",
   },
   {
     route: "/settings/context",

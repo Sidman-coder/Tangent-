@@ -5,7 +5,7 @@ import { NOTICED_KINDS, noticedHabits, type NoticedKey } from "@/lib/student/obs
 import { extractContextFacts } from "@/lib/context-extract";
 import { factsFromText } from "@/lib/ai/import-context";
 import { withUser } from "@/lib/request-context";
-import { isFactCategory } from "@/lib/student/facts";
+import { isFactCategory, legacyCategoryOf } from "@/lib/student/facts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,15 +27,20 @@ export const POST = withUser(async (request: Request) => {
   try {
     const body = await request.json();
 
-    // "What Tangent knows" in Settings: the student adds a fact themselves.
+    // "What Tangent knows" in Settings: the student adds a fact themselves,
+    // either anywhere (Tangent sorts it) or inside one area's card
+    // (factCategory) or one project's card (projectId).
     if (body.action === "remember") {
       const fact = String(body.fact ?? "").trim().slice(0, 300);
       if (!fact) return NextResponse.json({ ok: false, error: "fact is required" }, { status: 400 });
       const CATEGORIES = ["preference", "habit", "commitment", "goal", "person", "work", "general"] as const;
-      const category = CATEGORIES.find((c) => c === body.category) ?? "general";
       // Round 5B: "+ Add" in an area (and an edit) keeps that area's category,
-      // and an edited project fact stays with its project.
+      // and an edited project fact stays with its project. A category the
+      // client sends wins (an edit keeps the old one); otherwise it follows
+      // the area (main d010644: each card's Add sends only factCategory).
       const factCategory = isFactCategory(body.factCategory) ? body.factCategory : undefined;
+      const category =
+        CATEGORIES.find((c) => c === body.category) ?? (factCategory ? legacyCategoryOf(factCategory) : "general");
       const projectId = typeof body.projectId === "string" && body.projectId ? body.projectId : undefined;
       const entry = await addContextEntry({ category, fact, source: "manual", factCategory, projectId });
       // Sensitive or too vague to plan with: not kept (lib/student/facts.ts).

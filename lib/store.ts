@@ -1147,10 +1147,12 @@ type PlanRow = {
   color: string;
   created_at: string;
   kind?: string | null;
+  /** Only once migration 20261114020000 has run (plans are read with `*`). */
+  last_opened_at?: string | null;
 };
 
 function planFromRow(r: PlanRow): Plan {
-  return {
+  const plan: Plan = {
     id: r.id,
     title: r.title,
     description: r.description,
@@ -1161,6 +1163,8 @@ function planFromRow(r: PlanRow): Plan {
     taskCount: r.task_count,
     ...(r.kind === "school" || r.kind === "work" ? { kind: r.kind } : {}),
   };
+  if (r.last_opened_at) plan.lastOpenedAt = iso(r.last_opened_at);
+  return plan;
 }
 
 export async function getAllPlans(): Promise<Plan[]> {
@@ -3733,6 +3737,7 @@ type PathRow = {
   standing: string | null;
   created_at: string;
   updated_at: string;
+  last_opened_at?: string | null;
 };
 
 const PATH_COLUMNS =
@@ -3752,6 +3757,7 @@ function pathFromRow(r: PathRow): Path {
   if (r.hours_per_week !== null) p.hoursPerWeek = Number(r.hours_per_week);
   if (r.constraints !== null) p.constraints = r.constraints;
   if (r.standing !== null) p.standing = r.standing;
+  if (r.last_opened_at) p.lastOpenedAt = iso(r.last_opened_at);
   return p;
 }
 
@@ -3837,14 +3843,52 @@ async function selectPathNodes(where: string, pathId?: string): Promise<PathNode
   return rows.map(pathNodeFromRow);
 }
 
+// ─── Last opened (projects and Tangents) ─────────────────────────────────────
+// The sidebar lists what a student actually opens. last_opened_at arrives with
+// migration 20261114020000; until then reads skip it and opening is a no-op.
+
+const missingLastOpened = createColumnMemo();
+
+function noteMissingLastOpened(table: string, error: { code?: string; message?: string }): boolean {
+  if (schemaErrorKind(error) !== "missing_column") return false;
+  missingLastOpened.markMissing(table);
+  warnSchemaOnce(`last_opened_at:${table}`, `${table}.last_opened_at is missing; run migration 20261114020000_last_opened.sql`);
+  return true;
+}
+
+/** Stamps when the student opened a project or a Tangent. False when there's
+ *  nothing to stamp (bad id, no such row, or the column isn't there yet). */
+export async function markOpened(kind: "project" | "tangent", id: string): Promise<boolean> {
+  if (!isUuid(id)) return false;
+  const table = kind === "project" ? "plans" : "paths";
+  if (missingLastOpened.isMissing(table)) return false;
+  const { db, userId } = ctx();
+  const { data, error } = await db
+    .from(table)
+    .update({ last_opened_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .eq("id", id)
+    .select("id");
+  if (error) {
+    if (noteMissingLastOpened(table, error)) return false;
+    fail("markOpened", error);
+  }
+  return (data ?? []).length > 0;
+}
+
 export async function getPathSpace(): Promise<PathSpace> {
   const { db, userId } = ctx();
-  const [pathsRes, nodes] = await Promise.all([
-    db.from("paths").select(PATH_COLUMNS).eq("user_id", userId).order("created_at", { ascending: true }),
-    selectPathNodes("getPathSpace"),
-  ]);
+  const readPaths = (withOpened: boolean) =>
+    db
+      .from("paths")
+      .select(withOpened ? `${PATH_COLUMNS}, last_opened_at` : PATH_COLUMNS)
+      .eq("user_id", userId)
+      .order("created_at", { ascending: true });
+  const [first, nodes] = await Promise.all([readPaths(!missingLastOpened.isMissing("paths")), selectPathNodes("getPathSpace")]);
+  let pathsRes = first;
+  if (pathsRes.error && noteMissingLastOpened("paths", pathsRes.error)) pathsRes = await readPaths(false);
   if (pathsRes.error) fail("getPathSpace", pathsRes.error);
-  return { paths: ((pathsRes.data ?? []) as PathRow[]).map(pathFromRow), nodes };
+  return { paths: ((pathsRes.data ?? []) as unknown as PathRow[]).map(pathFromRow), nodes };
 }
 
 /** Just the student's Paths (their goals), without the node trees. For the

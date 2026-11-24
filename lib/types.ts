@@ -85,6 +85,8 @@ export type Plan = {
   /** Round 5A Phase 3: School and Work are projects too. Null for a goal.
    *  Absent until migration 20261114000000_plan_kind runs. */
   kind?: PlanKind | null;
+  /** When the student last opened it. Unset until then, or before migration 20261114020000. */
+  lastOpenedAt?: string;
 };
 
 export type PlanKind = "school" | "work";
@@ -479,6 +481,8 @@ export type Path = {
   standing?: string;
   createdAt: string;
   updatedAt: string;
+  /** When the student last opened it. Unset until then, or before migration 20261114020000. */
+  lastOpenedAt?: string;
 };
 
 /** Superseded by Path. Kept so a workspace saved before multi-path can be read
