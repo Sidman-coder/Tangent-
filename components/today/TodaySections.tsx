@@ -57,9 +57,9 @@ function focusComposer() {
 function NowRule({ now, timezone }: { now: Date; timezone: string }) {
   const label = now.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", timeZone: timezone });
   return (
-    <div className="today-now" role="separator" aria-label={`Now, ${label}`}>
+    <div className="today-now" role="separator" aria-label={`Now, ${label}`} suppressHydrationWarning>
       <span className="today-now-dot" aria-hidden="true" />
-      <span className="today-now-time">{label}</span>
+      <span className="today-now-time" suppressHydrationWarning>{label}</span>
     </div>
   );
 }

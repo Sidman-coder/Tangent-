@@ -397,7 +397,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             key={href}
             href={href}
             className="app-tab"
-            aria-current={isActive(pathname, href) ? "page" : undefined}
+            aria-current={(href === "/projects" ? inProjects(pathname) : isActive(pathname, href)) ? "page" : undefined}
           >
             <span className="app-tab-icon">
               <Icon size={20} strokeWidth={1.75} aria-hidden="true" />
