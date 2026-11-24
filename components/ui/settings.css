@@ -364,3 +364,20 @@
   color: var(--text-2);
   font-size: 14px;
 }
+
+/* Review 2026-11-24: grouped Settings (About you / The app / Your privacy). */
+.settings-sidenav-group { display: flex; flex-direction: column; gap: 2px; }
+.settings-sidenav-group + .settings-sidenav-group { margin-top: var(--s-3); }
+.settings-sidenav-label {
+  padding: var(--s-2) 12px 4px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 600;
+}
+.settings-list-groups { display: grid; gap: var(--s-5); }
+.settings-list-group {
+  margin: 0 0 var(--s-2) var(--s-1);
+  color: var(--text-3);
+  font-size: 13px;
+  font-weight: 600;
+}

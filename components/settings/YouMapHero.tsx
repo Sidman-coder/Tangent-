@@ -64,12 +64,11 @@ export default function YouMapHero({
           glowIds={glowIds}
         />
         <div className={`you-hero-intro${level.kind === "root" ? "" : " is-away"}`}>
-          <p className="you-hero-kicker">What Tangent knows</p>
           <h2 id="knows-title" className="you-hero-title">You, mapped</h2>
           <p className="you-hero-summary">{summary}</p>
         </div>
         <p className={`you-hero-hint${level.kind === "root" ? "" : " is-away"}`} aria-hidden="true">
-          Drag to turn · click an area to open it
+          Drag to turn · pick an area to open it
         </p>
       </div>
 

@@ -136,7 +136,14 @@ function FieldActions({ onSave, onCancel, saving, what }: { onSave: () => void; 
   );
 }
 
-export default function WhatTangentKnows() {
+/** Fired with the live fact count whenever the facts on this page change, so
+ *  "Getting to know you" never shows a different number than the map. */
+export const FACTS_CHANGED_EVENT = "tangent:facts-changed";
+
+/** An area card shows this many facts before "Show all". */
+const CARD_PREVIEW = 4;
+
+export default function WhatTangentKnows({ children }: { children?: React.ReactNode }) {
   const v2 = usePipelineV2();
   const { state } = useAppState();
   const sample = useContext(SampleKnowsContext);
@@ -158,6 +165,14 @@ export default function WhatTangentKnows() {
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const cardRefs = useRef(new Map<MapGroupKey, HTMLElement>());
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const toggleCard = (key: string) =>
+    setExpanded((cur) => {
+      const next = new Set(cur);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   const load = useCallback(async () => {
     if (sample) {
@@ -192,7 +207,14 @@ export default function WhatTangentKnows() {
 
   // The map leaves out facts waiting to be forgotten; the cards keep their row for Undo.
   const kept = useMemo(() => (entries ?? []).filter((e) => !pending.has(e.id)), [entries, pending]);
-  const grouped = useMemo(() => groupFacts(entries ?? []), [entries]);
+  // Guesses get their own card at the top (one place to check them), so the
+  // area cards hold only what the student said or Tangent noticed.
+  const guesses = useMemo(() => (entries ?? []).filter((e) => originOf(e) === "guess"), [entries]);
+  const grouped = useMemo(() => groupFacts((entries ?? []).filter((e) => originOf(e) !== "guess")), [entries]);
+  useEffect(() => {
+    if (entries === null) return;
+    window.dispatchEvent(new CustomEvent(FACTS_CHANGED_EVENT, { detail: kept.length }));
+  }, [entries, kept.length]);
   const mapGrouped = useMemo(() => groupFacts(kept), [kept]);
   const plans = useMemo<PlanRef[]>(() => sample?.plans ?? (state?.plans ?? []).map((p) => ({ id: p.id, title: p.title })), [sample, state?.plans]);
   const projects = useMemo(() => projectFacts(entries ?? [], plans), [entries, plans]);
@@ -471,8 +493,30 @@ export default function WhatTangentKnows() {
             </p>
           </div>
 
+          {/* Telling Tangent something is the main action here, so it sits above
+              the facts instead of under the last card. */}
+          <KnowsTell onTell={tell} />
+
           <div className="you-map-body is-below">
             <div className="you-map-cards">
+              {guesses.length > 0 && (
+                <section className="you-card is-guesses" aria-labelledby="you-card-guesses">
+                  <header>
+                    <span className="you-card-icon" aria-hidden="true">
+                      <Check size={16} strokeWidth={1.75} />
+                    </span>
+                    <h3 id="you-card-guesses">Is this right?</h3>
+                    <span className="you-card-count">{guesses.filter((f) => !pending.has(f.id)).length}</span>
+                  </header>
+                  <p className="you-card-note">Tangent&apos;s guesses. It won&apos;t plan around them until you confirm.</p>
+                  <ul>{factRows(expanded.has("guesses") ? guesses : guesses.slice(0, CARD_PREVIEW))}</ul>
+                  {guesses.length > CARD_PREVIEW && (
+                    <button type="button" className="you-card-more" aria-expanded={expanded.has("guesses")} onClick={() => toggleCard("guesses")}>
+                      {expanded.has("guesses") ? "Show less" : `Show all ${guesses.length}`}
+                    </button>
+                  )}
+                </section>
+              )}
               {summary && (
                 <div className="you-card is-earlier">
                   <h3>Earlier</h3>
@@ -513,10 +557,22 @@ export default function WhatTangentKnows() {
                     {facts.length === 0 && !isAdding ? (
                       <p className="you-card-empty">{group.empty} Not asked yet.</p>
                     ) : (
-                      <ul>
-                        {factRows(facts)}
-                        {addRow(group.key, group.label)}
-                      </ul>
+                      <>
+                        <ul>
+                          {factRows(expanded.has(group.key) ? facts : facts.slice(0, CARD_PREVIEW))}
+                          {addRow(group.key, group.label)}
+                        </ul>
+                        {facts.length > CARD_PREVIEW && (
+                          <button
+                            type="button"
+                            className="you-card-more"
+                            aria-expanded={expanded.has(group.key)}
+                            onClick={() => toggleCard(group.key)}
+                          >
+                            {expanded.has(group.key) ? "Show less" : `Show all ${facts.length}`}
+                          </button>
+                        )}
+                      </>
                     )}
                   </section>
                 );
@@ -578,7 +634,9 @@ export default function WhatTangentKnows() {
               )}
             </div>
 
-            <KnowsTell onTell={tell} />
+            {/* The page's other ways to teach Tangent (import, questions, setup),
+                then the danger zone last. */}
+            {children}
 
             {(entries.length > 0 || summary || noticed.length > 0) && (
               <div className="settings-card knows-card knows-danger">

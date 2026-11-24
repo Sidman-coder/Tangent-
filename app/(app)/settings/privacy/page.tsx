@@ -7,6 +7,7 @@ import SettingsPageHeader from "@/components/settings/SettingsPageHeader";
 import SettingsSection from "@/components/ui/SettingsSection";
 import SettingRow from "@/components/ui/SettingRow";
 import { CONTACT_EMAIL } from "@/components/public/PublicLinks";
+import TourRow from "@/components/settings/TourRow";
 
 // Settings, Help and privacy (overnight 2 Phases 5 and 6): where a student's
 // words go, in plain words, then the policies and how to reach a person.
@@ -61,7 +62,7 @@ export default function HelpPrivacySettingsPage() {
           label="Forget everything"
           help={
             <>
-              At the end of <Link href="/settings/context">What Tangent knows</Link>. Deletes every fact and the habits Tangent noticed. Your tasks, projects and
+              At the bottom of <Link href="/settings/context">What Tangent knows</Link>. Deletes every fact and the habits Tangent noticed. Your tasks, projects and
               chats stay. To delete your whole account, use <Link href="/settings/data">Your data</Link>.
             </>
           }
@@ -87,6 +88,7 @@ export default function HelpPrivacySettingsPage() {
       </SettingsSection>
 
       <SettingsSection id="help" title="Get help">
+        <TourRow />
         <SettingRow label="Email us" help={`Questions, a bug, or a deletion request: ${CONTACT_EMAIL}. A person replies.`}>
           <a href={`mailto:${CONTACT_EMAIL}`} className="ui-button ui-button--secondary ui-button--sm">
             Email

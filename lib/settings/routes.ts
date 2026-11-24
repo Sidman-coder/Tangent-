@@ -37,5 +37,5 @@ export function legacySettingsTarget(search: string, hash: string): string | nul
 /** Where /settings itself lands: an old link's page, else Account on a
  *  laptop. A phone stays on the section list (null). */
 export function settingsLanding(isDesktop: boolean, search: string, hash: string): string | null {
-  return legacySettingsTarget(search, hash) ?? (isDesktop ? "/settings/account" : null);
+  return legacySettingsTarget(search, hash) ?? (isDesktop ? "/settings/context" : null);
 }

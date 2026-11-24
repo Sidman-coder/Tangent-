@@ -590,7 +590,7 @@
 .you-hero-areas b { color: color-mix(in srgb, var(--map-ink) 78%, transparent); font-weight: 600; font-variant-numeric: tabular-nums; }
 
 /* The cards sit under the map, two across when there is room. */
-.you-map-body.is-below { display: block; }
+.you-map-body.is-below { display: grid; gap: 32px; }
 .you-map-body.is-below .you-map-cards {
   display: grid;
   gap: 14px;
@@ -601,10 +601,10 @@
 }
 
 @media (max-width: 767px) {
-  .you-hero-stage { height: 440px; border-radius: var(--r-lg, 16px); }
+  .you-hero-stage { height: 380px; border-radius: var(--r-lg, 16px); }
   .you-hero-intro { padding: 18px 18px 0; }
   .you-hero-title { font-size: 30px; }
-  .you-hero-summary { display: none; }
+  .you-hero-summary { font-size: 14px; max-width: 26ch; }
   .you-map-core { width: 76px; height: 76px; }
   .you-map-core span { font-size: 24px; }
   .you-map-core small { font-size: 12px; }
@@ -612,7 +612,8 @@
   .you-map-pill-none { display: none; }
   .you-map-sat { font-size: 12px; }
   .you-map-flabel { max-width: 132px; font-size: 13px; }
-  .you-hero-areas { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  /* Six full-width pills cost ~300px before the first fact; two across halves it. */
+  .you-hero-areas { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
   .you-hero-areas button { padding: 0 14px; font-size: 14px; }
 }
 
@@ -914,3 +915,22 @@
 .you-fact.is-habit .you-fact-meta {
   justify-content: flex-end;
 }
+
+/* Review 2026-11-24: "Show all N" under an area card (cards show 4 facts first). */
+.you-card-more {
+  margin: 6px 0 0 37px;
+  padding: 6px 0;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.you-card-more:hover { text-decoration: underline; }
+.you-card-more:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+
+/* "Is this right?": every guess in one card, first, in the accent. */
+.you-card.is-guesses { --c: var(--accent); grid-column: 1 / -1; }
+.you-map > .knows-tell { margin: 4px 0 16px; }
