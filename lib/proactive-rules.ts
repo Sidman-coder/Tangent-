@@ -85,7 +85,7 @@ const short = (s: string, n = 48) => (s.length > n ? `${s.slice(0, n - 1).trimEn
 
 /**
  * Overdue, worded in code. One item names it; several become one line that
- * names where to start ("3 steps are overdue", which the bell merges with
+ * names where to start ("3 steps are past due", which the bell merges with
  * any single ones: lib/notification-dedupe.ts). No guilt, no streaks.
  */
 export function overdueNotice(overdue: readonly Task[], dayLabel: (date: string) => string): Notice | null {
@@ -101,7 +101,7 @@ export function overdueNotice(overdue: readonly Task[], dayLabel: (date: string)
   }
   return {
     type: "overdue_task",
-    title: `${overdue.length} things are overdue`,
+    title: `${overdue.length} things are past due`,
     body: `Start with “${short(first.title)}” (it was for ${dayLabel(first.date)}). One at a time is fine.`,
   };
 }

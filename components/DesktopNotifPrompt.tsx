@@ -52,7 +52,7 @@ export default function DesktopNotifPrompt() {
 
   return (
     <div className="confirm-toast desktop-notif-prompt" role="alertdialog" aria-label="Enable desktop notifications">
-      <span>Want a desktop alert for overdue tasks and reminders? Tangent only notifies you while a tab is open — nothing runs in the background.</span>
+      <span>Want a desktop alert for past-due tasks and reminders? Tangent only notifies you while a tab is open — nothing runs in the background.</span>
       <div className="confirm-toast-btns">
         <button type="button" className="surface-action-primary" onClick={() => void enable()}>
           Enable

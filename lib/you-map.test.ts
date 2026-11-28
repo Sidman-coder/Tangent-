@@ -30,7 +30,7 @@ const fact = (fact: string, over: Partial<ContextEntry> = {}): ContextEntry => (
 
 type Mod = typeof import("./you-map");
 
-void (import("./you-map") as Promise<Mod>).then(({ groupFacts, groupOf, initialsOf, mapSummary, originOf, projectFacts, GROUP_FACT_CATEGORY, MAP_GROUPS }) => {
+void (import("./you-map") as Promise<Mod>).then(({ factCount, groupFacts, groupOf, initialsOf, mapSummary, originOf, projectFacts, GROUP_FACT_CATEGORY, MAP_GROUPS }) => {
   test("a fact added inside an area card saves back into that area", () => {
     for (const { key } of MAP_GROUPS) {
       assert.equal(groupOf(fact("x", { factCategory: GROUP_FACT_CATEGORY[key] })), key, key);
@@ -110,5 +110,19 @@ void (import("./you-map") as Promise<Mod>).then(({ groupFacts, groupOf, initials
       fact("You can give 4 hours a week.", { id: "b", factCategory: "schedule" }),
     ]);
     assert.equal(grouped.find((g) => g.group.key === "commitments")?.facts.length, 1);
+  });
+
+  // Help Tangent learn said 23 while the map said 20: it counted raw rows.
+  test("factCount is the map's number: project facts and repeats left out", () => {
+    const entries = [
+      fact("Make varsity", { id: "a", factCategory: "goals" }),
+      fact("You can give 4 hrs a week", { id: "b", factCategory: "schedule" }),
+      fact("You can give 4 hours a week.", { id: "c", factCategory: "schedule" }),
+      fact("Science fair is due end of term", { id: "d", factCategory: "schedule", projectId: "plan-1" }),
+    ];
+    const grouped = groupFacts(entries);
+    assert.equal(factCount(grouped), 2, "4 rows, 2 facts about you");
+    assert.match(mapSummary(grouped), /^Tangent knows 2 things about you/);
+    assert.equal(factCount(groupFacts([])), 0);
   });
 });

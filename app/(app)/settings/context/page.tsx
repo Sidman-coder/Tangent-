@@ -35,8 +35,7 @@ export default function ContextSettingsPage() {
     <>
       <SettingsPageHeader page="context" />
 
-      <WhatTangentKnows />
-
+      <WhatTangentKnows>
       <SettingsSection id="import" title="Bring in what you already have" description="The more Tangent knows, the less it has to ask.">
         <div className="settings-row is-stacked">
           <div className="settings-row-main">
@@ -59,6 +58,7 @@ export default function ContextSettingsPage() {
 
       <OnboardingSection canvasLoaded={canvas.loaded} canvasConnected={canvas.connected} onRedoSetup={() => void redoSetup()} redoing={redoing} />
       {redoError && <FormMessage tone="error">Couldn&apos;t restart setup. Try again.</FormMessage>}
+      </WhatTangentKnows>
     </>
   );
 }

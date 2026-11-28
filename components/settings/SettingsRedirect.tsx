@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { settingsLanding } from "@/lib/settings/routes";
 
 /** Old /settings#… and ?activity= links land on their new page; on a laptop
- *  /settings opens Account, on a phone it stays the section list. */
+ *  /settings opens What Tangent knows (the first, featured section), on a phone it stays the section list. */
 export default function SettingsRedirect() {
   const router = useRouter();
   useEffect(() => {

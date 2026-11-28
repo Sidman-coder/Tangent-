@@ -103,10 +103,16 @@ export function projectFacts(entries: ContextEntry[], projects: { id: string; ti
 
 const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
 
+/** How many facts the map shows: about you only, each once. Help Tangent
+ *  learn reads this same number, so the two never disagree. */
+export function factCount(grouped: GroupedFacts): number {
+  return grouped.reduce((n, g) => n + g.facts.length, 0);
+}
+
 /** One sentence over the whole map: how much Tangent knows and where most of
  *  it is. "Tangent knows 9 things about you, mostly your goals and how you work." */
 export function mapSummary(grouped: GroupedFacts): string {
-  const total = grouped.reduce((n, g) => n + g.facts.length, 0);
+  const total = factCount(grouped);
   if (total === 0) return "Tangent doesn't know anything about you yet. Answer a question or add a fact, and it starts here.";
   const top = grouped
     .filter((g) => g.facts.length > 0)

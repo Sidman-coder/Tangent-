@@ -46,10 +46,11 @@
   padding: 10px 6px 6px;
 }
 .capture-wordmark {
-  font-family: var(--font-display);
-  font-weight: 800;
-  font-size: 22px;
-  letter-spacing: -0.03em;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 600 18px/1 var(--font-display);
+  letter-spacing: -0.01em;
 }
 .capture-open-app {
   padding: 8px 14px;
@@ -306,11 +307,14 @@
 @keyframes capture-drift-1 { 50% { transform: translate(60px, -40px) scale(1.15); } }
 @keyframes capture-drift-2 { 50% { transform: translate(-50px, 30px) scale(0.9); } }
 
+/* Review 2026-11-24: the island now sits at the top (top ~83px, ~120px tall,
+   swelling 6px up and 4.5% larger), so the old 120px top put "Listening…"
+   and the first line of live words underneath it. Start below the island. */
 .capture-live {
   position: relative;
   max-width: 560px;
   margin: 0 auto;
-  padding: calc(120px + env(safe-area-inset-top, 0px)) 28px 0;
+  padding: calc(240px + env(safe-area-inset-top, 0px)) 28px 0;
 }
 .capture-listening {
   margin: 0 0 14px;
@@ -323,7 +327,7 @@
   display: flex;
   flex-wrap: wrap;
   align-content: flex-end;
-  max-height: calc(100dvh - 400px - env(safe-area-inset-bottom, 0px));
+  max-height: calc(100dvh - 320px - env(safe-area-inset-bottom, 0px));
   overflow: hidden;
   margin: 0;
   font-family: var(--font-display);

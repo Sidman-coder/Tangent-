@@ -127,7 +127,8 @@ export default function FirstRun({ onComplete }: { onComplete: () => Promise<voi
 
   const index = STEPS.indexOf(step);
   const questionCount = STEPS.length - 1; // the ready screen isn't a question
-  const progress = step === "ready" ? 1 : index / questionCount;
+  // Review 2026-11-24: "1 of 9" showed an empty bar; count the step you're on.
+  const progress = step === "ready" ? 1 : (index + 1) / (questionCount + 1);
 
   const goTo = useCallback(
     (next: StepId) => {

@@ -55,7 +55,7 @@ function paceSentence(pace: Pace, week: WeekSession[], today: string): string {
   } else {
     line = pace.neededThisWeek > 0 ? `On track: ${plural(pace.neededThisWeek, "step")} to do this week.` : "On track: nothing due this week.";
   }
-  if (pace.overdue > 0) line += ` ${pace.overdue} overdue.`;
+  if (pace.overdue > 0) line += ` ${pace.overdue} past due.`;
   return line;
 }
 
@@ -406,7 +406,7 @@ export default function ProjectView({ id }: { id: string }) {
         </Card>
 
         <div className="project-extras">
-          <ProjectStats tasks={steps} today={today} extrasOnly />
+          <ProjectStats tasks={steps} today={today} extrasOnly projectName={plan.title} />
         </div>
 
         <div className="project-settings">

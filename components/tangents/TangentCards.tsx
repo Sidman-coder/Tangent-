@@ -151,7 +151,11 @@ export function NewTangentLayer({
   onCancel: () => void;
   onCreate: (draft: PathDraft) => Promise<boolean>;
 }) {
-  if (typeof document === "undefined") return null;
+  // Portal only after mount: returning null on the server and a portal on the
+  // client's first render is a hydration mismatch (it threw on /projects and /tangents).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
   return createPortal(
     <div className="tangents-light tangents-layer">
       {error && (

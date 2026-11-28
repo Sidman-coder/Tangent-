@@ -74,7 +74,7 @@ void (import("./proactive-rules") as Promise<typeof import("./proactive-rules")>
         [task({ id: "a", title: "History worksheet", date: "2026-11-22" }), task({ id: "b", title: "Spanish vocab", date: "2026-11-21" })],
         day
       )!;
-      assert.equal(many.title, "2 things are overdue");
+      assert.equal(many.title, "2 things are past due");
       assert.equal(many.actionData, undefined);
       for (const n of [one, many]) assert.doesNotMatch(`${n.title} ${n.body}`, /missed|streak|behind|should have/i);
       assert.equal(overdueNotice([], day), null);

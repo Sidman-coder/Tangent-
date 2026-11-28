@@ -4,13 +4,13 @@
 // each with whether it's done. The tour, Tangent's first questions, Grill me,
 // context from another AI, Canvas, and the setup answers.
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Check } from "lucide-react";
 import Button from "@/components/ui/Button";
 import GrillQueue from "@/components/settings/GrillQueue";
-import { GET_TO_KNOW_DONE_EVENT, GET_TO_KNOW_EVENT } from "@/components/GetToKnowYou";
-import { TOUR_DONE_KEY, TOUR_EVENT } from "@/components/FeatureTour";
+import { GET_TO_KNOW_EVENT } from "@/components/GetToKnowYou";
+import { FACTS_CHANGED_EVENT } from "@/components/settings/WhatTangentKnows";
 
 const ENOUGH_FACTS = 4;
 
@@ -34,43 +34,22 @@ export default function OnboardingSection({
   onRedoSetup: () => void;
   redoing: boolean;
 }) {
-  const [toured, setToured] = useState(false);
+  // The count comes from the facts on this page (one source), not a second fetch
+  // that went stale after an edit or Forget and showed 0 beside "24 facts".
   const [facts, setFacts] = useState<number | null>(null);
-
-  const loadFacts = useCallback(() => {
-    void fetch("/api/context", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d: { context?: { entries?: unknown[] } }) => setFacts(d.context?.entries?.length ?? 0))
-      .catch(() => setFacts(0));
-  }, []);
-
   useEffect(() => {
-    try {
-      setToured(window.localStorage.getItem(TOUR_DONE_KEY) === "1");
-    } catch {}
-    loadFacts();
-    window.addEventListener(GET_TO_KNOW_DONE_EVENT, loadFacts);
-    return () => window.removeEventListener(GET_TO_KNOW_DONE_EVENT, loadFacts);
-  }, [loadFacts]);
+    const onFacts = (e: Event) => setFacts(typeof (e as CustomEvent).detail === "number" ? (e as CustomEvent).detail : null);
+    window.addEventListener(FACTS_CHANGED_EVENT, onFacts);
+    return () => window.removeEventListener(FACTS_CHANGED_EVENT, onFacts);
+  }, []);
 
   const known = facts ?? 0;
 
   return (
     <section id="onboarding" className="settings-group" aria-labelledby="onboarding-title">
-      <h2 id="onboarding-title" className="settings-group-title">Getting to know you</h2>
-      <p className="settings-group-note">Everything Tangent needs to fit you. Come back to any of it whenever you like.</p>
+      <h2 id="onboarding-title" className="settings-group-title">Help Tangent learn</h2>
+      <p className="settings-group-note">Ways to fill in the gaps. Come back to any of these whenever you like.</p>
       <div className="settings-card">
-        <div className="settings-row">
-          <div className="settings-row-copy">
-            <strong>Take the tour</strong>
-            <span>A two-minute walk through adding, the calendar, projects and Ask Tangent.</span>
-            <Status done={toured}>{toured ? "Done" : "Not yet"}</Status>
-          </div>
-          <Button size="sm" variant={toured ? "secondary" : "primary"} onClick={() => window.dispatchEvent(new Event(TOUR_EVENT))}>
-            {toured ? "Take it again" : "Start tour"}
-          </Button>
-        </div>
-
         <div className="settings-row">
           <div className="settings-row-copy">
             <strong>Let Tangent get to know you</strong>

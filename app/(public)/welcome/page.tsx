@@ -67,10 +67,10 @@ export default function WelcomePage() {
             Tests, practice, clubs, a job, a big goal. Tangent turns it into small steps on the days that have room, then checks in until it&apos;s done.
           </p>
           <div className="pub-actions">
-            <Link href="/signin?mode=create" className="ui-button ui-button--primary">
+            <Link href="/signin?mode=create" className="ui-button ui-button--md ui-button--primary">
               Request an invite
             </Link>
-            <Link href="/signin" className="ui-button ui-button--secondary">
+            <Link href="/signin" className="ui-button ui-button--md ui-button--secondary">
               Sign in
             </Link>
           </div>
@@ -159,10 +159,10 @@ export default function WelcomePage() {
         </h2>
         <p className="pub-body">Free during the pilot. Ages 13 and up.</p>
         <div className="pub-actions">
-          <Link href="/signin?mode=create" className="ui-button ui-button--primary">
+          <Link href="/signin?mode=create" className="ui-button ui-button--md ui-button--primary">
             Request an invite
           </Link>
-          <Link href="/signin" className="ui-button ui-button--secondary">
+          <Link href="/signin" className="ui-button ui-button--md ui-button--secondary">
             I have an account
           </Link>
         </div>

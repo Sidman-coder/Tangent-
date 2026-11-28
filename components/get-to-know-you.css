@@ -393,3 +393,11 @@
     min-height: 44px;
   }
 }
+
+/* Review 2026-11-24: the field inside the pill drew its own 8px focus ring, a
+   lavender rectangle inside the pill's ring. The pill shows focus already. */
+.gtk-sheet .gtk-foot .gtk-input input:is(input):focus,
+.gtk-sheet .gtk-foot .gtk-input input:is(input):focus-visible {
+  outline: none;
+  box-shadow: none;
+}

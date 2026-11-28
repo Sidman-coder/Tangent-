@@ -33,7 +33,7 @@ void Promise.all([import("./routes") as Promise<Routes>, import("./notification-
     });
 
     test("/settings lands on Account on a laptop and the list on a phone", () => {
-      assert.equal(routes.settingsLanding(true, "", ""), "/settings/account");
+      assert.equal(routes.settingsLanding(true, "", ""), "/settings/context");
       assert.equal(routes.settingsLanding(false, "", ""), null);
       assert.equal(routes.settingsLanding(false, "", "#ai-activity"), "/settings/activity");
     });

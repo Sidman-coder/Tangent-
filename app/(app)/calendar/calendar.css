@@ -388,6 +388,8 @@
 
 /* ── Agenda: an Apple list ─────────────────────────────────────────────── */
 
+.calendar-page .ag-dow { display: none; }
+
 .calendar-page .ag-day {
   grid-template-columns: 132px minmax(0, 1fr);
   padding: 12px 0;
@@ -477,6 +479,22 @@
   .calendar-page .ag-day-label {
     display: none;
   }
+  /* Review 2026-11-24: "25" alone didn't say which day; a phone now shows
+     "Wed" above the number, like Apple Calendar. */
+  .calendar-page .ag-day-head {
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 2px;
+  }
+  .calendar-page .ag-dow {
+    display: block;
+    color: var(--text-3);
+    font: 600 11px/1.2 var(--font-body);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .calendar-page .ag-day.is-today .ag-dow { color: var(--accent-text); }
   .calendar-page .ag-item {
     gap: 10px;
     padding: 6px 2px;
@@ -972,10 +990,12 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
-/* Short blocks fit one title line: end it with an ellipsis, not a cut word. */
-.calendar-page .wk-block.is-short .wk-block-title {
-  -webkit-line-clamp: 1;
-}
+/* Review 2026-11-24: a short block (most 30-45 minute steps) drops its time
+   line, since the grid already shows the hour, and gives the title both lines:
+   "Robotics: order servo motors" instead of "Robotics:…". Under ~30px tall it
+   stays one line. */
+.calendar-page .wk-block.is-short .wk-block-time { display: none; }
+.calendar-page .wk-block.is-short .wk-block-title { line-height: 1.15; }
 /* A multi-day task's "2/3": in the time line on wide screens, a small tag on
    phones (where the time line is hidden). */
 .calendar-page .wk-block-part {

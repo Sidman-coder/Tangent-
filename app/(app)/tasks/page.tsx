@@ -1,7 +1,7 @@
 "use client";
 
 // Round 5A Phase 3: "All tasks", linked from /capture. Every open task, past
-// /capture's two-week window: Overdue, Today, Upcoming, No date.
+// /capture's two-week window: Past due, Today, Upcoming, No date.
 
 import { useMemo, useState } from "react";
 import Link from "next/link";

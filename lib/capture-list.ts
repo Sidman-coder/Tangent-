@@ -16,7 +16,7 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 
 function whenLabel(date: string, today: string): string {
   if (!date) return "";
-  if (date < today) return "Overdue";
+  if (date < today) return "Past due";
   if (date === today) return "Today";
   if (date === addDaysYMD(today, 1)) return "Tomorrow";
   const [y, m, d] = date.split("-").map(Number);
@@ -144,7 +144,7 @@ export function allTasksGroups(tasks: Task[], today: string): AllTasksGroup[] {
     .filter((t) => !t.completed && tracksCompletion(t) && !isCanvasCleared(t, today))
     .sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999") || a.time.localeCompare(b.time));
   const groups: AllTasksGroup[] = [
-    { id: "overdue", label: "Overdue", tasks: open.filter((t) => t.date && t.date < today) },
+    { id: "overdue", label: "Past due", tasks: open.filter((t) => t.date && t.date < today) },
     { id: "today", label: "Today", tasks: open.filter((t) => t.date === today) },
     { id: "upcoming", label: "Upcoming", tasks: open.filter((t) => t.date && t.date > today) },
     { id: "undated", label: "No date", tasks: open.filter((t) => !t.date) },

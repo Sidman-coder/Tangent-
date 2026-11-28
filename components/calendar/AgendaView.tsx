@@ -64,6 +64,8 @@ export default function AgendaView({ days, todayYmd, tasksForDay, colorFor, onOp
             transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1], delay: Math.min(i * 0.04, 0.4) }}
           >
             <button type="button" className="ag-day-head" onClick={() => onOpenDay(ymd)}>
+              {/* The weekday a phone shows above the date (its label column is hidden there). */}
+              <span className="ag-dow" aria-hidden="true">{d.toLocaleDateString(undefined, { weekday: "short" })}</span>
               <span className="ag-date">{d.getDate()}</span>
               <span className="ag-day-label">
                 <strong>{isToday ? "Today" : d.toLocaleDateString(undefined, { weekday: "long" })}</strong>

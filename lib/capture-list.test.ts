@@ -72,7 +72,7 @@ void (import("./capture-list") as Promise<Mod>).then(({ buildCaptureList, captur
       plans as never,
       today
     );
-    assert.deepEqual(rows.map((r) => r.sub), ["Overdue", "Today", "Tomorrow · Canvas", "Thu · Robotics", "Nov 5"]);
+    assert.deepEqual(rows.map((r) => r.sub), ["Past due", "Today", "Tomorrow · Canvas", "Thu · Robotics", "Nov 5"]);
   });
   test("Round 5A: Now first (today, due, overdue), then project steps by project", () => {
     const rows = buildCaptureList(
@@ -145,7 +145,7 @@ void (import("./capture-list") as Promise<Mod>).then(({ buildCaptureList, captur
     );
     assert.deepEqual(
       groups.map((g) => [g.label, g.tasks.map((t: { title: string }) => t.title)]),
-      [["Overdue", ["late"]], ["Today", ["now"]], ["Upcoming", ["far"]], ["No date", ["whenever"]]]
+      [["Past due", ["late"]], ["Today", ["now"]], ["Upcoming", ["far"]], ["No date", ["whenever"]]]
     );
   });
 
