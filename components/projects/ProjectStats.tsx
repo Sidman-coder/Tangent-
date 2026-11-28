@@ -112,7 +112,7 @@ export default function ProjectStats({
             : pace.startsOn
               ? `${startsLabel(pace.startsOn, today)}.`
               : `${plural(pace.neededThisWeek, "step")} needed this week. ${pace.approximate ? "About " : ""}${pace.doneLast7} done in the last 7 days.`}
-          {pace.overdue > 0 && ` ${pace.overdue} overdue.`}
+          {pace.overdue > 0 && ` ${pace.overdue} past due.`}
         </p>
         {!pace.startsOn && <p className="pstats-sentence">{sentence}</p>}
       </div>

@@ -57,7 +57,7 @@ export function collapseDuplicates<T extends { id?: string; title: string; type?
 // their own action.
 
 const AGGREGATE =
-  /\b(?:\d+|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|several|multiple|many|some)\s+(?:\w+\s+){0,2}(?:tasks|steps|things|items)\b.*\boverdue\b|\boverdue\s+(?:tasks|steps)\b/i;
+  /\b(?:\d+|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|several|multiple|many|some)\s+(?:\w+\s+){0,2}(?:tasks|steps|things|items)\b.*\b(?:overdue|past due)\b|\b(?:overdue|past[- ]due)\s+(?:tasks|steps)\b/i;
 
 /** True for an alert about several overdue tasks at once. */
 export function isAggregateOverdue(n: { type?: string; title: string }): boolean {

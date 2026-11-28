@@ -66,6 +66,7 @@ test("Round 5A: no aggregate, nothing merged", () => {
   assert.equal(mergeOverdue(list), list);
   assert.ok(isAggregateOverdue({ type: "overdue_task", title: "You have 4 overdue tasks" }));
   assert.ok(isAggregateOverdue({ type: "overdue_task", title: "Six Instagram tasks are overdue" }));
+  assert.ok(isAggregateOverdue({ type: "overdue_task", title: "3 things are past due" }));
   assert.ok(!isAggregateOverdue({ type: "overdue_task", title: "Essay draft is overdue" }));
   assert.ok(!isAggregateOverdue({ type: "upcoming_deadline", title: "Six tasks are overdue" }));
 });

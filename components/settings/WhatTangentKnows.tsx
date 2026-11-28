@@ -12,7 +12,7 @@ import "./you-map.css";
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CalendarClock, Check, Compass, FolderOpen, Gauge, GraduationCap, Mountain, Plus, Target, X, type LucideIcon } from "lucide-react";
 import type { ContextEntry } from "@/lib/types";
-import { groupFacts, initialsOf, mapSummary, ORIGIN_LABEL, originOf, projectFacts, type MapGroupKey } from "@/lib/you-map";
+import { factCount, groupFacts, initialsOf, mapSummary, ORIGIN_LABEL, originOf, projectFacts, type MapGroupKey } from "@/lib/you-map";
 import { GET_TO_KNOW_DONE_EVENT } from "@/components/GetToKnowYou";
 import { useAppState } from "@/components/AppStateProvider";
 import { usePipelineV2 } from "@/components/PipelineFlag";
@@ -211,11 +211,13 @@ export default function WhatTangentKnows({ children }: { children?: React.ReactN
   // area cards hold only what the student said or Tangent noticed.
   const guesses = useMemo(() => (entries ?? []).filter((e) => originOf(e) === "guess"), [entries]);
   const grouped = useMemo(() => groupFacts((entries ?? []).filter((e) => originOf(e) !== "guess")), [entries]);
+  const mapGrouped = useMemo(() => groupFacts(kept), [kept]);
+  // Help Tangent learn shows the map's number (grouped, each fact once).
+  const mapTotal = factCount(mapGrouped);
   useEffect(() => {
     if (entries === null) return;
-    window.dispatchEvent(new CustomEvent(FACTS_CHANGED_EVENT, { detail: kept.length }));
-  }, [entries, kept.length]);
-  const mapGrouped = useMemo(() => groupFacts(kept), [kept]);
+    window.dispatchEvent(new CustomEvent(FACTS_CHANGED_EVENT, { detail: mapTotal }));
+  }, [entries, mapTotal]);
   const plans = useMemo<PlanRef[]>(() => sample?.plans ?? (state?.plans ?? []).map((p) => ({ id: p.id, title: p.title })), [sample, state?.plans]);
   const projects = useMemo(() => projectFacts(entries ?? [], plans), [entries, plans]);
   const usedBy = useMemo(() => usageByFact(usage, plans), [usage, plans]);
